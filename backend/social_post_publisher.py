@@ -316,40 +316,48 @@ Responda APENAS com o JSON, sem markdown.
 
             if resp_posts.status_code in (200, 201):
                 data_posts = resp_posts.json()
-                record_posts = data_posts[0] if isinstance(data_posts, list) else data_posts
-                posts_id = record_posts.get("id")
-                publish_results["posts_table"] = {"success": True, "post_id": posts_id}
-                logger.info(f"✅ [PASSO 1] Post salvo na tabela 'posts': {posts_id}")
+                if not data_posts:
+                    logger.error(f"❌ [PASSO 1] Resposta vazia da API")
+                    publish_results["posts_table"] = {"success": False, "error": "Resposta vazia"}
+                else:
+                    record_posts = data_posts[0] if isinstance(data_posts, list) else data_posts
+                    posts_id = record_posts.get("id") if record_posts else None
+                    if posts_id:
+                        publish_results["posts_table"] = {"success": True, "post_id": posts_id}
+                        logger.info(f"✅ [PASSO 1] Post salvo na tabela 'posts': {posts_id}")
 
-                # --- PASSO 2: Agendar em 'scheduled_posts' ---
-                try:
-                    logger.info(f"🚀 [PASSO 2] Agendando post para o Feed...")
-                    # Agendar para 10 segundos no futuro
-                    scheduled_at = (datetime.utcnow() + timedelta(seconds=10)).isoformat()
-                    
-                    scheduled_payload = {
-                        "user_id": autor_id,
-                        "content": full_caption,
-                        "media_urls": posts_payload['media_urls'],
-                        "media_types": posts_payload['media_types'],
-                        "hashtags": hashtags,
-                        "scheduled_at": scheduled_at,
-                        "status": "scheduled",
-                        "published_post_id": posts_id # Relacionar com o post já criado
-                    }
-                    
-                    resp_sched = requests.post(
-                        f"{self.newpost_supabase_url}/rest/v1/scheduled_posts",
-                        headers=self._newpost_headers(),
-                        json=scheduled_payload,
-                        timeout=15,
-                    )
-                    
-                    if resp_sched.status_code in (200, 201):
-                        data_sched = resp_sched.json()
-                        sched_id = (data_sched[0] if isinstance(data_sched, list) else data_sched).get("id")
-                        publish_results["scheduled_posts"] = {"success": True, "scheduled_id": sched_id}
-                        logger.info(f"✅ [PASSO 2] Post agendado com sucesso: {sched_id}")
+                        # --- PASSO 2: Agendar em 'scheduled_posts' ---
+                        try:
+                            logger.info(f"🚀 [PASSO 2] Agendando post para o Feed...")
+                            # Agendar para 10 segundos no futuro
+                            scheduled_at = (datetime.utcnow() + timedelta(seconds=10)).isoformat()
+                            
+                            scheduled_payload = {
+                                "user_id": autor_id,
+                                "content": full_caption,
+                                "media_urls": posts_payload['media_urls'],
+                                "media_types": posts_payload['media_types'],
+                                "hashtags": hashtags,
+                                "scheduled_at": scheduled_at,
+                                "status": "scheduled",
+                                "published_post_id": posts_id # Relacionar com o post já criado
+                            }
+                            
+                            resp_sched = requests.post(
+                                f"{self.newpost_supabase_url}/rest/v1/scheduled_posts",
+                                headers=self._newpost_headers(),
+                                json=scheduled_payload,
+                                timeout=15,
+                            )
+                            
+                            if resp_sched.status_code in (200, 201):
+                                data_sched = resp_sched.json()
+                                if data_sched:
+                                    record_sched = data_sched[0] if isinstance(data_sched, list) else data_sched
+                                    sched_id = record_sched.get("id") if record_sched else None
+                                    if sched_id:
+                                        publish_results["scheduled_posts"] = {"success": True, "scheduled_id": sched_id}
+                                        logger.info(f"✅ [PASSO 2] Post agendado com sucesso: {sched_id}")
 
                         # --- PASSO 3: Acionar Edge Function ---
                         try:
