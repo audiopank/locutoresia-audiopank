@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 # URL correta da NewPost-IA
 NEWPOST_IA_URL = os.getenv("NEWPOST_IA_URL", "https://plugpost-ai.lovable.app")
 NEWPOST_SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", os.getenv("SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co"))
-# Garantir que usamos a chave de serviço para bypass de RLS
-NEWPOST_SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", ""))
+# Usar a chave ANON para NewPost-IA (conforme configuração oficial)
+NEWPOST_SUPABASE_KEY = os.getenv("NEWPOST_ANON_KEY", os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""))
 
 # Supabase local (Locutores IA)
 LOCAL_SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
@@ -279,13 +279,8 @@ Responda APENAS com o JSON, sem markdown.
         hashtag_str = " ".join([f"#{h}" for h in hashtags])
         full_caption = f"{post.get('caption', '')} {hashtag_str}".strip()
 
-        # Obter autor_id
-        autor_id = "3a1a93d0-e451-47a4-a126-f1b7375895eb"
-        try:
-            with open('newsagent_autor_id.txt', 'r') as f:
-                autor_id = f.read().strip() or autor_id
-        except Exception:
-            pass
+        # Obter autor_id do .env (conforme configuração oficial da NewPost-IA)
+        autor_id = os.getenv("NEWPOST_AUTHOR_ID", "e387d9c0-31d9-409c-b3ac-5d31109630b4")
 
         publish_results = {
             "posts_table": {"success": False},
