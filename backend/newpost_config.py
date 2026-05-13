@@ -1,3 +1,5 @@
+import os
+
 """
 Configuração da NewPost-IA com Supabase
 Credenciais fornecidas pelo usuário
@@ -5,7 +7,7 @@ Credenciais fornecidas pelo usuário
 
 NEWPOST_CONFIG = {
     # Configurações da NewPost-IA REAL
-    "url": "https://plugpost-ai.lovable.app",
+    "url": os.getenv("NEWPOST_IA_URL", "https://plugpost-ai.lovable.app"),
     "api_endpoint": "/api/posts",
     "project_id": "71da61a3-9afe-44e1-903b-b696168bfa60",
     

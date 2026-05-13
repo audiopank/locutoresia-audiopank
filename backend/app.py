@@ -40,6 +40,22 @@ app = Flask(__name__,
            template_folder=os.path.join(base_dir, 'templates'),
            static_folder=os.path.join(base_dir, 'static'))
 
+# Helper para obter a chave Supabase correta
+def get_supabase_key():
+    return os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+
+# Validação de segurança do Supabase
+try:
+    from backend.supabase_guard import validate_supabase_target
+    # Recarregar .env explicitamente para garantir chaves novas
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+    validate_supabase_target()
+except ImportError:
+    print("⚠️ supabase_guard não encontrado, pulando validação")
+except Exception as e:
+    print(f"❌ Erro na validação do Supabase: {e}")
+
 # Configurar CORS manualmente
 @app.after_request
 def after_request(response):
@@ -58,20 +74,34 @@ else:
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Importar agente de notícias de forma segura - usar caminho absoluto para garantir arquivo correto
-import importlib.util
-spec = importlib.util.spec_from_file_location("news_agent", os.path.join(os.path.dirname(__file__), '..', 'news_agent.py'))
-news_agent_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(news_agent_module)
-NewsAgent = news_agent_module.NewsAgent
-HAS_NEWS_AGENT = True
+# Importar agente de notícias de forma segura
+try:
+    from news_agent import news_agent, NewsAgent
+    HAS_NEWS_AGENT = True
+    print("✓ NewsAgent carregado")
+except ImportError:
+    # Fallback caso a importação direta falhe
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("news_agent", os.path.join(os.path.dirname(__file__), '..', 'news_agent.py'))
+        news_agent_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(news_agent_module)
+        news_agent = news_agent_module.news_agent
+        NewsAgent = news_agent_module.NewsAgent
+        HAS_NEWS_AGENT = True
+        print("✓ NewsAgent carregado via spec")
+    except Exception as e:
+        news_agent = None
+        NewsAgent = None
+        HAS_NEWS_AGENT = False
+        print(f"⚠️ NewsAgent não disponível: {e}")
 
 # DEBUG — verificar se execute_collection existe (apenas em desenvolvimento, não no Vercel)
 if not os.environ.get('VERCEL'):
     try:
-        _agent_test = NewsAgent()
+        _agent_test = news_agent
         _methods = [m for m in dir(_agent_test) if not m.startswith('_')]
-        print(f"✅ NewsAgent carregado de: {NewsAgent.__module__}")
+        print(f"✅ NewsAgent carregado de: {news_agent.__module__}")
         print(f"✅ Métodos disponíveis: {_methods}")
         
         if not hasattr(_agent_test, 'execute_collection'):
@@ -173,10 +203,8 @@ def execute_news():
         categories = data.get('categories', ['brasil', 'economia', 'tecnologia'])
         limit = data.get('limit', 50)
         
-        agent = NewsAgent()
-        
-        # Usa o novo método execute_collection
-        result = agent.execute_collection(
+        # Usar a instância global news_agent
+        result = news_agent.execute_collection(
             enabled_sources=enabled_sources,
             categories=categories,
             limit=limit
@@ -223,8 +251,7 @@ def news_sources():
         }), 503
     
     try:
-        agent = NewsAgent()
-        sources = agent.get_sources()
+        sources = news_agent.get_sources()
         return jsonify(sources)
     except Exception as e:
         return jsonify({
@@ -242,8 +269,7 @@ def news_status():
         }), 503
     
     try:
-        agent = NewsAgent()
-        status = agent.get_status()
+        status = news_agent.get_status()
         return jsonify(status)
     except Exception as e:
         return jsonify({
@@ -262,11 +288,10 @@ def news_cache():
         }), 503
     
     try:
-        agent = NewsAgent()
         limit = request.args.get('limit', 50, type=int)
         category = request.args.get('category', None)
         
-        cached = agent.get_cached_news(limit=limit, category=category)
+        cached = news_agent.get_cached_news(limit=limit, category=category)
         return jsonify(cached)
     except Exception as e:
         return jsonify({
@@ -284,8 +309,7 @@ def collect_source_category(source, category):
         }), 503
     
     try:
-        agent = NewsAgent()
-        news_list = agent.collect_from_source(source, category)
+        news_list = news_agent.collect_from_source(source, category)
         
         return jsonify({
             "success": True,
@@ -312,8 +336,7 @@ def news_health():
         }), 503
     
     try:
-        agent = NewsAgent()
-        health = agent.health_check()
+        health = news_agent.health_check()
         return jsonify(health)
     except Exception as e:
         return jsonify({
@@ -717,6 +740,25 @@ def voxcraft_receive():
         image_url = data.get('image_url', '').strip()
         return_url = data.get('return_url', '').strip()
         
+        # Classificação Automática baseada no Score
+        try:
+            score = float(data.get('score', 0))
+        except (ValueError, TypeError):
+            score = 0
+            
+        if score >= 9:
+            classification = '🔥 URGENTE'
+        elif score >= 7:
+            classification = '⚡ EM ALTA'
+        elif score >= 5:
+            classification = '🟡 ATUALIZAÇÃO'
+        else:
+            classification = 'revisão'
+            
+        if score > 0:
+            category = f"{category} - {classification}"
+            print(f"ℹ️ VoxCraft Classification: Score {score} -> {classification}")
+        
         # Sanitiza post_id (apenas alphanumeric e hífen)
         import re
         post_id = re.sub(r'[^a-zA-Z0-9\-_]', '', post_id)[:50]
@@ -840,7 +882,7 @@ def voxcraft_complete():
         if post_id:
             try:
                 supabase_url = os.getenv("SUPABASE_URL", "").rstrip('/')
-                supabase_key = os.getenv("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_ANON_KEY", ""))
+                supabase_key = get_supabase_key()
                 
                 if not supabase_url or not supabase_key:
                     print(f"⚠️ Aviso: Credenciais Supabase não configuradas para atualizar post {post_id}")
@@ -1239,13 +1281,14 @@ def api_create_social_post():
     # Se social_publisher não estiver disponível, salvar diretamente no Supabase
     if not HAS_SOCIAL_PUBLISHER:
         try:
-            supabase_url = os.getenv('SUPABASE_URL', 'https://ravpbfkicqkwjxejuzty.supabase.co').rstrip('/')
-            supabase_key = os.getenv('SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_ANON_KEY', ''))
+            supabase_url = os.getenv('SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
+            supabase_key = get_supabase_key()
             
             print(f"[DEBUG] Salvando post - URL: {supabase_url}")
             print(f"[DEBUG] Título: {data.get('title', '')[:50]}...")
             
             if not supabase_url or not supabase_key:
+                print("[ERROR] Credenciais Supabase não configuradas para api_create_social_post")
                 return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
             
             headers = {
@@ -1565,9 +1608,10 @@ def api_get_automation_config():
     try:
         # Obter credenciais do ambiente
         supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_ANON_KEY', ''))
+        supabase_key = get_supabase_key()
         
         if not supabase_url or not supabase_key:
+            print("[ERROR] Credenciais Supabase não configuradas para api_get_automation_config")
             return jsonify({
                 'success': False,
                 'error': 'Credenciais Supabase não configuradas'
@@ -1691,9 +1735,10 @@ def api_save_automation_config():
         
         # Obter credenciais do ambiente
         supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_ANON_KEY', ''))
+        supabase_key = get_supabase_key()
         
         if not supabase_url or not supabase_key:
+            print("[ERROR] Credenciais Supabase não configuradas para api_save_automation_config")
             return jsonify({
                 'success': False,
                 'error': 'Credenciais Supabase não configuradas'
@@ -1808,6 +1853,153 @@ def api_automation_status():
         
     except Exception as e:
         print(f"Erro ao verificar status automação: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/automation/<type>', methods=['POST'])
+def api_toggle_automation(type):
+    """Liga/desliga uma automação específica"""
+    try:
+        data = request.get_json()
+        enabled = data.get('enabled', False)
+        
+        # Validar tipo
+        valid_types = ['news', 'social', 'voxcraft']
+        if type not in valid_types:
+            return jsonify({
+                'success': False,
+                'error': f'Tipo inválido. Tipos válidos: {valid_types}'
+            }), 400
+        
+        # Salvar estado no arquivo de configuração
+        import json
+        config_file = 'automation_state.json'
+        
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+        except:
+            state = {}
+        
+        state[f'{type}_enabled'] = enabled
+        
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(state, f, indent=2)
+        
+        print(f"✅ Automação {type} {'ativada' if enabled else 'desativada'}")
+        
+        return jsonify({
+            'success': True,
+            'type': type,
+            'enabled': enabled,
+            'message': f'Automação {type} {"ativada" if enabled else "desativada"} com sucesso'
+        })
+        
+    except Exception as e:
+        print(f"Erro ao alternar automação: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/automation/state', methods=['GET'])
+def api_automation_state():
+    """Retorna o estado atual de todas as automações"""
+    try:
+        import json
+        config_file = 'automation_state.json'
+        
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+        except:
+            state = {
+                'news_enabled': True,
+                'social_enabled': True,
+                'voxcraft_enabled': False
+            }
+        
+        # Ler estatísticas do scheduler se existirem
+        stats_file = 'scheduler_stats.json'
+        try:
+            with open(stats_file, 'r', encoding='utf-8') as f:
+                stats = json.load(f)
+        except:
+            stats = {
+                'total_collections': 0,
+                'successful_collections': 0,
+                'failed_collections': 0,
+                'total_news_collected': 0,
+                'last_collection': None
+            }
+        
+        return jsonify({
+            'success': True,
+            'state': state,
+            'stats': stats
+        })
+        
+    except Exception as e:
+        print(f"Erro ao obter estado das automações: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/automation/execute/<type>', methods=['POST'])
+def api_execute_automation(type):
+    """Executa uma automação imediatamente"""
+    try:
+        # Validar tipo
+        valid_types = ['news', 'social', 'voxcraft']
+        if type not in valid_types:
+            return jsonify({
+                'success': False,
+                'error': f'Tipo inválido. Tipos válidos: {valid_types}'
+            }), 400
+        
+        print(f"🚀 Executando automação {type} manualmente...")
+        
+        if type == 'news':
+            # Executar coleta de notícias
+            if HAS_NEWS_AGENT:
+                # Usar a instância global news_agent em vez da classe NewsAgent
+                result = news_agent.execute_collection(
+                    enabled_sources={'g1': True, 'folha': True, 'exame': True, 'veja': True},
+                    categories=['brasil', 'economia', 'tecnologia'],
+                    limit=50
+                )
+                return jsonify({
+                    'success': True,
+                    'type': type,
+                    'result': result
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'NewsAgent não disponível'
+                }), 500
+        
+        elif type == 'social':
+            # Executar publicação social
+            return jsonify({
+                'success': True,
+                'type': type,
+                'message': 'Publicação social executada (simulação)'
+            })
+        
+        elif type == 'voxcraft':
+            # Executar VoxCraft
+            return jsonify({
+                'success': True,
+                'type': type,
+                'message': 'VoxCraft executado (simulação)'
+            })
+        
+    except Exception as e:
+        print(f"Erro ao executar automação: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2019,10 +2211,11 @@ def handle_publications():
     if request.method == 'DELETE':
         """Limpa todas as publicações"""
         try:
-            supabase_url = os.getenv('SUPABASE_URL', 'https://ravpbfkicqkwjxejuzty.supabase.co').rstrip('/')
-            supabase_key = os.getenv('SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhdnBiZmtpY3Frd2p4ZWp1enR5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM'))
+            supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            supabase_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
             
             if not supabase_url or not supabase_key:
+                print("[ERROR] Credenciais Supabase não configuradas para handle_publications DELETE")
                 return jsonify({"success": False, "error": "Credenciais não configuradas"}), 500
             
             headers = {
@@ -2113,13 +2306,16 @@ def handle_publications():
     
     # GET - Listar publicações
     try:
-        supabase_url = os.getenv('SUPABASE_URL', 'https://ravpbfkicqkwjxejuzty.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhdnBiZmtpY3Frd2p4ZWp1enR5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM'))
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
         
         print(f"[DEBUG] Listando publicações - URL: {supabase_url}")
         print(f"[DEBUG] Supabase Key presente: {bool(supabase_key)}")
+        key_type = 'SERVICE_ROLE' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else ('SERVICE_KEY' if os.getenv('SUPABASE_SERVICE_KEY') else 'ANON_KEY')
+        print(f"[DEBUG] Usando chave: {key_type}")
         
         if not supabase_url or not supabase_key:
+            print("[ERROR] Credenciais Supabase não configuradas para handle_publications GET")
             return jsonify({"success": False, "error": "Credenciais não configuradas"}), 500
         
         headers = {
@@ -2161,8 +2357,12 @@ def update_publication(id):
     """Atualiza uma publicação"""
     try:
         data = request.get_json()
-        supabase_url = os.getenv('SUPABASE_URL', 'https://ravpbfkicqkwjxejuzty.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhdnBiZmtpY3Frd2p4ZWp1enR5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM'))
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_key:
+            print("[ERROR] Chave Supabase não configurada para update_publication")
+            return jsonify({"success": False, "error": "Chave Supabase não configurada"}), 500
         
         headers = {
             'apikey': supabase_key,
@@ -2196,8 +2396,12 @@ def update_publication(id):
 def approve_publication(id):
     """Aprova uma publicação"""
     try:
-        supabase_url = os.getenv('SUPABASE_URL', 'https://ravpbfkicqkwjxejuzty.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhdnBiZmtpY3Frd2p4ZWp1enR5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM'))
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_key:
+            print("[ERROR] Chave Supabase não configurada para approve_publication")
+            return jsonify({"success": False, "error": "Chave Supabase não configurada"}), 500
         
         headers = {
             'apikey': supabase_key,
@@ -2205,19 +2409,179 @@ def approve_publication(id):
             'Content-Type': 'application/json'
         }
         
+        print(f"[DEBUG] Aprovando publicação ID: {id}")
+        print(f"[DEBUG] URL: {supabase_url}/rest/v1/posts?id=eq.{id}")
+        
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{id}",
-            json={'status': 'approved', 'updated_at': datetime.now().isoformat()},
+            json={'status': 'published', 'updated_at': datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
         
-        if response.status_code == 200:
+        print(f"[DEBUG] Status code: {response.status_code}")
+        print(f"[DEBUG] Response: {response.text[:200]}")
+        
+        if response.status_code in [200, 204]:
             return jsonify({"success": True, "message": "Publicação aprovada"})
         
-        return jsonify({"success": False, "error": f"Erro: {response.status_code}"}), response.status_code
+        error_msg = f"Erro: {response.status_code}"
+        try:
+            error_data = response.json()
+            if 'message' in error_data:
+                error_msg = error_data['message']
+        except:
+            error_msg = response.text[:200]
+        
+        return jsonify({"success": False, "error": error_msg}), response.status_code
         
     except Exception as e:
+        print(f"[ERROR] Exceção ao aprovar: {e}")
+        import traceback
+        print(f"[TRACEBACK] {traceback.format_exc()}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/publications/<id>/convert-to-social', methods=['POST'])
+def convert_to_social_post(id):
+    """Converte um post da tabela posts em um social_post para publicação"""
+    try:
+        supabase_url = os.getenv('SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
+        supabase_key = get_supabase_key()
+        
+        if not supabase_key:
+            print("[ERROR] Credenciais Supabase não configuradas para convert_to_social_post")
+            return jsonify({"success": False, "error": "Chave Supabase não configurada"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Buscar o post original
+        response = requests.get(
+            f"{supabase_url}/rest/v1/posts?id=eq.{id}",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code != 200 or not response.json():
+            return jsonify({"success": False, "error": "Post não encontrado"}), 404
+        
+        post = response.json()[0]
+        
+        # Usar SocialPostPublisher para criar o social_post
+        if HAS_SOCIAL_PUBLISHER:
+            result = social_publisher.create_from_news(
+                news_title=post.get('title', ''),
+                news_content=post.get('content', ''),
+                image_url=post.get('image_url', ''),
+                audio_url=post.get('audio_url', ''),
+                auto_caption=True
+            )
+            
+            if result.get('success'):
+                # Marcar o post original como convertido
+                requests.patch(
+                    f"{supabase_url}/rest/v1/posts?id=eq.{id}",
+                    json={'metadata': {**post.get('metadata', {}), 'converted_to_social': True, 'social_post_id': result.get('post', {}).get('id')}},
+                    headers=headers,
+                    timeout=10
+                )
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Post convertido para social_post com sucesso",
+                    "social_post": result.get('post')
+                })
+            else:
+                return jsonify({"success": False, "error": result.get('error', 'Erro ao converter')}), 500
+        else:
+            return jsonify({"success": False, "error": "SocialPostPublisher não disponível"}), 500
+            
+    except Exception as e:
+        print(f"[ERROR] Exceção ao converter: {e}")
+        import traceback
+        print(f"[TRACEBACK] {traceback.format_exc()}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/publications/<id>/publish-to-newpost', methods=['POST'])
+def publish_to_newpost_route(id):
+    """Publica um post diretamente na NewPost-IA"""
+    try:
+        # Primeiro converter para social_post se necessário
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = get_supabase_key()
+        
+        if not supabase_key:
+            print("[ERROR] Chave Supabase não configurada para publish_to_newpost_route")
+            return jsonify({"success": False, "error": "Chave Supabase não configurada"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        print(f"[DEBUG] Tentando publicar ID: {id}")
+        print(f"[DEBUG] Usando URL: {supabase_url}")
+        
+        # Buscar o post original
+        url = f"{supabase_url}/rest/v1/posts?id=eq.{id}"
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        print(f"[DEBUG] Resposta Supabase ({response.status_code}): {response.text[:200]}")
+        
+        if response.status_code != 200 or not response.json():
+            # Tentar buscar sem o filtro de ID se falhar, apenas para debug de conexão
+            debug_resp = requests.get(f"{supabase_url}/rest/v1/posts?limit=1", headers=headers, timeout=5)
+            print(f"[DEBUG] Teste de conexão (posts limit 1): {debug_resp.status_code}")
+            return jsonify({"success": False, "error": "Post original não encontrado", "id_solicitado": id}), 404
+        
+        post = response.json()[0]
+        
+        # Criar social_post
+        if HAS_SOCIAL_PUBLISHER:
+            result = social_publisher.create_from_news(
+                news_title=post.get('title', ''),
+                news_content=post.get('content', ''),
+                image_url=post.get('image_url', ''),
+                audio_url=post.get('audio_url', ''),
+                auto_caption=True
+            )
+            
+            if not result.get('success'):
+                return jsonify({"success": False, "error": f"Erro ao criar social_post: {result.get('error')}"}), 500
+            
+            social_post = result.get('post')
+            social_post_id = social_post.get('id')
+            
+            # Publicar usando SocialPostPublisher
+            publish_result = social_publisher.publish_to_newpost(social_post_id)
+            
+            if publish_result.get('success'):
+                # Marcar o post original como convertido/publicado
+                requests.patch(
+                    f"{supabase_url}/rest/v1/posts?id=eq.{id}",
+                    json={'metadata': {**post.get('metadata', {}), 'converted_to_social': True, 'social_post_id': social_post_id, 'published': True}},
+                    headers=headers,
+                    timeout=10
+                )
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Post publicado na NewPost-IA com sucesso",
+                    "publish_results": publish_result.get('publish_results')
+                })
+            else:
+                return jsonify({"success": False, "error": publish_result.get('error', 'Erro ao publicar na NewPost-IA')}), 500
+        else:
+            return jsonify({"success": False, "error": "SocialPostPublisher não disponível"}), 500
+            
+    except Exception as e:
+        print(f"[ERROR] Exceção ao publicar: {e}")
+        import traceback
+        print(f"[TRACEBACK] {traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 # Importar dashboards

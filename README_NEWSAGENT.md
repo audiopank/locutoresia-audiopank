@@ -114,7 +114,7 @@ Executa coleta de notícias com filtros customizados
       "source_key": "exame",
       "category": "economia",
       "snippet": "PIB cresceu 2.4% no ano...",
-      "published_at": "15/01/2024 09:45",
+      "published_at": "15/0105/2026 09:45",
       "image_url": ""
     }
   ],

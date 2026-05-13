@@ -828,7 +828,17 @@
         async function loadPublications() {
             try {
                 const response = await fetch(`${API_BASE}/api/publications`);
-                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(`Erro ao carregar publicações: ${response.status}`);
+                }
+                
+                let data = {};
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    throw new Error('Erro ao parsear resposta do servidor');
+                }
                 
                 const publicationsList = document.getElementById('publicationsList');
                 const totalPublications = document.getElementById('totalPublications');
@@ -997,7 +1007,14 @@
                     closeEditModal();
                     loadPublications();
                 } else {
-                    throw new Error('Erro ao atualizar');
+                    let errorMsg = 'Erro ao atualizar';
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        // Se não conseguir parsear JSON, usa a mensagem padrão
+                    }
+                    throw new Error(errorMsg);
                 }
             } catch (error) {
                 addLog(`❌ Erro ao salvar: ${error.message}`, 'error');
@@ -1015,7 +1032,14 @@
                     addLog(`✓ Publicação ${id} aprovada!`, 'success');
                     loadPublications();
                 } else {
-                    throw new Error('Erro ao aprovar');
+                    let errorMsg = 'Erro ao aprovar';
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        // Se não conseguir parsear JSON, usa a mensagem padrão
+                    }
+                    throw new Error(errorMsg);
                 }
             } catch (error) {
                 addLog(`❌ Erro: ${error.message}`, 'error');
@@ -1029,25 +1053,24 @@
             try {
                 addLog(`🚀 Postando ${id} na NewPost-IA...`, 'info');
                 
-                const response = await fetch(`${API_BASE}/api/newpost/publish`, {
+                const response = await fetch(`${API_BASE}/api/publications/${id}/publish-to-newpost`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: title,
-                        content: content,
-                        image_url: imageUrl,
-                        hashtags: ['notícia', 'Brasil'],
-                        source_id: id
-                    })
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
-                const result = await response.json();
+                let result = {};
+                try {
+                    result = await response.json();
+                } catch (e) {
+                    result = { success: false, error: `Erro de resposta do servidor: ${response.status}` };
+                }
                 
                 if (response.ok && result.success) {
-                    addLog(`✅ Postado com sucesso! ID: ${result.post_id}`, 'success');
+                    addLog(`✅ Postado com sucesso na NewPost-IA!`, 'success');
+                    addLog(`📊 Resultados: ${JSON.stringify(result.publish_results)}`, 'info');
                     await approvePublication(id);
                 } else {
-                    throw new Error(result.error || 'Erro ao publicar');
+                    throw new Error(result.error || `Erro ao publicar (Status: ${response.status})`);
                 }
             } catch (error) {
                 addLog(`❌ Erro ao postar: ${error.message}`, 'error');

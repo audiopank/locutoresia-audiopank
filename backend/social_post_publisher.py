@@ -8,7 +8,7 @@ import os
 import json
 import requests
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple
 
 # Carregar variáveis de ambiente usando o caminho correto (independente do cwd)
@@ -27,13 +27,14 @@ logger = logging.getLogger(__name__)
 # CONFIGURAÇÃO NEWPOST-IA
 # ============================================================
 # URL correta da NewPost-IA
-NEWPOST_IA_URL = "https://newpost-ia.vercel.app"  # URL atualizada
-NEWPOST_SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", "https://ykswhzqdjoshjoaruhqs.supabase.co")
-NEWPOST_SUPABASE_KEY = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("NEWPOST_SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8"))
+NEWPOST_IA_URL = os.getenv("NEWPOST_IA_URL", "https://plugpost-ai.lovable.app")
+NEWPOST_SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", os.getenv("SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co"))
+# Garantir que usamos a chave de serviço para bypass de RLS
+NEWPOST_SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", ""))
 
 # Supabase local (Locutores IA)
 LOCAL_SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-LOCAL_SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_ANON_KEY", ""))
+LOCAL_SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", ""))
 
 # Configuração de fallback para publicação direta
 NEWPOST_FALLBACK_ENABLED = True
@@ -52,10 +53,10 @@ class SocialPostPublisher:
     def __init__(self):
         # Ler credenciais em tempo de execução (após load_dotenv)
         self.local_url = os.getenv("SUPABASE_URL", LOCAL_SUPABASE_URL).rstrip("/")
-        self.local_key = os.getenv("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_ANON_KEY", LOCAL_SUPABASE_KEY))
+        self.local_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", LOCAL_SUPABASE_KEY))
         self.newpost_url = NEWPOST_IA_URL
         self.newpost_supabase_url = os.getenv("NEWPOST_SUPABASE_URL", NEWPOST_SUPABASE_URL)
-        self.newpost_supabase_key = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("NEWPOST_SUPABASE_ANON_KEY", NEWPOST_SUPABASE_KEY))
+        self.newpost_supabase_key = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", NEWPOST_SUPABASE_KEY)))
 
     # ----------------------------------------------------------
     # HEADERS SUPABASE LOCAL
@@ -64,6 +65,18 @@ class SocialPostPublisher:
         return {
             "apikey": self.local_key,
             "Authorization": f"Bearer {self.local_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        }
+
+    # ----------------------------------------------------------
+    # HEADERS NEWPOST-IA
+    # ----------------------------------------------------------
+    def _newpost_headers(self) -> Dict[str, str]:
+        """Centraliza os headers para a API do NewPost"""
+        return {
+            "apikey": self.newpost_supabase_key,
+            "Authorization": f"Bearer {self.newpost_supabase_key}",
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
@@ -242,42 +255,29 @@ Responda APENAS com o JSON, sem markdown.
     # ----------------------------------------------------------
     def publish_to_newpost(self, post_id: str) -> Dict[str, Any]:
         """
-        Publica um SocialPost aprovado na NewPost-IA.
-        Estratégia: POST via API REST Supabase da NewPost-IA ou endpoint HTTP.
+        Publica um SocialPost aprovado na NewPost-IA seguindo o pipeline de 3 passos:
+        1. Salvar na tabela 'posts' (Base)
+        2. Agendar em 'scheduled_posts' (Trigger para o Feed)
+        3. Acionar Edge Function (Processamento imediato)
         """
-        # Obter post local
+        # 1. Obter post local
         result = self.get_post(post_id)
         if not result.get("success"):
             return result
 
         post = result["post"]
 
-        # Verificar se está aprovado
-        if post.get("approval_status") != "aprovado" and post.get("status") != "aprovado":
-            # Permite publicar se status for aprovado também
-            if post.get("status") not in ["aprovado", "rascunho"]:
-                return {
-                    "success": False,
-                    "error": f"Post precisa estar aprovado. Status atual: {post.get('approval_status')} / {post.get('status')}",
-                }
+        # 2. Verificar se está aprovado
+        if post.get("approval_status") != "aprovado":
+            return {
+                "success": False,
+                "error": f"O post precisa estar aprovado para publicar. Status atual: {post.get('approval_status')}",
+            }
 
-        # Montar payload NewPost-IA
+        # 3. Preparar dados
         hashtags = post.get("hashtags", [])
-        hashtag_str = " ".join([f"#{h}" for h in hashtags]) if hashtags else ""
+        hashtag_str = " ".join([f"#{h}" for h in hashtags])
         full_caption = f"{post.get('caption', '')} {hashtag_str}".strip()
-
-        newpost_payload = {
-            "title": post.get("title", ""),
-            "caption": full_caption,
-            "audio_url": post.get("audio_url", ""),
-            "image_url": post.get("image_url", ""),
-            "platforms": post.get("platforms", ["newpost_ia"]),
-            "hashtags": hashtags,
-            "status": "publicado",
-            "ai_caption_generated": post.get("ai_caption_generated", False),
-            "published_at": datetime.utcnow().isoformat(),
-        }
-
 
         # Obter autor_id
         autor_id = "3a1a93d0-e451-47a4-a126-f1b7375895eb"
@@ -287,167 +287,126 @@ Responda APENAS com o JSON, sem markdown.
         except Exception:
             pass
 
-        # Payload para a tabela newpost_posts do NewPost-IA
-        newpost_db_payload = {
-            "autor_id": autor_id,
-            "titulo": post.get("title", ""),
-            "descricao": f"Postado via Locutores IA: {post.get('title', '')}"[:200],
-            "conteudo": full_caption,
-            "hashtags": hashtags,
-            "audio_url": post.get("audio_url") or None,
+        publish_results = {
+            "posts_table": {"success": False},
+            "scheduled_posts": {"success": False},
+            "edge_function": {"success": False}
         }
 
-        publish_results = {}
-        supabase_ok = False
+        # --- PASSO 1: Salvar na tabela 'posts' ---
+        try:
+            posts_payload = {
+                'title': post.get("title", ""),
+                'content': full_caption,
+                'author_id': autor_id,
+                'status': 'published',
+                'is_ia_generated': post.get("ai_caption_generated", True),
+                'media_urls': [post.get("image_url")] if post.get("image_url") else [],
+                'media_types': ['image'] if post.get("image_url") else [],
+                'source_url': post.get("source_url", "")
+            }
+            
+            logger.info(f"🚀 [PASSO 1] Salvando post na tabela 'posts'...")
+            resp_posts = requests.post(
+                f"{self.newpost_supabase_url}/rest/v1/posts",
+                headers=self._newpost_headers(),
+                json=posts_payload,
+                timeout=20,
+            )
 
-        # Tentativa 1: via Supabase da NewPost-IA (inserção direta na tabela)
-        if self.newpost_supabase_url and self.newpost_supabase_key:
-            try:
-                np_headers = {
-                    "apikey": self.newpost_supabase_key,
-                    "Authorization": f"Bearer {self.newpost_supabase_key}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=representation",
-                }
-                resp = requests.post(
-                    f"{self.newpost_supabase_url}/rest/v1/newpost_posts",
-                    headers=np_headers,
-                    json=newpost_db_payload,
-                    timeout=20,
-                )
-                if resp.status_code in (200, 201):
-                    data = resp.json()
-                    record = data[0] if isinstance(data, list) else data
-                    publish_results["newpost_ia"] = {
-                        "success": True,
-                        "platform_post_id": record.get("id"),
-                        "via": "supabase_direto",
-                    }
-                    supabase_ok = True
-                    logger.info(f"✅ Publicado na NewPost-IA (Supabase direto): {post_id} → {record.get('id')}")
-                else:
-                    publish_results["newpost_ia"] = {
-                        "success": False,
-                        "error": f"HTTP {resp.status_code}: {resp.text[:200]}",
-                    }
-                    logger.warning(f"⚠️ Supabase NewPost-IA falhou: {resp.status_code} — {resp.text[:100]}")
-            except Exception as e:
-                publish_results["newpost_ia"] = {"success": False, "error": str(e)}
-                logger.error(f"Exceção no Supabase NewPost-IA: {e}")
+            if resp_posts.status_code in (200, 201):
+                data_posts = resp_posts.json()
+                record_posts = data_posts[0] if isinstance(data_posts, list) else data_posts
+                posts_id = record_posts.get("id")
+                publish_results["posts_table"] = {"success": True, "post_id": posts_id}
+                logger.info(f"✅ [PASSO 1] Post salvo na tabela 'posts': {posts_id}")
 
-        # Tentativa 2: via HTTP direto na NewPost-IA (só se Supabase falhou)
-        if not supabase_ok:
-            try:
-                headers = {
-                    "Content-Type": "application/json",
-                    "User-Agent": "LocutoresIA/1.0",
-                    "Origin": "https://locutores-ia-cyan.vercel.app",
-                    "Referer": "https://locutores-ia-cyan.vercel.app/",
-                }
-                
-                # Payload simplificado e correto para NewPost-IA API
-                newpost_api_payload = {
-                    "title": post.get("title", ""),
-                    "content": full_caption,
-                    "hashtags": hashtags,
-                    "platform": "instagram",
-                    "source": "Locutores IA",
-                    "auto_generated": True,
-                    "status": "published"
-                }
-                
-                # Tentar múltiplos endpoints
-                endpoints_to_try = [
-                    f"{self.newpost_url}/api/posts",
-                    f"{self.newpost_url}/api/social-posts", 
-                    f"{self.newpost_url}/api/create-post",
-                    f"{self.newpost_url}/api/publish"
-                ]
-                
-                for endpoint in endpoints_to_try:
-                    try:
-                        resp = requests.post(
-                            endpoint,
-                            headers=headers,
-                            json=newpost_api_payload,
-                            timeout=15,
-                        )
-                        
-                        # Verificar resposta
-                        if resp.status_code in (200, 201):
-                            try:
-                                response_text = resp.text.strip()
-                                if response_text:
-                                    result = resp.json()
-                                    publish_results["newpost_ia"] = {
-                                        "success": True,
-                                        "platform_post_id": result.get("id", f"post_{int(datetime.utcnow().timestamp())}"),
-                                        "response": result,
-                                        "endpoint": endpoint
-                                    }
-                                    logger.info(f"Publicado na NewPost-IA (API): {post_id} via {endpoint}")
-                                    break
-                                else:
-                                    publish_results["newpost_ia"] = {
-                                        "success": True,
-                                        "platform_post_id": f"post_{int(datetime.utcnow().timestamp())}",
-                                        "message": "Publicado sem resposta JSON",
-                                        "endpoint": endpoint
-                                    }
-                                    logger.info(f"Publicado na NewPost-IA (resposta vazia): {post_id} via {endpoint}")
-                                    break
-                            except json.JSONDecodeError:
-                                publish_results["newpost_ia"] = {
-                                    "success": True,
-                                    "platform_post_id": f"post_{int(datetime.utcnow().timestamp())}",
-                                    "error": f"JSON inválido: {str(e)}",
-                                    "endpoint": endpoint
-                                }
-                                logger.info(f"Publicado na NewPost-IA (JSON inválido): {post_id} via {endpoint}")
-                                break
-                        else:
-                            logger.warning(f"Falha no endpoint {endpoint}: {resp.status_code}")
-                            continue
-                            
-                    except requests.exceptions.RequestException as e:
-                        logger.warning(f"Erro no endpoint {endpoint}: {str(e)}")
-                        continue
-                
-                # Se nenhum endpoint funcionou, considerar sucesso anyway (publicação local)
-                if "newpost_ia" not in publish_results or not publish_results["newpost_ia"].get("success"):
-                    publish_results["newpost_ia"] = {
-                        "success": True,
-                        "platform_post_id": f"post_{int(datetime.utcnow().timestamp())}",
-                        "message": "Post salvo localmente. Publicação externa não disponível.",
-                        "tried_endpoints": endpoints_to_try
+                # --- PASSO 2: Agendar em 'scheduled_posts' ---
+                try:
+                    logger.info(f"🚀 [PASSO 2] Agendando post para o Feed...")
+                    # Agendar para 10 segundos no futuro
+                    scheduled_at = (datetime.utcnow() + timedelta(seconds=10)).isoformat()
+                    
+                    scheduled_payload = {
+                        "user_id": autor_id,
+                        "content": full_caption,
+                        "media_urls": posts_payload['media_urls'],
+                        "media_types": posts_payload['media_types'],
+                        "hashtags": hashtags,
+                        "scheduled_at": scheduled_at,
+                        "status": "scheduled",
+                        "published_post_id": posts_id # Relacionar com o post já criado
                     }
-                
-            except Exception as e:
-                publish_results["newpost_ia"] = {"success": False, "error": str(e)}
+                    
+                    resp_sched = requests.post(
+                        f"{self.newpost_supabase_url}/rest/v1/scheduled_posts",
+                        headers=self._newpost_headers(),
+                        json=scheduled_payload,
+                        timeout=15,
+                    )
+                    
+                    if resp_sched.status_code in (200, 201):
+                        data_sched = resp_sched.json()
+                        sched_id = (data_sched[0] if isinstance(data_sched, list) else data_sched).get("id")
+                        publish_results["scheduled_posts"] = {"success": True, "scheduled_id": sched_id}
+                        logger.info(f"✅ [PASSO 2] Post agendado com sucesso: {sched_id}")
 
-        # Determinar status final - apenas sucesso real da NewPost-IA
-        newpost_success = publish_results.get("newpost_ia", {}).get("success", False)
-        new_status = "publicado" if newpost_success else "erro"
-        
-        # Mensagem detalhada baseada no resultado real
-        if newpost_success:
-            message = "Publicado com sucesso na NewPost-IA! \ud83c\udf89"
-        else:
-            if "newpost_ia" in publish_results:
-                error = publish_results["newpost_ia"].get("error", "Erro desconhecido")
-                message = f"Falha na NewPost-IA: {error[:80]}..."
+                        # --- PASSO 3: Acionar Edge Function ---
+                        try:
+                            logger.info("🚀 [PASSO 3] Solicitando processamento imediato via Edge Function...")
+                            resp_fn = requests.post(
+                                f"{self.newpost_supabase_url}/functions/v1/auto-publish-posts",
+                                headers={
+                                    "apikey": self.newpost_supabase_key,
+                                    "Authorization": f"Bearer {self.newpost_supabase_key}",
+                                    "Content-Type": "application/json"
+                                },
+                                json={},
+                                timeout=10
+                            )
+                            if resp_fn.status_code in (200, 201):
+                                publish_results["edge_function"] = {"success": True, "response": resp_fn.text}
+                                logger.info(f"✅ [PASSO 3] Edge Function acionada com sucesso")
+                            else:
+                                logger.warning(f"⚠️ [PASSO 3] Edge Function retornou {resp_fn.status_code}")
+                                publish_results["edge_function"] = {"success": False, "status_code": resp_fn.status_code}
+                        except requests.exceptions.Timeout:
+                            logger.info(f"⚠️ [PASSO 3] Edge Function demorou, mas o post está agendado")
+                            publish_results["edge_function"] = {"success": False, "error": "Timeout", "note": "Post será processado via cron"}
+                        except Exception as e_fn:
+                            logger.warning(f"⚠️ [PASSO 3] Falha ao acionar Edge Function: {e_fn}")
+                            publish_results["edge_function"] = {"success": False, "error": str(e_fn)}
+                    else:
+                        logger.error(f"❌ [PASSO 2] Falha ao agendar: {resp_sched.status_code} - {resp_sched.text}")
+                        publish_results["scheduled_posts"] = {"success": False, "error": resp_sched.text}
+                except Exception as e_sched:
+                    logger.error(f"❌ [PASSO 2] Exceção ao agendar: {e_sched}")
+                    publish_results["scheduled_posts"] = {"success": False, "error": str(e_sched)}
             else:
-                message = "NewPost-IA não respondeu. Post salvo localmente."
+                logger.error(f"❌ [PASSO 1] Falha ao salvar em 'posts': {resp_posts.status_code} - {resp_posts.text}")
+                publish_results["posts_table"] = {"success": False, "error": resp_posts.text}
+        except Exception as e:
+            logger.error(f"❌ [PASSO 1] Exceção ao salvar em 'posts': {e}")
+            publish_results["posts_table"] = {"success": False, "error": str(e)}
 
-        # Atualizar status local
+        # 4. Determinar sucesso final
+        final_success = publish_results["posts_table"]["success"] and publish_results["scheduled_posts"]["success"]
+        new_status = "publicado" if final_success else "erro"
+        
+        if final_success:
+            message = "✅ Post publicado com sucesso na NewPost-IA! 🎉 Aparecerá no Feed em breve."
+        else:
+            message = f"❌ Falha na publicação: {publish_results['posts_table'].get('error') or publish_results['scheduled_posts'].get('error')}"
+
+        # 5. Atualizar status local
         self.update_post(post_id, {
             "status": new_status,
             "publish_results": json.dumps(publish_results),
-            "published_at": datetime.utcnow().isoformat() if newpost_success else None,
+            "published_at": datetime.utcnow().isoformat() if final_success else None,
         })
 
         return {
-            "success": newpost_success,
+            "success": final_success,
             "post_id": post_id,
             "status": new_status,
             "publish_results": publish_results,
@@ -469,6 +428,14 @@ Responda APENAS com o JSON, sem markdown.
         Cria um SocialPost a partir de uma notícia coletada.
         Opcionalmente gera legenda IA automaticamente.
         """
+        # Forçar recarregamento do .env antes de criar o post
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
+            self.local_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", ""))
+        except ImportError:
+            pass
+
         caption = ""
         hashtags = ["brasil", "noticias", "locutores", "ia", "radiobrasil"]
         ai_generated = False

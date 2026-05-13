@@ -317,10 +317,11 @@ def publish_to_newpost_ia():
         # Salvar no Supabase como post da NewPost-IA
         try:
             news_utils = manager.agent.news_utils
+            newpost_ia_url = os.getenv("NEWPOST_IA_URL", "https://plugpost-ai.lovable.app").rstrip("/")
             post_data = {
                 "title": content[:80],
                 "content": content,
-                "source_url": f"https://newpost-ia.com/post/{post_id}",
+                "source_url": f"{newpost_ia_url}/post/{post_id}",
                 "category": "newpost_ia",
                 "status": "published",
                 "published_at": datetime.now().isoformat(),

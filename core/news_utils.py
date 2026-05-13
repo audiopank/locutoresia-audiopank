@@ -27,16 +27,16 @@ logger = logging.getLogger(__name__)
 
 class NewsUtils:
     def __init__(self):
-        self.supabase_url = os.getenv("SUPABASE_URL", "https://ravpbfkicqkwjxejuzty.supabase.co").strip()
-        if self.supabase_url and not self.supabase_url.endswith("/rest/v1/posts"):
-            self.supabase_url = f"{self.supabase_url.rstrip('/')}/rest/v1/posts"
+        self.supabase_url = os.getenv("SUPABASE_URL", "https://ykswhzqdjoshjoaruhqs.supabase.co").strip()
+        # Usar URL base, não adicionar /rest/v1/posts automaticamente
+        self.supabase_url = self.supabase_url.rstrip('/')
         
         # Tentar diferentes variáveis de ambiente
         self.supabase_key = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
         if not self.supabase_key:
             self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         if not self.supabase_key:
-            self.supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhdnBiZmtpY3Frd2p4ZWp1enR5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM"
+            self.supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8"
         
         print(f"Supabase URL: {self.supabase_url}")
         print(f"Supabase Key configurada: {'Sim' if self.supabase_key else 'Não'}")
@@ -231,9 +231,11 @@ class NewsUtils:
             normalized_url = source_url.strip().lower()
             normalized_url = normalized_url.split('?')[0].split('#')[0]
             
+            # Usar URL correta com /rest/v1/posts
+            posts_url = f"{self.supabase_url}/rest/v1/posts"
             params = {"source_url": f"eq.{normalized_url}"}
             headers = {"apikey": self.supabase_key, "Authorization": f"Bearer {self.supabase_key}"}
-            response = requests.get(self.supabase_url, params=params, headers=headers, timeout=10)
+            response = requests.get(posts_url, params=params, headers=headers, timeout=10)
             if response.status_code == 200:
                 return len(response.json()) > 0
             return False
@@ -310,7 +312,9 @@ class NewsUtils:
                 }
             }
 
-            response = requests.post(self.supabase_url, json=payload, headers=headers, timeout=20)
+            # Usar URL correta com /rest/v1/posts
+            posts_url = f"{self.supabase_url}/rest/v1/posts"
+            response = requests.post(posts_url, json=payload, headers=headers, timeout=20)
             
             if response.status_code in [201, 200]:
                 logger.info(f"Notícia salva com sucesso: {data.get('title', 'Sem Título')}")

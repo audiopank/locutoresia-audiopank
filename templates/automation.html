@@ -509,41 +509,131 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let automationState = {
+            news_enabled: true,
+            social_enabled: true,
+            voxcraft_enabled: false
+        };
+
+        function loadAutomationState() {
+            fetch('/api/automation/state')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        automationState = data.state;
+                        updateUI();
+                        updateStats(data.stats);
+                    }
+                })
+                .catch(err => console.error('Erro ao carregar estado:', err));
+        }
+
+        function updateUI() {
+            // Atualizar toggle switches
+            document.querySelectorAll('.toggle-switch').forEach(toggle => {
+                const card = toggle.closest('.automation-card');
+                const title = card.querySelector('h5').textContent.toLowerCase();
+                
+                let type = '';
+                if (title.includes('notícias')) type = 'news';
+                else if (title.includes('social')) type = 'social';
+                else if (title.includes('voxcraft')) type = 'voxcraft';
+                
+                if (type && automationState[`${type}_enabled`]) {
+                    toggle.classList.add('active');
+                    card.classList.add('active');
+                    const indicator = card.querySelector('.status-indicator');
+                    const badge = card.querySelector('.badge');
+                    if (indicator) indicator.className = 'status-indicator status-running';
+                    if (badge) {
+                        badge.className = 'badge bg-success';
+                        badge.textContent = 'Executando';
+                    }
+                }
+            });
+        }
+
+        function updateStats(stats) {
+            // Atualizar estatísticas
+            const totalCollections = stats.total_collections || 0;
+            const successfulCollections = stats.successful_collections || 0;
+            const failedCollections = stats.failed_collections || 0;
+            const totalNews = stats.total_news_collected || 0;
+
+            // Atualizar badges
+            document.querySelectorAll('.list-group-item').forEach(item => {
+                const text = item.querySelector('span:first-child').textContent;
+                if (text.includes('Execuções Hoje')) {
+                    item.querySelector('.badge').textContent = totalCollections;
+                } else if (text.includes('Falhas')) {
+                    item.querySelector('.badge').textContent = failedCollections;
+                }
+            });
+        }
+
         function toggleAutomation(element, type) {
-            element.classList.toggle('active');
-            const status = element.classList.contains('active');
+            const status = !automationState[`${type}_enabled`];
             
-            // Atualizar o card
-            const card = element.closest('.automation-card');
-            const indicator = card.querySelector('.status-indicator');
-            const badge = card.querySelector('.badge');
-            
-            if (status) {
-                card.classList.add('active');
-                indicator.className = 'status-indicator status-running';
-                badge.className = 'badge bg-success';
-                badge.textContent = 'Executando';
-            } else {
-                card.classList.remove('active');
-                indicator.className = 'status-indicator status-stopped';
-                badge.className = 'badge bg-danger';
-                badge.textContent = 'Parado';
-            }
-            
-            // Enviar para API
             fetch(`/api/automation/${type}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabled: status })
-            }).catch(console.error);
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    automationState[`${type}_enabled`] = status;
+                    updateUI();
+                }
+            })
+            .catch(err => console.error('Erro ao alternar automação:', err));
+        }
+
+        function executeAutomation(type) {
+            fetch(`/api/automation/execute/${type}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`✅ ${data.message || 'Execução concluída'}`);
+                    loadAutomationState();
+                } else {
+                    alert(`❌ Erro: ${data.error}`);
+                }
+            })
+            .catch(err => console.error('Erro ao executar automação:', err));
         }
 
         function refreshAutomation() {
-            location.reload();
+            loadAutomationState();
         }
 
-        // Auto-refresh a cada 30 segundos
-        setInterval(refreshAutomation, 30000);
+        // Conectar botões de execução
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAutomationState();
+            
+            // Adicionar eventos aos botões "Executar Agora"
+            document.querySelectorAll('.btn-success').forEach(btn => {
+                if (btn.textContent.includes('Executar Agora')) {
+                    const scheduleItem = btn.closest('.schedule-item');
+                    const title = scheduleItem.querySelector('h6').textContent.toLowerCase();
+                    
+                    let type = '';
+                    if (title.includes('notícias')) type = 'news';
+                    else if (title.includes('social')) type = 'social';
+                    else if (title.includes('voxcraft')) type = 'voxcraft';
+                    
+                    if (type) {
+                        btn.onclick = () => executeAutomation(type);
+                    }
+                }
+            });
+
+            // Auto-refresh a cada 30 segundos
+            setInterval(refreshAutomation, 30000);
+        });
     </script>
 </body>
 </html>

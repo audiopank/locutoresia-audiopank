@@ -35,14 +35,12 @@ except ImportError:
             }
         }
 
-# Configuração Supabase da NewPost-IA (PROJETO CORRETO)
-# Forçar uso destas credenciais (ignorar .env.local)
-SUPABASE_URL = "https://ravpbfkicqkwjxejuzty.supabase.co"
-SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhdnBiZmtpY3Frd2p4ZWp1enR5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM"
+# Configuração Supabase da NewPost-IA (PROJETO ATIVO)
+# Usa variáveis do .env se disponíveis, caso contrário usa fallback
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NDUwMTIsImV4cCI6MjA3OTIyMTAxMn0.bv_6SFc_vNnw_eIyD73xNsRVXtL0guSbMRNuCthIy4Q")
 
-# Sobrescrever qualquer variável de ambiente existente
-os.environ['SUPABASE_URL'] = SUPABASE_URL
-os.environ['SUPABASE_SERVICE_KEY'] = SUPABASE_SERVICE_KEY
+from postgrest.exceptions import APIError
 
 # Configuração de logging
 # Forçar UTF-8 no Windows
@@ -75,6 +73,22 @@ SOURCES = {
             "economia": "https://g1.globo.com/rss/g1/economia/",
             "tecnologia": "https://g1.globo.com/rss/g1/tecnologia/",
             "politica": "https://g1.globo.com/rss/g1/politica/"
+        }
+    },
+    "uol": {
+        "url": "https://noticias.uol.com.br",
+        "name": "UOL",
+        "categories": {
+            "brasil": "/cotidiano/",
+            "economia": "/economia/",
+            "tecnologia": "/tecnologia/",
+            "politica": "/politica/"
+        },
+        "rss_feeds": {
+            "brasil": "http://rss.uol.com.br/feed/noticias.xml",
+            "economia": "http://rss.uol.com.br/feed/economia.xml",
+            "tecnologia": "http://rss.uol.com.br/feed/tecnologia.xml",
+            "politica": "http://rss.uol.com.br/feed/noticias.xml"
         }
     },
     "folha": {
@@ -270,9 +284,6 @@ class DatabaseManager:
                             saved += 1
                         else:
                             duplicates += 1
-                        
-                        # Salvar no Supabase sempre (independente de duplicata no SQLite)
-                        self.save_to_supabase(news)
                             
                     except Exception as e:
                         logger.warning(f"Erro ao salvar notícia {news.get('url', 'unknown')}: {e}")
@@ -284,52 +295,6 @@ class DatabaseManager:
             logger.error(f"Erro ao salvar notícias no banco: {e}")
             
         return saved, duplicates
-    
-    def save_to_supabase(self, news: Dict):
-        """Salva notícia na tabela posts (local) para aparecer na lista de Publicações Salvas"""
-        try:
-            from supabase import create_client
-            
-            # Usar variáveis importadas do supabase_config.py
-            supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-            
-            # Verificar se já existe pelo título na tabela posts
-            existing = supabase.table('posts').select('*').eq('title', news.get('title', '')).execute()
-            
-            if not existing.data:
-                import random
-                seed = random.randint(1, 999999)
-                
-                # Estrutura para tabela posts (local) - colunas existentes
-                post_data = {
-                    'title': news.get('title', ''),
-                    'content': news.get('content', news.get('summary', news.get('snippet', ''))),
-                    'image_url': f"https://image.pollinations.ai/prompt/{news.get('title', '').replace(' ', '%20')}?width=1024&height=1024&nologo=true&seed={seed}&model=flux-realism",
-                    'tags': [f"#{news.get('category', 'noticias')}", "#NewsAgent", "#LocutoresIA", "#Brasil"],
-                    'author_id': '3a1a93d0-e451-47a4-a126-f1b7375895eb',
-                    'status': 'draft',  # Status draft para poder editar/aprovar/postar
-                    'source_url': news.get('url', ''),
-                    'is_ia_generated': True,
-                    'created_at': datetime.now(timezone.utc).isoformat(),
-                    'updated_at': datetime.now(timezone.utc).isoformat(),
-                    'published_at': datetime.now(timezone.utc).isoformat()
-                }
-                
-                result = supabase.table('posts').insert(post_data).execute()
-                
-                if result.data:
-                    logger.info(f"[OK] Salvo em posts (local): {news.get('title', '')[:50]}... | ID: {result.data[0].get('id', 'N/A')}")
-                    logger.info(f"[CONTENT] Conteúdo salvo: {len(post_data.get('content', ''))} caracteres")
-                else:
-                    logger.warning(f"[WARN] Post inserido mas sem retorno de dados")
-            else:
-                logger.info(f"[SKIP] Ja existe em posts: {news.get('title', '')[:50]}...")
-                
-        except Exception as e:
-            logger.error(f"[ERROR] Erro ao salvar em posts: {e}")
-            logger.error(f"[DEBUG] post_data keys: {list(post_data.keys())}")
-            import traceback
-            logger.error(f"[TRACEBACK] {traceback.format_exc()}")
     
     def get_cached_news(self, limit: int = 50, category: str = None) -> List[Dict]:
         """Recupera notícias do cache local"""
@@ -403,6 +368,68 @@ class NewsAgent:
         })
         # Timeout padrão para requisições (10 segundos)
         self.timeout = 10
+
+    def save_to_supabase(self, news: Dict):
+        """Salva notícia na tabela posts (local) para aparecer na lista de Publicações Salvas"""
+        AI_AUTHOR_ID = '3a1a93d0-e451-47a4-a126-f1b7375895eb'
+        
+        # Preparar payload com colunas do novo projeto
+        payload = { 
+            "author_id": AI_AUTHOR_ID, 
+            "title": news.get("title", ""), 
+            "content": news.get("content", news.get("summary", news.get("snippet", ""))), 
+            "source_url": news.get("url", ""), 
+            "category": news.get("category", "noticias"), 
+            "is_ia_generated": True, 
+            "status": "draft", # Usamos draft para curadoria, como antes
+            "privacy": "public", 
+            "published_at": datetime.now(timezone.utc).isoformat(), 
+            "tags": [f"#{news.get('category', 'noticias')}", "#NewsAgent", "#LocutoresIA", "#Brasil"], 
+            "media_urls": [news["image_url"]] if news.get("image_url") else [], 
+            "media_types": ["image"] if news.get("image_url") else [], 
+        }
+
+        try:
+            from supabase import create_client
+            supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+            
+            # Verificar se já existe
+            existing = supabase.table('posts').select('id').eq('source_url', payload['source_url']).execute()
+            if existing.data:
+                logger.info(f"[SKIP] Ja existe em posts: {news.get('title', '')[:50]}...")
+                return
+
+            res = supabase.table("posts").insert(payload).execute()
+            if res.data:
+                logger.info(f"✅ Salvo no Supabase: {news['title'][:60]}... id={res.data[0]['id']}")
+            else:
+                logger.warning(f"⚠️ Post inserido mas sem retorno de dados")
+
+        except APIError as e:
+            code = getattr(e, "code", None) or (e.args[0].get("code") if e.args and isinstance(e.args[0], dict) else None)
+            msg  = getattr(e, "message", str(e))
+            details = getattr(e, "details", "")
+            hint = getattr(e, "hint", "")
+
+            if code == "23505":
+                logger.warning(f"⏭️  DUPLICATA (source_url já existe): {payload['source_url']}")
+            elif code == "42501":
+                logger.error(
+                    f"🔒 RLS BLOQUEOU INSERT (42501) — verifique se está usando SERVICE_ROLE_KEY.\n"
+                    f"   URL: {payload['source_url']}"
+                )
+            elif code == "23502":
+                logger.error(f"❌ NULL em coluna NOT NULL ({details}): {payload['source_url']}")
+            elif code == "23503":
+                logger.error(f"❌ FK inválida — author_id {AI_AUTHOR_ID} não existe em profiles")
+            else:
+                logger.error(
+                    f"❌ Erro Supabase code={code} msg={msg} details={details} hint={hint}\n"
+                    f"   payload={payload}"
+                )
+
+        except Exception as e:
+            logger.exception(f"❌ Erro inesperado ao salvar {news.get('url')}: {e}")
         
     def _collect_g1(self, category: str) -> List[Dict]:
         """Coleta notícias do G1 via RSS com conteúdo completo"""
@@ -446,6 +473,51 @@ class NewsAgent:
         except Exception as e:
             logger.error(f"Erro ao coletar do G1 ({category}): {e}")
             self.db.update_source_status('g1', 'error', str(e))
+            
+        return news_list
+    
+    def _collect_uol(self, category: str) -> List[Dict]:
+        """Coleta notícias do UOL via RSS com conteúdo completo"""
+        news_list = []
+        try:
+            rss_url = SOURCES["uol"]["rss_feeds"].get(category)
+            if not rss_url:
+                return news_list
+                
+            feed = feedparser.parse(rss_url)
+            
+            for entry in feed.entries[:5]:
+                url = entry.get('link', '')
+                title = entry.get('title', '')
+                
+                if not title or not url:
+                    continue
+                
+                full_content = self._fetch_full_content(url, 'uol')
+                rss_summary = entry.get('summary', '')
+                if not full_content and rss_summary:
+                    soup = BeautifulSoup(rss_summary, 'html.parser')
+                    full_content = soup.get_text(strip=True)
+                
+                news_data = {
+                    'title': title,
+                    'url': url,
+                    'snippet': full_content[:200] if full_content else rss_summary[:200],
+                    'summary': full_content,
+                    'content': full_content,
+                    'source': 'UOL',
+                    'source_key': 'uol',
+                    'category': category,
+                    'published_at': self._parse_date(entry.get('published')),
+                    'image_url': self._extract_image(rss_summary)
+                }
+                
+                news_list.append(news_data)
+                time.sleep(0.5)
+                    
+        except Exception as e:
+            logger.error(f"Erro ao coletar do UOL ({category}): {e}")
+            self.db.update_source_status('uol', 'error', str(e))
             
         return news_list
     
@@ -878,6 +950,7 @@ class NewsAgent:
             # Seletores específicos por fonte
             selectors = {
                 'g1': ['.mc-article-body__content', 'article', '.content-text__container', 'p.content-text__container'],
+                'uol': ['.text', '.article-content', 'article', '.content'],
                 'folha': ['.c-news__body', '.article-body', 'article', '.content'],
                 'exame': ['.article-content', '.post-content', 'article', '.content'],
                 'veja': ['.article-content', '.post-content', 'article', '.content'],
@@ -936,6 +1009,7 @@ class NewsAgent:
         # Mapeamento para métodos de coleta
         collectors = {
             'g1': self._collect_g1,
+            'uol': self._collect_uol,
             'folha': self._collect_folha,
             'exame': self._collect_exame,
             'veja': self._collect_veja,
@@ -1082,10 +1156,11 @@ class NewsAgent:
                 'timestamp': datetime.now().isoformat()
             }
 
+# Instância global para ser usada pelo Flask/Backend
+news_agent = NewsAgent()
+
 # Função principal para testes
 if __name__ == "__main__":
-    agent = NewsAgent()
-    
     # Teste de coleta
     print("🔍 Testando coleta de notícias...")
     
