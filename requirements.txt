@@ -5,5 +5,3 @@ requests>=2.0
 python-dotenv>=1.0
 beautifulsoup4>=4.0
 schedule>=1.0
-supabase>=2.0
-websockets>=10.0
