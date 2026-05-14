@@ -7,12 +7,8 @@ import re
 import struct
 import requests
 import asyncio
-import edge_tts
 import io
 import threading
-from gtts import gTTS
-from google import genai
-from google.genai import types
 
 # Importar pyttsx3 se disponível
 try:
@@ -40,6 +36,7 @@ class TTSGenerator:
     
     def _get_gemini_client(self):
         """Inicializa o cliente Gemini apenas quando necessário"""
+        from google import genai
         if self.gemini_client is None and self.gemini_api_key:
             self.gemini_client = genai.Client(api_key=self.gemini_api_key)
         return self.gemini_client
@@ -87,6 +84,7 @@ class TTSGenerator:
     
     def _generate_with_edge_tts(self, text, voice_model, style, language):
         """Gera áudio usando Edge TTS (gratuito)"""
+        import edge_tts
         
         # Mapear vozes para Edge TTS
         voice_mapping = {
@@ -207,6 +205,7 @@ class TTSGenerator:
     
     def _generate_with_gemini(self, text, voice_model, style, language):
         """Gera áudio usando Google Gemini (fallback)"""
+        from google.genai import types
         
         # Mapear estilos para instruções de voz
         style_instructions = {
@@ -388,6 +387,7 @@ class TTSGenerator:
     
     def _generate_with_gtts(self, text, voice_model, style, language):
         """Gera áudio usando Google Text-to-Speech (GTTS) - vozes reais e gratuitas"""
+        from gtts import gTTS
         
         # Mapear vozes para diferentes TLDs para criar variedade real
         voice_config = {
