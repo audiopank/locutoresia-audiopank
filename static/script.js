@@ -1,3 +1,4 @@
+// Carrega todas as vozes (Gemini + Edge TTS + ElevenLabs)
 let currentVoices = [];
 let selectedVoice = null;
 let lastGeneratedAudioBlob = null;
