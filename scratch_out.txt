@@ -1,0 +1,2 @@
+=== VERIFICANDO newpost_posts ===
+dict_keys(['id', 'autor_id', 'titulo', 'descricao', 'conteudo', 'hashtags', 'audio_url', 'criado_em', 'atualizado_em'])
