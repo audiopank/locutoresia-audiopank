@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('✅ Locutores IA - Inicialização completa!');
 });
 
-// ── Carregar TODAS as vozes (Gemini + Edge TTS) ──────────────────────────────
+// ── Carregar TODAS as vozes (Gemini + Edge TTS + ElevenLabs) ───────────────────
 async function loadAllVoices() {
     try {
         const response = await fetch('/api/voices');
@@ -35,11 +35,22 @@ async function loadAllVoices() {
                 provider: getVoiceProvider(v.id),
                 sampleText: getSampleText(v)
             }));
-            
-            console.log(`✅ ${currentVoices.length} vozes carregadas (incluindo Gemini)!`);
-            renderVoices(currentVoices);
-            populateVoiceSelect();
         }
+        
+        // Carregar vozes da ElevenLabs também
+        try {
+            const elevenResponse = await fetch('/api/list-elevenlabs-voices');
+            const elevenResult = await elevenResponse.json();
+            if (elevenResponse.ok && elevenResult.success && elevenResult.voices) {
+                currentVoices = [...currentVoices, ...elevenResult.voices];
+            }
+        } catch (elevenError) {
+            console.log('⚠️ Vozes ElevenLabs não carregadas:', elevenError);
+        }
+        
+        console.log(`✅ ${currentVoices.length} vozes carregadas (incluindo Gemini e ElevenLabs)!`);
+        renderVoices(currentVoices);
+        populateVoiceSelect();
     } catch (error) {
         console.error('Erro ao carregar vozes:', error);
         // Fallback para voz padrão
@@ -167,6 +178,21 @@ function populateVoiceSelect() {
         console.log('Grupo Edge TTS adicionado com', edgeVoices.length, 'vozes');
     }
 
+    // Grupo ElevenLabs
+    const elevenlabsVoices = currentVoices.filter(v => v.provider === 'elevenlabs');
+    if (elevenlabsVoices.length > 0) {
+        const elevenlabsGroup = document.createElement('optgroup');
+        elevenlabsGroup.label = '🚀 ElevenLabs';
+        elevenlabsVoices.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.id;
+            opt.textContent = v.name;
+            elevenlabsGroup.appendChild(opt);
+        });
+        select.appendChild(elevenlabsGroup);
+        console.log('Grupo ElevenLabs adicionado com', elevenlabsVoices.length, 'vozes');
+    }
+
     console.log('VoiceSelect populado com sucesso!');
 }
 
@@ -212,7 +238,7 @@ async function generateAudio() {
         const response = await fetch('/api/generate-audio', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, voice: voice.model, style: speechStyle, language: voice.language })
+            body: JSON.stringify({ text, voice: voice.model, style: speechStyle, language: voice.language, provider: voice.provider })
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Erro ao gerar áudio');
