@@ -466,6 +466,9 @@ def save_binary_file(file_name, data):
 
 
 def generate():
+    from google import genai
+    from google.genai import types
+    
     client = genai.Client(
         api_key=os.environ.get("GEMINI_API_KEY"),
     )
@@ -543,6 +546,7 @@ Secretaria de Saúde, em parceria com o SAAE."""),
             if text := chunk.text:
                 print(text)
 
+
 def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
     """Generates a WAV file header for the given audio data and parameters.
 
@@ -572,7 +576,6 @@ def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
         b"WAVE",          # Format
         b"fmt ",          # Subchunk1ID
         16,               # Subchunk1Size (16 for PCM)
-        1,                # AudioFormat (1 for PCM)
         num_channels,     # NumChannels
         sample_rate,      # SampleRate
         byte_rate,        # ByteRate
@@ -582,6 +585,7 @@ def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
         data_size         # Subchunk2Size (size of audio data)
     )
     return header + audio_data
+
 
 def parse_audio_mime_type(mime_type: str) -> dict[str, int | None]:
     """Parses bits per sample and rate from an audio MIME type string.
@@ -620,5 +624,3 @@ def parse_audio_mime_type(mime_type: str) -> dict[str, int | None]:
 
 if __name__ == "__main__":
     generate()
-
-
