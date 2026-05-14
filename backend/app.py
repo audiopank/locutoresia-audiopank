@@ -512,9 +512,6 @@ def voice_agent_analysis():
 @app.route('/api/generate-audio', methods=['POST'])
 def generate_audio():
     try:
-        import sys
-        import os
-        
         data = request.get_json()
         if not data or 'text' not in data:
             return jsonify({'error': 'Texto não fornecido'}), 400
