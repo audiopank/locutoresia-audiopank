@@ -196,7 +196,7 @@ async function generateAudio() {
         return;
     }
     
-    const voice = voicesDatabase.find(v => v.id == voiceId);
+    const voice = currentVoices.find(v => v.id == voiceId);
     
     // Mostrar loading
     document.getElementById('loadingSpinner').style.display = 'block';
@@ -218,7 +218,8 @@ async function generateAudio() {
                 text: text,
                 voice: voice.model,
                 style: speechStyle,
-                language: voice.language
+                language: voice.language,
+                provider: voice.provider || 'gemini'
             })
         });
         

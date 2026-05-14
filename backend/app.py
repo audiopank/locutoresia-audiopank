@@ -519,40 +519,56 @@ def generate_audio():
         voice_model = data.get('voice', 'Sadachbia')
         style = data.get('style', 'normal')
         language = data.get('language', 'pt-BR')
+        provider = data.get('provider', 'gemini')
         if len(text.strip()) == 0:
             return jsonify({'error': 'Texto não pode estar vazio'}), 400
         if len(text) > 5000:
             return jsonify({'error': 'Texto muito longo (máximo 5000 caracteres)'}), 400
         
-        # Importar TTSGenerator diretamente do diretório pai
-        try:
-            import sys
-            import os
-            core_dir = os.path.join(os.path.dirname(__file__), '..', 'core')
-            if core_dir not in sys.path:
-                sys.path.insert(0, core_dir)
+        # Se provider for elevenlabs, use ElevenLabs diretamente
+        if provider == 'elevenlabs':
+            try:
+                from core.elevenlabs_voice_cloner import ElevenLabsVoiceCloner
+                cloner = ElevenLabsVoiceCloner()
+                audio_data = cloner.synthesize_with_cloned_voice(voice_model, text)
+            except ImportError:
+                try:
+                    from elevenlabs_voice_cloner import ElevenLabsVoiceCloner
+                    cloner = ElevenLabsVoiceCloner()
+                    audio_data = cloner.synthesize_with_cloned_voice(voice_model, text)
+                except Exception as e:
+                    return jsonify({'error': f'Módulo ElevenLabs não disponível: {str(e)}'}), 500
+        else:
+            # Importar TTSGenerator diretamente do diretório pai
+            try:
+                import sys
+                import os
+                core_dir = os.path.join(os.path.dirname(__file__), '..', 'core')
+                if core_dir not in sys.path:
+                    sys.path.insert(0, core_dir)
+                
+                from tts_generator import TTSGenerator
+                tts = TTSGenerator()
+                print(f"✅ TTSGenerator carregado com sucesso!")
+            except Exception as e:
+                print(f"❌ Erro ao importar TTS: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
+                return jsonify({'error': f'Módulo TTS não disponível: {str(e)}'}), 500
             
-            from tts_generator import TTSGenerator
-            tts = TTSGenerator()
-            print(f"✅ TTSGenerator carregado com sucesso!")
-        except Exception as e:
-            print(f"❌ Erro ao importar TTS: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': f'Módulo TTS não disponível: {str(e)}'}), 500
+            try:
+                audio_data = tts.generate_speech(text=text, voice_model=voice_model, style=style, language=language)
+            except Exception as e:
+                print(f"❌ Erro ao gerar áudio: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
+                return jsonify({'error': f'Erro ao gerar áudio: {str(e)}'}), 500
         
-        try:
-            audio_data = tts.generate_speech(text=text, voice_model=voice_model, style=style, language=language)
-            filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            with open(filepath, 'wb') as f:
-                f.write(audio_data)
-            return jsonify({'success': True, 'filename': filename, 'download_url': f'/api/download/{filename}', 'message': 'Áudio gerado com sucesso!'})
-        except Exception as e:
-            print(f"❌ Erro ao gerar áudio: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': f'Erro ao gerar áudio: {str(e)}'}), 500
+        filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{'mp3' if provider == 'elevenlabs' else 'wav'}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        with open(filepath, 'wb') as f:
+            f.write(audio_data)
+        return jsonify({'success': True, 'filename': filename, 'download_url': f'/api/download/{filename}', 'message': 'Áudio gerado com sucesso!'})
     except Exception as e:
         print(f"❌ Erro interno: {type(e).__name__}: {e}")
         import traceback
@@ -653,6 +669,7 @@ def list_elevenlabs_voices():
         for voice in voices:
             formatted_voices.append({
                 'id': voice.get('voice_id'),
+                'elevenlabsVoiceId': voice.get('voice_id'),
                 'name': voice.get('name'),
                 'description': voice.get('description', 'Voz ElevenLabs'),
                 'gender': 'neutral',
