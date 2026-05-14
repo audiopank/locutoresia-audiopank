@@ -512,6 +512,9 @@ def voice_agent_analysis():
 @app.route('/api/generate-audio', methods=['POST'])
 def generate_audio():
     try:
+        import sys
+        import os
+        
         data = request.get_json()
         if not data or 'text' not in data:
             return jsonify({'error': 'Texto não fornecido'}), 400
@@ -541,8 +544,6 @@ def generate_audio():
         else:
             # Importar TTSGenerator diretamente do diretório pai
             try:
-                import sys
-                import os
                 core_dir = os.path.join(os.path.dirname(__file__), '..', 'core')
                 if core_dir not in sys.path:
                     sys.path.insert(0, core_dir)
