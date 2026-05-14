@@ -9,6 +9,7 @@ import requests
 import asyncio
 import io
 import threading
+import numpy as np
 
 # Importar pyttsx3 se disponível
 try:
@@ -31,7 +32,7 @@ class TTSGenerator:
         self.elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY")
         self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
         self.gemini_client = None
-        self.gemini_model = "gemini-3.1-flash-tts-preview"
+        self.gemini_model = "gemini-2.5-pro-preview-tts"
         self.elevenlabs_base_url = "https://api.elevenlabs.io/v1"
     
     def _get_gemini_client(self):
@@ -42,12 +43,12 @@ class TTSGenerator:
         return self.gemini_client
     
     def generate_speech(self, text, voice_model="Sadachbia", style="normal", language="pt-BR"):
-        """Gera áudio a partir do texto — Gemini 3.1 Flash TTS é a PRINCIPAL opção!"""
+        """Gera áudio a partir do texto — Gemini é a PRINCIPAL opção!"""
         
-        # 1. PRIMEIRA OPÇÃO: Google Gemini 3.1 Flash TTS Preview (MAIN)
+        # 1. PRIMEIRA OPÇÃO: Google Gemini TTS Preview (MAIN)
         if self.gemini_api_key and self.gemini_api_key.strip():
             try:
-                print(f"🎤 Usando Gemini 3.1 Flash TTS Preview com voz: {voice_model}")
+                print(f"🎤 Usando Gemini TTS Preview com voz: {voice_model}")
                 return self._generate_with_gemini(text, voice_model, style, language)
             except Exception as e:
                 print(f"⚠️ Gemini não disponível: {e}")
@@ -176,7 +177,6 @@ class TTSGenerator:
         voice_settings = style_settings.get(style, style_settings["normal"])
         
         # Configurar modelo baseado no idioma
-        # Usar modelos mais recentes disponíveis no plano gratuito
         if language.startswith("pt"):
             model_id = "eleven_multilingual_v2"
         else:
@@ -204,7 +204,7 @@ class TTSGenerator:
         return response.content
     
     def _generate_with_gemini(self, text, voice_model, style, language):
-        """Gera áudio usando Google Gemini (fallback)"""
+        """Gera áudio usando Google Gemini"""
         from google.genai import types
         
         # Mapear estilos para instruções de voz
@@ -260,9 +260,7 @@ class TTSGenerator:
         
         generate_content_config = types.GenerateContentConfig(
             temperature=1,
-            response_modalities=[
-                "audio",
-            ],
+            response_modalities=["audio"],
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
@@ -305,9 +303,6 @@ class TTSGenerator:
     def _generate_synthetic_wav(self, text, voice_model, style, language):
         """Gera áudio WAV sintético básico como último recurso"""
         
-        import math
-        import numpy as np
-        
         # Configurações básicas
         sample_rate = 22050
         duration_per_char = 0.1  # 100ms por caractere
@@ -315,8 +310,6 @@ class TTSGenerator:
         
         # Gerar áudio sintético baseado no texto
         num_samples = int(sample_rate * total_duration)
-        
-        # Criar ondas senoidais simples para simular fala
         audio_data = []
         
         for i, char in enumerate(text):
@@ -459,13 +452,14 @@ class TTSGenerator:
 
 
 def save_binary_file(file_name, data):
-    f = open(file_name, "wb")
-    f.write(data)
-    f.close()
-    print(f"File saved to to: {file_name}")
+    """Salva dados binários em arquivo"""
+    with open(file_name, "wb") as f:
+        f.write(data)
+    print(f"File saved to: {file_name}")
 
 
 def generate():
+    """Função principal para gerar áudio com múltiplos locutores"""
     from google import genai
     from google.genai import types
     
@@ -483,7 +477,7 @@ def generate():
 Atenção, Limoeiro do Norte.
 A dengue é uma doença séria, mas pode ser evitada com cuidados simples no dia a dia.
 
-Evite água parada em pratos de plantas, garrafas, pneus e caixas d’água abertas.
+Evite água parada em pratos de plantas, garrafas, pneus e caixas d'água abertas.
 Mantenha tudo limpo e bem vedado.
 
 Sem água parada, o mosquito não se multiplica. Faça a sua parte. Proteja sua família.
@@ -493,11 +487,10 @@ Secretaria de Saúde, em parceria com o SAAE."""),
             ],
         ),
     ]
+    
     generate_content_config = types.GenerateContentConfig(
         temperature=1,
-        response_modalities=[
-            "audio",
-        ],
+        response_modalities=["audio"],
         speech_config=types.SpeechConfig(
             multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
                 speaker_voice_configs=[
