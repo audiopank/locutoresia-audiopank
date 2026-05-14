@@ -14,7 +14,7 @@ class TTSGenerator:
     def __init__(self):
         self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
         self.gemini_client = None
-        self.gemini_model = "gemini-2.5-pro-preview-tts"
+        self.gemini_model = "gemini-3.1-flash-tts-preview"
     
     def _get_gemini_client(self):
         from google import genai
@@ -137,7 +137,7 @@ def generate():
     from google.genai import types
     
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-    model = "gemini-2.5-pro-preview-tts"
+    model = "gemini-3.1-flash-tts-preview"
     
     contents = [types.Content(role="user", parts=[types.Part.from_text(text="""FALE EM TOM RÁPIDO E ALEGRE 
 
