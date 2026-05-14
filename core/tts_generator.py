@@ -23,20 +23,32 @@ class TTSGenerator:
         return self.gemini_client
     
     def generate_speech(self, text, voice_model="Sadachbia", style="normal", language="pt-BR"):
+        print(f"🔍 Debug: generate_speech() chamado")
+        print(f"🔍 Debug: GEMINI_API_KEY existe? {bool(self.gemini_api_key)}")
+        if self.gemini_api_key:
+            print(f"🔍 Debug: GEMINI_API_KEY não está vazio: {bool(self.gemini_api_key.strip())}")
+        
         if self.gemini_api_key and self.gemini_api_key.strip():
             try:
                 print(f"🎤 Usando Gemini TTS com voz: {voice_model}")
                 return self._generate_with_gemini(text, voice_model, style)
             except Exception as e:
-                print(f"⚠️ Gemini erro: {e}")
+                print(f"⚠️ Gemini erro: {type(e).__name__}: {e}")
+                import traceback
+                print(f"⚠️ Stack trace Gemini: {traceback.format_exc()}")
         
+        print(f"🔍 Debug: Indo para GTTS")
         try:
             print(f"🎤 Usando GTTS com voz: {voice_model}")
             return self._generate_with_gtts(text, style)
         except Exception as e:
+            print(f"⚠️ GTTS erro: {e}")
+            import traceback
+            print(f"⚠️ Stack trace GTTS: {traceback.format_exc()}")
             raise Exception(f"Erro TTS: {e}")
     
     def _generate_with_gemini(self, text, voice_model, style):
+        print(f"🔍 Debug: _generate_with_gemini() chamado")
         from google.genai import types
         
         style_instructions = {
@@ -55,6 +67,7 @@ class TTSGenerator:
         instruction = style_instructions.get(style, "Fale normal")
         full_text = f"{instruction}\n\n{text}"
         selected_voice = voice_mapping.get(voice_model, "Sadachbia")
+        print(f"🔍 Debug: Usando voz do Gemini: {selected_voice}")
         
         contents = [types.Content(role="user", parts=[types.Part.from_text(text=full_text)])]
         
@@ -67,10 +80,16 @@ class TTSGenerator:
                 )
             )
         )
+        print(f"🔍 Debug: Configurando Gemini com modelo: {self.gemini_model}")
         
         gemini_client = self._get_gemini_client()
         audio_data = b""
+        chunk_count = 0
+        print(f"🔍 Debug: Iniciando geração de conteúdo do Gemini...")
+        
         for chunk in gemini_client.models.generate_content_stream(model=self.gemini_model, contents=contents, config=config):
+            chunk_count += 1
+            print(f"🔍 Debug: Chunk #{chunk_count} recebido")
             if chunk.parts and chunk.parts[0].inline_data and chunk.parts[0].inline_data.data:
                 inline_data = chunk.parts[0].inline_data
                 data_buffer = inline_data.data
@@ -78,7 +97,9 @@ class TTSGenerator:
                 if file_extension is None:
                     data_buffer = convert_to_wav(inline_data.data, inline_data.mime_type)
                 audio_data += data_buffer
+                print(f"🔍 Debug: Adicionando {len(data_buffer)} bytes de áudio")
         
+        print(f"🔍 Debug: Total de chunks: {chunk_count}, total de áudio: {len(audio_data)} bytes")
         return audio_data
     
     def _generate_with_gtts(self, text, style):
