@@ -35,7 +35,7 @@ class TTSGenerator:
         self.elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY")
         self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
         self.gemini_client = None
-        self.gemini_model = "gemini-2.5-pro-preview-tts"
+        self.gemini_model = "gemini-3.1-flash-tts-preview"
         self.elevenlabs_base_url = "https://api.elevenlabs.io/v1"
     
     def _get_gemini_client(self):
@@ -44,57 +44,45 @@ class TTSGenerator:
             self.gemini_client = genai.Client(api_key=self.gemini_api_key)
         return self.gemini_client
     
-    def generate_speech(self, text, voice_model="Adam", style="normal", language="pt-BR"):
-        """Gera áudio a partir do texto usando a melhor opção disponível"""
+    def generate_speech(self, text, voice_model="Sadachbia", style="normal", language="pt-BR"):
+        """Gera áudio a partir do texto — Gemini 3.1 Flash TTS é a PRINCIPAL opção!"""
         
-        # Para textos curtos (menos de 100 caracteres), tentar APIs mais rápidas primeiro
-        if len(text) < 100:
-            # Tentar ElevenLabs primeiro (mais rápido e alta qualidade)
-            if self.elevenlabs_api_key and self.elevenlabs_api_key.strip():
-                try:
-                    return self._generate_with_elevenlabs(text, voice_model, style, language)
-                except Exception as e:
-                    print(f"ElevenLabs não disponível: {e}")
-            
-            # Tentar Edge TTS (rápido e gratuito)
-            try:
-                return self._generate_with_edge_tts(text, voice_model, style, language)
-            except Exception as e:
-                print(f"Edge TTS não disponível: {e}")
-        
-        # Para textos longos ou como fallback, usar GTTS (confiável)
-        try:
-            return self._generate_with_gtts(text, voice_model, style, language)
-        except Exception as e:
-            print(f"Erro ao gerar áudio com GTTS: {e}")
-            print("Tentando alternativas...")
-        
-        # Fallback para Google Gemini
+        # 1. PRIMEIRA OPÇÃO: Google Gemini 3.1 Flash TTS Preview (MAIN)
         if self.gemini_api_key and self.gemini_api_key.strip():
             try:
+                print(f"🎤 Usando Gemini 3.1 Flash TTS Preview com voz: {voice_model}")
                 return self._generate_with_gemini(text, voice_model, style, language)
             except Exception as e:
-                print(f"Erro ao gerar áudio com Google Gemini: {e}")
+                print(f"⚠️ Gemini não disponível: {e}")
         
-        # Fallback para ElevenLabs (se ainda não tentou)
-        if self.elevenlabs_api_key and self.elevenlabs_api_key.strip() and len(text) >= 100:
+        # 2. SEGUNDA OPÇÃO: Edge TTS (gratuita e rápida)
+        try:
+            print(f"🎤 Usando Edge TTS com voz: {voice_model}")
+            return self._generate_with_edge_tts(text, voice_model, style, language)
+        except Exception as e:
+            print(f"⚠️ Edge TTS não disponível: {e}")
+        
+        # 3. TERCEIRA OPÇÃO: GTTS (confiável)
+        try:
+            print(f"🎤 Usando GTTS com voz: {voice_model}")
+            return self._generate_with_gtts(text, voice_model, style, language)
+        except Exception as e:
+            print(f"⚠️ GTTS não disponível: {e}")
+        
+        # 4. QUARTA OPÇÃO: ElevenLabs (fallback)
+        if self.elevenlabs_api_key and self.elevenlabs_api_key.strip():
             try:
+                print(f"🎤 Usando ElevenLabs com voz: {voice_model}")
                 return self._generate_with_elevenlabs(text, voice_model, style, language)
             except Exception as e:
-                print(f"Erro ao gerar áudio com ElevenLabs: {e}")
+                print(f"⚠️ ElevenLabs não disponível: {e}")
         
-        # Fallback para Edge TTS (se ainda não tentou)
-        if len(text) >= 100:
-            try:
-                return self._generate_with_edge_tts(text, voice_model, style, language)
-            except Exception as e:
-                print(f"Erro ao gerar áudio com Edge TTS: {e}")
-        
-        # Último recurso: gerador WAV sintético
+        # 5. ÚLTIMO RECURSO: gerador WAV sintético
         try:
+            print(f"🎤 Usando gerador WAV sintético")
             return self._generate_synthetic_wav(text, voice_model, style, language)
         except Exception as e:
-            print(f"Erro ao gerar áudio sintético: {e}")
+            print(f"❌ Erro ao gerar áudio sintético: {e}")
             raise Exception("Não foi possível gerar áudio com nenhum dos serviços disponíveis")
     
     def _generate_with_edge_tts(self, text, voice_model, style, language):
@@ -223,41 +211,44 @@ class TTSGenerator:
         # Mapear estilos para instruções de voz
         style_instructions = {
             "normal": "Fale em tom normal e claro",
-            "fast": "FALE EM TOM RÁPIDO",
+            "fast": "Fale em tom rápido",
             "slow": "Fale em tom lento e pausado",
-            "cheerful": "FALE EM TOM ALEGRE E FESTIVO",
+            "cheerful": "Fale em tom alegre e festivo",
             "serious": "Fale em tom sério e profissional"
         }
         
         instruction = style_instructions.get(style, "Fale em tom normal e claro")
-        full_text = f"{instruction}\n\n{text}"
+        full_text = f"""## Sample Context:
+{instruction}
+
+## Transcript:
+{text}"""
         
-        # Configurar vozes baseadas no modelo - Google Gemini exige exatamente 2 vozes
-        voice_configs = []
+        # Mapear vozes para prebuilt voices do Gemini
+        voice_mapping = {
+            "Charon": "Charon",
+            "Puck": "Puck",
+            "Sadachbia": "Sadachbia",
+            "Adam": "Sadachbia",
+            "Antonio": "Charon",
+            "Dom": "Shamash",
+            "Drew": "Fenrir",
+            "Clyde": "Onyx",
+            "Davis": "Vega",
+            "Bella": "Puck",
+            "Elli": "Kore",
+            "Rachel": "Lira",
+            "Darcy": "Nova",
+            "Shamash": "Shamash",
+            "Kore": "Kore",
+            "Lira": "Lira",
+            "Nova": "Nova",
+            "Onyx": "Onyx",
+            "Fenrir": "Fenrir",
+            "Vega": "Vega"
+        }
         
-        # Sempre adicionar Charon como primeira voz
-        voice_configs.append(
-            types.SpeakerVoiceConfig(
-                speaker="Speaker 1",
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Charon"
-                    )
-                ),
-            )
-        )
-        
-        # Adicionar segunda voz (Puck) para satisfazer o requisito de 2 vozes
-        voice_configs.append(
-            types.SpeakerVoiceConfig(
-                speaker="Speaker 2",
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Puck"
-                    )
-                ),
-            )
-        )
+        selected_voice = voice_mapping.get(voice_model, "Sadachbia")
         
         contents = [
             types.Content(
@@ -270,11 +261,15 @@ class TTSGenerator:
         
         generate_content_config = types.GenerateContentConfig(
             temperature=1,
-            response_modalities=["audio"],
+            response_modalities=[
+                "audio",
+            ],
             speech_config=types.SpeechConfig(
-                multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                    speaker_voice_configs=voice_configs
-                ),
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=selected_voice
+                    )
+                )
             ),
         )
         
@@ -295,12 +290,16 @@ class TTSGenerator:
             if chunk.parts[0].inline_data and chunk.parts[0].inline_data.data:
                 inline_data = chunk.parts[0].inline_data
                 data_buffer = inline_data.data
+                file_extension = mimetypes.guess_extension(inline_data.mime_type)
                 
-                # Converter para WAV se necessário
-                if mimetypes.guess_extension(inline_data.mime_type) is None:
+                if file_extension is None:
+                    file_extension = ".wav"
                     data_buffer = convert_to_wav(inline_data.data, inline_data.mime_type)
                 
                 audio_data += data_buffer
+            else:
+                if text_output := chunk.text:
+                    print(text_output)
         
         return audio_data
     

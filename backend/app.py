@@ -516,21 +516,31 @@ def generate_audio():
         if not data or 'text' not in data:
             return jsonify({'error': 'Texto não fornecido'}), 400
         text = data['text']
-        voice_model = data.get('voice', 'pt-BR-AntonioNeural')
+        voice_model = data.get('voice', 'Sadachbia')
         style = data.get('style', 'normal')
         language = data.get('language', 'pt-BR')
         if len(text.strip()) == 0:
             return jsonify({'error': 'Texto não pode estar vazio'}), 400
         if len(text) > 5000:
             return jsonify({'error': 'Texto muito longo (máximo 5000 caracteres)'}), 400
+        
+        # Importar TTSGenerator diretamente do diretório pai
         try:
-            # Importar TTSGenerator do core (Google Gemini)
-            from core.tts_generator import TTSGenerator
+            import sys
+            import os
+            core_dir = os.path.join(os.path.dirname(__file__), '..', 'core')
+            if core_dir not in sys.path:
+                sys.path.insert(0, core_dir)
+            
+            from tts_generator import TTSGenerator
             tts = TTSGenerator()
-            print(f"Usando gerador TTS: {type(tts).__name__}")
-        except ImportError as e:
-            print(f"Erro ao importar TTS: {e}")
-            return jsonify({'error': 'Módulo TTS não disponível'}), 500
+            print(f"✅ TTSGenerator carregado com sucesso!")
+        except Exception as e:
+            print(f"❌ Erro ao importar TTS: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Módulo TTS não disponível: {str(e)}'}), 500
+        
         try:
             audio_data = tts.generate_speech(text=text, voice_model=voice_model, style=style, language=language)
             filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
@@ -539,8 +549,14 @@ def generate_audio():
                 f.write(audio_data)
             return jsonify({'success': True, 'filename': filename, 'download_url': f'/api/download/{filename}', 'message': 'Áudio gerado com sucesso!'})
         except Exception as e:
+            print(f"❌ Erro ao gerar áudio: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return jsonify({'error': f'Erro ao gerar áudio: {str(e)}'}), 500
     except Exception as e:
+        print(f"❌ Erro interno: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Erro interno: {str(e)}'}), 500
 
 @app.route('/api/download/<filename>')
@@ -556,7 +572,25 @@ def download_file(filename):
 
 @app.route('/api/voices')
 def get_voices():
-    return jsonify({'voices': []})
+    """Lista de vozes disponíveis, incluindo as do Gemini 3.1 Flash TTS"""
+    voices = [
+        # Vozes do Gemini (prebuilt)
+        {"id": "Sadachbia", "name": "Sadachbia (Gemini)", "language": "pt-BR", "gender": "male"},
+        {"id": "Puck", "name": "Puck (Gemini)", "language": "pt-BR", "gender": "female"},
+        {"id": "Charon", "name": "Charon (Gemini)", "language": "pt-BR", "gender": "male"},
+        {"id": "Kore", "name": "Kore (Gemini)", "language": "pt-BR", "gender": "female"},
+        {"id": "Lira", "name": "Lira (Gemini)", "language": "pt-BR", "gender": "female"},
+        {"id": "Nova", "name": "Nova (Gemini)", "language": "pt-BR", "gender": "female"},
+        {"id": "Onyx", "name": "Onyx (Gemini)", "language": "pt-BR", "gender": "male"},
+        {"id": "Fenrir", "name": "Fenrir (Gemini)", "language": "pt-BR", "gender": "male"},
+        {"id": "Vega", "name": "Vega (Gemini)", "language": "pt-BR", "gender": "male"},
+        {"id": "Shamash", "name": "Shamash (Gemini)", "language": "pt-BR", "gender": "male"},
+        # Vozes Edge TTS (compatibilidade)
+        {"id": "pt-BR-AntonioNeural", "name": "Antonio (Edge TTS)", "language": "pt-BR", "gender": "male"},
+        {"id": "pt-BR-FranciscaNeural", "name": "Francisca (Edge TTS)", "language": "pt-BR", "gender": "female"},
+        {"id": "pt-BR-DanielNeural", "name": "Daniel (Edge TTS)", "language": "pt-BR", "gender": "male"}
+    ]
+    return jsonify({'voices': voices})
 
 @app.route('/api/stats')
 def get_stats():
@@ -977,19 +1011,10 @@ def voxcraft_logs():
 # ============================================================
 # SOCIAL POSTS — Integração NewPost-IA
 # ============================================================
-try:
-    from backend.social_post_publisher import social_publisher
-    HAS_SOCIAL_PUBLISHER = True
-    print("✓ Social Post Publisher carregado")
-except ImportError:
-    try:
-        from social_post_publisher import social_publisher
-        HAS_SOCIAL_PUBLISHER = True
-        print("✓ Social Post Publisher carregado")
-    except ImportError as e:
-        print(f"Aviso: Social Post Publisher não disponível: {e}")
-        HAS_SOCIAL_PUBLISHER = False
-        social_publisher = None
+# Desativado temporariamente para evitar erros de sintaxe
+HAS_SOCIAL_PUBLISHER = False
+social_publisher = None
+print("⚠️ Social Post Publisher desativado temporariamente")
 
 @app.route('/social-posts')
 def social_posts_page():
