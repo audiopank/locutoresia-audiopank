@@ -222,6 +222,156 @@ class MiniDAWReactApp {
         });
     }
 
+    async loadAndDrawRealWaveform(trackId) {
+        const canvas = document.getElementById(`waveform_${trackId}`);
+        if (!canvas) return;
+
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.audioUrl) return;
+
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const response = await fetch(track.audioUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+
+            track.audioBuffer = audioBuffer;
+            track.trimEnd = audioBuffer.duration;
+            track.waveformData = this.extractWaveformData(audioBuffer);
+
+            this.drawRealWaveform(trackId);
+            this.setupTrimHandles(trackId);
+
+        } catch (error) {
+            console.error('Erro ao carregar waveform:', error);
+            this.drawWaveform(trackId);
+        }
+    }
+
+    extractWaveformData(audioBuffer) {
+        const channelData = audioBuffer.getChannelData(0);
+        const samples = 500;
+        const blockSize = Math.floor(channelData.length / samples);
+        const waveformData = [];
+
+        for (let i = 0; i < samples; i++) {
+            let max = 0;
+            for (let j = 0; j < blockSize; j++) {
+                const sample = Math.abs(channelData[i * blockSize + j]);
+                if (sample > max) max = sample;
+            }
+            waveformData.push(max);
+        }
+
+        return waveformData;
+    }
+
+    drawRealWaveform(trackId) {
+        const canvas = document.getElementById(`waveform_${trackId}`);
+        const wrapper = document.getElementById(`waveform-wrapper_${trackId}`);
+        if (!canvas || !wrapper) return;
+
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.waveformData) return;
+
+        const ctx = canvas.getContext('2d');
+        const width = wrapper.clientWidth || 600;
+        const height = 80;
+        canvas.width = width;
+        canvas.height = height;
+
+        const colors = this.trackColors[track.type];
+        const gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, colors.primary);
+        gradient.addColorStop(1, colors.secondary);
+
+        ctx.fillStyle = colors.light;
+        ctx.fillRect(0, 0, width, height);
+
+        const barWidth = width / track.waveformData.length;
+        ctx.fillStyle = gradient;
+
+        track.waveformData.forEach((value, index) => {
+            const barHeight = value * height * 0.9;
+            const x = index * barWidth;
+            const y = (height - barHeight) / 2;
+            ctx.fillRect(x, y, barWidth - 1, barHeight);
+        });
+
+        this.updateTrimOverlays(trackId);
+    }
+
+    setupTrimHandles(trackId) {
+        const leftHandle = document.getElementById(`trim-left_${trackId}`);
+        const rightHandle = document.getElementById(`trim-right_${trackId}`);
+        if (!leftHandle || !rightHandle) return;
+
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.audioBuffer) return;
+
+        const wrapper = document.getElementById(`waveform-wrapper_${trackId}`);
+        let isDragging = false;
+        let activeHandle = null;
+
+        const updateHandlePosition = (handle, xPos) => {
+            const wrapperRect = wrapper.getBoundingClientRect();
+            const minX = wrapperRect.left;
+            const maxX = wrapperRect.right;
+            let normalizedX = Math.max(minX, Math.min(maxX, xPos));
+            let percentage = (normalizedX - minX) / (maxX - minX);
+
+            if (handle === 'left') {
+                percentage = Math.min(percentage, (track.trimEnd / track.audioBuffer.duration) - 0.01);
+                track.trimStart = percentage * track.audioBuffer.duration;
+                leftHandle.style.left = `${percentage * 100}%`;
+            } else {
+                percentage = Math.max(percentage, (track.trimStart / track.audioBuffer.duration) + 0.01);
+                track.trimEnd = percentage * track.audioBuffer.duration;
+                rightHandle.style.right = `${(1 - percentage) * 100}%`;
+            }
+
+            this.updateTrimOverlays(trackId);
+        };
+
+        leftHandle.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            activeHandle = 'left';
+            e.preventDefault();
+        });
+
+        rightHandle.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            activeHandle = 'right';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging || !activeHandle) return;
+            updateHandlePosition(activeHandle, e.clientX);
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            activeHandle = null;
+        });
+    }
+
+    updateTrimOverlays(trackId) {
+        const leftOverlay = document.getElementById(`trim-overlay-left_${trackId}`);
+        const rightOverlay = document.getElementById(`trim-overlay-right_${trackId}`);
+        const leftHandle = document.getElementById(`trim-left_${trackId}`);
+        const rightHandle = document.getElementById(`trim-right_${trackId}`);
+        const track = this.tracks.find(t => t.id === trackId);
+
+        if (!leftOverlay || !rightOverlay || !track || !track.audioBuffer) return;
+
+        const leftPercent = (track.trimStart / track.audioBuffer.duration) * 100;
+        const rightPercent = (1 - track.trimEnd / track.audioBuffer.duration) * 100;
+
+        leftOverlay.style.width = `${leftPercent}%`;
+        rightOverlay.style.width = `${rightPercent}%`;
+    }
+
     drawWaveform(trackId) {
         const canvas = document.getElementById(`waveform_${trackId}`);
         if (!canvas) return;
@@ -419,27 +569,11 @@ class MiniDAWReactApp {
     }
 
     async mixAll() {
-        const audioTracks = this.tracks.filter(t => t.audioUrl && !t.muted);
-        if (audioTracks.length === 0) {
-            alert('Adicione pelo menos uma track com audio para mixar');
-            return;
-        }
+        return this.realMixAndExport();
+    }
 
-        try {
-            alert(`Mixando ${audioTracks.length} track(s)...\n\nMixagem real usando Web Audio API em desenvolvimento!\n\nPara agora, você pode baixar cada track individualmente usando o botão Preview.`);
-            
-            console.log('=== PREPARANDO MIXAGEM ===');
-            this.tracks.forEach(track => {
-                if (track.audioUrl && !track.muted) {
-                    console.log(`Track: ${track.name}, Volume: ${track.volume}%, Type: ${track.type}`);
-                }
-            });
-            console.log('=============================');
-
-        } catch (error) {
-            console.error('Erro ao mixar:', error);
-            alert('Erro ao mixar tracks: ' + error.message);
-        }
+    async exportMix() {
+        return this.realMixAndExport();
     }
 
     async realMixAndExport() {
@@ -449,58 +583,74 @@ class MiniDAWReactApp {
             return;
         }
 
+        if (audioTracks.length === 1) {
+            window.open(audioTracks[0].audioUrl, '_blank');
+            return;
+        }
+
         try {
-            alert('Mixagem REAL usando Web Audio API em desenvolvimento!\n\nEsta funcionalidade combinará todas as tracks, aplicará volumes, fade out e exportará em WAV.');
-            
+            console.log('=== INICIANDO MIXAGEM ===');
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             let maxDuration = 0;
             const buffers = [];
 
             for (const track of audioTracks) {
+                console.log(`Carregando: ${track.name}...`);
                 const response = await fetch(track.audioUrl);
                 const arrayBuffer = await response.arrayBuffer();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
                 buffers.push({
                     buffer: audioBuffer,
                     volume: track.volume / 100,
-                    type: track.type
+                    type: track.type,
+                    trimStart: track.trimStart || 0,
+                    trimEnd: track.trimEnd || audioBuffer.duration
                 });
-                if (audioBuffer.duration > maxDuration) {
-                    maxDuration = audioBuffer.duration;
+                const trackDuration = (track.trimEnd || audioBuffer.duration) - (track.trimStart || 0);
+                if (trackDuration > maxDuration) {
+                    maxDuration = trackDuration;
                 }
             }
 
+            console.log(`Duracao total do mix: ${maxDuration.toFixed(2)}s`);
+            
             const offlineContext = new OfflineAudioContext(
                 2,
                 maxDuration * 44100,
                 44100
             );
 
-            buffers.forEach(({ buffer, volume }) => {
+            buffers.forEach(({ buffer, volume, trimStart, trimEnd }) => {
                 const source = offlineContext.createBufferSource();
                 source.buffer = buffer;
                 const gainNode = offlineContext.createGain();
                 gainNode.gain.value = volume;
                 source.connect(gainNode);
                 gainNode.connect(offlineContext.destination);
-                source.start(0);
+                
+                source.start(0, trimStart);
+                source.stop(maxDuration);
             });
 
+            console.log('Renderizando mix...');
             const renderedBuffer = await offlineContext.startRendering();
+            console.log('Convertendo para WAV...');
             const wavBlob = this.audioBufferToWav(renderedBuffer);
             
+            console.log('Iniciando download...');
             const url = URL.createObjectURL(wavBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `mixagem_${Date.now()}.wav`;
+            a.download = `mixagem_${new Date().toISOString().slice(0,10)}.wav`;
             a.click();
             URL.revokeObjectURL(url);
 
-            alert('Mixagem concluída! Download iniciado.');
+            alert('Mixagem CONCLUIDA! Download do arquivo WAV iniciado!');
+            console.log('=== MIXAGEM CONCLUIDA ===');
 
         } catch (error) {
-            console.error('Erro na mixagem real:', error);
-            alert('Erro na mixagem: ' + error.message);
+            console.error('=== ERRO NA MIXAGEM ===', error);
+            alert(`Erro na mixagem (ainda em desenvolvimento!):\n${error.message}\n\nPara agora, você pode baixar cada track individualmente usando o botão Preview (👁️).`);
         }
     }
 
@@ -609,7 +759,15 @@ class MiniDAWReactApp {
                     <div class="track-center">
                         <div class="waveform-container" style="background: ${colors.light};">
                             ${track.audioUrl ? `
-                                <canvas class="waveform-canvas" id="waveform_${track.id}"></canvas>
+                                <div class="waveform-wrapper" id="waveform-wrapper_${track.id}">
+                                    <canvas class="waveform-canvas" id="waveform_${track.id}"></canvas>
+                                    <div class="trim-handle trim-handle-left" id="trim-left_${track.id}" 
+                                         data-track-id="${track.id}" data-handle="left"></div>
+                                    <div class="trim-handle trim-handle-right" id="trim-right_${track.id}" 
+                                         data-track-id="${track.id}" data-handle="right"></div>
+                                    <div class="trim-overlay trim-overlay-left" id="trim-overlay-left_${track.id}"></div>
+                                    <div class="trim-overlay trim-overlay-right" id="trim-overlay-right_${track.id}"></div>
+                                </div>
                             ` : `
                                 <div class="waveform-placeholder">
                                     <i class="fas fa-cloud-upload-alt"></i>
@@ -770,7 +928,11 @@ class MiniDAWReactApp {
             volume: 100,
             muted: false,
             solo: false,
-            isPlaying: false
+            isPlaying: false,
+            trimStart: 0,
+            trimEnd: 0,
+            audioBuffer: null,
+            waveformData: null
         };
         this.tracks.push(newTrack);
         this.renderApp();
@@ -792,13 +954,17 @@ class MiniDAWReactApp {
             volume: 100,
             muted: false,
             solo: false,
-            isPlaying: false
+            isPlaying: false,
+            trimStart: 0,
+            trimEnd: 0,
+            audioBuffer: null,
+            waveformData: null
         };
         this.tracks.push(newTrack);
         this.renderApp();
         
         setTimeout(() => {
-            this.drawWaveform(newTrack.id);
+            this.loadAndDrawRealWaveform(newTrack.id);
         }, 150);
     }
 
@@ -842,7 +1008,23 @@ class MiniDAWReactApp {
         
         if (audioEl) {
             if (track.isPlaying) {
+                if (track.trimStart > 0) {
+                    audioEl.currentTime = track.trimStart;
+                }
                 audioEl.play().catch(() => {});
+
+                const checkTrimEnd = () => {
+                    if (track.isPlaying && track.trimEnd > 0 && audioEl.currentTime >= track.trimEnd) {
+                        audioEl.pause();
+                        audioEl.currentTime = track.trimStart;
+                        track.isPlaying = false;
+                        this.renderApp();
+                    } else if (track.isPlaying && !audioEl.paused) {
+                        requestAnimationFrame(checkTrimEnd);
+                    }
+                };
+                requestAnimationFrame(checkTrimEnd);
+                
             } else {
                 audioEl.pause();
             }
@@ -1040,47 +1222,6 @@ class MiniDAWReactApp {
 
     rewind() {
         this.stopAll();
-    }
-
-    async mixAll() {
-        const audioTracks = this.tracks.filter(t => t.audioUrl && !t.muted);
-        if (audioTracks.length === 0) {
-            alert('Adicione pelo menos uma track com audio para mixar');
-            return;
-        }
-
-        try {
-            if (audioTracks.length === 1) {
-                window.open(audioTracks[0].audioUrl, '_blank');
-                return;
-            }
-
-            alert(`Mixando ${audioTracks.length} track(s)...\n\n(Exportacao de mix completo em desenvolvimento. Para agora, voce pode baixar cada track individualmente)`);
-            
-            this.tracks.forEach(track => {
-                if (track.audioUrl && !track.muted) {
-                    console.log(`Track: ${track.name}, Volume: ${track.volume}%, Type: ${track.type}`);
-                }
-            });
-
-        } catch (error) {
-            console.error('Erro ao mixar:', error);
-            alert('Erro ao mixar tracks: ' + error.message);
-        }
-    }
-
-    exportMix() {
-        const audioTracks = this.tracks.filter(t => t.audioUrl);
-        if (audioTracks.length === 0) {
-            alert('Adicione pelo menos uma track com audio para exportar');
-            return;
-        }
-        
-        if (audioTracks.length === 1) {
-            window.open(audioTracks[0].audioUrl, '_blank');
-        } else {
-            alert(`Exportacao de mix com ${audioTracks.length} tracks em desenvolvimento!\n\nPara agora, voce pode baixar cada track individualmente.`);
-        }
     }
 
     formatTime(seconds) {
@@ -1418,6 +1559,71 @@ const minidawStyles = `
         align-items: center;
         gap: 0.5rem;
         color: #64748b;
+    }
+
+    .waveform-wrapper {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+
+    .waveform-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+
+    .trim-handle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 12px;
+        background: rgba(99, 102, 241, 0.9);
+        cursor: ew-resize;
+        z-index: 10;
+        transition: background 0.2s ease;
+    }
+
+    .trim-handle:hover {
+        background: rgba(139, 92, 246, 1);
+    }
+
+    .trim-handle-left {
+        left: 0;
+        border-radius: 0 4px 4px 0;
+    }
+
+    .trim-handle-right {
+        right: 0;
+        border-radius: 4px 0 0 4px;
+    }
+
+    .trim-handle::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 4px;
+        height: 24px;
+        background: white;
+        border-radius: 2px;
+    }
+
+    .trim-overlay {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.4);
+        pointer-events: none;
+    }
+
+    .trim-overlay-left {
+        left: 0;
+    }
+
+    .trim-overlay-right {
+        right: 0;
     }
 
     .track-right {
