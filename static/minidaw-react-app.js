@@ -590,7 +590,8 @@ class MiniDAWReactApp {
 
         try {
             console.log('=== INICIANDO MIXAGEM ===');
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            const audioContext = new AudioContext();
             let maxDuration = 0;
             const buffers = [];
 
@@ -598,15 +599,20 @@ class MiniDAWReactApp {
                 console.log(`Carregando: ${track.name}...`);
                 const response = await fetch(track.audioUrl);
                 const arrayBuffer = await response.arrayBuffer();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                const trimStart = track.trimStart || 0;
+                const trimEnd = track.trimEnd || audioBuffer.duration;
+                const trackDuration = trimEnd - trimStart;
+                
                 buffers.push({
                     buffer: audioBuffer,
                     volume: track.volume / 100,
                     type: track.type,
-                    trimStart: track.trimStart || 0,
-                    trimEnd: track.trimEnd || audioBuffer.duration
+                    trimStart: trimStart,
+                    trimEnd: trimEnd
                 });
-                const trackDuration = (track.trimEnd || audioBuffer.duration) - (track.trimStart || 0);
+                
                 if (trackDuration > maxDuration) {
                     maxDuration = trackDuration;
                 }
@@ -614,10 +620,11 @@ class MiniDAWReactApp {
 
             console.log(`Duracao total do mix: ${maxDuration.toFixed(2)}s`);
             
+            const sampleRate = 44100;
             const offlineContext = new OfflineAudioContext(
                 2,
-                maxDuration * 44100,
-                44100
+                maxDuration * sampleRate,
+                sampleRate
             );
 
             buffers.forEach(({ buffer, volume, trimStart, trimEnd }) => {
@@ -629,7 +636,9 @@ class MiniDAWReactApp {
                 gainNode.connect(offlineContext.destination);
                 
                 source.start(0, trimStart);
-                source.stop(maxDuration);
+                if (trimEnd < buffer.duration) {
+                    source.stop(trimEnd - trimStart);
+                }
             });
 
             console.log('Renderizando mix...');
@@ -637,20 +646,36 @@ class MiniDAWReactApp {
             console.log('Convertendo para WAV...');
             const wavBlob = this.audioBufferToWav(renderedBuffer);
             
-            console.log('Iniciando download...');
-            const url = URL.createObjectURL(wavBlob);
+            console.log('Convertendo WAV para MP3...');
+            let finalBlob = wavBlob;
+            let fileExt = 'wav';
+            
+            if (window.lamejs) {
+                try {
+                    finalBlob = await this.wavToMp3(wavBlob);
+                    fileExt = 'mp3';
+                    console.log('MP3 criado com sucesso!');
+                } catch (mp3Error) {
+                    console.warn('Erro ao converter para MP3, usando WAV:', mp3Error);
+                    finalBlob = wavBlob;
+                    fileExt = 'wav';
+                }
+            }
+            
+            console.log(`Iniciando download ${fileExt.toUpperCase()}...`);
+            const url = URL.createObjectURL(finalBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `mixagem_${new Date().toISOString().slice(0,10)}.wav`;
+            a.download = `mixagem_${new Date().toISOString().replace(/:/g, '-')}.${fileExt}`;
             a.click();
             URL.revokeObjectURL(url);
 
-            alert('Mixagem CONCLUIDA! Download do arquivo WAV iniciado!');
+            alert(`Mixagem CONCLUIDA! Download do arquivo ${fileExt.toUpperCase()} iniciado!`);
             console.log('=== MIXAGEM CONCLUIDA ===');
 
         } catch (error) {
             console.error('=== ERRO NA MIXAGEM ===', error);
-            alert(`Erro na mixagem (ainda em desenvolvimento!):\n${error.message}\n\nPara agora, você pode baixar cada track individualmente usando o botão Preview (👁️).`);
+            alert(`Erro na mixagem:\n${error.message}\n\nVerifique o console para detalhes.`);
         }
     }
 
@@ -704,6 +729,42 @@ class MiniDAWReactApp {
         }
 
         return new Blob([arrayBuffer], { type: 'audio/wav' });
+    }
+
+    wavToMp3(wavBlob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const arrayBuffer = reader.result;
+                const wav = lamejs.WavHeader.readHeader(new DataView(arrayBuffer));
+                const samples = new Int16Array(arrayBuffer, wav.dataOffset, wav.dataLen / 2);
+                
+                const channels = wav.channels;
+                const sampleRate = wav.sampleRate;
+                const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+                
+                let mp3Data = [];
+                const sampleBlockSize = 1152;
+                
+                for (let i = 0; i < samples.length; i += sampleBlockSize * channels) {
+                    const block = samples.subarray(i, i + sampleBlockSize * channels);
+                    const mp3buf = mp3encoder.encodeBuffer(block);
+                    if (mp3buf.length > 0) {
+                        mp3Data.push(mp3buf);
+                    }
+                }
+                
+                const mp3buf = mp3encoder.flush();
+                if (mp3buf.length > 0) {
+                    mp3Data.push(mp3buf);
+                }
+                
+                const blob = new Blob(mp3Data, { type: 'audio/mp3' });
+                resolve(blob);
+            };
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(wavBlob);
+        });
     }
 
     renderTracks() {
