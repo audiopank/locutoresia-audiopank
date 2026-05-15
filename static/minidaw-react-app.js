@@ -320,23 +320,134 @@ class MiniDAWReactApp {
         }
 
         try {
-            if (audioTracks.length === 1) {
-                window.open(audioTracks[0].audioUrl, '_blank');
-                return;
-            }
-
-            alert(`Mixando ${audioTracks.length} track(s)...\n\nMixagem completa em desenvolvimento!\n\nPara agora, você pode baixar cada track individualmente usando o botão Preview.`);
+            alert(`Mixando ${audioTracks.length} track(s)...\n\nMixagem real usando Web Audio API em desenvolvimento!\n\nPara agora, você pode baixar cada track individualmente usando o botão Preview.`);
             
+            console.log('=== PREPARANDO MIXAGEM ===');
             this.tracks.forEach(track => {
                 if (track.audioUrl && !track.muted) {
                     console.log(`Track: ${track.name}, Volume: ${track.volume}%, Type: ${track.type}`);
                 }
             });
+            console.log('=============================');
 
         } catch (error) {
             console.error('Erro ao mixar:', error);
             alert('Erro ao mixar tracks: ' + error.message);
         }
+    }
+
+    async realMixAndExport() {
+        const audioTracks = this.tracks.filter(t => t.audioUrl && !t.muted);
+        if (audioTracks.length === 0) {
+            alert('Adicione pelo menos uma track com audio para mixar');
+            return;
+        }
+
+        try {
+            alert('Mixagem REAL usando Web Audio API em desenvolvimento!\n\nEsta funcionalidade combinará todas as tracks, aplicará volumes, fade out e exportará em WAV.');
+            
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            let maxDuration = 0;
+            const buffers = [];
+
+            for (const track of audioTracks) {
+                const response = await fetch(track.audioUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                buffers.push({
+                    buffer: audioBuffer,
+                    volume: track.volume / 100,
+                    type: track.type
+                });
+                if (audioBuffer.duration > maxDuration) {
+                    maxDuration = audioBuffer.duration;
+                }
+            }
+
+            const offlineContext = new OfflineAudioContext(
+                2,
+                maxDuration * 44100,
+                44100
+            );
+
+            buffers.forEach(({ buffer, volume }) => {
+                const source = offlineContext.createBufferSource();
+                source.buffer = buffer;
+                const gainNode = offlineContext.createGain();
+                gainNode.gain.value = volume;
+                source.connect(gainNode);
+                gainNode.connect(offlineContext.destination);
+                source.start(0);
+            });
+
+            const renderedBuffer = await offlineContext.startRendering();
+            const wavBlob = this.audioBufferToWav(renderedBuffer);
+            
+            const url = URL.createObjectURL(wavBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `mixagem_${Date.now()}.wav`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            alert('Mixagem concluída! Download iniciado.');
+
+        } catch (error) {
+            console.error('Erro na mixagem real:', error);
+            alert('Erro na mixagem: ' + error.message);
+        }
+    }
+
+    audioBufferToWav(buffer) {
+        const numChannels = buffer.numberOfChannels;
+        const sampleRate = buffer.sampleRate;
+        const format = 1;
+        const bitDepth = 16;
+
+        const bytesPerSample = bitDepth / 8;
+        const blockAlign = numChannels * bytesPerSample;
+
+        const dataLength = buffer.length * blockAlign;
+        const bufferLength = 44 + dataLength;
+
+        const arrayBuffer = new ArrayBuffer(bufferLength);
+        const view = new DataView(arrayBuffer);
+
+        const writeString = (offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, bufferLength - 8, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, format, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * blockAlign, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitDepth, true);
+        writeString(36, 'data');
+        view.setUint32(40, dataLength, true);
+
+        const channels = [];
+        for (let i = 0; i < numChannels; i++) {
+            channels.push(buffer.getChannelData(i));
+        }
+
+        let offset = 44;
+        for (let i = 0; i < buffer.length; i++) {
+            for (let channel = 0; channel < numChannels; channel++) {
+                const sample = Math.max(-1, Math.min(1, channels[channel][i]));
+                view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+                offset += 2;
+            }
+        }
+
+        return new Blob([arrayBuffer], { type: 'audio/wav' });
     }
 
     renderTracks() {
