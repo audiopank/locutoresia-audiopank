@@ -14,6 +14,10 @@ class MiniDAWReactApp {
             effect: { primary: '#10b981', secondary: '#059669', light: 'rgba(16, 185, 129, 0.2)' }
         };
         this.voices = [];
+        
+        this.projects = [];
+        this.currentProjectId = null;
+        this.loadAllProjects();
         this.init();
     }
 
@@ -71,6 +75,11 @@ class MiniDAWReactApp {
                                 <option value="serious" ${this.selectedStyle === 'serious' ? 'selected' : ''}>Serio</option>
                             </select>
                         </div>
+
+                        <button class="btn btn-warning" style="width: 100%; margin-bottom: 1rem;" onclick="minidawReact.previewVoice()">
+                            <i class="fas fa-play-circle me-2"></i>
+                            Preview Rapido (5 segundos)
+                        </button>
 
                         <div class="quick-actions">
                             <button onclick="minidawReact.addTrack('music')" class="btn btn-purple">
@@ -267,10 +276,37 @@ class MiniDAWReactApp {
         alert('Funcao de corte (Trim) em desenvolvimento!\n\nPara agora, voce pode usar o Preview para ouvir e decidir o audio.');
     }
 
+    loadAllProjects() {
+        try {
+            const savedProjects = localStorage.getItem('minidaw_projects');
+            if (savedProjects) {
+                this.projects = JSON.parse(savedProjects);
+            } else {
+                this.projects = [];
+            }
+        } catch (error) {
+            console.error('Erro ao carregar projetos:', error);
+            this.projects = [];
+        }
+    }
+
+    saveAllProjects() {
+        try {
+            localStorage.setItem('minidaw_projects', JSON.stringify(this.projects));
+        } catch (error) {
+            console.error('Erro ao salvar projetos:', error);
+        }
+    }
+
     saveProject() {
+        const projectName = prompt('Nome do Projeto:', this.currentProjectId ? this.getProjectById(this.currentProjectId)?.name : `Projeto ${new Date().toLocaleDateString()}`);
+        if (!projectName) return;
+
         const projectData = {
-            name: 'Projeto MiniDAW',
+            id: this.currentProjectId || Date.now().toString(),
+            name: projectName,
             createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             tracks: this.tracks,
             textInput: this.textInput,
             selectedVoice: this.selectedVoice,
@@ -278,29 +314,42 @@ class MiniDAWReactApp {
         };
 
         try {
-            localStorage.setItem('minidaw_project', JSON.stringify(projectData));
-            alert('Projeto salvo com sucesso!\n\nVocê pode carregá-lo depois usando "Carregar Projeto".');
+            const existingIndex = this.projects.findIndex(p => p.id === projectData.id);
+            if (existingIndex >= 0) {
+                this.projects[existingIndex] = projectData;
+            } else {
+                this.projects.unshift(projectData);
+            }
+            
+            this.currentProjectId = projectData.id;
+            this.saveAllProjects();
+            
+            alert(`Projeto "${projectName}" salvo com sucesso!`);
         } catch (error) {
             alert('Erro ao salvar o projeto: ' + error.message);
         }
     }
 
-    loadProject() {
-        try {
-            const savedProject = localStorage.getItem('minidaw_project');
-            if (!savedProject) {
-                alert('Nenhum projeto salvo encontrado!');
-                return;
-            }
+    getProjectById(id) {
+        return this.projects.find(p => p.id === id);
+    }
 
-            const projectData = JSON.parse(savedProject);
-            this.tracks = projectData.tracks || [];
-            this.textInput = projectData.textInput || '';
-            this.selectedVoice = projectData.selectedVoice || null;
-            this.selectedStyle = projectData.selectedStyle || 'normal';
+    loadProjectById(id) {
+        const project = this.getProjectById(id);
+        if (!project) {
+            alert('Projeto não encontrado!');
+            return;
+        }
+
+        try {
+            this.tracks = project.tracks || [];
+            this.textInput = project.textInput || '';
+            this.selectedVoice = project.selectedVoice || null;
+            this.selectedStyle = project.selectedStyle || 'normal';
+            this.currentProjectId = project.id;
 
             this.renderApp();
-            alert(`Projeto carregado com sucesso!\n\nData: ${new Date(projectData.createdAt).toLocaleString()}\nTracks: ${this.tracks.length}`);
+            alert(`Projeto "${project.name}" carregado com sucesso!`);
 
             setTimeout(() => {
                 this.drawAllWaveforms();
@@ -310,6 +359,63 @@ class MiniDAWReactApp {
         } catch (error) {
             alert('Erro ao carregar o projeto: ' + error.message);
         }
+    }
+
+    loadProject() {
+        if (this.projects.length === 0) {
+            alert('Nenhum projeto salvo encontrado!');
+            return;
+        }
+
+        const projectList = this.projects.map((p, i) => 
+            `${i + 1}. ${p.name} (${new Date(p.updatedAt).toLocaleString()})`
+        ).join('\n');
+        
+        const projectIndex = prompt(
+            `Selecione o projeto para carregar (1-${this.projects.length}):\n\n${projectList}`,
+            '1'
+        );
+        
+        if (!projectIndex) return;
+        
+        const index = parseInt(projectIndex) - 1;
+        if (index >= 0 && index < this.projects.length) {
+            this.loadProjectById(this.projects[index].id);
+        } else {
+            alert('Indice inválido!');
+        }
+    }
+
+    deleteProject(id) {
+        const project = this.getProjectById(id);
+        if (!project) return;
+        
+        if (!confirm(`Tem certeza que deseja deletar o projeto "${project.name}"?`)) return;
+        
+        this.projects = this.projects.filter(p => p.id !== id);
+        this.saveAllProjects();
+        
+        if (this.currentProjectId === id) {
+            this.currentProjectId = null;
+            this.tracks = [];
+            this.textInput = '';
+            this.renderApp();
+        }
+        
+        alert(`Projeto "${project.name}" deletado!`);
+    }
+
+    newProject() {
+        if (this.tracks.length > 0 && !confirm('Deseja criar um novo projeto? As alteracoes não salvas serao perdidas.')) {
+            return;
+        }
+        
+        this.currentProjectId = null;
+        this.tracks = [];
+        this.textInput = '';
+        this.selectedVoice = null;
+        this.selectedStyle = 'normal';
+        this.renderApp();
     }
 
     async mixAll() {
@@ -545,6 +651,60 @@ class MiniDAWReactApp {
                 </div>
             `;
         }).join('');
+    }
+
+    async previewVoice() {
+        const voiceSelect = document.getElementById('voice-select-generator');
+        const textInput = document.getElementById('text-input-generator');
+        const styleSelect = document.getElementById('style-select-generator');
+        
+        if (!voiceSelect || !voiceSelect.value) {
+            alert('Selecione uma voz!');
+            return;
+        }
+
+        let previewText = textInput ? textInput.value.trim() : '';
+        if (!previewText) {
+            previewText = 'Olá! Este é um preview rápido da voz selecionada. Testando 1, 2, 3...';
+        } else {
+            const words = previewText.split(' ');
+            previewText = words.slice(0, 15).join(' ');
+            if (words.length > 15) previewText += '...';
+        }
+
+        const originalVoice = voiceSelect.value;
+        const originalStyle = styleSelect ? styleSelect.value : 'normal';
+
+        try {
+            const parts = originalVoice.split('||');
+            const provider = parts[0];
+            const voiceId = parts[1];
+            
+            const response = await fetch('/api/generate-audio', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: previewText,
+                    voice: voiceId,
+                    style: originalStyle,
+                    provider: provider
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Erro ao gerar preview');
+            }
+            
+            const audio = new Audio(result.download_url);
+            audio.play();
+            alert('Preview tocando! Ouça a voz antes de gerar o texto completo.');
+            
+        } catch (error) {
+            console.error('Erro no preview:', error);
+            alert('Erro ao gerar preview: ' + error.message);
+        }
     }
 
     async generateVoiceFromHeader() {
