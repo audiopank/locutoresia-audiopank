@@ -1,3 +1,209 @@
+class AudioMixer {
+    constructor() {
+        this.AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.audioContext = new this.AudioContext();
+    }
+
+    async mixAndExport(tracks, options = {}) {
+        const {
+            exportWav = true,
+            exportMp3 = true,
+            filenamePrefix = 'mix'
+        } = options;
+
+        let maxDuration = 0;
+        const processedTracks = [];
+
+        for (const track of tracks) {
+            if (!track.audioUrl) {
+                throw new Error(`Faixa "${track.name}" não possui URL de áudio`);
+            }
+
+            const response = await fetch(track.audioUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+
+            const trimStart = Math.max(0, track.trimStart || 0);
+            const trimEnd = Math.min(audioBuffer.duration, track.trimEnd || audioBuffer.duration);
+
+            if (trimStart >= trimEnd) {
+                throw new Error(`Trim inválido para "${track.name}": início >= fim`);
+            }
+
+            const trackDuration = trimEnd - trimStart;
+            if (trackDuration > maxDuration) {
+                maxDuration = trackDuration;
+            }
+
+            processedTracks.push({
+                buffer: audioBuffer,
+                volume: (track.volume || 100) / 100,
+                trimStart,
+                trimEnd,
+                duration: trackDuration
+            });
+        }
+
+        const sampleRate = 44100;
+        const offlineContext = new OfflineAudioContext(
+            2,
+            maxDuration * sampleRate,
+            sampleRate
+        );
+
+        processedTracks.forEach(({ buffer, volume, trimStart, trimEnd }) => {
+            const source = offlineContext.createBufferSource();
+            source.buffer = buffer;
+            const gainNode = offlineContext.createGain();
+            gainNode.gain.value = volume;
+            source.connect(gainNode);
+            gainNode.connect(offlineContext.destination);
+            source.start(0, trimStart, trimEnd - trimStart);
+        });
+
+        const renderedBuffer = await offlineContext.startRendering();
+
+        const results = [];
+        const timestamp = new Date().toISOString().replace(/:/g, '-');
+
+        if (exportWav) {
+            const wavBlob = this.audioBufferToWav(renderedBuffer);
+            results.push({
+                type: 'wav',
+                blob: wavBlob,
+                filename: `${filenamePrefix}_${timestamp}.wav`
+            });
+        }
+
+        if (exportMp3 && window.lamejs) {
+            try {
+                const wavBlob = this.audioBufferToWav(renderedBuffer);
+                const mp3Blob = await this.wavToMp3(wavBlob);
+                results.push({
+                    type: 'mp3',
+                    blob: mp3Blob,
+                    filename: `${filenamePrefix}_${timestamp}.mp3`
+                });
+            } catch (mp3Err) {
+                console.warn('Erro ao gerar MP3, usando WAV:', mp3Err);
+            }
+        }
+
+        if (results.length === 0) {
+            throw new Error('Nenhum formato de exportação selecionado');
+        }
+
+        results.forEach(result => {
+            this.downloadBlob(result.blob, result.filename);
+        });
+
+        return {
+            message: `Mixagem concluída! ${results.length} arquivo(s) baixados.`,
+            duration: maxDuration,
+            files: results.map(r => r.type.toUpperCase())
+        };
+    }
+
+    audioBufferToWav(buffer) {
+        const numChannels = buffer.numberOfChannels;
+        const sampleRate = buffer.sampleRate;
+        const format = 1;
+        const bitDepth = 16;
+
+        const bytesPerSample = bitDepth / 8;
+        const blockAlign = numChannels * bytesPerSample;
+        const dataLength = buffer.length * blockAlign;
+        const bufferLength = 44 + dataLength;
+
+        const arrayBuffer = new ArrayBuffer(bufferLength);
+        const view = new DataView(arrayBuffer);
+
+        const writeString = (offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, bufferLength - 8, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, format, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * blockAlign, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitDepth, true);
+        writeString(36, 'data');
+        view.setUint32(40, dataLength, true);
+
+        const channels = [];
+        for (let i = 0; i < numChannels; i++) {
+            channels.push(buffer.getChannelData(i));
+        }
+
+        let offset = 44;
+        for (let i = 0; i < buffer.length; i++) {
+            for (let channel = 0; channel < numChannels; channel++) {
+                const sample = Math.max(-1, Math.min(1, channels[channel][i]));
+                view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+                offset += 2;
+            }
+        }
+
+        return new Blob([arrayBuffer], { type: 'audio/wav' });
+    }
+
+    async wavToMp3(wavBlob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const arrayBuffer = reader.result;
+                const wav = lamejs.WavHeader.readHeader(new DataView(arrayBuffer));
+                const samples = new Int16Array(arrayBuffer, wav.dataOffset, wav.dataLen / 2);
+                
+                const channels = wav.channels;
+                const sampleRate = wav.sampleRate;
+                const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+                
+                let mp3Data = [];
+                const sampleBlockSize = 1152;
+                
+                for (let i = 0; i < samples.length; i += sampleBlockSize * channels) {
+                    const block = samples.subarray(i, i + sampleBlockSize * channels);
+                    const mp3buf = mp3encoder.encodeBuffer(block);
+                    if (mp3buf.length > 0) {
+                        mp3Data.push(mp3buf);
+                    }
+                }
+                
+                const mp3buf = mp3encoder.flush();
+                if (mp3buf.length > 0) {
+                    mp3Data.push(mp3buf);
+                }
+                
+                const blob = new Blob(mp3Data, { type: 'audio/mp3' });
+                resolve(blob);
+            };
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(wavBlob);
+        });
+    }
+
+    downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+    }
+}
+
 class MiniDAWReactApp {
     constructor() {
         this.tracks = [];
@@ -589,89 +795,17 @@ class MiniDAWReactApp {
         }
 
         try {
-            console.log('=== INICIANDO MIXAGEM ===');
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            const audioContext = new AudioContext();
-            let maxDuration = 0;
-            const buffers = [];
-
-            for (const track of audioTracks) {
-                console.log(`Carregando: ${track.name}...`);
-                const response = await fetch(track.audioUrl);
-                const arrayBuffer = await response.arrayBuffer();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                
-                const trimStart = track.trimStart || 0;
-                const trimEnd = track.trimEnd || audioBuffer.duration;
-                const trackDuration = trimEnd - trimStart;
-                
-                buffers.push({
-                    buffer: audioBuffer,
-                    volume: track.volume / 100,
-                    type: track.type,
-                    trimStart: trimStart,
-                    trimEnd: trimEnd
-                });
-                
-                if (trackDuration > maxDuration) {
-                    maxDuration = trackDuration;
-                }
-            }
-
-            console.log(`Duracao total do mix: ${maxDuration.toFixed(2)}s`);
+            console.log('=== INICIANDO MIXAGEM COM AudioMixer ===');
+            const mixer = new AudioMixer();
             
-            const sampleRate = 44100;
-            const offlineContext = new OfflineAudioContext(
-                2,
-                maxDuration * sampleRate,
-                sampleRate
-            );
-
-            buffers.forEach(({ buffer, volume, trimStart, trimEnd }) => {
-                const source = offlineContext.createBufferSource();
-                source.buffer = buffer;
-                const gainNode = offlineContext.createGain();
-                gainNode.gain.value = volume;
-                source.connect(gainNode);
-                gainNode.connect(offlineContext.destination);
-                
-                source.start(0, trimStart);
-                if (trimEnd < buffer.duration) {
-                    source.stop(trimEnd - trimStart);
-                }
+            const result = await mixer.mixAndExport(audioTracks, {
+                exportWav: true,
+                exportMp3: true,
+                filenamePrefix: 'mixagem_locutores_ia'
             });
 
-            console.log('Renderizando mix...');
-            const renderedBuffer = await offlineContext.startRendering();
-            console.log('Convertendo para WAV...');
-            const wavBlob = this.audioBufferToWav(renderedBuffer);
-            
-            console.log('Convertendo WAV para MP3...');
-            let finalBlob = wavBlob;
-            let fileExt = 'wav';
-            
-            if (window.lamejs) {
-                try {
-                    finalBlob = await this.wavToMp3(wavBlob);
-                    fileExt = 'mp3';
-                    console.log('MP3 criado com sucesso!');
-                } catch (mp3Error) {
-                    console.warn('Erro ao converter para MP3, usando WAV:', mp3Error);
-                    finalBlob = wavBlob;
-                    fileExt = 'wav';
-                }
-            }
-            
-            console.log(`Iniciando download ${fileExt.toUpperCase()}...`);
-            const url = URL.createObjectURL(finalBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `mixagem_${new Date().toISOString().replace(/:/g, '-')}.${fileExt}`;
-            a.click();
-            URL.revokeObjectURL(url);
-
-            alert(`Mixagem CONCLUIDA! Download do arquivo ${fileExt.toUpperCase()} iniciado!`);
-            console.log('=== MIXAGEM CONCLUIDA ===');
+            alert(result.message);
+            console.log('=== MIXAGEM CONCLUIDA ===', result);
 
         } catch (error) {
             console.error('=== ERRO NA MIXAGEM ===', error);
@@ -679,93 +813,7 @@ class MiniDAWReactApp {
         }
     }
 
-    audioBufferToWav(buffer) {
-        const numChannels = buffer.numberOfChannels;
-        const sampleRate = buffer.sampleRate;
-        const format = 1;
-        const bitDepth = 16;
 
-        const bytesPerSample = bitDepth / 8;
-        const blockAlign = numChannels * bytesPerSample;
-
-        const dataLength = buffer.length * blockAlign;
-        const bufferLength = 44 + dataLength;
-
-        const arrayBuffer = new ArrayBuffer(bufferLength);
-        const view = new DataView(arrayBuffer);
-
-        const writeString = (offset, string) => {
-            for (let i = 0; i < string.length; i++) {
-                view.setUint8(offset + i, string.charCodeAt(i));
-            }
-        };
-
-        writeString(0, 'RIFF');
-        view.setUint32(4, bufferLength - 8, true);
-        writeString(8, 'WAVE');
-        writeString(12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, format, true);
-        view.setUint16(22, numChannels, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * blockAlign, true);
-        view.setUint16(32, blockAlign, true);
-        view.setUint16(34, bitDepth, true);
-        writeString(36, 'data');
-        view.setUint32(40, dataLength, true);
-
-        const channels = [];
-        for (let i = 0; i < numChannels; i++) {
-            channels.push(buffer.getChannelData(i));
-        }
-
-        let offset = 44;
-        for (let i = 0; i < buffer.length; i++) {
-            for (let channel = 0; channel < numChannels; channel++) {
-                const sample = Math.max(-1, Math.min(1, channels[channel][i]));
-                view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-                offset += 2;
-            }
-        }
-
-        return new Blob([arrayBuffer], { type: 'audio/wav' });
-    }
-
-    wavToMp3(wavBlob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const arrayBuffer = reader.result;
-                const wav = lamejs.WavHeader.readHeader(new DataView(arrayBuffer));
-                const samples = new Int16Array(arrayBuffer, wav.dataOffset, wav.dataLen / 2);
-                
-                const channels = wav.channels;
-                const sampleRate = wav.sampleRate;
-                const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
-                
-                let mp3Data = [];
-                const sampleBlockSize = 1152;
-                
-                for (let i = 0; i < samples.length; i += sampleBlockSize * channels) {
-                    const block = samples.subarray(i, i + sampleBlockSize * channels);
-                    const mp3buf = mp3encoder.encodeBuffer(block);
-                    if (mp3buf.length > 0) {
-                        mp3Data.push(mp3buf);
-                    }
-                }
-                
-                const mp3buf = mp3encoder.flush();
-                if (mp3buf.length > 0) {
-                    mp3Data.push(mp3buf);
-                }
-                
-                const blob = new Blob(mp3Data, { type: 'audio/mp3' });
-                resolve(blob);
-            };
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(wavBlob);
-        });
-    }
 
     renderTracks() {
         if (this.tracks.length === 0) {
