@@ -1,123 +1,363 @@
-import asyncio
-import edge_tts
-import io
-import wave
-import struct
+import os
+import sys
+from pathlib import Path
 
-# Mapeamento de vozes por modelo/idioma
-VOICE_MAP = {
-    # Português Brasil
-    "Alex Professional": "pt-BR-AntonioNeural",
-    "Charon": "pt-BR-AntonioNeural",
-    "Puck": "pt-BR-FranciscaNeural",
-    "Leda": "pt-BR-FranciscaNeural",
-    "Zephyr": "pt-BR-AntonioNeural",
-    # Fallback genérico
-    "default": "pt-BR-AntonioNeural",
-}
-
-# Mapeamento de estilos para ajuste de prosódia
-STYLE_MAP = {
-    "normal":   {"rate": "+0%",  "pitch": "+0Hz"},
-    "fast":     {"rate": "+30%", "pitch": "+0Hz"},
-    "slow":     {"rate": "-25%", "pitch": "-5Hz"},
-    "cheerful": {"rate": "+10%", "pitch": "+10Hz"},
-    "serious":  {"rate": "-10%", "pitch": "-10Hz"},
-}
-
-
-class EdgeTTSGenerator:
-    """Gerador TTS real usando edge-tts (Microsoft Neural TTS)."""
-
-    def generate_speech(self, text: str, voice_model: str = "Charon",
-                        style: str = "normal", language: str = "pt-BR") -> bytes:
-        """
-        Gera áudio WAV real a partir de texto.
-
-        Returns
-        -------
-        bytes
-            Conteúdo do arquivo WAV.
-        """
-        # Escolher voz
-        voice = VOICE_MAP.get(voice_model, VOICE_MAP["default"])
-
-        # Ajustar para o idioma solicitado, se necessário
-        if language.startswith("en"):
-            voice = "en-US-GuyNeural"
-        elif language.startswith("es"):
-            voice = "es-ES-AlvaroNeural"
-
-        # Parâmetros de estilo
-        style_params = STYLE_MAP.get(style, STYLE_MAP["normal"])
-
-        audio_bytes = asyncio.run(
-            self._synthesize(text, voice, style_params["rate"], style_params["pitch"])
-        )
-        return audio_bytes
-
-    @staticmethod
-    async def _synthesize(text: str, voice: str, rate: str, pitch: str) -> bytes:
-        """Chama a API edge-tts de forma assíncrona e converte para WAV."""
-        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-        buffer = io.BytesIO()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                buffer.write(chunk["data"])
-        
-        # Converter para WAV
-        audio_data = buffer.getvalue()
-        wav_data = EdgeTTSGenerator._convert_to_wav(audio_data)
-        return wav_data
-    
-    @staticmethod
-    def _convert_to_wav(audio_data: bytes) -> bytes:
-        """Converte áudio EdgeTTS (MP3/Ogg) para WAV."""
-        # Para simplificar, vamos criar um WAV com os dados brutos
-        # EdgeTTS geralmente retorna 24kHz, 16-bit, mono
-        
-        sample_rate = 24000
-        bits_per_sample = 16
-        num_channels = 1
-        
-        # Se os dados já estiverem em formato PCM, apenas adicionar header WAV
-        # Se não, vamos assumir que são PCM brutos
-        data_size = len(audio_data)
-        
-        # WAV header
-        header = struct.pack(
-            "<4sI4s4sIHHIIHH4sI",
-            b"RIFF",          # ChunkID
-            36 + data_size,   # ChunkSize
-            b"WAVE",          # Format
-            b"fmt ",          # Subchunk1ID
-            16,               # Subchunk1Size
-            1,                # AudioFormat (PCM)
-            num_channels,     # NumChannels
-            sample_rate,      # SampleRate
-            sample_rate * 2,  # ByteRate
-            2,                # BlockAlign
-            bits_per_sample,  # BitsPerSample
-            b"data",          # Subchunk2ID
-            data_size         # Subchunk2Size
-        )
-        
-        return header + audio_data
-
-
-# Para compatibilidade, também manter o TTSGenerator original
+# Importar o gerador
 try:
-    from tts_generator import TTSGenerator as OriginalTTSGenerator
+    from tts_generator import TTSGenerator, get_tts_generator
 except ImportError:
-    OriginalTTSGenerator = None
+    print("❌ Erro: tts_generator.py não encontrado")
+    print("   Verifique se o arquivo está no mesmo diretório")
+    sys.exit(1)
 
-def get_tts_generator():
-    """Retorna o gerador TTS real usando EdgeTTS."""
+
+# ============================================================================
+# TESTES
+# ============================================================================
+
+def test_inicializacao():
+    """Teste 1: Inicializar o gerador."""
+    print("\n" + "=" * 70)
+    print("TESTE 1: Inicialização")
+    print("=" * 70)
+    
     try:
-        return EdgeTTSGenerator()
+        generator = get_tts_generator()
+        print("✓ Gerador inicializado com sucesso")
+        return True
+    except ValueError as e:
+        print(f"✗ Erro: {e}")
+        return False
     except Exception as e:
-        print(f"Erro ao inicializar EdgeTTS: {e}")
-        # Fallback para o mock se EdgeTTS falhar
-        from tts_generator_mock import TTSGenerator
-        print("Usando TTS Mock como fallback")
-        return TTSGenerator()
+        print(f"✗ Erro inesperado: {e}")
+        return False
+
+
+def test_audio_basico():
+    """Teste 2: Gerar áudio básico."""
+    print("\n" + "=" * 70)
+    print("TESTE 2: Geração Básica de Áudio")
+    print("=" * 70)
+    
+    try:
+        generator = get_tts_generator()
+        
+        text = "Olá! Este é um teste de síntese de voz."
+        print(f"\nTexto: '{text}'")
+        
+        audio = generator.generate_speech(text)
+        
+        if not audio:
+            print("✗ Nenhum áudio foi gerado")
+            return False
+        
+        print(f"✓ Áudio gerado com sucesso")
+        print(f"  Tamanho: {len(audio)} bytes")
+        
+        # Salvar arquivo de teste
+        output_file = Path("teste_basico.wav")
+        with open(output_file, "wb") as f:
+            f.write(audio)
+        print(f"  Salvo: {output_file}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"✗ Erro: {e}")
+        return False
+
+
+def test_vozes():
+    """Teste 3: Testar diferentes vozes."""
+    print("\n" + "=" * 70)
+    print("TESTE 3: Diferentes Vozes")
+    print("=" * 70)
+    
+    try:
+        generator = get_tts_generator()
+        
+        vozes = ["Zephyr", "Leda", "Charon"]
+        texto = "Teste de voz"
+        
+        print(f"\nGerando áudio em {len(vozes)} vozes...")
+        
+        resultados = []
+        for voz in vozes:
+            try:
+                print(f"\n  📢 {voz}...", end=" ", flush=True)
+                
+                audio = generator.generate_speech(
+                    text=texto,
+                    voice_model=voz
+                )
+                
+                if not audio:
+                    print("✗ Nenhum áudio")
+                    resultados.append((voz, False))
+                    continue
+                
+                # Salvar
+                output_file = Path(f"teste_voz_{voz.lower()}.wav")
+                with open(output_file, "wb") as f:
+                    f.write(audio)
+                
+                print(f"✓ ({len(audio)} bytes)")
+                resultados.append((voz, True))
+                
+            except Exception as e:
+                print(f"✗ Erro: {e}")
+                resultados.append((voz, False))
+        
+        # Resumo
+        sucesso = sum(1 for _, ok in resultados if ok)
+        print(f"\n✓ {sucesso}/{len(vozes)} vozes geradas com sucesso")
+        
+        return sucesso == len(vozes)
+        
+    except Exception as e:
+        print(f"✗ Erro: {e}")
+        return False
+
+
+def test_estilos():
+    """Teste 4: Testar diferentes estilos."""
+    print("\n" + "=" * 70)
+    print("TESTE 4: Diferentes Estilos")
+    print("=" * 70)
+    
+    try:
+        generator = get_tts_generator()
+        
+        estilos = ["normal", "fast", "slow", "cheerful", "serious"]
+        texto = "Teste de estilo"
+        
+        print(f"\nGerando áudio em {len(estilos)} estilos...")
+        
+        resultados = []
+        for estilo in estilos:
+            try:
+                print(f"\n  🎨 {estilo}...", end=" ", flush=True)
+                
+                audio = generator.generate_speech(
+                    text=texto,
+                    voice_model="Zephyr",
+                    style=estilo
+                )
+                
+                if not audio:
+                    print("✗ Nenhum áudio")
+                    resultados.append((estilo, False))
+                    continue
+                
+                # Salvar
+                output_file = Path(f"teste_estilo_{estilo}.wav")
+                with open(output_file, "wb") as f:
+                    f.write(audio)
+                
+                print(f"✓ ({len(audio)} bytes)")
+                resultados.append((estilo, True))
+                
+            except Exception as e:
+                print(f"✗ Erro: {e}")
+                resultados.append((estilo, False))
+        
+        # Resumo
+        sucesso = sum(1 for _, ok in resultados if ok)
+        print(f"\n✓ {sucesso}/{len(estilos)} estilos geraram áudio com sucesso")
+        
+        return sucesso == len(estilos)
+        
+    except Exception as e:
+        print(f"✗ Erro: {e}")
+        return False
+
+
+def test_idiomas():
+    """Teste 5: Testar diferentes idiomas."""
+    print("\n" + "=" * 70)
+    print("TESTE 5: Diferentes Idiomas")
+    print("=" * 70)
+    
+    try:
+        generator = get_tts_generator()
+        
+        textos_por_idioma = {
+            "pt-BR": "Olá mundo! Este é um teste em português.",
+            "en-US": "Hello world! This is a test in English.",
+            "es-ES": "¡Hola mundo! Esta es una prueba en español.",
+        }
+        
+        print(f"\nGerando áudio em {len(textos_por_idioma)} idiomas...")
+        
+        resultados = []
+        for idioma, texto in textos_por_idioma.items():
+            try:
+                print(f"\n  🌍 {idioma}...", end=" ", flush=True)
+                
+                audio = generator.generate_speech(
+                    text=texto,
+                    voice_model="Zephyr",
+                    language=idioma
+                )
+                
+                if not audio:
+                    print("✗ Nenhum áudio")
+                    resultados.append((idioma, False))
+                    continue
+                
+                # Salvar
+                output_file = Path(f"teste_idioma_{idioma.replace('-', '_')}.wav")
+                with open(output_file, "wb") as f:
+                    f.write(audio)
+                
+                print(f"✓ ({len(audio)} bytes)")
+                resultados.append((idioma, True))
+                
+            except Exception as e:
+                print(f"✗ Erro: {e}")
+                resultados.append((idioma, False))
+        
+        # Resumo
+        sucesso = sum(1 for _, ok in resultados if ok)
+        print(f"\n✓ {sucesso}/{len(textos_por_idioma)} idiomas geraram áudio com sucesso")
+        
+        return sucesso == len(textos_por_idioma)
+        
+    except Exception as e:
+        print(f"✗ Erro: {e}")
+        return False
+
+
+def test_texto_vazio():
+    """Teste 6: Validação de texto vazio."""
+    print("\n" + "=" * 70)
+    print("TESTE 6: Validação de Texto Vazio")
+    print("=" * 70)
+    
+    try:
+        generator = get_tts_generator()
+        
+        print("\nTentando gerar áudio com texto vazio...")
+        
+        try:
+            audio = generator.generate_speech("")
+            print("✗ Deveria ter lançado exceção para texto vazio")
+            return False
+        except ValueError as e:
+            print(f"✓ Exceção capturada corretamente: {e}")
+            return True
+        
+    except Exception as e:
+        print(f"✗ Erro inesperado: {e}")
+        return False
+
+
+def test_qualidade_wav():
+    """Teste 7: Validar qualidade do arquivo WAV."""
+    print("\n" + "=" * 70)
+    print("TESTE 7: Qualidade do Arquivo WAV")
+    print("=" * 70)
+    
+    try:
+        generator = get_tts_generator()
+        
+        audio = generator.generate_speech("Teste de qualidade")
+        
+        if len(audio) < 44:
+            print(f"✗ Arquivo WAV muito pequeno: {len(audio)} bytes (mínimo 44)")
+            return False
+        
+        # Validar header WAV
+        if audio[:4] != b"RIFF":
+            print("✗ Header RIFF inválido")
+            return False
+        
+        if audio[8:12] != b"WAVE":
+            print("✗ Header WAVE inválido")
+            return False
+        
+        print(f"✓ Arquivo WAV válido")
+        print(f"  Tamanho: {len(audio)} bytes")
+        print(f"  Header RIFF: {audio[:4]}")
+        print(f"  Header WAVE: {audio[8:12]}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"✗ Erro: {e}")
+        return False
+
+
+# ============================================================================
+# EXECUTAR TESTES
+# ============================================================================
+
+def main():
+    """Executar todos os testes."""
+    print("\n" + "=" * 70)
+    print("🧪 TESTES DO NOVO GERADOR TTS")
+    print("=" * 70)
+    
+    # Verificar API Key
+    print("\nVerificando API Key...")
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("⚠️  GEMINI_API_KEY não configurada")
+        print("   Configure com: export GEMINI_API_KEY='sua-chave'")
+        print("   Ou passe ao inicializar: TTSGenerator(api_key='sua-chave')")
+        print("\nContinuando (pode falhar)...\n")
+    else:
+        print("✓ GEMINI_API_KEY encontrada\n")
+    
+    # Executar testes
+    testes = [
+        ("Inicialização", test_inicializacao),
+        ("Áudio Básico", test_audio_basico),
+        ("Vozes Diferentes", test_vozes),
+        ("Estilos Diferentes", test_estilos),
+        ("Idiomas Diferentes", test_idiomas),
+        ("Texto Vazio", test_texto_vazio),
+        ("Qualidade WAV", test_qualidade_wav),
+    ]
+    
+    resultados = []
+    for nome, teste in testes:
+        try:
+            resultado = teste()
+            resultados.append((nome, resultado))
+        except KeyboardInterrupt:
+            print("\n\n✗ Interrompido pelo usuário")
+            break
+        except Exception as e:
+            print(f"\n✗ Erro não tratado: {e}")
+            resultados.append((nome, False))
+    
+    # Resumo Final
+    print("\n" + "=" * 70)
+    print("📊 RESUMO DOS TESTES")
+    print("=" * 70)
+    
+    for nome, resultado in resultados:
+        status = "✓ PASSOU" if resultado else "✗ FALHOU"
+        print(f"  {status}: {nome}")
+    
+    total = len(resultados)
+    sucessos = sum(1 for _, ok in resultados if ok)
+    porcentagem = (sucessos / total * 100) if total > 0 else 0
+    
+    print(f"\nResultado: {sucessos}/{total} testes passaram ({porcentagem:.0f}%)")
+    
+    if sucessos == total:
+        print("\n🎉 TODOS OS TESTES PASSARAM!")
+        return 0
+    else:
+        print("\n⚠️  ALGUNS TESTES FALHARAM")
+        return 1
+
+
+if __name__ == "__main__":
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except Exception as e:
+        print(f"\n✗ Erro fatal: {e}")
+        sys.exit(1)

@@ -153,6 +153,50 @@
             transition: all 0.3s ease;
         }
 
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+            border: none !important;
+            color: white !important;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+            border: none !important;
+            color: white !important;
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669) !important;
+            border: none !important;
+            color: white !important;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #06b6d4, #0891b2) !important;
+            border: none !important;
+            color: white !important;
+        }
+
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+        }
+
         .back-btn:hover {
             background: var(--primary-color);
             transform: translateY(-2px);
@@ -181,6 +225,187 @@
         .waveform:hover {
             background: rgba(99, 102, 241, 0.2);
             transform: scale(1.02);
+        }
+
+        .track-card {
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(71, 85, 105, 0.7);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .track-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .track-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .track-title strong {
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        .track-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .track-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .track-waveform {
+            width: 100%;
+            height: 140px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+            border: 1px solid rgba(99, 102, 241, 0.17);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        .track-controls {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .track-volume-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+        }
+
+        .track-volume-group input[type="range"] {
+            width: 100%;
+        }
+
+        .track-volume-label {
+            min-width: 52px;
+            text-align: right;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .track-actions button {
+            border: none;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .track-actions button:hover {
+            background: rgba(99, 102, 241, 0.2);
+        }
+
+        .track-actions button i {
+            font-size: 0.95rem;
+        }
+
+        .track-audio-preview {
+            width: 100%;
+            margin-top: 0.75rem;
+        }
+
+        .track-empty-state {
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 2rem;
+            border: 1px dashed rgba(71, 85, 105, 0.8);
+            border-radius: 16px;
+            background: rgba(15, 23, 42, 0.6);
+            margin-bottom: 1rem;
+        }
+
+        .track-empty-state i {
+            font-size: 2rem;
+            color: #64748b;
+            margin-bottom: 0.75rem;
+        }
+
+        .track-empty-state p {
+            margin: 0;
+            color: #94a3b8;
+        }
+
+        .player-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: var(--primary-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .player-btn:hover {
+            background: var(--secondary-color);
+            transform: scale(1.05);
+        }
+
+        .player-btn.playing {
+            background: var(--accent-color);
+        }
+
+        .player-time {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-family: monospace;
+            margin-left: auto;
+        }
+
+        .auto-fade-indicator {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: rgba(16, 185, 129, 0.9);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            z-index: 1;
+        }
+
+        @media (max-width: 768px) {
+            .track-controls {
+                grid-template-columns: 1fr;
+            }
+
+            .track-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
         }
 
         .track-player-controls {
@@ -259,6 +484,22 @@
                     <p class="mb-0 text-muted">Estúdio de áudio com geração de voz IA integrada</p>
                 </div>
                 <div class="col-md-6 text-md-end">
+                    <button class="btn btn-primary me-2" onclick="window.generateVoiceFromHeader()">
+                        <i class="fas fa-magic me-1"></i>
+                        Gerar Voz
+                    </button>
+                    <button class="btn btn-warning me-2" onclick="window.minidawReact.mixAll()">
+                        <i class="fas fa-sliders-h me-1"></i>
+                        Mixar Tudo
+                    </button>
+                    <button class="btn btn-success me-2" onclick="window.minidawReact.saveProject()">
+                        <i class="fas fa-save me-1"></i>
+                        Salvar Projeto
+                    </button>
+                    <button class="btn btn-info me-2" onclick="window.minidawReact.loadProject()">
+                        <i class="fas fa-folder-open me-1"></i>
+                        Carregar Projeto
+                    </button>
                     <a href="/" class="back-btn me-2">
                         <i class="fas fa-arrow-left"></i>
                         Voltar ao Locutores IA
@@ -356,7 +597,8 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/minidaw-integrated.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
+    <script src="/static/minidaw-react-app.js"></script>
     
     <!-- Load Components -->
     <script>
@@ -412,8 +654,8 @@
 
         // Função de exportação
         function exportMix() {
-            if (miniDAW) {
-                miniDAW.exportMix();
+            if (window.minidawReact) {
+                window.minidawReact.exportMix();
             } else {
                 alert('MiniDAW não está carregada');
             }

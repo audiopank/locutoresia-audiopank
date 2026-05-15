@@ -516,53 +516,49 @@ def generate_audio():
         if not data or 'text' not in data:
             return jsonify({'error': 'Texto não fornecido'}), 400
         text = data['text']
-        voice_model = data.get('voice', 'Sadachbia')
+        voice_model = data.get('voice', 'Zephyr')
         style = data.get('style', 'normal')
         language = data.get('language', 'pt-BR')
-        provider = data.get('provider', 'gemini')
+        api = data.get('api', data.get('provider', 'auto'))
+        
+        # Mapear 'gemini' para 'google'
+        if api == 'gemini':
+            api = 'google'
         if len(text.strip()) == 0:
             return jsonify({'error': 'Texto não pode estar vazio'}), 400
         if len(text) > 5000:
             return jsonify({'error': 'Texto muito longo (máximo 5000 caracteres)'}), 400
         
-        # Se provider for elevenlabs, use ElevenLabs diretamente
-        if provider == 'elevenlabs':
-            try:
-                from core.elevenlabs_voice_cloner import ElevenLabsVoiceCloner
-                cloner = ElevenLabsVoiceCloner()
-                audio_data = cloner.synthesize_with_cloned_voice(voice_model, text)
-            except ImportError:
-                try:
-                    from elevenlabs_voice_cloner import ElevenLabsVoiceCloner
-                    cloner = ElevenLabsVoiceCloner()
-                    audio_data = cloner.synthesize_with_cloned_voice(voice_model, text)
-                except Exception as e:
-                    return jsonify({'error': f'Módulo ElevenLabs não disponível: {str(e)}'}), 500
-        else:
-            # Importar TTSGenerator diretamente do diretório pai
-            try:
-                core_dir = os.path.join(os.path.dirname(__file__), '..', 'core')
-                if core_dir not in sys.path:
-                    sys.path.insert(0, core_dir)
-                
-                from tts_generator import TTSGenerator
-                tts = TTSGenerator()
-                print(f"✅ TTSGenerator carregado com sucesso!")
-            except Exception as e:
-                print(f"❌ Erro ao importar TTS: {type(e).__name__}: {e}")
-                import traceback
-                traceback.print_exc()
-                return jsonify({'error': f'Módulo TTS não disponível: {str(e)}'}), 500
+        # Importar TTSGenerator diretamente do diretório pai
+        try:
+            core_dir = os.path.join(os.path.dirname(__file__), '..', 'core')
+            if core_dir not in sys.path:
+                sys.path.insert(0, core_dir)
             
-            try:
-                audio_data = tts.generate_speech(text=text, voice_model=voice_model, style=style, language=language)
-            except Exception as e:
-                print(f"❌ Erro ao gerar áudio: {type(e).__name__}: {e}")
-                import traceback
-                traceback.print_exc()
-                return jsonify({'error': f'Erro ao gerar áudio: {str(e)}'}), 500
+            from tts_generator import TTSGenerator
+            tts = TTSGenerator()
+            print(f"✅ TTSGenerator carregado com sucesso!")
+        except Exception as e:
+            print(f"❌ Erro ao importar TTS: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Módulo TTS não disponível: {str(e)}'}), 500
         
-        filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{'mp3' if provider == 'elevenlabs' else 'wav'}"
+        try:
+            audio_data = tts.generate_speech(
+                text=text, 
+                voice_model=voice_model, 
+                style=style, 
+                language=language,
+                api=api
+            )
+        except Exception as e:
+            print(f"❌ Erro ao gerar áudio: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Erro ao gerar áudio: {str(e)}'}), 500
+        
+        filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         with open(filepath, 'wb') as f:
             f.write(audio_data)
@@ -586,23 +582,48 @@ def download_file(filename):
 
 @app.route('/api/voices')
 def get_voices():
-    """Lista de vozes disponíveis, incluindo as do Gemini 3.1 Flash TTS"""
+    """Lista de vozes disponíveis - Google Gemini + ElevenLabs"""
     voices = [
-        # Vozes do Gemini (prebuilt)
-        {"id": "Sadachbia", "name": "Sadachbia (Gemini)", "language": "pt-BR", "gender": "male"},
-        {"id": "Puck", "name": "Puck (Gemini)", "language": "pt-BR", "gender": "female"},
-        {"id": "Charon", "name": "Charon (Gemini)", "language": "pt-BR", "gender": "male"},
-        {"id": "Kore", "name": "Kore (Gemini)", "language": "pt-BR", "gender": "female"},
-        {"id": "Lira", "name": "Lira (Gemini)", "language": "pt-BR", "gender": "female"},
-        {"id": "Nova", "name": "Nova (Gemini)", "language": "pt-BR", "gender": "female"},
-        {"id": "Onyx", "name": "Onyx (Gemini)", "language": "pt-BR", "gender": "male"},
-        {"id": "Fenrir", "name": "Fenrir (Gemini)", "language": "pt-BR", "gender": "male"},
-        {"id": "Vega", "name": "Vega (Gemini)", "language": "pt-BR", "gender": "male"},
-        {"id": "Shamash", "name": "Shamash (Gemini)", "language": "pt-BR", "gender": "male"},
-        # Vozes Edge TTS (compatibilidade)
-        {"id": "pt-BR-AntonioNeural", "name": "Antonio (Edge TTS)", "language": "pt-BR", "gender": "male"},
-        {"id": "pt-BR-FranciscaNeural", "name": "Francisca (Edge TTS)", "language": "pt-BR", "gender": "female"},
-        {"id": "pt-BR-DanielNeural", "name": "Daniel (Edge TTS)", "language": "pt-BR", "gender": "male"}
+        # Vozes do Google Gemini (30 opções)
+        {"id": "Zephyr", "name": "Zephyr - Bright", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Puck", "name": "Puck - Upbeat", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Charon", "name": "Charon - Informative", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Kore", "name": "Kore - Firm", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Fenrir", "name": "Fenrir - Excitable", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Leda", "name": "Leda - Youthful", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Orus", "name": "Orus - Firm", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Aoede", "name": "Aoede - Breezy", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Callirrhoe", "name": "Callirrhoe - Easy-going", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Autonoe", "name": "Autonoe - Bright", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Enceladus", "name": "Enceladus - Breathy", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Iapetus", "name": "Iapetus - Clear", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Umbriel", "name": "Umbriel - Easy-going", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Algieba", "name": "Algieba - Smooth", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Despina", "name": "Despina - Smooth", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Erinome", "name": "Erinome - Clear", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Algenib", "name": "Algenib - Gravelly", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Rasalgethi", "name": "Rasalgethi - Informative", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Laomedeia", "name": "Laomedeia - Upbeat", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Achernar", "name": "Achernar - Soft", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Alnilam", "name": "Alnilam - Firm", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Schedar", "name": "Schedar - Even", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Gacrux", "name": "Gacrux - Mature", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Pulcherrima", "name": "Pulcherrima - Forward", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Achird", "name": "Achird - Friendly", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Zubenelgenubi", "name": "Zubenelgenubi - Casual", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Vindemiatrix", "name": "Vindemiatrix - Gentle", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Sadachbia", "name": "Sadachbia - Lively", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Sadaltager", "name": "Sadaltager - Knowledgeable", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Sulafat", "name": "Sulafat - Warm", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        # Vozes do ElevenLabs
+        {"id": "Elena", "name": "Elena (ElevenLabs)", "language": "pt-BR", "gender": "female", "provider": "elevenlabs"},
+        {"id": "Mateus", "name": "Mateus (ElevenLabs)", "language": "pt-BR", "gender": "male", "provider": "elevenlabs"},
+        {"id": "Lucas", "name": "Lucas (ElevenLabs)", "language": "pt-BR", "gender": "male", "provider": "elevenlabs"},
+        {"id": "Isabella", "name": "Isabella (ElevenLabs)", "language": "pt-BR", "gender": "female", "provider": "elevenlabs"},
+        {"id": "Adam", "name": "Adam (ElevenLabs)", "language": "pt-BR", "gender": "male", "provider": "elevenlabs"},
+        {"id": "Liv", "name": "Liv (ElevenLabs)", "language": "pt-BR", "gender": "female", "provider": "elevenlabs"},
+        {"id": "Chris", "name": "Chris (ElevenLabs)", "language": "pt-BR", "gender": "male", "provider": "elevenlabs"},
+        {"id": "Patrick", "name": "Patrick (ElevenLabs)", "language": "pt-BR", "gender": "male", "provider": "elevenlabs"},
     ]
     return jsonify({'voices': voices})
 
