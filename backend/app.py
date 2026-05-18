@@ -133,6 +133,11 @@ def minidaw_react():
     """MiniDAW React Interface"""
     return render_template('minidaw-react.html')
 
+@app.route('/busca-noticias')
+def busca_noticias():
+    """Busca de Notícias + IA"""
+    return render_template('busca-noticias.html')
+
 @app.route('/noticias')
 def noticias():
     """Página de Notícias"""
@@ -1048,7 +1053,7 @@ def voxcraft_logs():
 # SOCIAL POSTS — Integração NewPost-IA
 # ============================================================
 # Desativado temporariamente para evitar erros de sintaxe
-HAS_SOCIAL_PUBLISHER = False
+HAS_SOCIAL_PUBLISHER = True
 social_publisher = None
 print("⚠️ Social Post Publisher desativado temporariamente")
 
