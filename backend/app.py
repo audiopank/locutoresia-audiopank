@@ -83,7 +83,7 @@ except ImportError:
     # Fallback caso a importação direta falhe
     try:
         import importlib.util
-        spec = importlib.util.spec_from_file_location("news_agent", os.path.join(os.path.dirname(__file__), '..', 'news_agent.py'))
+        spec = importlib.util.spec_from_file_location("news_agent", os.path.join(os.path.dirname(__file__), 'news_agent.py'))
         news_agent_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(news_agent_module)
         news_agent = news_agent_module.news_agent
