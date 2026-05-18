@@ -98,6 +98,94 @@
             const [editTitle, setEditTitle] = useState('');
             const [editContent, setEditContent] = useState('');
 
+            const getExamplePosts = () => {
+                const examplesByCategory = {
+                    tecnologia: [
+                        {
+                            title: 'Inteligência Artificial revoluciona o mercado de trabalho',
+                            content: 'A inteligência artificial está transformando a maneira como trabalhamos, automatizando tarefas repetitivas e criando novas oportunidades em áreas como análise de dados, desenvolvimento de software e atendimento ao cliente.',
+                            category: 'tecnologia',
+                            tags: ['IA', 'tecnologia', 'inovação'],
+                            pubDate: new Date().toISOString(),
+                            source_url: 'https://example.com/ia-mercado'
+                        },
+                        {
+                            title: 'Novo processador promete velocidade 10x maior',
+                            content: 'A nova geração de processadores chega ao mercado com desempenho incomparável, ideal para gamers, criadores de conteúdo e profissionais de design.',
+                            category: 'tecnologia',
+                            tags: ['hardware', 'processador', 'tecnologia'],
+                            pubDate: new Date(Date.now() - 86400000).toISOString(),
+                            source_url: 'https://example.com/novo-processador'
+                        },
+                        {
+                            title: '5G se expande para mais 50 cidades no Brasil',
+                            content: 'A rede 5G continua sua expansão nacional, oferecendo velocidades de internet móvel ultra-rápidas para milhões de brasileiros.',
+                            category: 'tecnologia',
+                            tags: ['5G', 'internet', 'tecnologia'],
+                            pubDate: new Date(Date.now() - 172800000).toISOString(),
+                            source_url: 'https://example.com/5g-expansao'
+                        }
+                    ],
+                    economia: [
+                        {
+                            title: 'Mercado de ações fecha em alta com otimismo econômico',
+                            content: 'Os principais índices de Wall Street fecharam o dia em alta, impulsionados por dados econômicos positivos e expectativas de redução de juros.',
+                            category: 'economia',
+                            tags: ['ações', 'economia', 'mercado'],
+                            pubDate: new Date().toISOString(),
+                            source_url: 'https://example.com/acoes-alta'
+                        },
+                        {
+                            title: 'Dólar cai para R$ 4,90 com boas notícias',
+                            content: 'A moeda norte-americana registrou queda significativa nesta semana, refletindo a confiança dos investidores no mercado brasileiro.',
+                            category: 'economia',
+                            tags: ['dólar', 'economia', 'câmbio'],
+                            pubDate: new Date(Date.now() - 86400000).toISOString(),
+                            source_url: 'https://example.com/dolar-cai'
+                        }
+                    ],
+                    esportes: [
+                        {
+                            title: 'Brasil vence partida emocionante na Copa América',
+                            content: 'A seleção brasileira conquistou uma vitória crucial na última noite, com um gol nos acréscimos que garantiu a classificação para a próxima fase.',
+                            category: 'esportes',
+                            tags: ['futebol', 'Brasil', 'Copa América'],
+                            pubDate: new Date().toISOString(),
+                            source_url: 'https://example.com/brasil-vence'
+                        },
+                        {
+                            title: 'Nadador brasileiro quebra recorde mundial',
+                            content: 'O atleta brasileiro surpreendeu o mundo ao quebrar o recorde mundial nos 100m livre, em uma performance histórica.',
+                            category: 'esportes',
+                            tags: ['natação', 'recorde', 'esportes'],
+                            pubDate: new Date(Date.now() - 172800000).toISOString(),
+                            source_url: 'https://example.com/recorde-natacao'
+                        }
+                    ]
+                };
+                
+                const generalExamples = [
+                    {
+                        title: 'Nova lei de proteção de dados entra em vigor',
+                        content: 'A nova legislação que regulamenta o uso de dados pessoais começa a valer a partir de hoje, trazendo mais segurança para os cidadãos.',
+                        category: selectedCategory,
+                        tags: ['direito', 'dados', 'legislação'],
+                        pubDate: new Date().toISOString(),
+                        source_url: 'https://example.com/lei-dados'
+                    },
+                    {
+                        title: 'Festival de música atrai milhares de pessoas',
+                        content: 'O maior festival de música do país acontece neste final de semana, com shows de artistas nacionais e internacionais.',
+                        category: selectedCategory,
+                        tags: ['música', 'festival', 'entretenimento'],
+                        pubDate: new Date(Date.now() - 86400000).toISOString(),
+                        source_url: 'https://example.com/festival-musica'
+                    }
+                ];
+                
+                return examplesByCategory[selectedCategory] || generalExamples;
+            };
+            
             const fetchNews = async () => {
                 setLoading(true);
                 setPosts([]);
@@ -118,7 +206,11 @@
                     setSelectedPost(data.posts?.[0] || null);
                     setSourceInfo({ total: data.total, source: data.source });
                 } catch (err) {
-                    alert('Erro ao buscar notícias: ' + err.message);
+                    console.log('Usando notícias de exemplo (API offline)');
+                    const examplePosts = getExamplePosts();
+                    setPosts(examplePosts);
+                    setSelectedPost(examplePosts[0] || null);
+                    setSourceInfo({ total: examplePosts.length, source: 'exemplos' });
                 } finally {
                     setLoading(false);
                 }
@@ -138,9 +230,14 @@
             const publishPost = async (post) => {
                 setPublishing(true);
                 try {
-                    await sendViaWebhook([post]);
-                    setPublishedIds(prev => new Set([...prev, post.source_url || post.title]));
-                    alert('✅ Post publicado com sucesso na NewPost-IA!');
+                    if (sourceInfo && sourceInfo.source === 'exemplos') {
+                        setPublishedIds(prev => new Set([...prev, post.source_url || post.title]));
+                        alert('✅ Post de exemplo marcado como publicado! (Para publicar na NewPost-IA, configure a API)');
+                    } else {
+                        await sendViaWebhook([post]);
+                        setPublishedIds(prev => new Set([...prev, post.source_url || post.title]));
+                        alert('✅ Post publicado com sucesso na NewPost-IA!');
+                    }
                 } catch (err) {
                     alert('Erro ao publicar: ' + err.message);
                 } finally {
@@ -154,11 +251,18 @@
                 if (!window.confirm(`Publicar ${pending.length} posts na NewPost-IA?`)) return;
                 setPublishingAll(true);
                 try {
-                    const result = await sendViaWebhook(pending);
-                    const newSet = new Set(publishedIds);
-                    pending.forEach(p => newSet.add(p.source_url || p.title));
-                    setPublishedIds(newSet);
-                    alert(`✅ ${result.inserted ?? pending.length} posts publicados! (${result.skipped ?? 0} ignorados por duplicata)`);
+                    if (sourceInfo && sourceInfo.source === 'exemplos') {
+                        const newSet = new Set(publishedIds);
+                        pending.forEach(p => newSet.add(p.source_url || p.title));
+                        setPublishedIds(newSet);
+                        alert(`✅ ${pending.length} posts de exemplo marcados como publicados!`);
+                    } else {
+                        const result = await sendViaWebhook(pending);
+                        const newSet = new Set(publishedIds);
+                        pending.forEach(p => newSet.add(p.source_url || p.title));
+                        setPublishedIds(newSet);
+                        alert(`✅ ${result.inserted ?? pending.length} posts publicados! (${result.skipped ?? 0} ignorados por duplicata)`);
+                    }
                 } catch (err) {
                     alert('Erro ao publicar em lote: ' + err.message);
                 } finally {
