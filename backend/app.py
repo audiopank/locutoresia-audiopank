@@ -1432,10 +1432,11 @@ def api_calendar_schedule():
 
 @app.route('/api/social/posts', methods=['GET'])
 def api_list_social_posts():
-    """Lista todos os SocialPosts (usando Supabase real)"""
+    """Lista todos os SocialPosts (usando Supabase real) - filtrados para nossos posts"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1449,18 +1450,56 @@ def api_list_social_posts():
         status_filter = request.args.get('status')
         limit = int(request.args.get('limit', 50))
         
-        url = f"{supabase_url}/rest/v1/posts?select=*&order=created_at.desc&limit={limit}"
-        if status_filter:
-            url += f"&status=eq.{status_filter}"
+        # Mapear status de português para inglês para o filtro
+        status_map = {
+            'rascunho': 'draft',
+            'pendente': 'pending',
+            'aprovado': 'approved',
+            'rejeitado': 'rejected',
+            'publicado': 'published',
+            'agendado': 'scheduled',
+            'erro': 'error'
+        }
+        status_filter_en = status_map.get(status_filter, status_filter) if status_filter else None
+        
+        # Filtrar por author_id = NEWPOST_AUTHOR_ID
+        url = f"{supabase_url}/rest/v1/posts?select=*&order=created_at.desc&limit={limit}&author_id=eq.{newpost_author_id}"
+        if status_filter_en:
+            url += f"&status=eq.{status_filter_en}"
         
         response = requests.get(url, headers=headers, timeout=10)
         
         if response.status_code in (200, 201):
             posts = response.json()
-            # Garantir que os posts têm o campo 'caption'
-            for post in posts:
+            print(f"\n[DEBUG] ===== Posts do Supabase (antes do mapeamento) =====")
+            for i, post in enumerate(posts[:5]):
+                print(f"\n[DEBUG] Post {i+1}:")
+                print(f"  ID: {post.get('id')}")
+                print(f"  Title: {post.get('title', 'N/A')[:40]}")
+                print(f"  Status (original): {repr(post.get('status'))}")
+                print(f"  All keys: {list(post.keys())}")
+            
+            # Mapear status de inglês para português e garantir campo 'caption'
+            status_map_reverse = {
+                'draft': 'rascunho',
+                'pending': 'pendente',
+                'approved': 'aprovado',
+                'rejected': 'rejeitado',
+                'published': 'publicado',
+                'scheduled': 'agendado',
+                'error': 'erro'
+            }
+            print(f"\n[DEBUG] ===== Aplicando mapeamento =====")
+            for i, post in enumerate(posts[:5]):
                 if 'caption' not in post and 'content' in post:
                     post['caption'] = post['content']
+                if 'status' in post:
+                    original_status = post['status']
+                    post['status'] = status_map_reverse.get(post['status'], post['status'])
+                    print(f"[DEBUG] Post {i+1}: {original_status} → {post['status']}")
+                else:
+                    print(f"[DEBUG] Post {i+1}: SEM CAMPO STATUS!")
+            print(f"\n[DEBUG] ===== Fim do mapeamento =====\n")
             return jsonify({"success": True, "posts": posts})
         else:
             return jsonify({"success": False, "error": f"Erro ao buscar posts: {response.status_code}"}), response.status_code
@@ -1478,7 +1517,7 @@ def api_create_social_post():
 
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1490,15 +1529,27 @@ def api_create_social_post():
             'Prefer': 'return=representation'
         }
         
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
+        
+        # Mapear status de português para inglês
+        status_map = {
+            'rascunho': 'draft',
+            'pendente': 'pending',
+            'aprovado': 'approved',
+            'rejeitado': 'rejected',
+            'publicado': 'published',
+            'agendado': 'scheduled',
+            'erro': 'error'
+        }
+        status_pt = data.get('status', 'rascunho')
+        status_en = status_map.get(status_pt, 'draft')
+        
         post_data = {
+            'author_id': newpost_author_id,
             'title': data.get('title', ''),
             'content': data.get('caption', ''),
-            'source_url': data.get('source_url', ''),
-            'audio_url': data.get('audio_url', ''),
-            'image_url': data.get('image_url', ''),
-            'status': data.get('status', 'draft'),
-            'hashtags': data.get('hashtags', ['noticia', 'brasil']),
-            'ai_caption_generated': data.get('ai_caption_generated', False),
+            'status': status_en,
+            'is_ia_generated': True,
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
@@ -1510,6 +1561,9 @@ def api_create_social_post():
             timeout=10
         )
         
+        print(f"[DEBUG] Status Code: {response.status_code}")
+        print(f"[DEBUG] Response: {response.text}")
+        
         if response.status_code in (200, 201):
             result = response.json()
             post_id = result[0].get('id') if isinstance(result, list) and result else None
@@ -1519,7 +1573,8 @@ def api_create_social_post():
                 "message": "Rascunho salvo no Supabase"
             }), 201
         else:
-            return jsonify({"success": False, "error": f"Erro ao salvar no Supabase: {response.status_code}"}), response.status_code
+            error_detail = response.text
+            return jsonify({"success": False, "error": f"Erro ao salvar no Supabase: {response.status_code} - {error_detail}"}), response.status_code
             
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -1531,7 +1586,7 @@ def api_get_social_post(post_id):
     """Obtém um SocialPost pelo ID (usando Supabase real)"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1569,7 +1624,7 @@ def api_update_social_post(post_id):
     """Atualiza campos de um SocialPost (usando Supabase real)"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1621,7 +1676,7 @@ def api_approve_social_post(post_id):
     """Aprova um SocialPost para publicação (usando Supabase real)"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1635,7 +1690,7 @@ def api_approve_social_post(post_id):
         
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-            json={"status": "aprovado", "updated_at": datetime.now(timezone.utc).isoformat()},
+            json={"status": "approved", "updated_at": datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
@@ -1654,7 +1709,7 @@ def api_reject_social_post(post_id):
     """Rejeita um SocialPost (usando Supabase real)"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1668,7 +1723,7 @@ def api_reject_social_post(post_id):
         
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-            json={"status": "rejeitado", "updated_at": datetime.now(timezone.utc).isoformat()},
+            json={"status": "rejected", "updated_at": datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
@@ -1687,7 +1742,7 @@ def api_publish_social_post(post_id):
     """Publica um SocialPost aprovado na NewPost-IA (usando Supabase real)"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1701,7 +1756,7 @@ def api_publish_social_post(post_id):
         
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-            json={"status": "publicado", "updated_at": datetime.now(timezone.utc).isoformat()},
+            json={"status": "published", "updated_at": datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
@@ -1720,7 +1775,7 @@ def api_delete_social_post(post_id):
     """Deleta um SocialPost (usando Supabase real)"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -2550,7 +2605,8 @@ def handle_publications():
     # GET - Listar publicações
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -2562,17 +2618,28 @@ def handle_publications():
         }
         
         response = requests.get(
-            f"{supabase_url}/rest/v1/posts?order=created_at.desc&limit=50",
+            f"{supabase_url}/rest/v1/posts?order=created_at.desc&limit=50&author_id=eq.{newpost_author_id}",
             headers=headers,
             timeout=10
         )
         
         if response.status_code == 200:
             posts = response.json()
-            # Garantir que os posts têm o campo 'caption'
+            # Mapear status de inglês para português e garantir campo 'caption'
+            status_map_reverse = {
+                'draft': 'rascunho',
+                'pending': 'pendente',
+                'approved': 'aprovado',
+                'rejected': 'rejeitado',
+                'published': 'publicado',
+                'scheduled': 'agendado',
+                'error': 'erro'
+            }
             for post in posts:
                 if 'caption' not in post and 'content' in post:
                     post['caption'] = post['content']
+                if 'status' in post:
+                    post['status'] = status_map_reverse.get(post['status'], post['status'])
             return jsonify({
                 "success": True,
                 "total": len(posts),
@@ -2594,10 +2661,10 @@ def update_publication(id):
         data = request.get_json()
         
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
-            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+            return jsonify({"success": False, "error": "Credenciais Supabase configuradas"}), 200
         
         headers = {
             'apikey': supabase_key,
@@ -2633,7 +2700,7 @@ def approve_publication(id):
     """Aprova uma publicação (usando Supabase real)"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -2673,7 +2740,7 @@ def publish_to_newpost_route(id):
     """Publica um post diretamente na NewPost-IA (usando Supabase real)"""
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500

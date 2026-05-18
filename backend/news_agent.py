@@ -142,6 +142,44 @@ class NewsAgent:
             self.log_error(f"Erro ao coletar de {source_key}: {str(e)}", "fetch")
             return []
     
+    def execute_collection(self, enabled_sources=None, categories=None, limit=50):
+        """Executa coleta de notícias (compatível com o frontend)"""
+        self.log_info("Iniciando coleta de notícias via execute_collection")
+        
+        all_news = []
+        sources_to_use = enabled_sources or {
+            "exame": True, "veja": True, "folha": True, "g1": True
+        }
+        categories_to_use = categories or ['tecnologia', 'economia', 'brasil']
+        
+        for source_key, source_config in NEWS_SOURCES.items():
+            if not sources_to_use.get(source_key, True):
+                continue
+                
+            for category in source_config["categories"]:
+                if category not in categories_to_use:
+                    continue
+                    
+                news_batch = self.collect_from_source(source_key, category)
+                all_news.extend(news_batch)
+                
+                if len(all_news) >= limit:
+                    break
+                    
+            if len(all_news) >= limit:
+                break
+                
+        # Limitar ao número solicitado
+        all_news = all_news[:limit]
+        
+        self.log_info(f"execute_collection: {len(all_news)} notícias coletadas")
+        
+        return {
+            "success": True,
+            "news": all_news,
+            "count": len(all_news)
+        }
+        
     def run_cycle(self) -> Dict:
         """Executa ciclo completo de coleta e publicação (Consolidado)"""
         self.log_info("Iniciando ciclo multicanal consolidado (status: draft)")
@@ -226,20 +264,6 @@ def main():
 
 # Instância global do NewsAgent
 news_agent = NewsAgent()
-
-# Função principal para execução
-def main():
-    """Função principal para executar o agente de notícias"""
-    agent = NewsAgent()
-    result = agent.run_cycle()
-    
-    print("\n=== RESUMO DA EXECUÇÃO ===")
-    print(f"Status: {result['status']}")
-    print(f"Notícias coletadas: {result['ESTATISTICAS']['news_collected']}")
-    print(f"Notícias publicadas: {result['ESTATISTICAS']['news_published']}")
-    print(f"Duplicatas removidas: {result['ESTATISTICAS']['duplicates_found']}")
-    print(f"Tempo de execução: {result['ESTATISTICAS']['execution_time_seconds']:.2f} segundos")
-    print("=== FIM ===")
 
 if __name__ == "__main__":
     main()

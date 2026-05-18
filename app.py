@@ -16,3 +16,10 @@ class Handler:
         return app(environ, start_response)
 
 handler = Handler()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    print("Iniciando Locutores IA Server...")
+    print("Acesse: http://localhost:5000")
+    print("Dashboard: http://localhost:5000/dashboard")
+    app.run(host='0.0.0.0', port=port, debug=True)
