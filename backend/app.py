@@ -168,6 +168,11 @@ def news_auto_post():
     """Dashboard de Automação de Notícias - News Auto Post"""
     return render_template('news-auto-post.html')
 
+@app.route('/voice-cloning')
+def voice_cloning():
+    """Voice Cloning - Clonagem de Voz"""
+    return render_template('minidaw-react.html')
+
 @app.route('/api/news/collect', methods=['POST'])
 def collect_news():
     """Endpoint para iniciar coleta de notícias"""
