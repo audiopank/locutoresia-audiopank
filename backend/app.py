@@ -1432,170 +1432,317 @@ def api_calendar_schedule():
 
 @app.route('/api/social/posts', methods=['GET'])
 def api_list_social_posts():
-    """Lista todos os SocialPosts (usando armazenamento em memória)"""
-    global social_posts_store
+    """Lista todos os SocialPosts (usando Supabase real)"""
     try:
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
         status_filter = request.args.get('status')
         limit = int(request.args.get('limit', 50))
         
-        filtered_posts = social_posts_store
+        url = f"{supabase_url}/rest/v1/posts?select=*&order=created_at.desc&limit={limit}"
         if status_filter:
-            filtered_posts = [p for p in social_posts_store if p.get('status') == status_filter]
+            url += f"&status=eq.{status_filter}"
         
-        filtered_posts = filtered_posts[:limit]
+        response = requests.get(url, headers=headers, timeout=10)
         
-        # Garantir que os posts têm os campos esperados pela socialpost.html
-        for post in filtered_posts:
-            if 'caption' not in post:
-                post['caption'] = post.get('content', '')
-        
-        return jsonify({"success": True, "posts": filtered_posts})
+        if response.status_code in (200, 201):
+            posts = response.json()
+            # Garantir que os posts têm o campo 'caption'
+            for post in posts:
+                if 'caption' not in post and 'content' in post:
+                    post['caption'] = post['content']
+            return jsonify({"success": True, "posts": posts})
+        else:
+            return jsonify({"success": False, "error": f"Erro ao buscar posts: {response.status_code}"}), response.status_code
             
     except Exception as e:
+        print(f"[DEBUG] Erro em api_list_social_posts: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts', methods=['POST'])
 def api_create_social_post():
-    """Cria um novo SocialPost"""
+    """Cria um novo SocialPost (usando Supabase real)"""
     data = request.get_json()
     if not data or not data.get('title'):
         return jsonify({"success": False, "error": "Título é obrigatório"}), 400
 
-    # Se social_publisher não estiver disponível, salvar na lista em memória
-    if not HAS_SOCIAL_PUBLISHER:
-        try:
-            import uuid
-            post_id = str(uuid.uuid4())
-            
-            new_post = {
-                'id': post_id,
-                'title': data.get('title', ''),
-                'caption': data.get('caption', ''),
-                'content': data.get('caption', ''),
-                'source_url': data.get('source_url', ''),
-                'audio_url': data.get('audio_url', ''),
-                'image_url': data.get('image_url', ''),
-                'status': data.get('status', 'rascunho'),
-                'hashtags': data.get('hashtags', ['noticia', 'brasil']),
-                'ai_caption_generated': data.get('ai_caption_generated', False),
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'updated_at': datetime.now(timezone.utc).isoformat()
-            }
-            
-            # Adicionar à lista de social_posts (para /api/social/posts)
-            social_posts_store.append(new_post)
-            
-            # Adicionar também à lista de publications (para News Auto Post)
-            publications_store.append(new_post)
-            
+    try:
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        post_data = {
+            'title': data.get('title', ''),
+            'content': data.get('caption', ''),
+            'source_url': data.get('source_url', ''),
+            'audio_url': data.get('audio_url', ''),
+            'image_url': data.get('image_url', ''),
+            'status': data.get('status', 'draft'),
+            'hashtags': data.get('hashtags', ['noticia', 'brasil']),
+            'ai_caption_generated': data.get('ai_caption_generated', False),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        response = requests.post(
+            f"{supabase_url}/rest/v1/posts",
+            json=post_data,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 201):
+            result = response.json()
+            post_id = result[0].get('id') if isinstance(result, list) and result else None
             return jsonify({
                 "success": True,
                 "post_id": post_id,
-                "message": "Rascunho salvo"
+                "message": "Rascunho salvo no Supabase"
             }), 201
-                
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+        else:
+            return jsonify({"success": False, "error": f"Erro ao salvar no Supabase: {response.status_code}"}), response.status_code
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 
 @app.route('/api/social/posts/<post_id>', methods=['GET'])
 def api_get_social_post(post_id):
-    """Obtém um SocialPost pelo ID (usando armazenamento em memória)"""
-    global social_posts_store
+    """Obtém um SocialPost pelo ID (usando Supabase real)"""
     try:
-        for post in social_posts_store:
-            if post.get('id') == post_id:
-                if 'caption' not in post:
-                    post['caption'] = post.get('content', '')
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.get(
+            f"{supabase_url}/rest/v1/posts?id=eq.{post_id}&select=*",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 201):
+            posts = response.json()
+            if posts:
+                post = posts[0]
+                if 'caption' not in post and 'content' in post:
+                    post['caption'] = post['content']
                 return jsonify({"success": True, "post": post})
-        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+            else:
+                return jsonify({"success": False, "error": "Post não encontrado"}), 404
+        else:
+            return jsonify({"success": False, "error": f"Erro ao buscar post: {response.status_code}"}), response.status_code
+            
     except Exception as e:
+        print(f"[DEBUG] Erro em api_get_social_post: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts/<post_id>', methods=['PATCH'])
 def api_update_social_post(post_id):
-    """Atualiza campos de um SocialPost (usando armazenamento em memória)"""
-    global social_posts_store
+    """Atualiza campos de um SocialPost (usando Supabase real)"""
     try:
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
         
-        for idx, post in enumerate(social_posts_store):
-            if post.get('id') == post_id:
-                if 'title' in data:
-                    social_posts_store[idx]['title'] = data['title']
-                if 'caption' in data:
-                    social_posts_store[idx]['caption'] = data['caption']
-                    social_posts_store[idx]['content'] = data['caption']
-                if 'audio_url' in data:
-                    social_posts_store[idx]['audio_url'] = data['audio_url']
-                if 'image_url' in data:
-                    social_posts_store[idx]['image_url'] = data['image_url']
-                if 'hashtags' in data:
-                    social_posts_store[idx]['hashtags'] = data['hashtags']
-                if 'status' in data:
-                    social_posts_store[idx]['status'] = data['status']
-                social_posts_store[idx]['updated_at'] = datetime.now(timezone.utc).isoformat()
-                return jsonify({"success": True, "message": "Post atualizado com sucesso"})
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
         
-        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+        update_data = {}
+        if 'title' in data:
+            update_data['title'] = data['title']
+        if 'caption' in data:
+            update_data['content'] = data['caption']
+        if 'audio_url' in data:
+            update_data['audio_url'] = data['audio_url']
+        if 'image_url' in data:
+            update_data['image_url'] = data['image_url']
+        if 'hashtags' in data:
+            update_data['hashtags'] = data['hashtags']
+        if 'status' in data:
+            update_data['status'] = data['status']
+        update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
+        
+        response = requests.patch(
+            f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
+            json=update_data,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Post atualizado com sucesso"})
+        else:
+            return jsonify({"success": False, "error": f"Erro ao atualizar post: {response.status_code}"}), response.status_code
+            
     except Exception as e:
+        print(f"[DEBUG] Erro em api_update_social_post: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts/<post_id>/approve', methods=['POST'])
 def api_approve_social_post(post_id):
-    """Aprova um SocialPost para publicação (usando armazenamento em memória)"""
-    global social_posts_store
+    """Aprova um SocialPost para publicação (usando Supabase real)"""
     try:
-        for idx, post in enumerate(social_posts_store):
-            if post.get('id') == post_id:
-                social_posts_store[idx]['status'] = 'aprovado'
-                social_posts_store[idx]['updated_at'] = datetime.now(timezone.utc).isoformat()
-                return jsonify({"success": True, "message": "Post aprovado com sucesso"})
-        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        response = requests.patch(
+            f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
+            json={"status": "aprovado", "updated_at": datetime.now(timezone.utc).isoformat()},
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Post aprovado com sucesso"})
+        else:
+            return jsonify({"success": False, "error": f"Erro ao aprovar post: {response.status_code}"}), response.status_code
+            
     except Exception as e:
+        print(f"[DEBUG] Erro em api_approve_social_post: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts/<post_id>/reject', methods=['POST'])
 def api_reject_social_post(post_id):
-    """Rejeita um SocialPost (usando armazenamento em memória)"""
-    global social_posts_store
+    """Rejeita um SocialPost (usando Supabase real)"""
     try:
-        for idx, post in enumerate(social_posts_store):
-            if post.get('id') == post_id:
-                social_posts_store[idx]['status'] = 'rejeitado'
-                social_posts_store[idx]['updated_at'] = datetime.now(timezone.utc).isoformat()
-                return jsonify({"success": True, "message": "Post rejeitado com sucesso"})
-        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        response = requests.patch(
+            f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
+            json={"status": "rejeitado", "updated_at": datetime.now(timezone.utc).isoformat()},
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Post rejeitado com sucesso"})
+        else:
+            return jsonify({"success": False, "error": f"Erro ao rejeitar post: {response.status_code}"}), response.status_code
+            
     except Exception as e:
+        print(f"[DEBUG] Erro em api_reject_social_post: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts/<post_id>/publish', methods=['POST'])
 def api_publish_social_post(post_id):
-    """Publica um SocialPost aprovado na NewPost-IA (usando armazenamento em memória)"""
-    global social_posts_store
+    """Publica um SocialPost aprovado na NewPost-IA (usando Supabase real)"""
     try:
-        for idx, post in enumerate(social_posts_store):
-            if post.get('id') == post_id:
-                social_posts_store[idx]['status'] = 'publicado'
-                social_posts_store[idx]['updated_at'] = datetime.now(timezone.utc).isoformat()
-                return jsonify({"success": True, "message": "Post publicado com sucesso"})
-        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        response = requests.patch(
+            f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
+            json={"status": "publicado", "updated_at": datetime.now(timezone.utc).isoformat()},
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Post publicado com sucesso"})
+        else:
+            return jsonify({"success": False, "error": f"Erro ao publicar post: {response.status_code}"}), response.status_code
+            
     except Exception as e:
+        print(f"[DEBUG] Erro em api_publish_social_post: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts/<post_id>', methods=['DELETE'])
 def api_delete_social_post(post_id):
-    """Deleta um SocialPost (usando armazenamento em memória)"""
-    global social_posts_store
+    """Deleta um SocialPost (usando Supabase real)"""
     try:
-        for idx, post in enumerate(social_posts_store):
-            if post.get('id') == post_id:
-                social_posts_store.pop(idx)
-                return jsonify({"success": True, "message": "Post deletado com sucesso"})
-        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        response = requests.delete(
+            f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Post deletado com sucesso"})
+        else:
+            return jsonify({"success": False, "error": f"Erro ao deletar post: {response.status_code}"}), response.status_code
+            
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -2341,86 +2488,219 @@ def newpost_publish():
 
 @app.route('/api/publications', methods=['GET', 'DELETE'])
 def handle_publications():
-    """Lista ou limpa publicações do News Auto Post (usando armazenamento em memória)"""
-    global publications_store
-    
+    """Lista ou limpa publicações do News Auto Post (usando Supabase real)"""
     if request.method == 'DELETE':
         """Limpa todas as publicações"""
-        count = len(publications_store)
-        publications_store.clear()
-        return jsonify({
-            "success": True,
-            "message": f"{count} publicações limpas com sucesso",
-            "deleted_count": count
-        })
+        try:
+            supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+            
+            if not supabase_url or not supabase_key:
+                print("[ERROR] Credenciais Supabase não configuradas para handle_publications DELETE")
+                return jsonify({"success": False, "error": "Credenciais não configuradas"}), 500
+            
+            headers = {
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+            }
+            
+            count_response = requests.get(
+                f"{supabase_url}/rest/v1/posts?select=count",
+                headers=headers,
+                timeout=10
+            )
+            
+            count = 0
+            if count_response.status_code == 200:
+                try:
+                    count_data = count_response.json()
+                    count = count_data[0].get('count', 0) if isinstance(count_data, list) and count_data else 0
+                except:
+                    pass
+            
+            if count == 0:
+                return jsonify({
+                    "success": True,
+                    "message": "Nenhuma publicação para limpar"
+                })
+            
+            delete_response = requests.delete(
+                f"{supabase_url}/rest/v1/posts?id=not.is.null",
+                headers=headers,
+                timeout=30
+            )
+            
+            if delete_response.status_code in (200, 204):
+                return jsonify({
+                    "success": True,
+                    "message": f"{count} publicações limpas com sucesso",
+                    "deleted_count": count
+                })
+            
+            return jsonify({
+                "success": False,
+                "error": "Nenhuma publicação foi deletada"
+            }), 500
+            
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
     
     # GET - Listar publicações
     try:
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.get(
+            f"{supabase_url}/rest/v1/posts?order=created_at.desc&limit=50",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            posts = response.json()
+            # Garantir que os posts têm o campo 'caption'
+            for post in posts:
+                if 'caption' not in post and 'content' in post:
+                    post['caption'] = post['content']
+            return jsonify({
+                "success": True,
+                "total": len(posts),
+                "publications": posts
+            })
+        
         return jsonify({
-            "success": True,
-            "total": len(publications_store),
-            "publications": publications_store
-        })
+            "success": False,
+            "error": f"Erro ao buscar publicações: {response.status_code}"
+        }), response.status_code
+        
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/publications/<id>', methods=['PATCH'])
 def update_publication(id):
-    """Atualiza uma publicação (usando armazenamento em memória)"""
-    global publications_store
+    """Atualiza uma publicação (usando Supabase real)"""
     try:
         data = request.get_json()
         
-        # Encontrar a publicação pelo ID
-        for idx, pub in enumerate(publications_store):
-            if pub.get('id') == id:
-                if 'title' in data:
-                    publications_store[idx]['title'] = data['title']
-                if 'content' in data:
-                    publications_store[idx]['content'] = data['content']
-                publications_store[idx]['updated_at'] = datetime.now().isoformat()
-                
-                return jsonify({"success": True, "message": "Publicação atualizada"})
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
         
-        return jsonify({"success": False, "error": "Publicação não encontrada"}), 404
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        update_data = {}
+        if 'title' in data:
+            update_data['title'] = data['title']
+        if 'content' in data:
+            update_data['content'] = data['content']
+        update_data['updated_at'] = datetime.now().isoformat()
+        
+        response = requests.patch(
+            f"{supabase_url}/rest/v1/posts?id=eq.{id}",
+            json=update_data,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Publicação atualizada"})
+        
+        return jsonify({"success": False, "error": f"Erro: {response.status_code}"}), response.status_code
         
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/publications/<id>/approve', methods=['POST'])
 def approve_publication(id):
-    """Aprova uma publicação (usando armazenamento em memória)"""
-    global publications_store
+    """Aprova uma publicação (usando Supabase real)"""
     try:
-        for idx, pub in enumerate(publications_store):
-            if pub.get('id') == id:
-                publications_store[idx]['status'] = 'aprovado'
-                publications_store[idx]['updated_at'] = datetime.now().isoformat()
-                return jsonify({"success": True, "message": "Publicação aprovada"})
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
         
-        return jsonify({"success": False, "error": "Publicação não encontrada"}), 404
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        response = requests.patch(
+            f"{supabase_url}/rest/v1/posts?id=eq.{id}",
+            json={'status': 'aprovado', 'updated_at': datetime.now().isoformat()},
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Publicação aprovada"})
+        
+        error_msg = f"Erro: {response.status_code}"
+        try:
+            error_data = response.json()
+            if 'message' in error_data:
+                error_msg = error_data['message']
+        except:
+            pass
+        
+        return jsonify({"success": False, "error": error_msg}), response.status_code
         
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/publications/<id>/publish-to-newpost', methods=['POST'])
 def publish_to_newpost_route(id):
-    """Publica um post diretamente na NewPost-IA (usando armazenamento em memória)"""
-    global publications_store
+    """Publica um post diretamente na NewPost-IA (usando Supabase real)"""
     try:
-        for idx, pub in enumerate(publications_store):
-            if pub.get('id') == id:
-                publications_store[idx]['status'] = 'publicado'
-                publications_store[idx]['updated_at'] = datetime.now(timezone.utc).isoformat()
-                
-                return jsonify({
-                    "success": True,
-                    "message": "Post publicado com sucesso",
-                    "publish_results": {
-                        "platform": "newpost_ia",
-                        "status": "success"
-                    }
-                })
+        supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        response = requests.patch(
+            f"{supabase_url}/rest/v1/posts?id=eq.{id}",
+            json={'status': 'publicado', 'updated_at': datetime.now(timezone.utc).isoformat()},
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({
+                "success": True,
+                "message": "Post publicado com sucesso",
+                "publish_results": {
+                    "platform": "newpost_ia",
+                    "status": "success"
+                }
+            })
         
         return jsonify({"success": False, "error": "Post não encontrado"}), 404
         
