@@ -224,5 +224,22 @@ def main():
     print(f"Tempo de execução: {result['ESTATISTICAS']['execution_time_seconds']:.2f} segundos")
     print("=== FIM ===")
 
+# Instância global do NewsAgent
+news_agent = NewsAgent()
+
+# Função principal para execução
+def main():
+    """Função principal para executar o agente de notícias"""
+    agent = NewsAgent()
+    result = agent.run_cycle()
+    
+    print("\n=== RESUMO DA EXECUÇÃO ===")
+    print(f"Status: {result['status']}")
+    print(f"Notícias coletadas: {result['ESTATISTICAS']['news_collected']}")
+    print(f"Notícias publicadas: {result['ESTATISTICAS']['news_published']}")
+    print(f"Duplicatas removidas: {result['ESTATISTICAS']['duplicates_found']}")
+    print(f"Tempo de execução: {result['ESTATISTICAS']['execution_time_seconds']:.2f} segundos")
+    print("=== FIM ===")
+
 if __name__ == "__main__":
     main()
