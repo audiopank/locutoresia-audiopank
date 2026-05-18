@@ -1419,11 +1419,37 @@ def api_calendar_schedule():
 @app.route('/api/social/posts', methods=['GET'])
 def api_list_social_posts():
     """Lista todos os SocialPosts"""
-    if not HAS_SOCIAL_PUBLISHER:
-        return jsonify({"success": False, "error": "Social Publisher não disponível"}), 503
-    status_filter = request.args.get('status')
-    limit = int(request.args.get('limit', 50))
-    return jsonify(social_publisher.list_posts(status=status_filter, limit=limit))
+    try:
+        supabase_url = os.getenv('SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
+        supabase_key = get_supabase_key()
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        status_filter = request.args.get('status')
+        limit = int(request.args.get('limit', 50))
+        
+        url = f"{supabase_url}/rest/v1/posts?select=*&order=created_at.desc&limit={limit}"
+        if status_filter:
+            url += f"&status=eq.{status_filter}"
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code in (200, 201):
+            posts = response.json()
+            return jsonify({"success": True, "posts": posts})
+        else:
+            return jsonify({"success": False, "error": f"Erro ao buscar posts: {response.status_code}"}), response.status_code
+            
+    except Exception as e:
+        print(f"[DEBUG] Erro em api_list_social_posts: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts', methods=['POST'])
 def api_create_social_post():
