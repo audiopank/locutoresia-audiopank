@@ -173,6 +173,11 @@ def voice_cloning():
     """Voice Cloning - Clonagem de Voz"""
     return render_template('minidaw-react.html')
 
+@app.route('/social-genius')
+def social_genius():
+    """Social Genius - Ferramentas de IA para Redes Sociais"""
+    return render_template('minidaw-react.html')
+
 @app.route('/api/news/collect', methods=['POST'])
 def collect_news():
     """Endpoint para iniciar coleta de notícias"""
