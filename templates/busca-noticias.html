@@ -8,13 +8,11 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Preact (lightweight React alternative for no build step) -->
-    <script src="https://cdn.jsdelivr.net/npm/preact@10.19.6/dist/preact.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/preact-render-to-string@6.3.1/dist/index.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@preact/signals@1.2.2/dist/signals.umd.js"></script>
-    
-    <!-- Lucide Icons (via CDN) -->
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
         body {
@@ -41,36 +39,105 @@
         .scrollbar-thin::-webkit-scrollbar-thumb:hover {
             background: #64748b;
         }
+        .category-btn.active {
+            ring: 2px;
+            ring-color: white;
+        }
+        .post-item.active {
+            background-color: rgba(124, 58, 237, 0.25);
+            border-color: #a855f7;
+        }
     </style>
 </head>
 <body class="min-h-screen bg-gray-950">
-    <div id="app"></div>
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-purple-900 to-purple-700 border-b border-purple-800 py-6 px-8">
+        <div class="flex items-center gap-4">
+            <a href="/" class="text-purple-200 hover:text-white transition text-sm">← Início</a>
+            <div>
+                <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+                    <i data-lucide="rss" class="w-8 h-8"></i>
+                    Busca de Notícias + IA
+                </h1>
+                <p class="text-purple-200 mt-1">Coleta notícias reais via RSS · Edite · Publique na NewPost-IA</p>
+            </div>
+        </div>
+    </header>
 
-    <script type="module">
-        const { h, render, useState } = preact;
+    <main class="max-w-7xl mx-auto px-8 py-10">
+        <!-- Fontes Info -->
+        <div class="mb-6 bg-purple-900/20 border border-purple-800 rounded-lg p-4 flex items-start gap-3">
+            <i data-lucide="rss" class="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5"></i>
+            <div>
+                <p class="text-sm font-semibold text-white">Fontes RSS Integradas</p>
+                <p class="text-xs text-gray-400 mt-1">TecMundo · CanalTech · InfoMoney · UOL · Folha · GE Globo · Agência Brasil · Lance!</p>
+            </div>
+        </div>
+
+        <!-- Categorias -->
+        <div class="mb-8">
+            <label class="block text-white font-semibold mb-3">Categoria</label>
+            <div id="categories-container" class="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
+            </div>
+        </div>
+
+        <!-- Botões Principais -->
+        <div class="flex gap-3 mb-6 flex-wrap">
+            <button id="btn-buscar" onclick="buscarNoticias()" class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition">
+                <i data-lucide="search" class="w-5 h-5"></i>
+                Buscar Notícias Reais
+            </button>
+            <button id="btn-publicar-todos" onclick="publicarTodos()" style="display:none;" class="flex items-center gap-2 bg-green-700 hover:bg-green-800 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition">
+                <i data-lucide="sparkles" class="w-5 h-5"></i>
+                Publicar Todos
+            </button>
+        </div>
+
+        <!-- Status Info -->
+        <div id="status-info" class="mb-6" style="display:none;">
+            <div class="flex items-center gap-2 text-sm text-gray-400">
+                <i data-lucide="check-circle-2" class="w-4 h-4 text-green-400"></i>
+                <span id="status-text"></span>
+            </div>
+        </div>
+
+        <!-- Grid Principal -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Lista Lateral -->
+            <div class="lg:col-span-1">
+                <h3 class="text-white font-bold mb-4 flex items-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-4 h-4 text-purple-400"></i>
+                    Posts (<span id="posts-count">0</span>)
+                </h3>
+                <div id="posts-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-1 scrollbar-thin">
+                    <div class="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center">
+                        <i data-lucide="rss" class="w-10 h-10 text-gray-600 mx-auto mb-3"></i>
+                        <p class="text-gray-400 text-sm">Selecione a categoria e clique em "Buscar Notícias Reais"</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview / Editor -->
+            <div class="lg:col-span-2">
+                <div id="post-preview" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden" style="display:none;">
+                </div>
+                <div id="empty-preview" class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
+                    <i data-lucide="rss" class="w-14 h-14 text-gray-700 mx-auto mb-4"></i>
+                    <p class="text-gray-400 text-lg font-medium">Busque notícias reais</p>
+                    <p class="text-gray-600 text-sm">Selecione uma categoria e clique em "Buscar Notícias Reais"</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_URL = '/functions/fetchRssNews';
         
-        // Icons from Lucide
-        const icons = {
-            Search: lucide.Search,
-            Plus: lucide.Plus,
-            AlertCircle: lucide.AlertCircle,
-            RefreshCw: lucide.RefreshCw,
-            ExternalLink: lucide.ExternalLink,
-            Rss: lucide.Rss,
-            CheckCircle2: lucide.CheckCircle2,
-            Loader2: lucide.Loader2,
-            Sparkles: lucide.Sparkles,
-            Pencil: lucide.Pencil,
-            Copy: lucide.Copy,
-            Check: lucide.Check,
-            X: lucide.X,
-            Save: lucide.Save
-        };
-
-        // API URLs
-        const API_URL = 'https://new-post-ia-5dac1009.base44.app/functions/fetchRssNews';
-        const WEBHOOK_URL = 'https://new-post-ia-5dac1009.base44.app/functions/receiveNews';
-
+        const SUPABASE_URL = 'https://hzmtdfojctctvgqjdbex.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NDUwMTIsImV4cCI6MjA3OTIyMTAxMn0.bv_6SFc_vNnw_eIyD73xNsRVXtL0guSbMRNuCthIy4Q';
+        
+        const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+        
         const categories = [
             { id: 'tecnologia', label: '💻 Tecnologia', color: 'bg-blue-600' },
             { id: 'economia', label: '📊 Economia', color: 'bg-green-600' },
@@ -83,483 +150,379 @@
             { id: 'geral', label: '📰 Geral', color: 'bg-gray-600' },
         ];
 
-        function BuscaNoticias() {
-            const [selectedCategory, setSelectedCategory] = useState('tecnologia');
-            const [posts, setPosts] = useState([]);
-            const [loading, setLoading] = useState(false);
-            const [selectedPost, setSelectedPost] = useState(null);
-            const [publishing, setPublishing] = useState(false);
-            const [publishingAll, setPublishingAll] = useState(false);
-            const [publishedIds, setPublishedIds] = useState(new Set());
-            const [sourceInfo, setSourceInfo] = useState(null);
-            const [copied, setCopied] = useState(false);
+        let state = {
+            selectedCategory: 'tecnologia',
+            posts: [],
+            selectedPostIndex: null,
+            publishedIds: new Set(),
+            sourceInfo: null,
+            editingPostIndex: null,
+            editTitle: '',
+            editContent: ''
+        };
 
-            const [editingPost, setEditingPost] = useState(null);
-            const [editTitle, setEditTitle] = useState('');
-            const [editContent, setEditContent] = useState('');
-
-            const getExamplePosts = () => {
-                const examplesByCategory = {
-                    tecnologia: [
-                        {
-                            title: 'Inteligência Artificial revoluciona o mercado de trabalho',
-                            content: 'A inteligência artificial está transformando a maneira como trabalhamos, automatizando tarefas repetitivas e criando novas oportunidades em áreas como análise de dados, desenvolvimento de software e atendimento ao cliente.',
-                            category: 'tecnologia',
-                            tags: ['IA', 'tecnologia', 'inovação'],
-                            pubDate: new Date().toISOString(),
-                            source_url: 'https://example.com/ia-mercado'
-                        },
-                        {
-                            title: 'Novo processador promete velocidade 10x maior',
-                            content: 'A nova geração de processadores chega ao mercado com desempenho incomparável, ideal para gamers, criadores de conteúdo e profissionais de design.',
-                            category: 'tecnologia',
-                            tags: ['hardware', 'processador', 'tecnologia'],
-                            pubDate: new Date(Date.now() - 86400000).toISOString(),
-                            source_url: 'https://example.com/novo-processador'
-                        },
-                        {
-                            title: '5G se expande para mais 50 cidades no Brasil',
-                            content: 'A rede 5G continua sua expansão nacional, oferecendo velocidades de internet móvel ultra-rápidas para milhões de brasileiros.',
-                            category: 'tecnologia',
-                            tags: ['5G', 'internet', 'tecnologia'],
-                            pubDate: new Date(Date.now() - 172800000).toISOString(),
-                            source_url: 'https://example.com/5g-expansao'
-                        }
-                    ],
-                    economia: [
-                        {
-                            title: 'Mercado de ações fecha em alta com otimismo econômico',
-                            content: 'Os principais índices de Wall Street fecharam o dia em alta, impulsionados por dados econômicos positivos e expectativas de redução de juros.',
-                            category: 'economia',
-                            tags: ['ações', 'economia', 'mercado'],
-                            pubDate: new Date().toISOString(),
-                            source_url: 'https://example.com/acoes-alta'
-                        },
-                        {
-                            title: 'Dólar cai para R$ 4,90 com boas notícias',
-                            content: 'A moeda norte-americana registrou queda significativa nesta semana, refletindo a confiança dos investidores no mercado brasileiro.',
-                            category: 'economia',
-                            tags: ['dólar', 'economia', 'câmbio'],
-                            pubDate: new Date(Date.now() - 86400000).toISOString(),
-                            source_url: 'https://example.com/dolar-cai'
-                        }
-                    ],
-                    esportes: [
-                        {
-                            title: 'Brasil vence partida emocionante na Copa América',
-                            content: 'A seleção brasileira conquistou uma vitória crucial na última noite, com um gol nos acréscimos que garantiu a classificação para a próxima fase.',
-                            category: 'esportes',
-                            tags: ['futebol', 'Brasil', 'Copa América'],
-                            pubDate: new Date().toISOString(),
-                            source_url: 'https://example.com/brasil-vence'
-                        },
-                        {
-                            title: 'Nadador brasileiro quebra recorde mundial',
-                            content: 'O atleta brasileiro surpreendeu o mundo ao quebrar o recorde mundial nos 100m livre, em uma performance histórica.',
-                            category: 'esportes',
-                            tags: ['natação', 'recorde', 'esportes'],
-                            pubDate: new Date(Date.now() - 172800000).toISOString(),
-                            source_url: 'https://example.com/recorde-natacao'
-                        }
-                    ]
-                };
-                
-                const generalExamples = [
-                    {
-                        title: 'Nova lei de proteção de dados entra em vigor',
-                        content: 'A nova legislação que regulamenta o uso de dados pessoais começa a valer a partir de hoje, trazendo mais segurança para os cidadãos.',
-                        category: selectedCategory,
-                        tags: ['direito', 'dados', 'legislação'],
-                        pubDate: new Date().toISOString(),
-                        source_url: 'https://example.com/lei-dados'
-                    },
-                    {
-                        title: 'Festival de música atrai milhares de pessoas',
-                        content: 'O maior festival de música do país acontece neste final de semana, com shows de artistas nacionais e internacionais.',
-                        category: selectedCategory,
-                        tags: ['música', 'festival', 'entretenimento'],
-                        pubDate: new Date(Date.now() - 86400000).toISOString(),
-                        source_url: 'https://example.com/festival-musica'
-                    }
-                ];
-                
-                return examplesByCategory[selectedCategory] || generalExamples;
+        function getExamplePosts() {
+            const examplesByCategory = {
+                tecnologia: [
+                    { title: 'Inteligência Artificial revoluciona o mercado de trabalho', content: 'A inteligência artificial está transformando a maneira como trabalhamos, automatizando tarefas repetitivas e criando novas oportunidades em áreas como análise de dados, desenvolvimento de software e atendimento ao cliente.', category: 'tecnologia', tags: ['IA', 'tecnologia', 'inovação'], pubDate: new Date().toISOString(), source_url: 'https://example.com/ia-mercado' },
+                    { title: 'Novo processador promete velocidade 10x maior', content: 'A nova geração de processadores chega ao mercado com desempenho incomparável, ideal para gamers, criadores de conteúdo e profissionais de design.', category: 'tecnologia', tags: ['hardware', 'processador', 'tecnologia'], pubDate: new Date(Date.now() - 86400000).toISOString(), source_url: 'https://example.com/novo-processador' },
+                    { title: '5G se expande para mais 50 cidades no Brasil', content: 'A rede 5G continua sua expansão nacional, oferecendo velocidades de internet móvel ultra-rápidas para milhões de brasileiros.', category: 'tecnologia', tags: ['5G', 'internet', 'tecnologia'], pubDate: new Date(Date.now() - 172800000).toISOString(), source_url: 'https://example.com/5g-expansao' }
+                ],
+                economia: [
+                    { title: 'Mercado de ações fecha em alta com otimismo econômico', content: 'Os principais índices de Wall Street fecharam o dia em alta, impulsionados por dados econômicos positivos e expectativas de redução de juros.', category: 'economia', tags: ['ações', 'economia', 'mercado'], pubDate: new Date().toISOString(), source_url: 'https://example.com/acoes-alta' },
+                    { title: 'Dólar cai para R$ 4,90 com boas notícias', content: 'A moeda norte-americana registrou queda significativa nesta semana, refletindo a confiança dos investidores no mercado brasileiro.', category: 'economia', tags: ['dólar', 'economia', 'câmbio'], pubDate: new Date(Date.now() - 86400000).toISOString(), source_url: 'https://example.com/dolar-cai' }
+                ],
+                esportes: [
+                    { title: 'Brasil vence partida emocionante na Copa América', content: 'A seleção brasileira conquistou uma vitória crucial na última noite, com um gol nos acréscimos que garantiu a classificação para a próxima fase.', category: 'esportes', tags: ['futebol', 'Brasil', 'Copa América'], pubDate: new Date().toISOString(), source_url: 'https://example.com/brasil-vence' },
+                    { title: 'Nadador brasileiro quebra recorde mundial', content: 'O atleta brasileiro surpreendeu o mundo ao quebrar o recorde mundial nos 100m livre, em uma performance histórica.', category: 'esportes', tags: ['natação', 'recorde', 'esportes'], pubDate: new Date(Date.now() - 172800000).toISOString(), source_url: 'https://example.com/recorde-natacao' }
+                ]
             };
-            
-            const fetchNews = async () => {
-                setLoading(true);
-                setPosts([]);
-                setSelectedPost(null);
-                setPublishedIds(new Set());
-                setSourceInfo(null);
-                setEditingPost(null);
-                try {
-                    const res = await fetch(API_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ category: selectedCategory, deliver: false }),
-                    });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const data = await res.json();
-                    if (data.error) throw new Error(data.error);
-                    setPosts(data.posts || []);
-                    setSelectedPost(data.posts?.[0] || null);
-                    setSourceInfo({ total: data.total, source: data.source });
-                } catch (err) {
-                    console.log('Usando notícias de exemplo (API offline)');
-                    const examplePosts = getExamplePosts();
-                    setPosts(examplePosts);
-                    setSelectedPost(examplePosts[0] || null);
-                    setSourceInfo({ total: examplePosts.length, source: 'exemplos' });
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const sendViaWebhook = async (postsList) => {
-                const res = await fetch(WEBHOOK_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ posts: postsList }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-                return data;
-            };
-
-            const publishPost = async (post) => {
-                setPublishing(true);
-                try {
-                    if (sourceInfo && sourceInfo.source === 'exemplos') {
-                        setPublishedIds(prev => new Set([...prev, post.source_url || post.title]));
-                        alert('✅ Post de exemplo marcado como publicado! (Para publicar na NewPost-IA, configure a API)');
-                    } else {
-                        await sendViaWebhook([post]);
-                        setPublishedIds(prev => new Set([...prev, post.source_url || post.title]));
-                        alert('✅ Post publicado com sucesso na NewPost-IA!');
-                    }
-                } catch (err) {
-                    alert('Erro ao publicar: ' + err.message);
-                } finally {
-                    setPublishing(false);
-                }
-            };
-
-            const publishAllPosts = async () => {
-                const pending = posts.filter(p => !isPublished(p));
-                if (!pending.length) return;
-                if (!window.confirm(`Publicar ${pending.length} posts na NewPost-IA?`)) return;
-                setPublishingAll(true);
-                try {
-                    if (sourceInfo && sourceInfo.source === 'exemplos') {
-                        const newSet = new Set(publishedIds);
-                        pending.forEach(p => newSet.add(p.source_url || p.title));
-                        setPublishedIds(newSet);
-                        alert(`✅ ${pending.length} posts de exemplo marcados como publicados!`);
-                    } else {
-                        const result = await sendViaWebhook(pending);
-                        const newSet = new Set(publishedIds);
-                        pending.forEach(p => newSet.add(p.source_url || p.title));
-                        setPublishedIds(newSet);
-                        alert(`✅ ${result.inserted ?? pending.length} posts publicados! (${result.skipped ?? 0} ignorados por duplicata)`);
-                    }
-                } catch (err) {
-                    alert('Erro ao publicar em lote: ' + err.message);
-                } finally {
-                    setPublishingAll(false);
-                }
-            };
-
-            const copyPost = async (post) => {
-                const text = `${post.title}\n\n${post.content}`;
-                try {
-                    await navigator.clipboard.writeText(text);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                } catch {
-                    alert('Não foi possível copiar. Selecione o texto manualmente.');
-                }
-            };
-
-            const startEdit = (post) => {
-                setEditingPost(post);
-                setEditTitle(post.title);
-                setEditContent(post.content);
-            };
-
-            const saveEdit = () => {
-                if (!editingPost) return;
-                const updated = { ...editingPost, title: editTitle, content: editContent };
-                const newPosts = posts.map(p => (p === editingPost ? updated : p));
-                setPosts(newPosts);
-                if (selectedPost === editingPost) setSelectedPost(updated);
-                setEditingPost(null);
-            };
-
-            const cancelEdit = () => setEditingPost(null);
-            const isPublished = (post) => publishedIds.has(post.source_url || post.title);
-
-            const displayPost = editingPost && selectedPost === editingPost
-                ? { ...selectedPost, title: editTitle, content: editContent }
-                : selectedPost;
-
-            return h('div', { class: 'min-h-screen bg-gray-950' },
-                h('header', { class: 'bg-gradient-to-r from-purple-900 to-purple-700 border-b border-purple-800 py-6 px-8' },
-                    h('div', { class: 'flex items-center gap-4' },
-                        h('a', { href: '/', class: 'text-purple-200 hover:text-white transition text-sm' }, '← Início'),
-                        h('div', null,
-                            h('h1', { class: 'text-3xl font-bold text-white flex items-center gap-3' },
-                                h('i', { 'data-lucide': 'rss', class: 'w-8 h-8' }),
-                                'Busca de Notícias + IA'
-                            ),
-                            h('p', { class: 'text-purple-200 mt-1' }, 'Coleta notícias reais via RSS · Edite · Publique na NewPost-IA')
-                        )
-                    )
-                ),
-
-                h('main', { class: 'max-w-7xl mx-auto px-8 py-10' },
-                    h('div', { class: 'mb-6 bg-purple-900/20 border border-purple-800 rounded-lg p-4 flex items-start gap-3' },
-                        h('i', { 'data-lucide': 'rss', class: 'w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5' }),
-                        h('div', null,
-                            h('p', { class: 'text-sm font-semibold text-white' }, 'Fontes RSS Integradas'),
-                            h('p', { class: 'text-xs text-gray-400 mt-1' }, 'TecMundo · CanalTech · InfoMoney · UOL · Folha · GE Globo · Agência Brasil · Lance!')
-                        )
-                    ),
-
-                    h('div', { class: 'mb-8' },
-                        h('label', { class: 'block text-white font-semibold mb-3' }, 'Categoria'),
-                        h('div', { class: 'grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2' },
-                            categories.map(cat => 
-                                h('button', { 
-                                    key: cat.id,
-                                    onClick: () => setSelectedCategory(cat.id),
-                                    class: `py-2 px-3 rounded-lg text-xs font-medium transition ${
-                                        selectedCategory === cat.id 
-                                            ? `${cat.color} text-white ring-2 ring-white/30` 
-                                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                                    }`
-                                }, cat.label)
-                            )
-                        )
-                    ),
-
-                    h('div', { class: 'flex gap-3 mb-6 flex-wrap' },
-                        h('button', { 
-                            onClick: fetchNews, 
-                            disabled: loading,
-                            class: 'flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition'
-                        },
-                            loading ? h('i', { 'data-lucide': 'loader2', class: 'w-5 h-5 animate-spin' }) : h('i', { 'data-lucide': 'search', class: 'w-5 h-5' }),
-                            loading ? 'Buscando...' : 'Buscar Notícias Reais'
-                        ),
-                        posts.length > 0 && h('button', { 
-                            onClick: publishAllPosts, 
-                            disabled: publishingAll || publishedIds.size === posts.length,
-                            class: 'flex items-center gap-2 bg-green-700 hover:bg-green-800 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition'
-                        },
-                            publishingAll ? h('i', { 'data-lucide': 'loader2', class: 'w-5 h-5 animate-spin' }) : h('i', { 'data-lucide': 'sparkles', class: 'w-5 h-5' }),
-                            publishingAll ? 'Publicando...' : `Publicar Todos (${posts.length - publishedIds.size})`
-                        )
-                    ),
-
-                    sourceInfo && h('div', { class: 'mb-6 flex items-center gap-2 text-sm text-gray-400' },
-                        h('i', { 'data-lucide': 'check-circle2', class: 'w-4 h-4 text-green-400' }),
-                        h('span', null, `${sourceInfo.total} notícia(s) — ${sourceInfo.source === 'rss' ? '📡 RSS em tempo real' : '📦 base local'}`)
-                    ),
-
-                    h('div', { class: 'grid grid-cols-1 lg:grid-cols-3 gap-6' },
-                        h('div', { class: 'lg:col-span-1' },
-                            h('h3', { class: 'text-white font-bold mb-4 flex items-center gap-2' },
-                                h('i', { 'data-lucide': 'refresh-cw', class: 'w-4 h-4 text-purple-400' }),
-                                `Posts (${posts.length})`
-                            ),
-                            h('div', { class: 'space-y-2 max-h-[600px] overflow-y-auto pr-1 scrollbar-thin' },
-                                posts.length === 0 
-                                    ? h('div', { class: 'bg-gray-900 border border-gray-800 rounded-lg p-6 text-center' },
-                                        h('i', { 'data-lucide': 'rss', class: 'w-10 h-10 text-gray-600 mx-auto mb-3' }),
-                                        h('p', { class: 'text-gray-400 text-sm' }, 'Selecione a categoria e clique em "Buscar Notícias Reais"')
-                                    )
-                                    : posts.map((post, idx) => 
-                                        h('button', { 
-                                            key: idx, 
-                                            onClick: () => { setSelectedPost(post); setEditingPost(null); },
-                                            class: `w-full text-left p-3 rounded-lg border transition relative ${
-                                                selectedPost === post 
-                                                    ? 'bg-purple-800/40 border-purple-500' 
-                                                    : 'bg-gray-900 border-gray-800 hover:border-purple-500'
-                                            }`
-                                        },
-                                            isPublished(post) && h('span', { class: 'absolute top-2 right-2' },
-                                                h('i', { 'data-lucide': 'check-circle2', class: 'w-4 h-4 text-green-400' })
-                                            ),
-                                            h('p', { class: 'text-xs font-medium text-white leading-tight pr-5 line-clamp-2' }, post.title),
-                                            h('p', { class: 'text-xs text-purple-400 mt-1' }, post.tags?.[0] ? `#${post.tags[0]}` : post.category),
-                                            post.pubDate && h('p', { class: 'text-xs text-gray-600 mt-0.5 truncate' }, post.pubDate.substring(0,16))
-                                        )
-                                    )
-                            )
-                        ),
-
-                        h('div', { class: 'lg:col-span-2' },
-                            displayPost 
-                                ? h('div', { class: 'bg-gray-900 border border-gray-800 rounded-xl overflow-hidden fade-in' },
-                                    h('div', { class: 'px-6 py-4 border-b border-gray-800 flex items-center justify-between gap-2' },
-                                        h('h3', { class: 'text-white font-bold' },
-                                            editingPost ? '✏️ Editando Post' : 'Prévia do Post'
-                                        ),
-                                        h('div', { class: 'flex items-center gap-2' },
-                                            !editingPost && h('button', { 
-                                                onClick: () => copyPost(displayPost),
-                                                title: 'Copiar texto do post',
-                                                class: 'flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-3 py-1.5 rounded-lg transition'
-                                            },
-                                                copied 
-                                                    ? h('i', { 'data-lucide': 'check', class: 'w-3.5 h-3.5 text-green-400' }) 
-                                                    : h('i', { 'data-lucide': 'copy', class: 'w-3.5 h-3.5' }),
-                                                copied ? 'Copiado!' : 'Copiar'
-                                            ),
-                                            !editingPost 
-                                                ? h('button', { 
-                                                    onClick: () => startEdit(selectedPost),
-                                                    title: 'Editar texto do post',
-                                                    class: 'flex items-center gap-1.5 bg-yellow-700 hover:bg-yellow-600 text-white text-xs px-3 py-1.5 rounded-lg transition'
-                                                },
-                                                    h('i', { 'data-lucide': 'pencil', class: 'w-3.5 h-3.5' }), 'Editar'
-                                                )
-                                                : h('div', { class: 'flex gap-2' },
-                                                    h('button', { 
-                                                        onClick: saveEdit,
-                                                        class: 'flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg transition'
-                                                    }, h('i', { 'data-lucide': 'save', class: 'w-3.5 h-3.5' }), 'Salvar'),
-                                                    h('button', { 
-                                                        onClick: cancelEdit,
-                                                        class: 'flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-lg transition'
-                                                    }, h('i', { 'data-lucide': 'x', class: 'w-3.5 h-3.5' }), 'Cancelar')
-                                                ),
-                                            isPublished(displayPost) && h('span', { class: 'flex items-center gap-1 text-green-400 text-xs font-medium' },
-                                                h('i', { 'data-lucide': 'check-circle2', class: 'w-4 h-4' }), 'Publicado'
-                                            )
-                                        )
-                                    ),
-                                    h('div', { class: 'p-6' },
-                                        editingPost 
-                                            ? h('div', { class: 'space-y-4 mb-5' },
-                                                h('div', null,
-                                                    h('label', { class: 'text-xs text-gray-400 mb-1 block font-medium' }, 'Título'),
-                                                    h('input', { 
-                                                        value: editTitle,
-                                                        onInput: (e) => setEditTitle(e.target.value),
-                                                        class: 'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:border-purple-500 focus:outline-none',
-                                                        placeholder: 'Título da notícia...'
-                                                    })
-                                                ),
-                                                h('div', null,
-                                                    h('label', { class: 'text-xs text-gray-400 mb-1 block font-medium' }, 'Conteúdo do Post'),
-                                                    h('textarea', { 
-                                                        value: editContent,
-                                                        onInput: (e) => setEditContent(e.target.value),
-                                                        rows: 10,
-                                                        class: 'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white text-sm focus:border-purple-500 focus:outline-none resize-none font-mono leading-relaxed',
-                                                        placeholder: 'Conteúdo do post...'
-                                                    }),
-                                                    h('p', { class: 'text-xs text-gray-600 mt-1' }, `${editContent.length} caracteres`)
-                                                ),
-                                                h('div', { class: 'bg-yellow-900/20 border border-yellow-800 rounded-lg p-3' },
-                                                    h('p', { class: 'text-xs text-yellow-400' }, '⚠️ Revise o texto para eliminar alucinações da IA antes de publicar.')
-                                                )
-                                            )
-                                            : h('div', { class: 'bg-gray-800 rounded-xl p-5 mb-5' },
-                                                h('div', { class: 'flex items-center gap-3 mb-4' },
-                                                    h('div', { class: 'w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-sm' }, 'NP'),
-                                                    h('div', null,
-                                                        h('p', { class: 'font-semibold text-white' }, 'NewPost-IA'),
-                                                        h('p', { class: 'text-xs text-gray-400' }, `${new Date().toLocaleDateString('pt-BR')} · pankilhas@gmail.com`)
-                                                    ),
-                                                    h('span', { class: 'ml-auto text-xs bg-purple-700 text-purple-200 px-2 py-0.5 rounded-full flex items-center gap-1' },
-                                                        h('i', { 'data-lucide': 'sparkles', class: 'w-3 h-3' }), 'IA'
-                                                    )
-                                                ),
-                                                h('p', { class: 'text-white font-semibold mb-3 leading-snug' }, displayPost.title),
-                                                h('pre', { class: 'text-gray-100 text-sm mb-4 leading-relaxed whitespace-pre-wrap font-sans' }, displayPost.content),
-                                                h('div', { class: 'flex flex-wrap gap-2 mb-3' },
-                                                    displayPost.tags?.map((tag, i) => 
-                                                        h('span', { key: i, class: 'text-purple-400 text-xs' }, `#${tag}`)
-                                                    )
-                                                ),
-                                                displayPost.source_url && h('a', { 
-                                                    href: displayPost.source_url,
-                                                    target: '_blank',
-                                                    rel: 'noopener noreferrer',
-                                                    class: 'flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition'
-                                                },
-                                                    h('i', { 'data-lucide': 'external-link', class: 'w-3 h-3' }), 'Ver fonte original'
-                                                ),
-                                                h('div', { class: 'mt-4 pt-3 border-t border-gray-700 text-xs text-gray-500 flex gap-4' },
-                                                    h('span', null, '💬 Comentar'),
-                                                    h('span', null, '❤️ Curtir'),
-                                                    h('span', null, '🔄 Repostar'),
-                                                    h('span', null, '📤 Compartilhar')
-                                                )
-                                            ),
-                                        h('div', { class: 'bg-purple-900/20 border border-purple-800 rounded-lg p-4 mb-5' },
-                                            h('div', { class: 'flex items-start gap-3' },
-                                                h('i', { 'data-lucide': 'alert-circle', class: 'w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5' }),
-                                                h('div', null,
-                                                    h('p', { class: 'text-sm font-semibold text-white' }, 'Destino da publicação'),
-                                                    h('p', { class: 'text-xs text-gray-400 mt-1' },
-                                                        'Edge Function ',
-                                                        h('code', { class: 'text-purple-300' }, 'receive-news'), ' → ',
-                                                        'Supabase ',
-                                                        h('code', { class: 'text-purple-300' }, 'hzmtdfojctctvgqjdbex'),
-                                                        h('br'),
-                                                        'status: ',
-                                                        h('strong', { class: 'text-green-400' }, 'published'),
-                                                        ' · is_ia_generated: ',
-                                                        h('strong', { class: 'text-blue-400' }, 'true')
-                                                    ),
-                                                    h('p', { class: 'text-xs text-gray-500 mt-2' },
-                                                        '💡 Plano B: use o botão ',
-                                                        h('strong', { class: 'text-yellow-400' }, 'Copiar'),
-                                                        ' e cole manualmente na NewPost-IA.'
-                                                    )
-                                                )
-                                            )
-                                        ),
-                                        h('button', { 
-                                            onClick: () => publishPost(editingPost 
-                                                ? { ...selectedPost, title: editTitle, content: editContent } 
-                                                : selectedPost
-                                            ),
-                                            disabled: publishing || isPublished(displayPost),
-                                            class: 'w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition'
-                                        },
-                                            publishing 
-                                                ? h('i', { 'data-lucide': 'loader2', class: 'w-5 h-5 animate-spin' })
-                                                : isPublished(displayPost) 
-                                                    ? h('i', { 'data-lucide': 'check-circle2', class: 'w-5 h-5' })
-                                                    : h('i', { 'data-lucide': 'plus', class: 'w-5 h-5' }),
-                                            publishing 
-                                                ? 'Publicando...' 
-                                                : isPublished(displayPost) 
-                                                    ? 'Já publicado!' 
-                                                    : 'Publicar na NewPost-IA'
-                                        )
-                                    )
-                                )
-                                : h('div', { class: 'bg-gray-900 border border-gray-800 rounded-xl p-12 text-center' },
-                                    h('i', { 'data-lucide': 'rss', class: 'w-14 h-14 text-gray-700 mx-auto mb-4' }),
-                                    h('p', { class: 'text-gray-400 text-lg font-medium' }, 'Busque notícias reais'),
-                                    h('p', { class: 'text-gray-600 text-sm' }, 'Selecione uma categoria e clique em "Buscar Notícias Reais"')
-                                )
-                        )
-                    )
-                )
-            );
+            const generalExamples = [
+                { title: 'Nova lei de proteção de dados entra em vigor', content: 'A nova legislação que regulamenta o uso de dados pessoais começa a valer a partir de hoje, trazendo mais segurança para os cidadãos.', category: state.selectedCategory, tags: ['direito', 'dados', 'legislação'], pubDate: new Date().toISOString(), source_url: 'https://example.com/lei-dados' },
+                { title: 'Festival de música atrai milhares de pessoas', content: 'O maior festival de música do país acontece neste final de semana, com shows de artistas nacionais e internacionais.', category: state.selectedCategory, tags: ['música', 'festival', 'entretenimento'], pubDate: new Date(Date.now() - 86400000).toISOString(), source_url: 'https://example.com/festival-musica' }
+            ];
+            return examplesByCategory[state.selectedCategory] || generalExamples;
         }
 
-        render(h(BuscaNoticias), document.getElementById('app'));
-        
-        lucide.createIcons();
+        function renderCategories() {
+            const container = document.getElementById('categories-container');
+            container.innerHTML = categories.map(cat => `
+                <button onclick="selecionarCategoria('${cat.id}')" 
+                    class="category-btn py-2 px-3 rounded-lg text-xs font-medium transition ${
+                        state.selectedCategory === cat.id 
+                            ? `${cat.color} text-white ring-2 ring-white/30` 
+                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    }" 
+                    data-category="${cat.id}">
+                    ${cat.label}
+                </button>
+            `).join('');
+        }
+
+        function selecionarCategoria(catId) {
+            state.selectedCategory = catId;
+            renderCategories();
+        }
+
+        function isPublished(post) {
+            return state.publishedIds.has(post.source_url || post.title);
+        }
+
+        function renderPosts() {
+            const container = document.getElementById('posts-list');
+            const countEl = document.getElementById('posts-count');
+            const btnPublicarTodos = document.getElementById('btn-publicar-todos');
+            
+            countEl.textContent = state.posts.length;
+            
+            if (state.posts.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center">
+                        <i data-lucide="rss" class="w-10 h-10 text-gray-600 mx-auto mb-3"></i>
+                        <p class="text-gray-400 text-sm">Selecione a categoria e clique em "Buscar Notícias Reais"</p>
+                    </div>
+                `;
+                btnPublicarTodos.style.display = 'none';
+            } else {
+                container.innerHTML = state.posts.map((post, idx) => `
+                    <button onclick="selecionarPost(${idx})" 
+                        class="post-item w-full text-left p-3 rounded-lg border transition relative ${
+                            state.selectedPostIndex === idx 
+                                ? 'bg-purple-800/40 border-purple-500' 
+                                : 'bg-gray-900 border-gray-800 hover:border-purple-500'
+                        }"
+                        data-index="${idx}">
+                        ${isPublished(post) ? `<span class="absolute top-2 right-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-green-400"></i></span>` : ''}
+                        <p class="text-xs font-medium text-white leading-tight pr-5 line-clamp-2">${post.title}</p>
+                        <p class="text-xs text-purple-400 mt-1">${post.tags?.[0] ? `#${post.tags[0]}` : post.category}</p>
+                        ${post.pubDate ? `<p class="text-xs text-gray-600 mt-0.5 truncate">${post.pubDate.substring(0,16)}</p>` : ''}
+                    </button>
+                `).join('');
+                
+                const pendingCount = state.posts.filter(p => !isPublished(p)).length;
+                if (pendingCount > 0) {
+                    btnPublicarTodos.textContent = `Publicar Todos (${pendingCount})`;
+                    btnPublicarTodos.style.display = 'flex';
+                } else {
+                    btnPublicarTodos.style.display = 'none';
+                }
+            }
+            
+            if (state.sourceInfo) {
+                const statusInfo = document.getElementById('status-info');
+                const statusText = document.getElementById('status-text');
+                statusText.textContent = `${state.sourceInfo.total} notícia(s) — ${state.sourceInfo.source === 'rss' ? '📡 RSS em tempo real' : '📦 exemplos'}`;
+                statusInfo.style.display = 'flex';
+            }
+            
+            lucide.createIcons();
+        }
+
+        function selecionarPost(idx) {
+            state.selectedPostIndex = idx;
+            state.editingPostIndex = null;
+            renderPosts();
+            renderPreview();
+        }
+
+        function renderPreview() {
+            const previewEl = document.getElementById('post-preview');
+            const emptyEl = document.getElementById('empty-preview');
+            
+            if (state.selectedPostIndex === null || !state.posts[state.selectedPostIndex]) {
+                previewEl.style.display = 'none';
+                emptyEl.style.display = 'block';
+                return;
+            }
+            
+            const post = state.posts[state.selectedPostIndex];
+            const isEditing = state.editingPostIndex === state.selectedPostIndex;
+            const displayTitle = isEditing ? state.editTitle : post.title;
+            const displayContent = isEditing ? state.editContent : post.content;
+            
+            emptyEl.style.display = 'none';
+            previewEl.style.display = 'block';
+            
+            previewEl.innerHTML = `
+                <div class="px-6 py-4 border-b border-gray-800 flex items-center justify-between gap-2">
+                    <h3 class="text-white font-bold">${isEditing ? '✏️ Editando Post' : 'Prévia do Post'}</h3>
+                    <div class="flex items-center gap-2">
+                        ${!isEditing ? `<button onclick="copiarPost()" title="Copiar texto do post" class="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-3 py-1.5 rounded-lg transition"><i data-lucide="copy" class="w-3.5 h-3.5"></i> Copiar</button>` : ''}
+                        ${!isEditing 
+                            ? `<button onclick="iniciarEdicao()" title="Editar texto do post" class="flex items-center gap-1.5 bg-yellow-700 hover:bg-yellow-600 text-white text-xs px-3 py-1.5 rounded-lg transition"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Editar</button>`
+                            : `<div class="flex gap-2">
+                                <button onclick="salvarEdicao()" class="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg transition"><i data-lucide="save" class="w-3.5 h-3.5"></i> Salvar</button>
+                                <button onclick="cancelarEdicao()" class="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-lg transition"><i data-lucide="x" class="w-3.5 h-3.5"></i> Cancelar</button>
+                               </div>`
+                        }
+                        ${isPublished(post) ? `<span class="flex items-center gap-1 text-green-400 text-xs font-medium"><i data-lucide="check-circle-2" class="w-4 h-4"></i> Publicado</span>` : ''}
+                    </div>
+                </div>
+                <div class="p-6">
+                    ${isEditing 
+                        ? `<div class="space-y-4 mb-5">
+                            <div><label class="text-xs text-gray-400 mb-1 block font-medium">Título</label><input id="edit-title-input" value="${displayTitle}" oninput="atualizarEditTitle(this.value)" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:border-purple-500 focus:outline-none" placeholder="Título da notícia..."></div>
+                            <div><label class="text-xs text-gray-400 mb-1 block font-medium">Conteúdo do Post</label><textarea id="edit-content-input" oninput="atualizarEditContent(this.value)" rows="10" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white text-sm focus:border-purple-500 focus:outline-none resize-none font-mono leading-relaxed" placeholder="Conteúdo do post...">${displayContent}</textarea><p class="text-xs text-gray-600 mt-1">${displayContent.length} caracteres</p></div>
+                            <div class="bg-yellow-900/20 border border-yellow-800 rounded-lg p-3"><p class="text-xs text-yellow-400">⚠️ Revise o texto para eliminar alucinações da IA antes de publicar.</p></div>
+                           </div>`
+                        : `<div class="bg-gray-800 rounded-xl p-5 mb-5">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-sm">NP</div>
+                                <div>
+                                    <p class="font-semibold text-white">NewPost-IA</p>
+                                    <p class="text-xs text-gray-400">${new Date().toLocaleDateString('pt-BR')} · pankilhas@gmail.com</p>
+                                </div>
+                                <span class="ml-auto text-xs bg-purple-700 text-purple-200 px-2 py-0.5 rounded-full flex items-center gap-1"><i data-lucide="sparkles" class="w-3 h-3"></i> IA</span>
+                            </div>
+                            <p class="text-white font-semibold mb-3 leading-snug">${displayTitle}</p>
+                            <pre class="text-gray-100 text-sm mb-4 leading-relaxed whitespace-pre-wrap font-sans">${displayContent}</pre>
+                            <div class="flex flex-wrap gap-2 mb-3">
+                                ${(post.tags || []).map((tag, i) => `<span key="${i}" class="text-purple-400 text-xs">#${tag}</span>`).join('')}
+                            </div>
+                            ${post.source_url ? `<a href="${post.source_url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition"><i data-lucide="external-link" class="w-3 h-3"></i> Ver fonte original</a>` : ''}
+                            <div class="mt-4 pt-3 border-t border-gray-700 text-xs text-gray-500 flex gap-4">
+                                <span>💬 Comentar</span><span>❤️ Curtir</span><span>🔄 Repostar</span><span>📤 Compartilhar</span>
+                            </div>
+                           </div>`
+                    }
+                    <div class="bg-purple-900/20 border border-purple-800 rounded-lg p-4 mb-5">
+                        <div class="flex items-start gap-3">
+                            <i data-lucide="alert-circle" class="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5"></i>
+                            <div>
+                                <p class="text-sm font-semibold text-white">Destino da publicação</p>
+                                <p class="text-xs text-gray-400 mt-1">
+                                    Edge Function <code class="text-purple-300">receive-news</code> → Supabase <code class="text-purple-300">hzmtdfojctctvgqjdbex</code><br>
+                                    status: <strong class="text-green-400">published</strong> · is_ia_generated: <strong class="text-blue-400">true</strong>
+                                </p>
+                                <p class="text-xs text-gray-500 mt-2">💡 Plano B: use o botão <strong class="text-yellow-400">Copiar</strong> e cole manualmente na NewPost-IA.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="publicarPost()" ${isPublished(post) ? 'disabled' : ''} class="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition">
+                        <i data-lucide="${isPublished(post) ? 'check-circle-2' : 'plus'}" class="w-5 h-5"></i>
+                        ${isPublished(post) ? 'Já publicado!' : 'Publicar na NewPost-IA'}
+                    </button>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        async function buscarNoticias() {
+            const btn = document.getElementById('btn-buscar');
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Buscando...';
+            lucide.createIcons();
+            
+            state.posts = [];
+            state.selectedPostIndex = null;
+            state.publishedIds = new Set();
+            state.sourceInfo = null;
+            state.editingPostIndex = null;
+            
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: state.selectedCategory, deliver: false })
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                state.posts = data.posts || [];
+                state.selectedPostIndex = state.posts.length > 0 ? 0 : null;
+                state.sourceInfo = { total: data.total, source: data.source };
+            } catch (err) {
+                console.log('Usando notícias de exemplo (API offline)');
+                const examplePosts = getExamplePosts();
+                state.posts = examplePosts;
+                state.selectedPostIndex = examplePosts.length > 0 ? 0 : null;
+                state.sourceInfo = { total: examplePosts.length, source: 'exemplos' };
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="search" class="w-5 h-5"></i> Buscar Notícias Reais';
+                renderPosts();
+                renderPreview();
+            }
+        }
+
+        async function insertPostsViaSupabase(postsList) {
+            if (!supabaseClient) throw new Error('Cliente Supabase não inicializado');
+            
+            console.log('📤 Inserindo no Supabase:', postsList);
+            
+            const postsToInsert = postsList.map(post => ({
+                title: post.title,
+                content: post.content,
+                category: post.category,
+                tags: post.tags,
+                pub_date: post.pubDate,
+                source_url: post.source_url,
+                is_ia_generated: true,
+                status: 'published',
+                created_at: new Date().toISOString()
+            }));
+            
+            const { data, error } = await supabaseClient
+                .from('posts')
+                .insert(postsToInsert)
+                .select();
+            
+            if (error) {
+                console.error('❌ Erro no Supabase:', error);
+                throw error;
+            }
+            
+            console.log('✅ Posts inseridos com sucesso:', data);
+            return { inserted: postsList.length, skipped: 0, data };
+        }
+
+        function normalizePost(post) {
+            return {
+                title: post.title || '',
+                content: post.content || '',
+                category: post.category || state.selectedCategory,
+                tags: post.tags || [],
+                pubDate: post.pubDate || new Date().toISOString(),
+                source_url: post.source_url || ''
+            };
+        }
+
+        async function publicarPost() {
+            if (state.selectedPostIndex === null) return;
+            const post = state.posts[state.selectedPostIndex];
+            
+            try {
+                if (state.sourceInfo && state.sourceInfo.source === 'exemplos') {
+                    state.publishedIds.add(post.source_url || post.title);
+                    alert('✅ Post de exemplo marcado como publicado! (Para publicar na NewPost-IA, configure a API)');
+                } else {
+                    const normalizedPost = normalizePost(post);
+                    await insertPostsViaSupabase([normalizedPost]);
+                    state.publishedIds.add(post.source_url || post.title);
+                    alert('✅ Post publicado com sucesso na NewPost-IA via Supabase!');
+                }
+                renderPosts();
+                renderPreview();
+            } catch (err) {
+                console.error('Erro completo:', err);
+                alert('Erro ao publicar: ' + (err.message || err));
+            }
+        }
+
+        async function publicarTodos() {
+            const pending = state.posts.filter(p => !isPublished(p));
+            if (!pending.length) return;
+            if (!window.confirm(`Publicar ${pending.length} posts na NewPost-IA?`)) return;
+            
+            try {
+                if (state.sourceInfo && state.sourceInfo.source === 'exemplos') {
+                    pending.forEach(p => state.publishedIds.add(p.source_url || p.title));
+                    alert(`✅ ${pending.length} posts de exemplo marcados como publicados!`);
+                } else {
+                    const normalizedPosts = pending.map(p => normalizePost(p));
+                    const result = await insertPostsViaSupabase(normalizedPosts);
+                    pending.forEach(p => state.publishedIds.add(p.source_url || p.title));
+                    alert(`✅ ${result.inserted ?? pending.length} posts publicados via Supabase!`);
+                }
+                renderPosts();
+                renderPreview();
+            } catch (err) {
+                console.error('Erro completo:', err);
+                alert('Erro ao publicar em lote: ' + (err.message || err));
+            }
+        }
+
+        async function copiarPost() {
+            if (state.selectedPostIndex === null) return;
+            const post = state.posts[state.selectedPostIndex];
+            const text = `${post.title}\n\n${post.content}`;
+            try {
+                await navigator.clipboard.writeText(text);
+                alert('✅ Texto copiado para a área de transferência!');
+            } catch {
+                alert('Não foi possível copiar. Selecione o texto manualmente.');
+            }
+        }
+
+        function iniciarEdicao() {
+            if (state.selectedPostIndex === null) return;
+            const post = state.posts[state.selectedPostIndex];
+            state.editingPostIndex = state.selectedPostIndex;
+            state.editTitle = post.title;
+            state.editContent = post.content;
+            renderPreview();
+        }
+
+        function atualizarEditTitle(val) {
+            state.editTitle = val;
+        }
+
+        function atualizarEditContent(val) {
+            state.editContent = val;
+        }
+
+        function salvarEdicao() {
+            if (state.editingPostIndex === null) return;
+            state.posts[state.editingPostIndex] = {
+                ...state.posts[state.editingPostIndex],
+                title: state.editTitle,
+                content: state.editContent
+            };
+            state.editingPostIndex = null;
+            renderPosts();
+            renderPreview();
+        }
+
+        function cancelarEdicao() {
+            state.editingPostIndex = null;
+            renderPreview();
+        }
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', function() {
+            renderCategories();
+            lucide.createIcons();
+        });
     </script>
 </body>
 </html>

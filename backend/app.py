@@ -350,6 +350,94 @@ def news_health():
             "error": str(e)
         }), 500
 
+@app.route('/functions/fetchRssNews', methods=['POST'])
+def fetch_rss_news():
+    """Busca notícias via RSS para a página busca-noticias.html"""
+    try:
+        data = request.get_json() or {}
+        category = data.get('category', 'tecnologia')
+        
+        import feedparser
+        from datetime import datetime
+        
+        # Mapear categorias para fontes RSS
+        rss_feeds_by_category = {
+            'tecnologia': [
+                {'name': 'TecMundo', 'url': 'https://tecmundo.com.br/rss'},
+                {'name': 'CanalTech', 'url': 'https://canaltech.com.br/rss/'},
+                {'name': 'InfoMoney', 'url': 'https://www.infomoney.com.br/feed/'}
+            ],
+            'economia': [
+                {'name': 'Exame', 'url': 'https://exame.com/feed/'},
+                {'name': 'InfoMoney', 'url': 'https://www.infomoney.com.br/feed/'},
+                {'name': 'UOL', 'url': 'https://economia.uol.com.br/feed/ultimas-noticias/'}
+            ],
+            'esportes': [
+                {'name': 'GE Globo', 'url': 'https://ge.globo.com/rss/ultimas-noticias/'},
+                {'name': 'Lance!', 'url': 'https://www.lance.com.br/rss/ultimas-noticias/'}
+            ],
+            'politica': [
+                {'name': 'Folha', 'url': 'https://feeds.folha.uol.com.br/emcimadahora/rss091.xml'},
+                {'name': 'UOL', 'url': 'https://noticias.uol.com.br/politica/ultimas-noticias/feed/'}
+            ],
+            'saude': [
+                {'name': 'TecMundo Saúde', 'url': 'https://tecmundo.com.br/saude/rss'},
+                {'name': 'UOL Saúde', 'url': 'https://noticias.uol.com.br/saude/ultimas-noticias/feed/'}
+            ],
+            'ciencia': [
+                {'name': 'TecMundo Ciência', 'url': 'https://tecmundo.com.br/ciencia/rss'},
+                {'name': 'Agência Brasil', 'url': 'https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml'}
+            ],
+            'entretenimento': [
+                {'name': 'TecMundo Entretenimento', 'url': 'https://tecmundo.com.br/entretenimento/rss'},
+                {'name': 'UOL Entretenimento', 'url': 'https://entretenimento.uol.com.br/feed/ultimas-noticias/'}
+            ],
+            'cultura': [
+                {'name': 'Folha Cultura', 'url': 'https://feeds.folha.uol.com.br/cultura/rss091.xml'},
+                {'name': 'Agência Brasil', 'url': 'https://agenciabrasil.ebc.com.br/rss/cultura/feed.xml'}
+            ],
+            'geral': [
+                {'name': 'Folha', 'url': 'https://feeds.folha.uol.com.br/emcimadahora/rss091.xml'},
+                {'name': 'UOL', 'url': 'https://noticias.uol.com.br/feed/ultimas-noticias/'},
+                {'name': 'Agência Brasil', 'url': 'https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml'}
+            ]
+        }
+        
+        feeds = rss_feeds_by_category.get(category, rss_feeds_by_category['geral'])
+        posts = []
+        
+        for feed_config in feeds:
+            try:
+                feed = feedparser.parse(feed_config['url'])
+                for entry in feed.entries[:5]:
+                    post = {
+                        'title': entry.title,
+                        'content': entry.summary if hasattr(entry, 'summary') else entry.title,
+                        'category': category,
+                        'tags': [category, feed_config['name'].lower().replace(' ', '')],
+                        'pubDate': datetime.now().isoformat(),
+                        'source_url': entry.link
+                    }
+                    # Limitar tamanho do content
+                    if len(post['content']) > 1000:
+                        post['content'] = post['content'][:1000] + '...'
+                    posts.append(post)
+            except Exception as e:
+                print(f"Erro ao processar feed {feed_config['name']}: {e}")
+                continue
+        
+        return jsonify({
+            'posts': posts[:20],
+            'total': len(posts[:20]),
+            'source': 'rss'
+        })
+        
+    except Exception as e:
+        print(f"Erro em fetch_rss_news: {e}")
+        return jsonify({
+            'error': str(e)
+        }), 500
+
 @app.route('/api/curadoria/noticias', methods=['GET'])
 def get_pending_news():
     import requests
