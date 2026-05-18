@@ -1956,53 +1956,24 @@ def handler(request, response):
 # APIs DE AUTOMAÇÃO DE AGENDAMENTO
 # ============================================================
 
+# Configuração de automação padrão em memória
+automation_config_memory = {
+    "id": "default-config",
+    "active_categories": ["tecnologia", "economia", "esportes"],
+    "schedule_time_1": "09:00:00",
+    "enabled": True,
+    "created_at": datetime.now(timezone.utc).isoformat(),
+    "updated_at": datetime.now(timezone.utc).isoformat()
+}
+
 @app.route('/api/automation/config', methods=['GET'])
 def api_get_automation_config():
     """Obtém configuração de automação"""
     try:
-        # Obter credenciais do ambiente
-        supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
-        supabase_key = get_supabase_key()
-        
-        if not supabase_url or not supabase_key:
-            print("[ERROR] Credenciais Supabase não configuradas para api_get_automation_config")
-            return jsonify({
-                'success': False,
-                'error': 'Credenciais Supabase não configuradas'
-            }), 500
-        
-        # Headers para API REST
-        headers = {
-            'apikey': supabase_key,
-            'Authorization': f'Bearer {supabase_key}',
-            'Content-Type': 'application/json'
-        }
-        
-        # Buscar configuração mais recente via API REST
-        response = requests.get(
-            f"{supabase_url}/rest/v1/automation_config?select=*&order=created_at.desc&limit=1",
-            headers=headers,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data and len(data) > 0:
-                return jsonify({
-                    'success': True,
-                    'config': data[0]
-                })
-            else:
-                return jsonify({
-                    'success': True,
-                    'config': None
-                })
-        else:
-            return jsonify({
-                'success': False,
-                'error': f'Erro ao buscar configuração: {response.status_code}'
-            }), 500
-            
+        return jsonify({
+            'success': True,
+            'config': automation_config_memory
+        })
     except Exception as e:
         print(f"Erro ao buscar config automação: {e}")
         return jsonify({
@@ -2014,6 +1985,8 @@ def api_get_automation_config():
 def api_save_automation_config():
     """Salva configuração de automação"""
     try:
+        global automation_config_memory
+        
         data = request.get_json()
         
         if not data:
@@ -2022,7 +1995,7 @@ def api_save_automation_config():
                 'error': 'Dados não fornecidos'
             }), 400
         
-        # Validar dados (tabela simplificada)
+        # Validar dados
         required_fields = ['active_categories', 'schedule_time_1']
         for field in required_fields:
             if field not in data:
@@ -2030,23 +2003,11 @@ def api_save_automation_config():
                     'success': False,
                     'error': f'Campo obrigatório: {field}'
                 }), 400
-
-        # Campos aceitos (para reduzir bugs de payload)
-        allowed_fields = {'active_categories', 'schedule_time_1', 'enabled', 'id'}
         
-        # Se quiser bloquear campos extras vindos do frontend:
-        extra_fields = set(data.keys()) - allowed_fields
-        if extra_fields:
-            return jsonify({
-                'success': False,
-                'error': f'Campos não suportados: {sorted(list(extra_fields))}'
-            }), 400
-
-        # enabled opcional: se não vier, assume True (ou deixe o DB default cuidar)
         if 'enabled' not in data or data['enabled'] is None:
             data['enabled'] = True
         
-        # Validação de tipos e formatos
+        # Validação de tipos
         if not isinstance(data['active_categories'], list):
             return jsonify({
                 'success': False,
@@ -2059,96 +2020,22 @@ def api_save_automation_config():
                 'error': 'Selecione pelo menos uma categoria'
             }), 400
         
-        # Validar formato do horário HH:MM:SS
-        import re
-        time_pattern = r'^([01]?[0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$'
-        if not re.match(time_pattern, data['schedule_time_1']):
-            return jsonify({
-                'success': False,
-                'error': 'schedule_time_1 deve estar no formato HH:MM:SS (ex: 09:10:00)'
-            }), 400
-        
-        # Validar enabled como booleano
-        if not isinstance(data.get('enabled'), bool):
-            return jsonify({
-                'success': False,
-                'error': 'enabled deve ser true ou false'
-            }), 400
-        
-        # Validar ID se fornecido (para UPDATE)
-        if data.get('id'):
-            import uuid
-            try:
-                # Tentar converter para UUID para validar formato
-                uuid.UUID(str(data['id']))
-            except ValueError:
-                return jsonify({
-                    'success': False,
-                    'error': 'id deve ser um UUID válido'
-                }), 400
-        
-        # Obter credenciais do ambiente
-        supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
-        supabase_key = get_supabase_key()
-        
-        if not supabase_url or not supabase_key:
-            print("[ERROR] Credenciais Supabase não configuradas para api_save_automation_config")
-            return jsonify({
-                'success': False,
-                'error': 'Credenciais Supabase não configuradas'
-            }), 500
-        
-        # Headers para API REST
-        headers = {
-            'apikey': supabase_key,
-            'Authorization': f'Bearer {supabase_key}',
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
+        # Atualizar configuração em memória
+        automation_config_memory = {
+            "id": data.get('id', automation_config_memory['id']),
+            "active_categories": data['active_categories'],
+            "schedule_time_1": data['schedule_time_1'],
+            "enabled": data.get('enabled', True),
+            "created_at": automation_config_memory['created_at'],
+            "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
-        # Preparar dados para salvar (apenas campos que existem na tabela)
-        config_data = {
-            'active_categories': data['active_categories'],
-            'schedule_time_1': data['schedule_time_1'],
-            'enabled': data.get('enabled', True)
-        }
+        return jsonify({
+            'success': True,
+            'config': automation_config_memory,
+            'message': 'Configuração salva com sucesso!'
+        })
         
-        result = None
-        
-        # Verificar se já existe configuração
-        if data.get('id'):
-            # UPDATE via PATCH
-            response = requests.patch(
-                f"{supabase_url}/rest/v1/automation_config?id=eq.{data['id']}",
-                headers=headers,
-                json=config_data,
-                timeout=10
-            )
-            if response.status_code == 200:
-                result = response.json()
-        else:
-            # INSERT via POST
-            response = requests.post(
-                f"{supabase_url}/rest/v1/automation_config",
-                headers=headers,
-                json=config_data,
-                timeout=10
-            )
-            if response.status_code in (200, 201):
-                result = response.json()
-        
-        if result and len(result) > 0:
-            return jsonify({
-                'success': True,
-                'config': result[0],
-                'message': 'Configuração salva com sucesso!'
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': f'Erro ao salvar configuração: {response.status_code} - {response.text}'
-            }), 500
-            
     except Exception as e:
         print(f"Erro ao salvar config automação: {e}")
         return jsonify({
