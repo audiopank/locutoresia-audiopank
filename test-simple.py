@@ -5,7 +5,7 @@ Teste simples da aplicação em producao
 import requests
 
 def test_simple():
-    base_url = "https://locutores-ia.vercel.app"
+    base_url = "https://locutoresia-iej7.vercel.app/"
     
     print("=== TESTE SIMPLES ===")
     print(f"URL: {base_url}")

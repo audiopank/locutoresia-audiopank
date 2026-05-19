@@ -34,12 +34,12 @@ def deploy_vercel_manual():
         
         if result.returncode == 0:
             print("\n=== DEPLOY REALIZADO COM SUCESSO! ===")
-            print("URL: https://locutores-ia.vercel.app")
+            print("URL: https://locutoresia-iej7.vercel.app/")
             print("\nAguarde 2-3 minutos para o deploy completar.")
             print("Depois teste os endpoints:")
-            print("- https://locutores-ia.vercel.app/api/test-env")
-            print("- https://locutores-ia.vercel.app/api/lmnt/status")
-            print("- https://locutores-ia.vercel.app/api/lmnt/voices")
+            print("- https://locutoresia-iej7.vercel.app/api/test-env")
+            print("- https://locutoresia-iej7.vercel.app/api/lmnt/status")
+            print("- https://locutoresia-iej7.vercel.app/api/lmnt/voices")
         else:
             print(f"\nERRO NO DEPLOY: {result.stderr}")
             

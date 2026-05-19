@@ -8,7 +8,7 @@ import json
 def test_vercel_environment():
     """Testa as variáveis de ambiente na Vercel"""
     
-    base_url = "https://locutores-ia.vercel.app"
+    base_url = "https://locutoresia-iej7.vercel.app/"
     
     print("=== TESTANDO VARIÁVEIS DE AMBIENTE NA VERCEL ===")
     print(f"URL: {base_url}/api/test-env")
@@ -39,7 +39,7 @@ def test_vercel_environment():
                 print("\n=== RESULTADO ===")
                 print("A variável LMNT_API_KEY está configurada!")
                 print("Aguarde 2-3 minutos para o deploy completar.")
-                print("Depois teste: https://locutores-ia.vercel.app/api/lmnt/status")
+                print("Depois teste: https://locutoresia-iej7.vercel.app/api/lmnt/status")
             else:
                 print("\n=== PROBLEMA ===")
                 print("A variável LMNT_API_KEY NÃO está configurada!")

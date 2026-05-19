@@ -7,7 +7,7 @@ import json
 
 def test_routes():
     """Testa todas as rotas principais"""
-    base_url = "https://locutores-ia.vercel.app"
+    base_url = "https://locutoresia-iej7.vercel.app/"
     
     routes_to_test = [
         "/",

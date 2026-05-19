@@ -8,7 +8,7 @@ import json
 def check_production_status():
     """Verifica o status da aplicação em produção"""
     
-    base_url = "https://locutores-ia.vercel.app"
+    base_url = "https://locutoresia-iej7.vercel.app/"
     
     print("=== VERIFICANDO APLICAÇÃO EM PRODUÇÃO ===")
     print(f"URL Base: {base_url}")
