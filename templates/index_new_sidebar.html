@@ -1,0 +1,553 @@
+
+&lt;!DOCTYPE html&gt;
+&lt;html lang="pt-BR"&gt;
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes"&gt;
+    &lt;meta name="theme-color" content="#2c3e50"&gt;
+    &lt;meta name="apple-mobile-web-app-capable" content="yes"&gt;
+    &lt;meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"&gt;
+    &lt;meta name="apple-mobile-web-app-title" content="Locutores IA"&gt;
+    &lt;meta name="description" content="Gere áudios profissionais com IA. Vozes realistas para notícias, podcasts e conteúdo."&gt;
+    &lt;meta name="mobile-web-app-capable" content="yes"&gt;
+    &lt;link rel="manifest" href="/static/manifest.json"&gt;
+    &lt;link rel="apple-touch-icon" href="/static/icon-192.png"&gt;
+    &lt;title&gt;Locutores IA - Central de Vozes Inteligentes&lt;/title&gt;
+    &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"&gt;
+    &lt;link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"&gt;
+    &lt;link href="/static/css/sidebar.css" rel="stylesheet"&gt;
+    &lt;style&gt;
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --light-bg: #ecf0f1;
+            --dark-text: #2c3e50;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--light-bg);
+            color: var(--dark-text);
+        }
+
+        .hero-section {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 60px 0;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .hero-section h1 {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .stats-container {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 30px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .filter-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .voice-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+        }
+
+        .voice-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .voice-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 15px;
+        }
+
+        .voice-name {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--primary-color);
+        }
+
+        .voice-description {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        .voice-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn-custom {
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            transition: background 0.3s ease;
+        }
+
+        .btn-custom:hover {
+            background: #2980b9;
+            color: white;
+        }
+
+        .audio-player {
+            margin-top: 15px;
+            display: none;
+        }
+
+        .audio-player.active {
+            display: block !important;
+        }
+
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-generate {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+
+        .btn-generate:hover {
+            background: #c0392b;
+            color: white;
+        }
+
+        .generation-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .form-control:focus {
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+        }
+
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .badge-custom {
+            background: var(--secondary-color);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;!-- Overlay para Mobile --&gt;
+    &lt;div class="sidebar-overlay" id="sidebarOverlay"&gt;&lt;/div&gt;
+    
+    &lt;!-- Sidebar --&gt;
+    &lt;aside class="sidebar" id="sidebar"&gt;
+        &lt;div class="sidebar-header"&gt;
+            &lt;a href="/" class="sidebar-brand" style="text-decoration: none;"&gt;
+                &lt;i class="fas fa-microphone-alt"&gt;&lt;/i&gt;
+                &lt;h1&gt;Locutores IA&lt;/h1&gt;
+            &lt;/a&gt;
+            &lt;button class="sidebar-toggle" id="sidebarToggle" title="Expandir/Recolher Menu"&gt;
+                &lt;i class="fas fa-bars"&gt;&lt;/i&gt;
+            &lt;/button&gt;
+        &lt;/div&gt;
+        
+        &lt;nav class="sidebar-menu"&gt;
+            &lt;div class="menu-section"&gt;
+                &lt;p class="menu-section-title"&gt;Principal&lt;/p&gt;
+                &lt;a href="/" class="menu-item active"&gt;
+                    &lt;i class="fas fa-home"&gt;&lt;/i&gt;
+                    &lt;span&gt;Início&lt;/span&gt;
+                &lt;/a&gt;
+                &lt;a href="/busca" class="menu-item"&gt;
+                    &lt;i class="fas fa-search"&gt;&lt;/i&gt;
+                    &lt;span&gt;Busca&lt;/span&gt;
+                &lt;/a&gt;
+                &lt;a href="/noticias" class="menu-item"&gt;
+                    &lt;i class="fas fa-newspaper"&gt;&lt;/i&gt;
+                    &lt;span&gt;Notícias&lt;/span&gt;
+                &lt;/a&gt;
+            &lt;/div&gt;
+            
+            &lt;div class="menu-section"&gt;
+                &lt;p class="menu-section-title"&gt;IA e Automação&lt;/p&gt;
+                &lt;a href="/news-auto-post" class="menu-item highlight-green"&gt;
+                    &lt;i class="fas fa-robot"&gt;&lt;/i&gt;
+                    &lt;span&gt;News Auto Post&lt;/span&gt;
+                &lt;/a&gt;
+                &lt;a href="/social-posts" class="menu-item highlight-purple"&gt;
+                    &lt;i class="fas fa-share-alt"&gt;&lt;/i&gt;
+                    &lt;span&gt;NewPost-IA&lt;/span&gt;
+                &lt;/a&gt;
+            &lt;/div&gt;
+            
+            &lt;div class="menu-section"&gt;
+                &lt;p class="menu-section-title"&gt;Ferramentas&lt;/p&gt;
+                &lt;a href="/minidaw" target="_blank" class="menu-item"&gt;
+                    &lt;i class="fas fa-music"&gt;&lt;/i&gt;
+                    &lt;span&gt;MiniDAW&lt;/span&gt;
+                &lt;/a&gt;
+                &lt;a href="/minidaw-react" target="_blank" class="menu-item"&gt;
+                    &lt;i class="fas fa-robot"&gt;&lt;/i&gt;
+                    &lt;span&gt;MiniDAW IA&lt;/span&gt;
+                &lt;/a&gt;
+            &lt;/div&gt;
+            
+            &lt;div class="menu-section"&gt;
+                &lt;p class="menu-section-title"&gt;Dashboards&lt;/p&gt;
+                &lt;div class="menu-dropdown"&gt;
+                    &lt;a href="#" class="menu-item menu-dropdown-toggle"&gt;
+                        &lt;i class="fas fa-chart-line"&gt;&lt;/i&gt;
+                        &lt;span&gt;Dashboards&lt;/span&gt;
+                        &lt;i class="fas fa-chevron-down ms-auto" style="font-size: 0.75rem;"&gt;&lt;/i&gt;
+                    &lt;/a&gt;
+                    &lt;div class="menu-dropdown-content"&gt;
+                        &lt;a href="/dashboard-real" class="menu-dropdown-item"&gt;
+                            &lt;i class="fas fa-database text-success"&gt;&lt;/i&gt;
+                            &lt;span&gt;&lt;strong&gt;Dados Reais (Supabase)&lt;/strong&gt;&lt;/span&gt;
+                        &lt;/a&gt;
+                        &lt;div class="dropdown-divider"&gt;&lt;/div&gt;
+                        &lt;a href="/news-auto-post" class="menu-dropdown-item"&gt;
+                            &lt;i class="fas fa-newspaper text-primary"&gt;&lt;/i&gt;
+                            &lt;span&gt;&lt;strong&gt;News Auto Post&lt;/strong&gt;&lt;/span&gt;
+                        &lt;/a&gt;
+                        &lt;div class="dropdown-divider"&gt;&lt;/div&gt;
+                        &lt;a href="/dashboard" class="menu-dropdown-item"&gt;
+                            &lt;i class="fas fa-chart-pie"&gt;&lt;/i&gt;
+                            &lt;span&gt;Dashboard Principal&lt;/span&gt;
+                        &lt;/a&gt;
+                        &lt;a href="/dashboard-advanced" class="menu-dropdown-item"&gt;
+                            &lt;i class="fas fa-chart-bar"&gt;&lt;/i&gt;
+                            &lt;span&gt;Dashboard Avançado&lt;/span&gt;
+                        &lt;/a&gt;
+                        &lt;a href="/dashboard-profissional" class="menu-dropdown-item"&gt;
+                            &lt;i class="fas fa-chart-line"&gt;&lt;/i&gt;
+                            &lt;span&gt;Dashboard Profissional&lt;/span&gt;
+                        &lt;/a&gt;
+                        &lt;div class="dropdown-divider"&gt;&lt;/div&gt;
+                        &lt;a href="/api/advanced/trends" class="menu-dropdown-item"&gt;
+                            &lt;i class="fas fa-code"&gt;&lt;/i&gt;
+                            &lt;span&gt;API Trends (JSON)&lt;/span&gt;
+                        &lt;/a&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+            
+            &lt;div class="menu-section"&gt;
+                &lt;p class="menu-section-title"&gt;Outros&lt;/p&gt;
+                &lt;a href="/contato" class="menu-item"&gt;
+                    &lt;i class="fas fa-envelope"&gt;&lt;/i&gt;
+                    &lt;span&gt;Contato&lt;/span&gt;
+                &lt;/a&gt;
+            &lt;/div&gt;
+        &lt;/nav&gt;
+        
+        &lt;div class="sidebar-footer"&gt;
+            &lt;a href="https://app.lmnt.com/" target="_blank" class="menu-item"&gt;
+                &lt;i class="fas fa-microphone-alt"&gt;&lt;/i&gt;
+                &lt;span&gt;LMNT Studio&lt;/span&gt;
+            &lt;/a&gt;
+        &lt;/div&gt;
+    &lt;/aside&gt;
+    
+    &lt;!-- Main Content --&gt;
+    &lt;main class="main-content"&gt;
+        &lt;!-- Top Navigation for Mobile --&gt;
+        &lt;div class="top-nav"&gt;
+            &lt;button class="mobile-menu-toggle" id="mobileMenuToggle" title="Abrir Menu"&gt;
+                &lt;i class="fas fa-bars"&gt;&lt;/i&gt;
+            &lt;/button&gt;
+            &lt;div class="top-nav-brand"&gt;
+                &lt;i class="fas fa-microphone-alt"&gt;&lt;/i&gt;
+                &lt;h1&gt;Locutores IA&lt;/h1&gt;
+            &lt;/div&gt;
+            &lt;div style="width: 40px;"&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        
+        &lt;!-- Hero Section --&gt;
+        &lt;section class="hero-section"&gt;
+            &lt;div class="container"&gt;
+                &lt;h1&gt;Encontre um profissional da voz IA para a sua publicidade ou produto&lt;/h1&gt;
+                &lt;p class="lead"&gt;Contrate locutores inteligentes sem intermediários&lt;/p&gt;
+                
+                &lt;div class="stats-container"&gt;
+                    &lt;div class="stat-item"&gt;
+                        &lt;span class="stat-number" id="voicesCount"&gt;50+&lt;/span&gt;
+                        &lt;span class="stat-label"&gt;Vozes IA&lt;/span&gt;
+                    &lt;/div&gt;
+                    &lt;div class="stat-item"&gt;
+                        &lt;span class="stat-number" id="audiosCount"&gt;1.000+&lt;/span&gt;
+                        &lt;span class="stat-label"&gt;Áudios Gerados&lt;/span&gt;
+                    &lt;/div&gt;
+                    &lt;div class="stat-item"&gt;
+                        &lt;span class="stat-number" id="projectsCount"&gt;500+&lt;/span&gt;
+                        &lt;span class="stat-label"&gt;Projetos&lt;/span&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+        &lt;/section&gt;
+
+        &lt;!-- Main Content Area --&gt;
+        &lt;div class="container"&gt;
+            &lt;div class="row"&gt;
+                &lt;!-- Filter Panel --&gt;
+                &lt;div class="col-lg-3"&gt;
+                    &lt;div class="filter-panel"&gt;
+                        &lt;h5 class="mb-4"&gt;&lt;i class="fas fa-filter me-2"&gt;&lt;/i&gt;Filtros&lt;/h5&gt;
+                        
+                        &lt;div class="mb-3"&gt;
+                            &lt;label class="form-label"&gt;Gênero&lt;/label&gt;
+                            &lt;select class="form-select" id="genderFilter"&gt;
+                                &lt;option value=""&gt;Todos&lt;/option&gt;
+                                &lt;option value="male"&gt;Masculino&lt;/option&gt;
+                                &lt;option value="female"&gt;Feminino&lt;/option&gt;
+                                &lt;option value="neutral"&gt;Neutro&lt;/option&gt;
+                            &lt;/select&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;div class="mb-3"&gt;
+                            &lt;label class="form-label"&gt;Idioma&lt;/label&gt;
+                            &lt;select class="form-select" id="languageFilter"&gt;
+                                &lt;option value=""&gt;Todos&lt;/option&gt;
+                                &lt;option value="pt-BR"&gt;Português (Brasil)&lt;/option&gt;
+                                &lt;option value="en-US"&gt;Inglês (EUA)&lt;/option&gt;
+                                &lt;option value="es-ES"&gt;Espanhol&lt;/option&gt;
+                            &lt;/select&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;div class="mb-3"&gt;
+                            &lt;label class="form-label"&gt;Estilo&lt;/label&gt;
+                            &lt;select class="form-select" id="styleFilter"&gt;
+                                &lt;option value=""&gt;Todos&lt;/option&gt;
+                                &lt;option value="professional"&gt;Profissional&lt;/option&gt;
+                                &lt;option value="friendly"&gt;Amigável&lt;/option&gt;
+                                &lt;option value="energetic"&gt;Energético&lt;/option&gt;
+                                &lt;option value="calm"&gt;Calmo&lt;/option&gt;
+                            &lt;/select&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;button class="btn btn-custom w-100 mb-2" onclick="applyFilters()"&gt;
+                            &lt;i class="fas fa-search me-2"&gt;&lt;/i&gt;Buscar
+                        &lt;/button&gt;
+                        
+                        &lt;button class="btn btn-outline-secondary w-100" onclick="resetFilters()"&gt;
+                            &lt;i class="fas fa-redo me-2"&gt;&lt;/i&gt;Limpar Filtros
+                        &lt;/button&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;!-- Voices Grid --&gt;
+                &lt;div class="col-lg-9"&gt;
+                    &lt;!-- Generation Panel --&gt;
+                    &lt;div class="generation-panel"&gt;
+                        &lt;h5 class="mb-4"&gt;&lt;i class="fas fa-magic me-2"&gt;&lt;/i&gt;Gerar Locução&lt;/h5&gt;
+                        
+                        &lt;div class="mb-3"&gt;
+                            &lt;label class="form-label"&gt;Texto para Locução&lt;/label&gt;
+                            &lt;textarea class="form-control" id="textInput" rows="4" placeholder="Digite o texto que você quer transformar em áudio..."&gt;&lt;/textarea&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;div class="row"&gt;
+                            &lt;div class="col-md-6 mb-3"&gt;
+                                &lt;label class="form-label"&gt;Voz IA&lt;/label&gt;
+                                &lt;select class="form-select" id="voiceSelect"&gt;
+                                    &lt;option value=""&gt;Selecione uma voz&lt;/option&gt;
+                                &lt;/select&gt;
+                            &lt;/div&gt;
+                            
+                            &lt;div class="col-md-6 mb-3"&gt;
+                                &lt;label class="form-label"&gt;Estilo de Fala&lt;/label&gt;
+                                &lt;select class="form-select" id="speechStyle"&gt;
+                                    &lt;option value="normal"&gt;Normal&lt;/option&gt;
+                                    &lt;option value="fast"&gt;Rápido&lt;/option&gt;
+                                    &lt;option value="slow"&gt;Lento&lt;/option&gt;
+                                    &lt;option value="cheerful"&gt;Alegre&lt;/option&gt;
+                                    &lt;option value="serious"&gt;Sério&lt;/option&gt;
+                                    &lt;option value="whisper"&gt;Sussurrado&lt;/option&gt;
+                                    &lt;option value="excited"&gt;Empolgado&lt;/option&gt;
+                                    &lt;option value="calm"&gt;Calmo&lt;/option&gt;
+                                    &lt;option value="authoritative"&gt;Autoritário&lt;/option&gt;
+                                    &lt;option value="friendly"&gt;Amigável&lt;/option&gt;
+                                    &lt;option value="gentle"&gt;Suave&lt;/option&gt;
+                                    &lt;option value="robot"&gt;Robótico&lt;/option&gt;
+                                    &lt;option value="news"&gt;Jornalístico&lt;/option&gt;
+                                    &lt;option value="sports"&gt;Esportivo&lt;/option&gt;
+                                    &lt;option value="narration"&gt;Narração&lt;/option&gt;
+                                    &lt;option value="advertisement"&gt;Publicitário&lt;/option&gt;
+                                    &lt;option value="documentary"&gt;Documentário&lt;/option&gt;
+                                &lt;/select&gt;
+                            &lt;/div&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;button class="btn btn-generate" onclick="generateAudio()"&gt;
+                            &lt;i class="fas fa-play me-2"&gt;&lt;/i&gt;Gerar Áudio
+                        &lt;/button&gt;
+                        
+                        &lt;div class="loading-spinner" id="loadingSpinner"&gt;
+                            &lt;div class="spinner-border text-primary" role="status"&gt;
+                                &lt;span class="visually-hidden"&gt;Gerando áudio...&lt;/span&gt;
+                            &lt;/div&gt;
+                            &lt;p class="mt-2"&gt;Gerando sua locução...&lt;/p&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;div class="audio-player" id="audioPlayer"&gt;
+                            &lt;h6 class="mb-3"&gt;Áudio Gerado:&lt;/h6&gt;
+                            &lt;audio controls class="w-100" id="generatedAudio"&gt;&lt;/audio&gt;
+                            &lt;div class="audio-controls"&gt;
+                                &lt;button class="btn btn-sm btn-outline-primary" onclick="downloadAudio()"&gt;
+                                    &lt;i class="fas fa-download me-1"&gt;&lt;/i&gt;Baixar
+                                &lt;/button&gt;
+                                &lt;button class="btn btn-sm btn-outline-secondary" onclick="shareAudio()"&gt;
+                                    &lt;i class="fas fa-share me-1"&gt;&lt;/i&gt;Compartilhar
+                                &lt;/button&gt;
+                                &lt;button class="btn btn-sm btn-success" onclick="sendToMiniDAW()" id="sendToMiniDAWBtn" style="display: inline-block;"&gt;
+                                    &lt;i class="fas fa-music me-1"&gt;&lt;/i&gt;Enviar para MiniDAW
+                                &lt;/button&gt;
+                            &lt;/div&gt;
+                        &lt;/div&gt;
+                    &lt;/div&gt;
+
+                    &lt;!-- Voice Cloning Panel --&gt;
+                    &lt;div class="generation-panel mb-4"&gt;
+                        &lt;div class="d-flex justify-content-between align-items-center mb-3"&gt;
+                            &lt;h5 class="mb-0"&gt;&lt;i class="fas fa-clone me-2"&gt;&lt;/i&gt;Clonar sua Voz&lt;/h5&gt;
+                            &lt;a href="https://app.lmnt.com/" target="_blank" style="background: #007bff; color: white; padding: 6px 12px; border-radius: 15px; text-decoration: none; font-size: 14px; font-weight: bold;"&gt;
+                                &lt;i class="fas fa-external-link-alt me-1"&gt;&lt;/i&gt;LMNT Studio Externo
+                            &lt;/a&gt;
+                        &lt;/div&gt;
+                        &lt;p class="text-muted"&gt;Crie uma voz personalizada a partir de uma amostra de áudio&lt;/p&gt;
+                        
+                        &lt;div class="row"&gt;
+                            &lt;div class="col-md-6 mb-3"&gt;
+                                &lt;label class="form-label"&gt;Provider de Clonagem&lt;/label&gt;
+                                &lt;select class="form-select" id="cloneProvider"&gt;
+                                    &lt;option value="elevenlabs"&gt;ElevenLabs (Recomendado)&lt;/option&gt;
+                                    &lt;option value="lmnt"&gt;LMNT&lt;/option&gt;
+                                &lt;/select&gt;
+                            &lt;/div&gt;
+                            
+                            &lt;div class="col-md-6 mb-3"&gt;
+                                &lt;label class="form-label"&gt;Nome da Voz&lt;/label&gt;
+                                &lt;input type="text" class="form-control" id="cloneVoiceName" placeholder="Ex: Minha Voz Personalizada"&gt;
+                            &lt;/div&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;div class="row"&gt;
+                            &lt;div class="col-md-12 mb-3"&gt;
+                                &lt;label class="form-label"&gt;Descrição (opcional)&lt;/label&gt;
+                                &lt;input type="text" class="form-control" id="cloneVoiceDescription" placeholder="Descreva sua voz"&gt;
+                            &lt;/div&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;div class="mb-3"&gt;
+                            &lt;label class="form-label"&gt;Arquivo de Áudio&lt;/label&gt;
+                            &lt;input type="file" class="form-control" id="audioFileInput" accept="audio/*"&gt;
+                            &lt;small class="text-muted"&gt;Formatos aceitos: WAV, MP3, M4A (máximo 10MB)&lt;/small&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;div class="mb-3"&gt;
+                            &lt;div class="form-check"&gt;
+                                &lt;input class="form-check-input" type="checkbox" id="enhanceAudio" checked&gt;
+                                &lt;label class="form-check-label" for="enhanceAudio"&gt;
+                                    Melhorar qualidade do áudio (recomendado)
+                                &lt;/label&gt;
+                            &lt;/div&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;div class="mb-3"&gt;
+                            &lt;div id="audioPreview" style="display: none;"&gt;
+                                &lt;label class="form-label"&gt;Preview do Áudio:&lt;/label&gt;
+                                &lt;audio controls class="w-100" id="previewAudio"&gt;&lt;/audio&gt;
+                            &lt;/div&gt;
+                        &lt;/div&gt;
+                        
+                        &lt;button class="btn btn-generate" onclick="cloneVoice()"&gt;
+                            &lt;i class="fas fa-magic me-2"&gt;&lt;/i&gt;Clonar Voz
+                        &lt;/button&gt;
+                        
+                        &lt;div class="loading-spinner" id="cloneLoadingSpinner"&gt;
+                            &lt;div class="spinner-border text-primary" role="status"&gt;
+                                &lt;span class="visually-hidden"&gt;Clonando voz...&lt;/span&gt;
+                            &lt;/div&gt;
+                            &lt;p class="mt-2"&gt;Criando sua voz personalizada...&lt;/p&gt;
+                        &lt;/div&gt;
+                    &lt;/div&gt;
+
+                    &lt;!-- Cloned Voices List --&gt;
+                    &lt;div class="generation-panel mb-4" id="clonedVoicesPanel" style="display: none;"&gt;
+                        &lt;h5 class="mb-4"&gt;&lt;i class="fas fa-users me-2"&gt;&lt;/i&gt;Minhas Vozes Clonadas&lt;/h5&gt;
+                        &lt;div id="clonedVoicesContainer"&gt;
+                            &lt;!-- Cloned voices will be displayed here --&gt;
+                        &lt;/div&gt;
+                    &lt;/div&gt;
+
+                    &lt;!-- Voices List --&gt;
+                    &lt;h5 class="mb-4"&gt;&lt;i class="fas fa-microphone me-2"&gt;&lt;/i&gt;Nossas Vozes IA&lt;/h5&gt;
+                    &lt;div id="voicesContainer"&gt;
+                        &lt;!-- Voice cards will be dynamically generated here --&gt;
+                    &lt;/div&gt;
+
+                &lt;/div&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/main&gt;
+    
+    &lt;script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"&gt;&lt;/script&gt;
+    &lt;script src="/static/js/sidebar.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
