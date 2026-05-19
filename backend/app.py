@@ -1471,13 +1471,6 @@ def api_list_social_posts():
         
         if response.status_code in (200, 201):
             posts = response.json()
-            print(f"\n[DEBUG] ===== Posts do Supabase (antes do mapeamento) =====")
-            for i, post in enumerate(posts[:5]):
-                print(f"\n[DEBUG] Post {i+1}:")
-                print(f"  ID: {post.get('id')}")
-                print(f"  Title: {post.get('title', 'N/A')[:40]}")
-                print(f"  Status (original): {repr(post.get('status'))}")
-                print(f"  All keys: {list(post.keys())}")
             
             # Mapear status de inglês para português e garantir campo 'caption'
             status_map_reverse = {
@@ -1489,23 +1482,50 @@ def api_list_social_posts():
                 'scheduled': 'agendado',
                 'error': 'erro'
             }
-            print(f"\n[DEBUG] ===== Aplicando mapeamento =====")
-            for i, post in enumerate(posts[:5]):
-                if 'caption' not in post and 'content' in post:
-                    post['caption'] = post['content']
-                if 'status' in post:
-                    original_status = post['status']
-                    post['status'] = status_map_reverse.get(post['status'], post['status'])
-                    print(f"[DEBUG] Post {i+1}: {original_status} → {post['status']}")
+            valid_posts = []
+            for i, post in enumerate(posts, 1):
+                if not post:
+                    continue
+                    
+                print(f"[DEBUG] Processando post {i}:")
+                print(f"[DEBUG]   ID: {post.get('id')}")
+                print(f"[DEBUG]   Título: {post.get('title')}")
+                print(f"[DEBUG]   Campo caption: {repr(post.get('caption'))}")
+                print(f"[DEBUG]   Campo content: {repr(post.get('content'))}")
+                
+                # Garantir que temos o campo caption
+                caption = ''
+                if post.get('caption') and str(post.get('caption')).strip():
+                    caption = str(post.get('caption')).strip()
+                elif post.get('content') and str(post.get('content')).strip():
+                    caption = str(post.get('content')).strip()
                 else:
-                    print(f"[DEBUG] Post {i+1}: SEM CAMPO STATUS!")
-            print(f"\n[DEBUG] ===== Fim do mapeamento =====\n")
-            return jsonify({"success": True, "posts": posts})
+                    # Se tudo estiver vazio, usar o título + uma frase padrão
+                    title = post.get('title', '')
+                    if title:
+                        caption = f"{title} - Notícia importante sobre o tema."
+                    else:
+                        caption = "Conteúdo da notícia em breve..."
+                        
+                post['caption'] = caption
+                print(f"[DEBUG]   Caption final: {repr(caption)}")
+                
+                # Mapear tags para hashtags
+                if 'tags' in post and post['tags']:
+                    post['hashtags'] = post['tags']
+                if 'status' in post and post['status']:
+                    post['status'] = status_map_reverse.get(post['status'], post['status'])
+                    
+                valid_posts.append(post)
+            
+            return jsonify({"success": True, "posts": valid_posts})
         else:
             return jsonify({"success": False, "error": f"Erro ao buscar posts: {response.status_code}"}), response.status_code
             
     except Exception as e:
+        import traceback
         print(f"[DEBUG] Erro em api_list_social_posts: {e}")
+        print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts', methods=['POST'])
@@ -1554,6 +1574,8 @@ def api_create_social_post():
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
         
+        print(f"[DEBUG] api_create_social_post - post_data: {post_data}")
+        
         response = requests.post(
             f"{supabase_url}/rest/v1/posts",
             json=post_data,
@@ -1567,6 +1589,7 @@ def api_create_social_post():
         if response.status_code in (200, 201):
             result = response.json()
             post_id = result[0].get('id') if isinstance(result, list) and result else None
+            print(f"[DEBUG] Post criado com sucesso - ID: {post_id}")
             return jsonify({
                 "success": True,
                 "post_id": post_id,
@@ -1607,8 +1630,33 @@ def api_get_social_post(post_id):
             posts = response.json()
             if posts:
                 post = posts[0]
-                if 'caption' not in post and 'content' in post:
-                    post['caption'] = post['content']
+                
+                print(f"[DEBUG] Processando post único:")
+                print(f"[DEBUG]   ID: {post.get('id')}")
+                print(f"[DEBUG]   Título: {post.get('title')}")
+                print(f"[DEBUG]   Campo caption: {repr(post.get('caption'))}")
+                print(f"[DEBUG]   Campo content: {repr(post.get('content'))}")
+                
+                # Garantir que temos o campo caption
+                caption = ''
+                if post.get('caption') and str(post.get('caption')).strip():
+                    caption = str(post.get('caption')).strip()
+                elif post.get('content') and str(post.get('content')).strip():
+                    caption = str(post.get('content')).strip()
+                else:
+                    # Se tudo estiver vazio, usar o título + uma frase padrão
+                    title = post.get('title', '')
+                    if title:
+                        caption = f"{title} - Notícia importante sobre o tema."
+                    else:
+                        caption = "Conteúdo da notícia em breve..."
+                        
+                post['caption'] = caption
+                print(f"[DEBUG]   Caption final: {repr(caption)}")
+                
+                # Mapear tags para hashtags
+                if 'tags' in post and post['tags']:
+                    post['hashtags'] = post['tags']
                 return jsonify({"success": True, "post": post})
             else:
                 return jsonify({"success": False, "error": "Post não encontrado"}), 404
@@ -1640,20 +1688,31 @@ def api_update_social_post(post_id):
             'Prefer': 'return=representation'
         }
         
+        # Mapear status de português para inglês
+        status_map = {
+            'rascunho': 'draft',
+            'pendente': 'pending',
+            'aprovado': 'approved',
+            'rejeitado': 'rejected',
+            'publicado': 'published',
+            'agendado': 'scheduled',
+            'erro': 'error'
+        }
+        
         update_data = {}
         if 'title' in data:
             update_data['title'] = data['title']
         if 'caption' in data:
             update_data['content'] = data['caption']
-        if 'audio_url' in data:
-            update_data['audio_url'] = data['audio_url']
-        if 'image_url' in data:
-            update_data['image_url'] = data['image_url']
-        if 'hashtags' in data:
-            update_data['hashtags'] = data['hashtags']
+        if 'hashtags' in data and data['hashtags']:
+            update_data['tags'] = data['hashtags']  # Usar tags para hashtags
         if 'status' in data:
-            update_data['status'] = data['status']
+            update_data['status'] = status_map.get(data['status'], data['status'])
+        
         update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
+        
+        print(f"[DEBUG] api_update_social_post - post_id: {post_id}")
+        print(f"[DEBUG] update_data: {update_data}")
         
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
@@ -1662,13 +1721,18 @@ def api_update_social_post(post_id):
             timeout=10
         )
         
+        print(f"[DEBUG] Status Code: {response.status_code}")
+        print(f"[DEBUG] Response: {response.text}")
+        
         if response.status_code in (200, 204):
             return jsonify({"success": True, "message": "Post atualizado com sucesso"})
         else:
-            return jsonify({"success": False, "error": f"Erro ao atualizar post: {response.status_code}"}), response.status_code
+            return jsonify({"success": False, "error": f"Erro ao atualizar post: {response.status_code} - {response.text}"}), response.status_code
             
     except Exception as e:
+        import traceback
         print(f"[DEBUG] Erro em api_update_social_post: {e}")
+        print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts/<post_id>/approve', methods=['POST'])

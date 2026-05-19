@@ -97,11 +97,19 @@ class NewsUtils:
                         if pub_date != today:
                             continue
                     
+                    snippet = ""
+                    if hasattr(entry, 'summary') and entry.summary:
+                        snippet = entry.summary
+                    elif hasattr(entry, 'description') and entry.description:
+                        snippet = entry.description
+                    else:
+                        snippet = entry.title
+                    
                     results.append({
                         "title": entry.title,
                         "url": entry.link,
                         "source": source_name.title(),
-                        "snippet": entry.summary if hasattr(entry, 'summary') else entry.title,
+                        "snippet": snippet,
                         "published_at": entry.published if hasattr(entry, 'published') else datetime.now().isoformat()
                     })
                     
@@ -191,6 +199,10 @@ class NewsUtils:
         """
         title = raw_data.get("title", "Sem Título").strip()
         content = raw_data.get("snippet", raw_data.get("content", ""))
+        
+        # Garantir que o conteúdo nunca esteja vazio
+        if not content or len(content.strip()) == 0:
+            content = f"{title} - Notícia importante sobre o tema."
         
         # Gerar Slug Simples
         slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')

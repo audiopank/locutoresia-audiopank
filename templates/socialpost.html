@@ -770,7 +770,7 @@
             const date = new Date(post.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'short', year:'numeric' });
             const hasAudio = !!post.audio_url;
             const hasImage = !!post.image_url;
-            const isApproved = post.status === 'aprovado' || post.status === 'ready';
+            const isApproved = post.status === 'aprovado' || post.status === 'approved' || post.status === 'ready';
             const isPublished = post.status === 'publicado' || post.status === 'published';
             const isRejected = (post.status === 'rejeitado' || post.status === 'rejected') || (post.metadata && post.metadata.is_rejected);
 
@@ -1032,7 +1032,8 @@
             const data = await res.json();
             if (data.success) {
                 showToast('Post aprovado! Pronto para publicar. ✅');
-                refreshPosts();
+                // Aguardar 500ms para garantir que o Supabase atualizou
+                setTimeout(() => refreshPosts(), 500);
             } else {
                 showToast('Erro: ' + (data.error || 'Falha'), 'error');
             }
