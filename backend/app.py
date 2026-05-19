@@ -7,6 +7,10 @@ import json
 import requests
 from datetime import datetime, timezone
 
+print("[DEBUG] === INÍCIO DO app.py ===")
+print(f"[DEBUG] Diretório atual: {os.getcwd()}")
+print(f"[DEBUG] __file__: {__file__}")
+
 # Forçar UTF-8 no stdout (necessário no Windows)
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -18,13 +22,19 @@ try:
     from dotenv import load_dotenv
     # Carregar .env do diretório pai (raiz do projeto)
     env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    print(f"[DEBUG] Tentando carregar .env de: {env_path}")
+    print(f"[DEBUG] Arquivo .env existe? {os.path.exists(env_path)}")
     if os.path.exists(env_path):
         load_dotenv(env_path)
         print(f"✅ Arquivo .env carregado: {env_path}")
+        # Verificar variáveis imediatamente após o load
+        print(f"[DEBUG] SUPABASE_URL após load_dotenv: {repr(os.getenv('SUPABASE_URL'))}")
     else:
         print(f"⚠️ Arquivo .env não encontrado em: {env_path}")
 except ImportError:
     print("⚠️ python-dotenv não instalado, usando variáveis de ambiente do sistema")
+except Exception as e:
+    print(f"❌ Erro ao carregar .env: {e}")
 
 # No Vercel, o diretório de execução principal pode não ser 'backend'
 # Precisamos adicionar o diretório atual (onde está app.py) ao sys.path explicitamente
@@ -1434,11 +1444,17 @@ def api_calendar_schedule():
 def api_list_social_posts():
     """Lista todos os SocialPosts (usando Supabase real) - filtrados para nossos posts"""
     try:
+        print("[DEBUG] === api_list_social_posts ===")
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
         supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
         
+        print(f"[DEBUG] SUPABASE_URL: {repr(supabase_url)}")
+        print(f"[DEBUG] SUPABASE_ANON_KEY: {repr(supabase_key[:50] + '...' if supabase_key else 'VAZIO')}")
+        print(f"[DEBUG] NEWPOST_AUTHOR_ID: {repr(newpost_author_id)}")
+        
         if not supabase_url or not supabase_key:
+            print("[DEBUG] ERRO: Credenciais Supabase não configuradas!")
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
         
         headers = {
@@ -1490,10 +1506,18 @@ def api_list_social_posts():
                 print(f"[DEBUG] Processando post {i}:")
                 print(f"[DEBUG]   ID: {post.get('id')}")
                 print(f"[DEBUG]   Título: {post.get('title')}")
-                print(f"[DEBUG]   Campo caption: {repr(post.get('caption'))}")
-                print(f"[DEBUG]   Campo content: {repr(post.get('content'))}")
+                print(f"[DEBUG]   Campo content (tabela): {repr(post.get('content'))}")
+                print(f"[DEBUG]   Campo caption (tabela): {repr(post.get('caption'))}")
+                print(f"[DEBUG]   Campo image_url (tabela): {repr(post.get('image_url'))}")
+                print(f"[DEBUG]   Campo audio_url (tabela): {repr(post.get('audio_url'))}")
+                print(f"[DEBUG]   Campo tags (tabela): {repr(post.get('tags'))}")
+                print(f"[DEBUG]   Campo hashtags (tabela): {repr(post.get('hashtags'))}")
+                print(f"[DEBUG]   Status (tabela): {repr(post.get('status'))}")
                 
-                # Garantir que temos o campo caption
+                # Mapear campos da tabela para o formato esperado pelo frontend
+                processed_post = post.copy()
+                
+                # Garantir que temos caption (usar content da tabela como padrão)
                 caption = ''
                 if post.get('caption') and str(post.get('caption')).strip():
                     caption = str(post.get('caption')).strip()
@@ -1507,16 +1531,27 @@ def api_list_social_posts():
                     else:
                         caption = "Conteúdo da notícia em breve..."
                         
-                post['caption'] = caption
+                processed_post['caption'] = caption
+                processed_post['content'] = post.get('content', '')
                 print(f"[DEBUG]   Caption final: {repr(caption)}")
                 
+                # Mapear campos que existem na tabela
+                if post.get('image_url'):
+                    processed_post['image_url'] = post['image_url']
+                if post.get('audio_url'):
+                    processed_post['audio_url'] = post['audio_url']
+                
                 # Mapear tags para hashtags
-                if 'tags' in post and post['tags']:
-                    post['hashtags'] = post['tags']
-                if 'status' in post and post['status']:
-                    post['status'] = status_map_reverse.get(post['status'], post['status'])
+                if post.get('tags') and post['tags']:
+                    processed_post['hashtags'] = post['tags']
+                elif post.get('hashtags'):
+                    processed_post['hashtags'] = post['hashtags']
+                
+                # Mapear status para português (se necessário)
+                if post.get('status'):
+                    processed_post['status'] = status_map_reverse.get(post['status'], post['status'])
                     
-                valid_posts.append(post)
+                valid_posts.append(processed_post)
             
             return jsonify({"success": True, "posts": valid_posts})
         else:
@@ -1634,10 +1669,18 @@ def api_get_social_post(post_id):
                 print(f"[DEBUG] Processando post único:")
                 print(f"[DEBUG]   ID: {post.get('id')}")
                 print(f"[DEBUG]   Título: {post.get('title')}")
-                print(f"[DEBUG]   Campo caption: {repr(post.get('caption'))}")
-                print(f"[DEBUG]   Campo content: {repr(post.get('content'))}")
+                print(f"[DEBUG]   Campo content (tabela): {repr(post.get('content'))}")
+                print(f"[DEBUG]   Campo caption (tabela): {repr(post.get('caption'))}")
+                print(f"[DEBUG]   Campo image_url (tabela): {repr(post.get('image_url'))}")
+                print(f"[DEBUG]   Campo audio_url (tabela): {repr(post.get('audio_url'))}")
+                print(f"[DEBUG]   Campo tags (tabela): {repr(post.get('tags'))}")
+                print(f"[DEBUG]   Campo hashtags (tabela): {repr(post.get('hashtags'))}")
+                print(f"[DEBUG]   Status (tabela): {repr(post.get('status'))}")
                 
-                # Garantir que temos o campo caption
+                # Mapear campos da tabela para o formato esperado pelo frontend
+                processed_post = post.copy()
+                
+                # Garantir que temos caption (usar content da tabela como padrão)
                 caption = ''
                 if post.get('caption') and str(post.get('caption')).strip():
                     caption = str(post.get('caption')).strip()
@@ -1651,13 +1694,23 @@ def api_get_social_post(post_id):
                     else:
                         caption = "Conteúdo da notícia em breve..."
                         
-                post['caption'] = caption
+                processed_post['caption'] = caption
+                processed_post['content'] = post.get('content', '')
                 print(f"[DEBUG]   Caption final: {repr(caption)}")
                 
+                # Mapear campos que existem na tabela
+                if post.get('image_url'):
+                    processed_post['image_url'] = post['image_url']
+                if post.get('audio_url'):
+                    processed_post['audio_url'] = post['audio_url']
+                
                 # Mapear tags para hashtags
-                if 'tags' in post and post['tags']:
-                    post['hashtags'] = post['tags']
-                return jsonify({"success": True, "post": post})
+                if post.get('tags') and post['tags']:
+                    processed_post['hashtags'] = post['tags']
+                elif post.get('hashtags'):
+                    processed_post['hashtags'] = post['hashtags']
+                
+                return jsonify({"success": True, "post": processed_post})
             else:
                 return jsonify({"success": False, "error": "Post não encontrado"}), 404
         else:
