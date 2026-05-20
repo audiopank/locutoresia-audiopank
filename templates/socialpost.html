@@ -939,7 +939,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    title, caption, audio_url: audioUrl, image_url: imageUrl, source_url: sourceUrl,
+                    title, caption, audio_url: audioUrl, image_url: imageUrl,
                     platforms: ['newpost_ia'], hashtags, status,
                     ai_caption_generated: !!lastAICaption
                 })
@@ -1012,7 +1012,7 @@
             const res = await fetch(`/api/social/posts/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, caption, audio_url: audioUrl, image_url: imageUrl, source_url: sourceUrl, hashtags })
+                body: JSON.stringify({ title, caption, audio_url: audioUrl, image_url: imageUrl, hashtags })
             });
             const data = await res.json();
             if (data.success) {
