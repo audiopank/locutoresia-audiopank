@@ -1606,7 +1606,6 @@ def api_create_social_post():
             'author_id': newpost_author_id,
             'title': data.get('title', ''),
             'content': data.get('caption', ''),
-            'source_url': data.get('source_url', ''),
             'tags': data.get('hashtags', []),  # Usar tags (schema cache reconhece)
             'status': status_en,
             'is_ia_generated': True,
@@ -1764,8 +1763,6 @@ def api_update_social_post(post_id):
             update_data['title'] = data['title']
         if 'caption' in data:
             update_data['content'] = data['caption']
-        if 'source_url' in data:
-            update_data['source_url'] = data['source_url']
         if 'hashtags' in data and data['hashtags']:
             update_data['tags'] = data['hashtags']  # Usar tags (schema cache reconhece)
         if 'status' in data:
