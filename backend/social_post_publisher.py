@@ -8,7 +8,6 @@ import os
 import json
 import requests
 import logging
-import time
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -252,11 +251,14 @@ Responda APENAS com o JSON, sem markdown.
             return {"success": False, "error": str(e)}
 
     # ----------------------------------------------------------
-    # PUBLICAR NA NEWPOST-IA (LOGICA PRINCIPAL SEM RETRY)
+    # PUBLICAR NA NEWPOST-IA
     # ----------------------------------------------------------
-    def _publish_single_attempt(self, post_id: str) -> Dict[str, Any]:
+    def publish_to_newpost(self, post_id: str) -> Dict[str, Any]:
         """
-        Lógica principal de publicação (usada pelo retry)
+        Publica um SocialPost aprovado na NewPost-IA seguindo o pipeline de 3 passos:
+        1. Salvar na tabela 'posts' (Base)
+        2. Agendar em 'scheduled_posts' (Trigger para o Feed)
+        3. Acionar Edge Function (Processamento imediato)
         """
         # 1. Obter post local
         result = self.get_post(post_id)
@@ -391,79 +393,20 @@ Responda APENAS com o JSON, sem markdown.
 
         # 4. Determinar sucesso final
         final_success = publish_results["posts_table"]["success"] and publish_results["scheduled_posts"]["success"]
-        
-        return {
-            "success": final_success,
-            "post_id": post_id,
-            "publish_results": publish_results
-        }
-    
-    # ----------------------------------------------------------
-    # PUBLICAR NA NEWPOST-IA (COM RETRY)
-    # ----------------------------------------------------------
-    def publish_to_newpost(self, post_id: str) -> Dict[str, Any]:
-        """
-        Publica um SocialPost aprovado na NewPost-IA com retry com backoff exponencial!
-        Tenta até 5 vezes com delays de: 1m → 5m → 15m → 60m → 240m
-        """
-        logger.info(f"🚀 Iniciando publicação do post {post_id} com retry...")
-        
-        last_exception = None
-        final_result = None
-        delays = [60, 300, 900, 3600, 14400]
-        max_attempts = 5
-        
-        for attempt in range(max_attempts):
-            try:
-                result = self._publish_single_attempt(post_id)
-                if result.get("success"):
-                    logger.info(f"✅ Tentativa {attempt + 1}/{max_attempts} - Sucesso!")
-                    final_result = result
-                    break
-                else:
-                    last_exception = Exception(result.get("error", "Erro desconhecido"))
-                    logger.warning(f"⚠️ Tentativa {attempt + 1}/{max_attempts} falhou: {last_exception}")
-            except Exception as e:
-                last_exception = e
-                logger.warning(f"⚠️ Tentativa {attempt + 1}/{max_attempts} falhou: {e}")
-            
-            if attempt < max_attempts - 1:
-                delay = delays[attempt]
-                logger.info(f"⏳ Aguardando {delay} segundos para nova tentativa...")
-                time.sleep(delay)
-        
-        if final_result is None:
-            logger.error(f"❌ Todas as {max_attempts} tentativas falharam!")
-            final_result = {
-                "success": False,
-                "error": f"Todas as {max_attempts} tentativas falharam. Último erro: {str(last_exception)}"
-            }
-        
-        # 1. Obter post local (para atualizar status)
-        post_result = self.get_post(post_id)
-        if not post_result.get("success"):
-            return post_result
-        
-        post = post_result["post"]
-        
-        # 2. Determinar sucesso final e mensagem
-        final_success = final_result.get("success")
-        publish_results = final_result.get("publish_results", {})
-        
         new_status = "publicado" if final_success else "erro"
         
         if final_success:
             message = "✅ Post publicado com sucesso na NewPost-IA! 🎉 Aparecerá no Feed em breve."
         else:
-            message = f"❌ Falha na publicação: {final_result.get('error')}"
-        
-        # 3. Atualizar status local
+            message = f"❌ Falha na publicação: {publish_results['posts_table'].get('error') or publish_results['scheduled_posts'].get('error')}"
+
+        # 5. Atualizar status local
         self.update_post(post_id, {
             "status": new_status,
             "publish_results": json.dumps(publish_results),
             "published_at": datetime.utcnow().isoformat() if final_success else None,
         })
-        
+
         return {
             "success": final_success,
             "post_id": post_id,
