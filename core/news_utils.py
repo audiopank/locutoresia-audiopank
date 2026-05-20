@@ -283,22 +283,21 @@ class NewsUtils:
             }
         }
 
-    def is_duplicate(self, source_url: str) -> bool:
+    def is_duplicate(self, title: str) -> bool:
         """
-        Verifica se a URL já existe no Supabase (tabela posts).
-        FIX_3: Usa a mesma normalização de URL que save_to_supabase
+        Verifica se o título já existe no Supabase (tabela posts).
+        (Usando título porque a tabela não tem source_url)
         """
         if not self.supabase_url or not self.supabase_key:
             return False
             
         try:
-            # FIX_3: Normalizar URL da mesma forma que em save_to_supabase
-            normalized_url = source_url.strip().lower()
-            normalized_url = normalized_url.split('?')[0].split('#')[0]
+            # Normalizar título para comparação
+            normalized_title = title.strip().lower()[:100]
             
             # Usar URL correta com /rest/v1/posts
             posts_url = f"{self.supabase_url}/rest/v1/posts"
-            params = {"source_url": f"eq.{normalized_url}"}
+            params = {"title": f"eq.{normalized_title}", "select": "id"}
             headers = {"apikey": self.supabase_key, "Authorization": f"Bearer {self.supabase_key}"}
             response = requests.get(posts_url, params=params, headers=headers, timeout=10)
             if response.status_code == 200:
@@ -356,7 +355,6 @@ class NewsUtils:
             
             payload = {
                 "title": data.get("title", "Sem Título").strip()[:150],
-                "source_url": source_url,  # URL normalizado
                 "content": data.get("content", ""),
                 "image_url": data.get("image_url"),
                 "category": categoria,  # Nunca vazio

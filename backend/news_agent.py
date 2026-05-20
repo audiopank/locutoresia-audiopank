@@ -198,7 +198,7 @@ class NewsAgent:
                 processed = self.news_utils.normalize_news(news_data)
                 
                 # 2. Verificar Duplicata
-                if self.news_utils.is_duplicate(processed["source_url"]):
+                if self.news_utils.is_duplicate(processed["title"]):
                     self.stats["duplicates_found"] += 1
                     continue
                 
