@@ -215,7 +215,7 @@ class NewsUtils:
                                 "title": article.title,
                                 "url": article.url,
                                 "source": site_name.title(),
-                                "snippet": article.text[:200] + "..." if article.text else article.title,
+                                "snippet": article.text[:5000] if article.text else article.title,
                                 "published_at": article.publish_date.isoformat() if hasattr(article, 'publish_date') else datetime.now().isoformat()
                             })
                             
@@ -267,7 +267,7 @@ class NewsUtils:
         if "google" in title.lower(): tags.append("google")
 
         return {
-            "title": title[:150],
+            "title": title[:5000],
             "content": content,
             "source_url": raw_data.get("url"),
             "image_url": raw_data.get("image_url"),
@@ -354,7 +354,7 @@ class NewsUtils:
                 media_types = ['image']
             
             payload = {
-                "title": data.get("title", "Sem Título").strip()[:150],
+                "title": data.get("title", "Sem Título").strip()[:5000],
                 "content": data.get("content", ""),
                 "image_url": data.get("image_url"),
                 "category": categoria,  # Nunca vazio

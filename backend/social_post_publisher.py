@@ -160,8 +160,8 @@ Responda APENAS com o JSON, sem markdown.
             hashtags = []
 
         payload = {
-            "title": title[:200],
-            "caption": caption[:1000],
+            "title": title[:5000],
+            "caption": caption[:5000],
             "audio_url": audio_url,
             "image_url": image_url,
             "platforms": platforms,
