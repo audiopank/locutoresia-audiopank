@@ -297,8 +297,7 @@ Responda APENAS com o JSON, sem markdown.
                 'status': 'published',
                 'is_ia_generated': post.get("ai_caption_generated", True),
                 'media_urls': [post.get("image_url")] if post.get("image_url") else [],
-                'media_types': ['image'] if post.get("image_url") else [],
-                'source_url': post.get("source_url", "")
+                'media_types': ['image'] if post.get("image_url") else []
             }
             
             logger.info(f"🚀 [PASSO 1] Salvando post na tabela 'posts'...")
