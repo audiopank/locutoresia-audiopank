@@ -95,7 +95,7 @@ class MiniDAWIntegrated {
             volume: 100,
             pan: 0,
             fadeIn: 0,
-            fadeOut: 0,
+            fadeOut: type === 'voice' ? 1.05 : 0,
             muted: false,
             solo: false,
             effects: {
