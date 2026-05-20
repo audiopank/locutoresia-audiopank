@@ -41,18 +41,71 @@ class NewsUtils:
         print(f"Supabase URL: {self.supabase_url}")
         print(f"Supabase Key configurada: {'Sim' if self.supabase_key else 'Não'}")
         
+    def fetch_from_newsapi(self, query: str, max_results: int = 5) -> List[Dict]:
+        """
+        Busca notícias reais usando a NewsAPI (gratuita!)
+        """
+        newsapi_key = os.getenv("NEWS_API_KEY")
+        if not newsapi_key:
+            logger.warning("NEWS_API_KEY não configurada, usando métodos alternativos")
+            return []
+            
+        try:
+            logger.info(f"Buscando notícias via NewsAPI para: {query}")
+            url = "https://newsapi.org/v2/everything"
+            
+            params = {
+                "q": query,
+                "sortBy": "publishedAt",
+                "language": "pt",
+                "pageSize": max_results,
+                "apiKey": newsapi_key
+            }
+            
+            response = requests.get(url, params=params, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == "ok":
+                    results = []
+                    for article in data.get("articles", []):
+                        results.append({
+                            "title": article.get("title", "Sem Título"),
+                            "url": article.get("url", ""),
+                            "source": article.get("source", {}).get("name", "NewsAPI"),
+                            "snippet": article.get("description", article.get("content", "")),
+                            "image_url": article.get("urlToImage", ""),
+                            "published_at": article.get("publishedAt", datetime.now().isoformat())
+                        })
+                    logger.info(f"NewsAPI retornou {len(results)} notícias")
+                    return results
+                else:
+                    logger.warning(f"NewsAPI retornou status não ok: {data}")
+                    return []
+            else:
+                logger.error(f"Erro NewsAPI: {response.status_code} - {response.text}")
+                return []
+        except Exception as e:
+            logger.error(f"Exceção ao usar NewsAPI: {e}")
+            return []
+    
     def fetch_web_search(self, query: str, max_results: int = 5) -> List[Dict]:
         """
-        Busca notícias reais usando web scraping e RSS feeds
+        Busca notícias reais usando NewsAPI, RSS feeds e web scraping
         """
         logger.info(f"Buscando notícias reais para: {query}")
         results = []
         
         try:
-            # Tentar diferentes estratégias de busca
-            results.extend(self._fetch_from_rss_feeds(query, max_results))
+            # PRIMEIRO: Usar NewsAPI (melhor fonte!)
+            newsapi_results = self.fetch_from_newsapi(query, max_results)
+            results.extend(newsapi_results)
             
-            # Se não encontrar suficiente, tentar web scraping direto
+            # Se não encontrar suficiente, tentar RSS feeds
+            if len(results) < max_results:
+                results.extend(self._fetch_from_rss_feeds(query, max_results - len(results)))
+            
+            # Se ainda não encontrar suficiente, tentar web scraping direto
             if len(results) < max_results:
                 results.extend(self._scrape_news_sites(query, max_results - len(results)))
             
