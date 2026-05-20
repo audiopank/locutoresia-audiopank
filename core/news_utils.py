@@ -43,7 +43,7 @@ class NewsUtils:
         
     def fetch_from_newsapi(self, query: str, max_results: int = 5) -> List[Dict]:
         """
-        Busca notícias reais usando a NewsAPI (gratuita!)
+        Busca notícias reais usando a NewsAPI + scraping para conteúdo completo
         """
         newsapi_key = os.getenv("NEWS_API_KEY")
         if not newsapi_key:
@@ -69,11 +69,28 @@ class NewsUtils:
                 if data.get("status") == "ok":
                     results = []
                     for article in data.get("articles", []):
+                        full_content = article.get("description", article.get("content", ""))
+                        article_url = article.get("url", "")
+                        
+                        # Tentar fazer scraping do conteúdo completo usando newspaper3k
+                        if article_url:
+                            try:
+                                from newspaper import Article
+                                news_article = Article(article_url)
+                                news_article.config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                                news_article.download()
+                                news_article.parse()
+                                
+                                if news_article.text and len(news_article.text) > 200:
+                                    full_content = news_article.text[:5000]
+                            except Exception as e:
+                                logger.warning(f"Erro ao fazer scraping de {article_url}: {e}")
+                        
                         results.append({
                             "title": article.get("title", "Sem Título"),
-                            "url": article.get("url", ""),
+                            "url": article_url,
                             "source": article.get("source", {}).get("name", "NewsAPI"),
-                            "snippet": article.get("description", article.get("content", "")),
+                            "snippet": full_content,
                             "image_url": article.get("urlToImage", ""),
                             "published_at": article.get("publishedAt", datetime.now().isoformat())
                         })
