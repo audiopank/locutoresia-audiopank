@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <meta name="theme-color" content="#2c3e50">
+    <meta name="theme-color" content="#1e293b">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Locutores IA">
@@ -13,51 +13,254 @@
     <link rel="apple-touch-icon" href="/static/icon-192.png">
     <title>Locutores IA - Central de Vozes Inteligentes</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #3498db;
-            --accent-color: #e74c3c;
-            --light-bg: #ecf0f1;
-            --dark-text: #2c3e50;
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --accent-color: #ec4899;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--light-bg);
-            color: var(--dark-text);
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        .navbar {
-            background-color: var(--primary-color);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        /* Sidebar Styles */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 280px;
+            height: 100vh;
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border-right: 1px solid var(--border-color);
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
         }
 
-        .navbar-brand {
-            font-weight: bold;
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-primary);
+            text-decoration: none;
             font-size: 1.5rem;
+            font-weight: bold;
         }
 
-        .hero-section {
+        .sidebar-brand i {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .sidebar-menu {
+            flex: 1;
+            padding: 20px 0;
+            overflow-y: auto;
+        }
+
+        .menu-section {
+            padding: 0 16px;
+            margin-bottom: 8px;
+        }
+
+        .menu-section-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            padding: 12px 16px 8px;
+            font-weight: 600;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 10px;
+            margin-bottom: 4px;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .menu-item:hover {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text-primary);
+        }
+
+        .menu-item.active {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
-            padding: 60px 0;
+        }
+
+        .menu-item i {
+            width: 20px;
             text-align: center;
-            margin-bottom: 40px;
+            font-size: 1.1rem;
+        }
+
+        .menu-item.badge-new {
+            position: relative;
+        }
+
+        .menu-item.badge-new::after {
+            content: 'NOVO';
+            position: absolute;
+            right: 16px;
+            background: var(--accent-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.65rem;
+            font-weight: bold;
+        }
+
+        .menu-item.lmnt {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+            font-weight: 600;
+        }
+
+        .menu-item.lmnt:hover {
+            background: linear-gradient(135deg, #0056b3, #003d80);
+        }
+
+        .sidebar-footer {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .sidebar-footer-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar-footer-item:hover {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text-primary);
+        }
+
+        /* Mobile Header */
+        .mobile-header {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 999;
+            padding: 0 20px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .mobile-menu-btn {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        .mobile-brand {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .mobile-brand i {
+            margin-right: 8px;
+            color: var(--primary-color);
+        }
+
+        /* Overlay */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        /* Hero Section */
+        .hero-section {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1e1b4b 50%, var(--dark-bg) 100%);
+            padding: 60px 40px;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .hero-section h1 {
             font-size: 2.5rem;
             font-weight: bold;
             margin-bottom: 20px;
+            background: linear-gradient(135deg, #fff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-section p {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
         }
 
         .stats-container {
             display: flex;
             justify-content: center;
-            gap: 40px;
-            margin-top: 30px;
+            gap: 60px;
+            flex-wrap: wrap;
         }
 
         .stat-item {
@@ -65,37 +268,54 @@
         }
 
         .stat-number {
-            font-size: 2rem;
+            font-size: 2.5rem;
             font-weight: bold;
             display: block;
+            color: var(--primary-color);
         }
 
         .stat-label {
             font-size: 0.9rem;
-            opacity: 0.9;
+            color: var(--text-secondary);
+        }
+
+        /* Content Area */
+        .content-area {
+            padding: 40px;
         }
 
         .filter-panel {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 28px;
             margin-bottom: 30px;
         }
 
+        .filter-panel h5 {
+            color: var(--text-primary);
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+
+        .filter-panel h5 i {
+            margin-right: 10px;
+            color: var(--primary-color);
+        }
+
         .voice-card {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            cursor: pointer;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
         }
 
         .voice-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            transform: translateY(-4px);
+            border-color: var(--primary-color);
+            box-shadow: 0 20px 40px rgba(99, 102, 241, 0.15);
         }
 
         .voice-avatar {
@@ -103,1936 +323,370 @@
             height: 80px;
             border-radius: 50%;
             object-fit: cover;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
+            border: 3px solid var(--primary-color);
         }
 
         .voice-name {
-            font-size: 1.2rem;
+            font-size: 1.3rem;
             font-weight: bold;
-            margin-bottom: 10px;
-            color: var(--primary-color);
+            margin-bottom: 8px;
+            color: var(--text-primary);
         }
 
         .voice-description {
-            color: #666;
-            font-size: 0.9rem;
-            margin-bottom: 15px;
-        }
-
-        .voice-actions {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .btn-custom {
-            background: var(--secondary-color);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 5px;
-            font-size: 0.9rem;
-            transition: background 0.3s ease;
-        }
-
-        .btn-custom:hover {
-            background: #2980b9;
-            color: white;
-        }
-
-        .audio-player {
-            margin-top: 15px;
-            display: none;
-        }
-
-        .audio-player.active {
-            display: block !important;
-        }
-
-        .audio-controls {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-top: 10px;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: 16px;
         }
 
         .btn-generate {
-            background: var(--accent-color);
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            font-weight: bold;
-            transition: background 0.3s ease;
+            padding: 12px 28px;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: all 0.3s ease;
         }
 
         .btn-generate:hover {
-            background: #c0392b;
-            color: white;
-        }
-
-        .generation-panel {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
-        }
-
-        .form-control:focus {
-            border-color: var(--secondary-color);
-            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
-        }
-
-        .loading-spinner {
-            display: none;
-            text-align: center;
-            padding: 20px;
-        }
-
-        .badge-custom {
-            background: var(--secondary-color);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.8rem;
-        }
-    </style>
-</head>
-<body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
-            <a class="navbar-brand" href="#">
-                <i class="fas fa-microphone-alt me-2"></i>Locutores IA
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/"><i class="fas fa-home me-1"></i>Início</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/busca"><i class="fas fa-search me-1"></i>Busca</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/noticias"><i class="fas fa-newspaper me-1"></i>Notícias</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/news-auto-post" style="color: #4ade80; font-weight: 500;"><i class="fas fa-robot me-1"></i>News Auto Post</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/social-posts" style="color: #8b5cf6; font-weight: 500;"><i class="fas fa-share-alt me-1"></i>NewPost-IA</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/minidaw" target="_blank"><i class="fas fa-music me-1"></i>MiniDAW</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/minidaw-react" target="_blank"><i class="fas fa-robot me-1"></i>MiniDAW IA</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="https://app.lmnt.com/" target="_blank" style="background: #007bff; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; text-decoration: none;">
-                            <i class="fas fa-microphone-alt me-1"></i>LMNT Studio
-                        </a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="dashboardDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-chart-line me-1"></i>Dashboards
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="dashboardDropdown">
-                            <li><a class="dropdown-item" href="/dashboard-real"><i class="fas fa-database me-2 text-success"></i><strong>Dados Reais (Supabase)</strong></a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/news-auto-post"><i class="fas fa-newspaper me-2 text-primary"></i><strong>News Auto Post</strong></a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/dashboard"><i class="fas fa-chart-pie me-2"></i>Dashboard Principal</a></li>
-                            <li><a class="dropdown-item" href="/dashboard-advanced"><i class="fas fa-chart-bar me-2"></i>Dashboard Avançado</a></li>
-                            <li><a class="dropdown-item" href="/dashboard-profissional"><i class="fas fa-chart-line me-2"></i>Dashboard Profissional</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/api/advanced/trends"><i class="fas fa-code me-2"></i>API Trends (JSON)</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/contato"><i class="fas fa-envelope me-1"></i>Contato</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
-
-    <!-- Hero Section -->
-    <section class="hero-section">
-        <div class="container">
-            <h1>Encontre um profissional da voz IA para a sua publicidade ou produto</h1>
-            <p class="lead">Contrate locutores inteligentes sem intermediários</p>
-            
-            <div class="stats-container">
-                <div class="stat-item">
-                    <span class="stat-number" id="voicesCount">50+</span>
-                    <span class="stat-label">Vozes IA</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number" id="audiosCount">1.000+</span>
-                    <span class="stat-label">Áudios Gerados</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number" id="projectsCount">500+</span>
-                    <span class="stat-label">Projetos</span>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Main Content -->
-    <div class="container">
-        <div class="row">
-            <!-- Filter Panel -->
-            <div class="col-lg-3">
-                <div class="filter-panel">
-                    <h5 class="mb-4"><i class="fas fa-filter me-2"></i>Filtros</h5>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Gênero</label>
-                        <select class="form-select" id="genderFilter">
-                            <option value="">Todos</option>
-                            <option value="male">Masculino</option>
-                            <option value="female">Feminino</option>
-                            <option value="neutral">Neutro</option>
-                        </select>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Idioma</label>
-                        <select class="form-select" id="languageFilter">
-                            <option value="">Todos</option>
-                            <option value="pt-BR">Português (Brasil)</option>
-                            <option value="en-US">Inglês (EUA)</option>
-                            <option value="es-ES">Espanhol</option>
-                        </select>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Estilo</label>
-                        <select class="form-select" id="styleFilter">
-                            <option value="">Todos</option>
-                            <option value="professional">Profissional</option>
-                            <option value="friendly">Amigável</option>
-                            <option value="energetic">Energético</option>
-                            <option value="calm">Calmo</option>
-                        </select>
-                    </div>
-                    
-                    <button class="btn btn-custom w-100 mb-2" onclick="applyFilters()">
-                        <i class="fas fa-search me-2"></i>Buscar
-                    </button>
-                    
-                    <button class="btn btn-outline-secondary w-100" onclick="resetFilters()">
-                        <i class="fas fa-redo me-2"></i>Limpar Filtros
-                    </button>
-                </div>
-            </div>
-
-            <!-- Voices Grid -->
-            <div class="col-lg-9">
-                <!-- Generation Panel -->
-                <div class="generation-panel">
-                    <h5 class="mb-4"><i class="fas fa-magic me-2"></i>Gerar Locução</h5>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Texto para Locução</label>
-                        <textarea class="form-control" id="textInput" rows="4" placeholder="Digite o texto que você quer transformar em áudio..."></textarea>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Voz IA</label>
-                            <select class="form-select" id="voiceSelect">
-                                <option value="">Selecione uma voz</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Estilo de Fala</label>
-                            <select class="form-select" id="speechStyle">
-                                <option value="normal">Normal</option>
-                                <option value="fast">Rápido</option>
-                                <option value="slow">Lento</option>
-                                <option value="cheerful">Alegre</option>
-                                <option value="serious">Sério</option>
-                                <option value="whisper">Sussurrado</option>
-                                <option value="excited">Empolgado</option>
-                                <option value="calm">Calmo</option>
-                                <option value="authoritative">Autoritário</option>
-                                <option value="friendly">Amigável</option>
-                                <option value="gentle">Suave</option>
-                                <option value="robot">Robótico</option>
-                                <option value="news">Jornalístico</option>
-                                <option value="sports">Esportivo</option>
-                                <option value="narration">Narração</option>
-                                <option value="advertisement">Publicitário</option>
-                                <option value="documentary">Documentário</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <button class="btn btn-generate" onclick="generateAudio()">
-                        <i class="fas fa-play me-2"></i>Gerar Áudio
-                    </button>
-                    
-                    <div class="loading-spinner" id="loadingSpinner">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Gerando áudio...</span>
-                        </div>
-                        <p class="mt-2">Gerando sua locução...</p>
-                    </div>
-                    
-                    <div class="audio-player" id="audioPlayer">
-                        <h6 class="mb-3">Áudio Gerado:</h6>
-                        <audio controls class="w-100" id="generatedAudio"></audio>
-                        <div class="audio-controls">
-                            <button class="btn btn-sm btn-outline-primary" onclick="downloadAudio()">
-                                <i class="fas fa-download me-1"></i>Baixar
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="shareAudio()">
-                                <i class="fas fa-share me-1"></i>Compartilhar
-                            </button>
-                            <button class="btn btn-sm btn-success" onclick="sendToMiniDAW()" id="sendToMiniDAWBtn" style="display: inline-block;">
-                                <i class="fas fa-music me-1"></i>Enviar para MiniDAW
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Voice Cloning Panel -->
-                <div class="generation-panel mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0"><i class="fas fa-clone me-2"></i>Clonar sua Voz</h5>
-                        <a href="https://app.lmnt.com/" target="_blank" style="background: #007bff; color: white; padding: 6px 12px; border-radius: 15px; text-decoration: none; font-size: 14px; font-weight: bold;">
-                            <i class="fas fa-external-link-alt me-1"></i>LMNT Studio Externo
-                        </a>
-                    </div>
-                    <p class="text-muted">Crie uma voz personalizada a partir de uma amostra de áudio</p>
-                    
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Provider de Clonagem</label>
-                            <select class="form-select" id="cloneProvider">
-                                <option value="elevenlabs">ElevenLabs (Recomendado)</option>
-                                <option value="lmnt">LMNT</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Nome da Voz</label>
-                            <input type="text" class="form-control" id="cloneVoiceName" placeholder="Ex: Minha Voz Personalizada">
-                        </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-12 mb-3">
-                            <label class="form-label">Descrição (opcional)</label>
-                            <input type="text" class="form-control" id="cloneVoiceDescription" placeholder="Descreva sua voz">
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Arquivo de Áudio</label>
-                        <input type="file" class="form-control" id="audioFileInput" accept="audio/*">
-                        <small class="text-muted">Formatos aceitos: WAV, MP3, M4A (máximo 10MB)</small>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="enhanceAudio" checked>
-                            <label class="form-check-label" for="enhanceAudio">
-                                Melhorar qualidade do áudio (recomendado)
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <div id="audioPreview" style="display: none;">
-                            <label class="form-label">Preview do Áudio:</label>
-                            <audio controls class="w-100" id="previewAudio"></audio>
-                        </div>
-                    </div>
-                    
-                    <button class="btn btn-generate" onclick="cloneVoice()">
-                        <i class="fas fa-magic me-2"></i>Clonar Voz
-                    </button>
-                    
-                    <div class="loading-spinner" id="cloneLoadingSpinner">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Clonando voz...</span>
-                        </div>
-                        <p class="mt-2">Criando sua voz personalizada...</p>
-                    </div>
-                </div>
-
-                <!-- Cloned Voices List -->
-                <div class="generation-panel mb-4" id="clonedVoicesPanel" style="display: none;">
-                    <h5 class="mb-4"><i class="fas fa-users me-2"></i>Minhas Vozes Clonadas</h5>
-                    <div id="clonedVoicesContainer">
-                        <!-- Cloned voices will be displayed here -->
-                    </div>
-                </div>
-
-                <!-- Voices List -->
-                <h5 class="mb-4"><i class="fas fa-microphone me-2"></i>Nossas Vozes IA</h5>
-                <div id="voicesContainer">
-                    <!-- Voice cards will be dynamically generated here -->
-                </div>
-
-            </div>
-        </div>
-
-        <!-- MiniDAW Integrada -->
-        <div class="container mt-5">
-            <div class="row">
-                <div class="col-12">
-                    <div id="miniDAWPanel">
-                        <!-- Header -->
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <h5 class="mb-0">
-                                <i class="fas fa-music me-2"></i>MiniDAW Integrada
-                            </h5>
-                            <button class="btn btn-sm btn-outline-light" onclick="miniDAW.toggleMiniDAW()">
-                                <i class="fas fa-chevron-up" id="miniDAWToggleIcon"></i>
-                            </button>
-                        </div>
-
-                        <!-- Conteúdo -->
-                        <div id="miniDAWContent">
-                            <!-- Quick Actions -->
-                            <div class="quick-actions">
-                                <button class="quick-action-btn" onclick="miniDAW.addTrack('voice')">
-                                    <i class="fas fa-microphone"></i> Adicionar Voz
-                                </button>
-                                <button class="quick-action-btn" onclick="miniDAW.addTrack('music')">
-                                    <i class="fas fa-music"></i> Adicionar Trilha
-                                </button>
-                                <button class="quick-action-btn" onclick="miniDAW.clearAllTracks()">
-                                    <i class="fas fa-trash"></i> Limpar Tudo
-                                </button>
-                                <button class="quick-action-btn" onclick="applyMiniDAWAutoFade()">
-                                    <i class="fas fa-magic"></i> Auto Fade
-                                </button>
-                                <button class="quick-action-btn" onclick="miniDAW.normalizeVolumes()">
-                                    <i class="fas fa-sliders-h"></i> Normalizar
-                                </button>
-                            </div>
-
-                            <!-- Timeline -->
-                            <div class="timeline-container">
-                                <div class="timeline-header">
-                                    <div class="playback-controls-enhanced">
-                                        <button class="control-btn" onclick="miniDAW.togglePlayback()">
-                                            <i class="fas fa-play" id="miniDAWPlayIcon"></i>
-                                        </button>
-                                        <button class="control-btn" onclick="miniDAW.stopPlayback()">
-                                            <i class="fas fa-stop"></i>
-                                        </button>
-                                    </div>
-                                    <div class="control-group">
-                                        <span class="control-label">Tempo:</span>
-                                        <span id="miniDAWCurrentTime">0:00</span>
-                                        <span>/</span>
-                                        <span id="miniDAWTotalDuration">0:00</span>
-                                    </div>
-                                    <div class="zoom-controls">
-                                        <button class="control-btn" onclick="miniDAW.zoomOut()">
-                                            <i class="fas fa-minus"></i>
-                                        </button>
-                                        <span class="zoom-indicator" id="miniDAWZoomIndicator">100%</span>
-                                        <button class="control-btn" onclick="miniDAW.zoomIn()">
-                                            <i class="fas fa-plus"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Drop Zone -->
-                            <div class="drop-zone" id="miniDAWDropZone">
-                                <i class="fas fa-cloud-upload-alt"></i>
-                                <h6>Arraste arquivos de áudio aqui</h6>
-                                <p class="mb-0">ou clique para selecionar</p>
-                                <input type="file" id="miniDAWFileInput" multiple accept="audio/*" style="display: none;">
-                            </div>
-
-                            <!-- Tracks Container -->
-                            <div id="miniDAWTracksContainer">
-                                <!-- Tracks will be added here dynamically -->
-                            </div>
-
-                            <!-- Empty State -->
-                            <div id="miniDAWEmptyState" class="text-center py-5">
-                                <i class="fas fa-music fa-3x text-muted mb-3"></i>
-                                <h6>Nenhuma faixa adicionada</h6>
-                                <p class="text-muted">Adicione faixas de voz ou música para começar</p>
-                            </div>
-
-                            <!-- Export Controls -->
-                            <div class="mt-4">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <button class="format-btn btn btn-sm btn-outline-light active" onclick="miniDAW.setFormat('wav', this)">WAV</button>
-                                        <button class="format-btn btn btn-sm btn-outline-light" onclick="miniDAW.setFormat('mp3', this)">MP3</button>
-                                        <div id="miniDAWMP3BitrateGroup" class="d-none align-items-center gap-2 ms-2">
-                                            <select class="form-select form-select-sm" id="miniDAWMP3Bitrate" style="width: auto;">
-                                                <option value="128">128 kbps</option>
-                                                <option value="192" selected>192 kbps</option>
-                                                <option value="320">320 kbps</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <button class="btn btn-primary" onclick="miniDAW.exportMix()">
-                                            <i class="fas fa-download me-2"></i>Exportar Mix
-                                        </button>
-                                        <button class="btn btn-success ms-2" onclick="miniDAW.saveVipProject()">
-                                            <i class="fas fa-save me-2"></i>Salvar Projeto
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Mixing Status -->
-                            <div id="miniDAWMixingStatus" class="progress mt-3" style="display: none;">
-                                <div class="progress-bar" id="miniDAWProgressFill" style="width: 0%"></div>
-                                <small class="text-muted mt-1" id="miniDAWMixingStatusText">Processando...</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    
-    <!-- CSS Moderno para MiniDAW -->
-    <style>
-        :root {
-            --primary-color: #6366f1;
-            --secondary-color: #8b5cf6;
-            --accent-color: #ec4899;
-            --dark-bg: #0f172a;
-            --card-bg: #1e293b;
-            --border-color: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-        }
-
-        #miniDAWPanel {
-            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 2rem;
-            margin-top: 2rem;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(10px);
-        }
-
-        #miniDAWPanel h5 {
-            color: var(--text-primary);
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-        }
-
-        .quick-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-        }
-
-        .quick-action-btn {
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
-            background: transparent;
-            color: var(--text-secondary);
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.875rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .quick-action-btn:hover {
-            background: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-        }
-
-        .quick-action-btn.active {
-            background: var(--accent-color);
-            color: white;
-            border-color: var(--accent-color);
-        }
-
-        .timeline-container {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .timeline-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding: 0.5rem;
-            background: rgba(30, 41, 59, 0.6);
-            border-radius: 8px;
-        }
-
-        .playback-controls-enhanced {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-
-        .control-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            background: transparent;
-            color: var(--text-secondary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .control-btn:hover {
-            background: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-            transform: scale(1.1);
-        }
-
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-left: 1rem;
-        }
-
-        .control-label {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
-
-        .zoom-controls {
-            display: flex;
-            gap: 0.25rem;
-            align-items: center;
-            background: rgba(30, 41, 59, 0.6);
-            padding: 0.5rem;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-        }
-
-        .zoom-indicator {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            min-width: 40px;
-            text-align: center;
-            font-weight: 600;
-        }
-
-        .drop-zone {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-            border: 2px dashed var(--border-color);
-            border-radius: 12px;
-            padding: 3rem;
-            text-align: center;
-            margin-bottom: 1.5rem;
-            transition: all 0.3s ease;
-            color: var(--text-secondary);
-        }
-
-        .drop-zone:hover, .drop-zone.dragover {
-            border-color: var(--primary-color);
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
-            transform: translateY(-2px);
-        }
-
-        .drop-zone i {
-            font-size: 3rem;
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-        }
-
-        /* Track Card Styles - Professional DAW */
-        .track-card {
-            background: linear-gradient(145deg, #1e3a5f 0%, #1a2f4d 100%);
-            border: 2px solid;
-            border-radius: 12px;
-            margin-bottom: 1rem;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .track-card:has(.track-type-badge.blue) {
-            border-color: #3b82f6;
-        }
-
-        .track-card:has(.track-type-badge.purple) {
-            border-color: #8b5cf6;
-        }
-
-        .track-main {
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Track Top Bar */
-        .track-top-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0.75rem 1rem;
-            background: rgba(0, 0, 0, 0.3);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .track-name-section {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            flex: 1;
-        }
-
-        .track-collapse-btn {
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-            border: none;
-            background: rgba(255, 255, 255, 0.1);
-            color: #94a3b8;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .track-collapse-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-        }
-
-        .track-name-input {
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 0.4rem 0.75rem;
-            color: white;
-            font-size: 0.9rem;
-            font-weight: 500;
-            min-width: 150px;
-            max-width: 200px;
-        }
-
-        .track-name-input:focus {
-            outline: none;
-            border-color: #3b82f6;
-        }
-
-        .track-type-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .track-type-badge.blue {
-            background: rgba(59, 130, 246, 0.2);
-            color: #60a5fa;
-            border: 1px solid #3b82f6;
-        }
-
-        .track-type-badge.purple {
-            background: rgba(139, 92, 246, 0.2);
-            color: #a78bfa;
-            border: 1px solid #8b5cf6;
-        }
-
-        .track-header-actions {
-            display: flex !important;
-            gap: 0.5rem;
-            visibility: visible !important;
-            opacity: 1 !important;
-        }
-
-        .track-header-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(255, 255, 255, 0.05);
-            color: #94a3b8;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .track-header-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-        }
-
-        .track-header-btn.active {
-            background: #ef4444;
-            color: white;
-            border-color: #ef4444;
-        }
-
-        .track-header-btn[title="Criar Novo Track"] {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-            border-color: #10b981;
-            font-weight: bold;
-        }
-
-        .track-header-btn[title="Criar Novo Track"]:hover {
-            background: linear-gradient(135deg, #34d399, #10b981);
-            transform: scale(1.1);
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-        }
-        
-        .track-header-btn[title="Tocar"].playing {
-            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-            animation: pulse 1.5s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-
-        /* Waveform Area */
-        .waveform-area {
-            position: relative;
-            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            height: 100px;
-            overflow: hidden;
-            cursor: crosshair;
-        }
-
-        .waveform {
-            width: 100%;
-            height: 100%;
-            filter: brightness(1.2) contrast(1.3);
-        }
-
-        .auto-fade-indicator {
-            display: none;
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: white;
-            padding: 0.3rem 0.6rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            z-index: 10;
-            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
-        }
-
-        .auto-fade-indicator.active {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-
-        .fade-out-label {
-            position: absolute;
-            right: 8px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: linear-gradient(135deg, #f97316, #ea580c);
-            color: white;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            z-index: 10;
-        }
-
-        /* Track Controls Bar */
-        .track-controls-bar {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.6rem 1rem;
-            background: rgba(0, 0, 0, 0.5);
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-            flex-wrap: wrap;
-        }
-
-        .control-section {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-
-        .control-divider {
-            width: 1px;
-            height: 24px;
-            background: rgba(255, 255, 255, 0.1);
-            margin: 0 0.25rem;
-        }
-
-        .control-tool-btn {
-            width: 24px;
-            height: 24px;
-            border-radius: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(255, 255, 255, 0.05);
-            color: #64748b;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 0.7rem;
-            transition: all 0.2s ease;
-        }
-
-        .control-tool-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-        }
-
-        .control-value {
-            font-size: 0.75rem;
-            color: #94a3b8;
-            font-weight: 500;
-            min-width: 85px;
-            text-align: center;
-        }
-
-        .tool-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(255, 255, 255, 0.05);
-            color: #94a3b8;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .tool-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-        }
-
-        .tool-btn.active {
-            background: #ec4899;
-            color: white;
-            border-color: #ec4899;
-        }
-
-        .tool-btn-group {
-            gap: 0.3rem;
-            display: flex !important;
-            visibility: visible !important;
-        }
-        
-        .tool-btn-group .tool-btn {
-            display: flex !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            width: 36px !important;
-            height: 36px !important;
-            background: rgba(255, 255, 255, 0.1) !important;
-            border: 1px solid rgba(255, 255, 255, 0.2) !important;
-            color: #fff !important;
-            border-radius: 6px !important;
-            cursor: pointer !important;
-            transition: all 0.2s ease !important;
-        }
-        
-        .tool-btn-group .tool-btn:hover {
-            background: rgba(255, 255, 255, 0.2) !important;
-            transform: scale(1.05) !important;
-        }
-        
-        .tool-btn-group .tool-btn.active {
-            background: #ec4899 !important;
-            border-color: #ec4899 !important;
-            color: white !important;
-        }
-
-        /* Volume/Pan Sliders */
-        .slider-group {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-
-        .slider-group i {
-            color: #64748b;
-            font-size: 0.8rem;
-            width: 16px;
-        }
-
-        .mini-slider {
-            width: 60px;
-            height: 4px;
-            -webkit-appearance: none;
-            appearance: none;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 2px;
-            cursor: pointer;
-        }
-
-        .mini-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #3b82f6;
-            cursor: pointer;
-            border: 2px solid white;
-        }
-
-        .mini-slider.pan::-webkit-slider-thumb {
-            background: #10b981;
-        }
-
-        .slider-value {
-            font-size: 0.7rem;
-            color: #94a3b8;
-            min-width: 35px;
-            text-align: right;
-        }
-
-        /* FX Buttons */
-        .fx-btn {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.35rem 0.75rem;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(255, 255, 255, 0.05);
-            color: #94a3b8;
-            font-size: 0.75rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .fx-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-        }
-
-        .fx-btn.active {
-            background: #06b6d4;
-            color: white;
-            border-color: #06b6d4;
-        }
-
-        .fx-btn i {
-            font-size: 0.8rem;
-        }
-
-        /* Effects Details Panel */
-        .effects-details {
-            display: none;
-            padding: 1rem;
-            background: rgba(0, 0, 0, 0.6);
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .effects-details.show {
-            display: block;
-        }
-
-        .effects-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .effect-module {
-            background: rgba(30, 41, 59, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 1rem;
-        }
-
-        .effect-module-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 1rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .effect-module-header i {
-            color: #06b6d4;
-            font-size: 1rem;
-        }
-
-        .effect-module-header span {
-            flex: 1;
-            color: white;
-            font-weight: 500;
-            font-size: 0.9rem;
-        }
-
-        .toggle-switch {
-            position: relative;
-            width: 40px;
-            height: 22px;
-        }
-
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .toggle-slider {
-            position: absolute;
-            cursor: pointer;
-            inset: 0;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 22px;
-            transition: 0.3s;
-        }
-
-        .toggle-slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 3px;
-            bottom: 3px;
-            background: white;
-            border-radius: 50%;
-            transition: 0.3s;
-        }
-
-        .toggle-switch input:checked + .toggle-slider {
-            background: #06b6d4;
-        }
-
-        .toggle-switch input:checked + .toggle-slider:before {
-            transform: translateX(18px);
-        }
-
-        .eq-sliders, .reverb-controls {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-
-        .eq-band, .param-row {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .eq-band span:first-child, .param-row span:first-child {
-            font-size: 0.8rem;
-            color: #94a3b8;
-            min-width: 80px;
-        }
-
-        .eq-band input, .param-row input {
-            flex: 1;
-            height: 4px;
-            -webkit-appearance: none;
-            appearance: none;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 2px;
-        }
-
-        .eq-band input::-webkit-slider-thumb, .param-row input::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #3b82f6;
-            cursor: pointer;
-        }
-
-        .eq-value, .param-value {
-            font-size: 0.75rem;
-            color: #06b6d4;
-            font-weight: 600;
-            min-width: 45px;
-            text-align: right;
-        }
-
-        .effects-footer {
-            display: flex;
-            gap: 0.75rem;
-            justify-content: flex-end;
-            padding-top: 0.75rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: var(--text-secondary);
-            background: rgba(30, 41, 59, 0.4);
-            border-radius: 12px;
-            border: 2px dashed var(--border-color);
-        }
-
-        .empty-state i {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            color: var(--primary-color);
-        }
-
-        /* Export Panel */
-        .export-panel {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1rem;
-            margin-top: 1rem;
-        }
-
-        .export-options {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .format-selector {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .format-btn {
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
-            background: transparent;
-            color: var(--text-secondary);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .format-btn:hover, .format-btn.active {
-            background: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-        }
-
-        /* Mixing Status */
-        .mixing-status {
-            display: none;
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1rem;
-            margin-top: 1rem;
-            text-align: center;
-        }
-
-.mixing-status.active {
-    display: block;
-}
-
-.progress-bar-container {
-    width: 100%;
-    height: 8px;
-    background: rgba(30, 41, 59, 0.8);
-    border-radius: 4px;
-    overflow: hidden;
-    margin: 0.5rem 0;
-}
-
-.progress-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-    width: 0%;
-    transition: width 0.3s ease;
-        }
-
-        /* Drop Zone Track */
-        .drop-zone-track {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-            border: 2px dashed var(--border-color);
-            border-radius: 8px;
-            padding: 2rem;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-
-        .drop-zone-track:hover, .drop-zone-track.dragover {
-            border-color: var(--primary-color);
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
-        }
-
-        /* Scissor Mode */
-        .scissor-mode {
-            background: var(--accent-color) !important;
-            color: white !important;
-        }
-
-        .voice-card {
-            background: #ffffff;
-            border: 2px solid #e2e8f0;
-            border-radius: 15px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-        }
-
-        .header {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
-            padding: 2rem;
-            border-radius: 15px;
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            font-size: 2.5rem;
-        }
-
-        .header p {
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        .generation-panel {
-            background: #ffffff;
-            border: 2px solid #e2e8f0;
-            border-radius: 15px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-        }
-
-        .form-label {
-            color: #0f172a;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            font-size: 0.95rem;
-        }
-
-        .form-control, .form-select {
-            background: #ffffff;
-            border: 2px solid #e2e8f0;
-            color: #0f172a;
-            border-radius: 10px;
-            padding: 0.75rem;
-            transition: all 0.3s ease;
-        }
-
-        .form-control:focus, .form-select:focus {
-            background: #ffffff;
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-            color: #0f172a;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            border: none;
-            border-radius: 10px;
-            padding: 0.75rem 2rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .btn-primary:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
         }
 
-        .voice-card {
-            background: #ffffff;
-            border: 2px solid #e2e8f0;
-            border-radius: 15px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        .generation-panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 30px;
         }
 
-        .voice-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
-            transform: scaleX(0);
-            transition: transform 0.3s ease;
-        }
-
-        .voice-card:hover::before {
-            transform: scaleX(1);
-        }
-
-        .voice-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 15px 35px rgba(99, 102, 241, 0.2);
-            border-color: var(--primary-color);
-        }
-
-        .voice-card.selected {
-            border-color: var(--primary-color);
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-        }
-
-        .voice-type {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
+        .generation-panel h5 {
+            color: var(--text-primary);
             font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0.5rem;
+            margin-bottom: 24px;
         }
 
-        .voice-type.basic {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
+        .generation-panel h5 i {
+            margin-right: 10px;
+            color: var(--accent-color);
         }
 
-        .voice-type.premium {
-            background: linear-gradient(135deg, var(--accent-color), #f97316);
-            color: white;
-        }
-
-        .voice-type.cloned {
-            background: linear-gradient(135deg, #10b981, #06b6d4);
-            color: white;
-        }
-
-        .voice-name {
-            color: #0f172a;
-            font-size: 1.2rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-            line-height: 1.3;
-        }
-
-        .voice-description {
-            color: #475569;
-            font-size: 0.95rem;
-            margin-bottom: 0.5rem;
-            line-height: 1.4;
-        }
-
-        .voice-languages {
-            display: flex;
-            gap: 0.25rem;
-            flex-wrap: wrap;
-            margin-bottom: 0.5rem;
-        }
-
-        .language-tag {
-            background: #f1f5f9;
-            color: #1e40af;
-            padding: 0.25rem 0.6rem;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            border: 1px solid #cbd5e1;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .loading-spinner {
-            display: none;
-            text-align: center;
-            padding: 2rem;
-        }
-
-        .loading-spinner.active {
-            display: block;
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid var(border-color);
-            border-top: 3px solid var(--primary-color);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 1rem;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 1rem 1.5rem;
+        .form-control, .form-select {
+            background: var(--dark-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
             border-radius: 10px;
-            color: white;
+            padding: 12px 16px;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background: var(--dark-bg);
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+        }
+
+        .form-label {
+            color: var(--text-primary);
             font-weight: 500;
-            z-index: 1000;
-            transform: translateX(400px);
-            transition: transform 0.3s ease;
         }
 
-        .notification.show {
-            transform: translateX(0);
-        }
+        /* Responsive */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
 
-        .notification.success {
-            background: linear-gradient(135deg, #10b981, #059669);
-        }
+            .sidebar.open {
+                transform: translateX(0);
+            }
 
-        .notification.error {
-            background: linear-gradient(135deg, #ef4444, #dc2626);
-        }
+            .mobile-header {
+                display: flex;
+            }
 
-        .notification.warning {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-        }
+            .main-content {
+                margin-left: 0;
+                margin-top: 64px;
+            }
 
-        .notification.info {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-        }
+            .sidebar-overlay.open {
+                display: block;
+                opacity: 1;
+            }
 
-        /* Voice cloning panel */
-        .cloning-panel {
-            background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(249, 115, 22, 0.1));
-            border: 1px solid rgba(236, 72, 153, 0.3);
-            border-radius: 15px;
-            padding: 2rem;
-            margin-top: 2rem;
-        }
-
-        .cloning-panel h5 {
-            color: var(--accent-color);
-            margin-bottom: 1rem;
-        }
-
-        .file-upload {
-            background: rgba(255, 255, 255, 0.05);
-            border: 2px dashed rgba(236, 72, 153, 0.5);
-            border-radius: 10px;
-            padding: 2rem;
-            text-align: center;
-            margin: 1rem 0;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .file-upload:hover {
-            border-color: var(--accent-color);
-            background: rgba(236, 72, 153, 0.1);
-        }
-
-        .file-upload i {
-            font-size: 2rem;
-            color: var(--accent-color);
-            margin-bottom: 0.5rem;
-        }
-
-        /* VIP Save Panel */
-        .vip-save-panel {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.1));
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            border-radius: 15px;
-            padding: 2rem;
-            margin-top: 2rem;
-        }
-
-        .vip-save-panel h5 {
-            color: #f59e0b;
-            margin-bottom: 1rem;
-        }
-
-        .vip-save-btn {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            border: none;
-            border-radius: 10px;
-            padding: 0.75rem 2rem;
-            font-weight: 600;
-            color: white;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .vip-save-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
-        }
-
-        /* ============================================
-           CSS RESPONSIVO - MOBILE
-           ============================================ */
-        @media (max-width: 768px) {
-            /* Hero Section */
             .hero-section {
-                padding: 30px 15px !important;
+                padding: 40px 20px;
             }
+
             .hero-section h1 {
-                font-size: 1.8rem !important;
-            }
-            .hero-section p {
-                font-size: 1rem !important;
+                font-size: 1.8rem;
             }
 
-            /* Cards de voz */
-            .voice-card {
-                margin-bottom: 15px;
-            }
-            .voice-card .card-body {
-                padding: 15px;
-            }
-            .voice-card h6 {
-                font-size: 0.95rem;
+            .content-area {
+                padding: 20px;
             }
 
-            /* Painel de geração */
-            .generation-panel {
-                padding: 20px 15px !important;
-            }
-            .generation-panel h5 {
-                font-size: 1.1rem;
-            }
-
-            /* Textarea */
-            #textInput {
-                min-height: 120px;
-                font-size: 16px; /* Evita zoom no iOS */
-            }
-
-            /* Botões */
-            .btn {
-                padding: 12px 20px;
-                font-size: 1rem;
-                min-height: 44px; /* Touch-friendly */
-            }
-
-            /* Navbar */
-            .navbar-brand {
-                font-size: 1.2rem;
-            }
-            .navbar-toggler {
-                padding: 8px 12px;
-            }
-
-            /* Audio Player */
-            #generatedAudio {
-                width: 100%;
-            }
-
-            /* Container */
-            .container {
-                padding-left: 15px;
-                padding-right: 15px;
-            }
-
-            /* Stats */
             .stats-container {
-                flex-direction: column;
-                gap: 15px;
-            }
-            .stat-item {
-                min-width: auto;
-                width: 100%;
-            }
-
-            /* Voice cards grid */
-            #voicesContainer .col-md-6 {
-                width: 100%;
-                padding: 5px;
-            }
-
-            /* Dropdown */
-            #voiceSelect {
-                font-size: 16px;
-                padding: 12px;
-            }
-
-            /* VoxCraft banner */
-            #voxcraft-banner > div {
-                flex-direction: column;
-                text-align: center;
-                padding: 15px !important;
-            }
-        }
-
-        /* Tablets */
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .voice-card {
-                margin-bottom: 20px;
-            }
-            .hero-section h1 {
-                font-size: 2rem;
-            }
-        }
-
-        /* Landscape em mobile */
-        @media (max-width: 768px) and (orientation: landscape) {
-            .hero-section {
-                padding: 20px 15px !important;
-            }
-            .hero-section h1 {
-                font-size: 1.5rem;
-            }
-        }
-
-        /* iPhone notch */
-        @supports (padding-top: env(safe-area-inset-top)) {
-            body {
-                padding-top: env(safe-area-inset-top);
-                padding-bottom: env(safe-area-inset-bottom);
+                gap: 30px;
             }
         }
     </style>
+</head>
+<body>
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+        <button class="mobile-menu-btn" id="mobileMenuBtn">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="mobile-brand">
+            <i class="fas fa-microphone-alt"></i>Locutores IA
+        </div>
+        <div style="width: 40px;"></div>
+    </header>
 
-    <!-- Scripts -->
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">
+                <i class="fas fa-microphone-alt"></i>
+                <span>Locutores IA</span>
+            </a>
+        </div>
+
+        <nav class="sidebar-menu">
+            <div class="menu-section">
+                <div class="menu-section-title">Principal</div>
+                <a href="/" class="menu-item active">
+                    <i class="fas fa-home"></i>
+                    <span>Início</span>
+                </a>
+                <a href="/busca" class="menu-item">
+                    <i class="fas fa-search"></i>
+                    <span>Busca</span>
+                </a>
+                <a href="/noticias" class="menu-item">
+                    <i class="fas fa-newspaper"></i>
+                    <span>Notícias</span>
+                </a>
+            </div>
+
+            <div class="menu-section">
+                <div class="menu-section-title">Automação</div>
+                <a href="/news-auto-post" class="menu-item badge-new">
+                    <i class="fas fa-robot"></i>
+                    <span>News Auto Post</span>
+                </a>
+                <a href="/social-posts" class="menu-item">
+                    <i class="fas fa-share-alt"></i>
+                    <span>NewPost-IA</span>
+                </a>
+            </div>
+
+            <div class="menu-section">
+                <div class="menu-section-title">Ferramentas</div>
+                <a href="/minidaw" target="_blank" class="menu-item">
+                    <i class="fas fa-music"></i>
+                    <span>MiniDAW</span>
+                </a>
+                <a href="/minidaw-react" target="_blank" class="menu-item">
+                    <i class="fas fa-magic"></i>
+                    <span>MiniDAW IA</span>
+                </a>
+                <a href="https://app.lmnt.com/" target="_blank" class="menu-item lmnt">
+                    <i class="fas fa-microphone-alt"></i>
+                    <span>LMNT Studio</span>
+                </a>
+            </div>
+
+            <div class="menu-section">
+                <div class="menu-section-title">Dashboards</div>
+                <a href="/dashboard-real" class="menu-item">
+                    <i class="fas fa-database"></i>
+                    <span>Dados Reais</span>
+                </a>
+                <a href="/dashboard" class="menu-item">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Dashboard Principal</span>
+                </a>
+                <a href="/dashboard-advanced" class="menu-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Dashboard Avançado</span>
+                </a>
+                <a href="/dashboard-profissional" class="menu-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard Profissional</span>
+                </a>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <a href="/contato" class="sidebar-footer-item">
+                <i class="fas fa-envelope"></i>
+                <span>Contato</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <div class="container-fluid">
+                <h1>Encontre um profissional da voz IA para a sua publicidade ou produto</h1>
+                <p>Contrate locutores inteligentes sem intermediários</p>
+                
+                <div class="stats-container">
+                    <div class="stat-item">
+                        <span class="stat-number" id="voicesCount">50+</span>
+                        <span class="stat-label">Vozes IA</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="audiosCount">1.000+</span>
+                        <span class="stat-label">Áudios Gerados</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="projectsCount">500+</span>
+                        <span class="stat-label">Projetos</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Content Area -->
+        <div class="content-area">
+            <div class="container-fluid">
+                <div class="row">
+                    <!-- Filter Panel -->
+                    <div class="col-lg-3">
+                        <div class="filter-panel">
+                            <h5><i class="fas fa-filter"></i>Filtros</h5>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Gênero</label>
+                                <select class="form-select" id="genderFilter">
+                                    <option value="">Todos</option>
+                                    <option value="male">Masculino</option>
+                                    <option value="female">Feminino</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Idioma</label>
+                                <select class="form-select" id="languageFilter">
+                                    <option value="">Todos</option>
+                                    <option value="pt-BR">Português (BR)</option>
+                                    <option value="en-US">Inglês (EUA)</option>
+                                    <option value="es-ES">Espanhol</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Estilo</label>
+                                <select class="form-select" id="styleFilter">
+                                    <option value="">Todos</option>
+                                    <option value="professional">Profissional</option>
+                                    <option value="friendly">Amigável</option>
+                                    <option value="energetic">Enérgico</option>
+                                </select>
+                            </div>
+                            
+                            <button class="btn btn-generate w-100 mb-2">
+                                <i class="fas fa-search me-2"></i>Buscar
+                            </button>
+                            
+                            <button class="btn btn-outline-light w-100" id="clearFilters">
+                                <i class="fas fa-redo me-2"></i>Limpar Filtros
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Voice Generator Panel -->
+                    <div class="col-lg-9">
+                        <div class="generation-panel">
+                            <h5><i class="fas fa-magic"></i>Gerar Locução</h5>
+                            
+                            <div class="row">
+                                <div class="col-12 mb-3">
+                                    <label class="form-label">Texto para Locução</label>
+                                    <textarea class="form-control" id="textInput" rows="4" placeholder="Digite o texto que você quer transformar em áudio..."></textarea>
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Voz IA</label>
+                                    <select class="form-select" id="voiceSelect">
+                                        <option value="">Selecione uma voz</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Estilo de Fala</label>
+                                    <select class="form-select" id="styleSelect">
+                                        <option value="normal">Normal</option>
+                                        <option value="excited">Animado</option>
+                                        <option value="calm">Calmo</option>
+                                        <option value="professional">Profissional</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="col-12">
+                                    <button class="btn btn-generate" id="generateBtn">
+                                        <i class="fas fa-play me-2"></i>Gerar Áudio
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Voices Grid will be here -->
+                        <div id="voicesContainer">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/voxcraft_integration.js?v=2"></script>
-    <script src="/static/script.js?v=8"></script>
-    <script src="/static/minidaw-integrated.js?v=9"></script>
-    <script src="/static/js/voice-selector.js"></script>
-    
-    <!-- PWA Service Worker -->
+    <script src="/static/script.js"></script>
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/static/service-worker.js')
-                    .then(function(registration) {
-                        console.log('✅ Service Worker registrado:', registration.scope);
-                    })
-                    .catch(function(error) {
-                        console.log('❌ Falha ao registrar Service Worker:', error);
-                    });
-            });
+        // Sidebar Toggle for Mobile
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        function toggleSidebar() {
+            sidebar.classList.toggle('open');
+            sidebarOverlay.classList.toggle('open');
         }
-    </script>
-    
-    <script>
 
-        // Fallback: Garantir que o dropdown de vozes seja preenchido
-        (function populateVoiceSelectFallback() {
-            const select = document.getElementById('voiceSelect');
-            if (!select || select.options.length > 1) return;
+        mobileMenuBtn.addEventListener('click', toggleSidebar);
+        sidebarOverlay.addEventListener('click', toggleSidebar);
 
-            const voices = [
-                { id: 1, name: "Antonio - Profissional" },
-                { id: 2, name: "Francisca - Amigável" },
-                { id: 3, name: "Duarte - Lisboa" },
-                { id: 4, name: "Raquel - Lisboa" },
-                { id: 5, name: "Guy - English US" },
-                { id: 6, name: "Jenny - English US" },
-                { id: 7, name: "Ryan - English UK" },
-                { id: 8, name: "Alvaro - Español" },
-                { id: 9, name: "Henri - Français" },
-                { id: 10, name: "Conrad - Deutsch" }
-            ];
-
-            select.innerHTML = '<option value="">Selecione uma voz</option>';
-            const group = document.createElement('optgroup');
-            group.label = '🟢 Edge TTS (Gratuito)';
-            voices.forEach(v => {
-                const opt = document.createElement('option');
-                opt.value = v.id;
-                opt.textContent = v.name;
-                group.appendChild(opt);
+        // Close sidebar when clicking a menu item on mobile
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if (window.innerWidth <= 991.98) {
+                    toggleSidebar();
+                }
             });
-            select.appendChild(group);
-            console.log('✅ Dropdown de vozes preenchido (fallback)');
-        })();
-
-        // Inicializar MiniDAW Integrada
-        let miniDAW;
-        document.addEventListener('DOMContentLoaded', function() {
-            miniDAW = new MiniDAWIntegrated();
-            
-            // ── Gerar áudio (Edge TTS ou ElevenLabs) ──────────────────────────────────
-            async function generateAudio() {
-                const text = document.getElementById('textInput').value.trim();
-                const voiceId = document.getElementById('voiceSelect').value;
-                const speechStyle = document.getElementById('speechStyle').value;
-                
-                console.log(`🎙️ Gerando áudio: voz=${voiceId}, estilo=${speechStyle}`);
-                
-                // Tentar ElevenLabs primeiro
-                try {
-                    const response = await fetch('/api/generate-audio', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            text: text,
-                            voice_model: voiceId,
-                            style: speechStyle,
-                            language: 'pt-BR'
-                        })
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.success) {
-                            console.log('✅ Áudio gerado com ElevenLabs:', data.filename);
-                            playGeneratedAudio(data.filename);
-                            return;
-                        }
-                    }
-                } catch (error) {
-                    console.log('❌ ElevenLabs falhou, tentando LMNT:', error);
-                }
-                
-                // Tentar LMNT segundo
-                try {
-                    const lmntResponse = await fetch('/api/lmnt/generate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            text: text,
-                            voice_id: voiceId,
-                            format: 'mp3'
-                        })
-                    });
-                    
-                    if (lmntResponse.ok) {
-                        const lmntData = await lmntResponse.json();
-                        if (lmntData.success) {
-                            console.log('✅ Áudio gerado com LMNT:', lmntData.filename);
-                            playGeneratedAudio(lmntData.filename);
-                            return;
-                        }
-                    }
-                } catch (lmntError) {
-                    console.log('❌ LMNT falhou, tentando Web Speech API:', lmntError);
-                }
-                
-                // Fallback para Web Speech API
-                try {
-                    await generateAudioWithWebSpeech();
-                } catch (fallbackError) {
-                    console.error('❌ Todos os métodos falharam:', fallbackError);
-                    alert('Erro ao gerar áudio. Tente novamente.');
-                }
-                
-                // Configurar drag & drop
-                const dropZone = document.getElementById('miniDAWDropZone');
-                const fileInput = document.getElementById('miniDAWFileInput');
-                
-                if (dropZone && fileInput) {
-                    dropZone.addEventListener('click', () => fileInput.click());
-                    dropZone.classList.add('dragover');
-                });
-                
-                dropZone.addEventListener('dragleave', () => {
-                    dropZone.classList.remove('dragover');
-                });
-                
-                dropZone.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    dropZone.classList.remove('dragover');
-                    
-                    const files = Array.from(e.dataTransfer.files).filter(file => 
-                        file.type.startsWith('audio/')
-                    );
-                    
-                    files.forEach(file => {
-                        const trackId = 'miniDAWTrack_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-                        miniDAW.addTrack('voice');
-                        setTimeout(() => {
-                            miniDAW.loadAudioFile(file, trackId);
-                        }, 100);
-                    });
-                });
-                
-                fileInput.addEventListener('change', (e) => {
-                    const files = Array.from(e.target.files).filter(file => 
-                        file.type.startsWith('audio/')
-                    );
-                    
-                    files.forEach(file => {
-                        const trackId = 'miniDAWTrack_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-                        miniDAW.addTrack('voice');
-                        setTimeout(() => {
-                            miniDAW.loadAudioFile(file, trackId);
-                        }, 100);
-                    });
-                    
-                    fileInput.value = '';
-                });
-            }
         });
 
-        // 🆘 HELPERS DE DIAGNÓSTICO (use se der erro)
-        window.resetLocutores = () => {
-            localStorage.clear();
-            sessionStorage.clear();
-            console.log('✅ Locutores IA resetado! Recarregando...');
-            window.location.reload();
-        };
-        
-        window.debugLocutores = () => {
-            console.log('📊 DIAGNÓSTICO LOCUTORES IA:');
-            console.log('- Total vozes carregadas:', elevenLabsVoices.length + voicesDatabase.length);
-            console.log('- ElevenLabs:', elevenLabsVoices.length);
-            console.log('- Edge TTS:', voicesDatabase.length);
-            console.log('- Voz selecionada:', document.getElementById('voiceSelect').value);
-            console.log('- Texto digitado:', document.getElementById('textInput').value.substring(0, 50) + '...');
-            console.log('- AudioContext:', window.AudioContext || window.webkitAudioContext ? '✅ Suportado' : '❌ Não suportado');
-        };
-
-        // Instruções no console
-        console.log('%c🎙️ Locutores IA - Ajuda', 'font-size: 16px; font-weight: bold; color: #3498db;');
-        console.log('%cSe der erro ao gerar áudio:', 'font-weight: bold;');
-        console.log('1. Cole no console: resetLocutores()');
-        console.log('2. Ou use: debugLocutores() para ver estado');
-        console.log('3. No MiniDAW: resetMiniDAW() para limpar cache');
+        // Highlight active menu item
+        const currentPath = window.location.pathname;
+        document.querySelectorAll('.menu-item').forEach(item => {
+            const href = item.getAttribute('href');
+            if (href === currentPath) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
     </script>
 </body>
 </html>
