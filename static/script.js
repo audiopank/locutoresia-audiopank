@@ -5,17 +5,34 @@ let selectedVoice = null;
 let lastGeneratedAudioBlob = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('­ƒÜÇ Locutores IA - Inicializando...');
+    console.log('🎙️ Locutores IA - Inicializando...');
     
     loadAllVoices();
     updateStats();
+
+    // Botão Gerar Áudio
+    const generateBtn = document.getElementById('generateBtn');
+    if (generateBtn) {
+        generateBtn.addEventListener('click', generateAudio);
+    }
+
+    // Botões de Filtro
+    const filterBtn = document.querySelector('.filter-panel .btn-generate');
+    if (filterBtn) {
+        filterBtn.addEventListener('click', applyFilters);
+    }
+
+    const clearBtn = document.getElementById('clearFilters');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', resetFilters);
+    }
 
     const audioInput = document.getElementById('audioFileInput');
     if (audioInput) {
         audioInput.addEventListener('change', handleAudioFileSelect);
     }
 
-    console.log('Ô£à Locutores IA - Inicializa├º├úo completa!');
+    console.log('✅ Locutores IA - Inicialização completa!');
 });
 
 // ÔöÇÔöÇ Carregar TODAS as vozes (Gemini + Edge TTS + ElevenLabs) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
@@ -240,7 +257,7 @@ function resetFilters() {
 async function generateAudio() {
     const text = document.getElementById('textInput').value.trim();
     const voiceId = document.getElementById('voiceSelect').value;
-    const speechStyle = document.getElementById('speechStyle').value;
+    const speechStyle = document.getElementById('styleSelect').value;
 
     if (!text) { alert('Por favor, digite o texto para gerar o ├íudio.'); return; }
     if (!voiceId) { alert('Por favor, selecione uma voz IA.'); return; }

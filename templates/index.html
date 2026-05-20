@@ -640,6 +640,32 @@
                                         <i class="fas fa-play me-2"></i>Gerar Áudio
                                     </button>
                                 </div>
+                                
+                                <!-- Loading Spinner -->
+                                <div class="col-12 mt-3" id="loadingSpinner" style="display: none;">
+                                    <div class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Carregando...</span>
+                                        </div>
+                                        <p class="mt-2 text-light">Gerando áudio, por favor aguarde...</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Audio Player -->
+                                <div class="col-12 mt-3" id="audioPlayer" style="display: none;">
+                                    <div class="p-3 bg-dark rounded-3">
+                                        <h6 class="text-light mb-3"><i class="fas fa-volume-up me-2"></i>Áudio Gerado</h6>
+                                        <audio id="generatedAudio" controls class="w-100 mb-3"></audio>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-sm btn-success" onclick="downloadAudio()">
+                                                <i class="fas fa-download me-1"></i>Baixar
+                                            </button>
+                                            <button class="btn btn-sm btn-info" onclick="sendToMiniDAW()">
+                                                <i class="fas fa-music me-1"></i>Enviar para MiniDAW
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
