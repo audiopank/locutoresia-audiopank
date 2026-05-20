@@ -31,10 +31,10 @@ class NewsUtils:
         # Usar URL base, não adicionar /rest/v1/posts automaticamente
         self.supabase_url = self.supabase_url.rstrip('/')
         
-        # Tentar diferentes variáveis de ambiente
-        self.supabase_key = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "").strip()
+        # Tentar diferentes variáveis de ambiente (usar ANON KEY primeiro para a tabela posts)
+        self.supabase_key = os.getenv("NEWPOST_SUPABASE_ANON_KEY", "").strip()
         if not self.supabase_key:
-            self.supabase_key = os.getenv("NEWPOST_SUPABASE_ANON_KEY", "").strip()
+            self.supabase_key = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "").strip()
         if not self.supabase_key:
             self.supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8"
         
