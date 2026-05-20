@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Play, Pause, Trash2, Mic, Download, Upload, Clock, User, Send, Loader2 } from "lucide-react";
 import { useLMNT } from "@/hooks/useLMNT";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 
 const CLONED_VOICES_KEY = "cloned_voices_library";
 

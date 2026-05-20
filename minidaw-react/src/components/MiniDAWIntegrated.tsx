@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Newspaper, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Play, Pause, Plus, Trash2, Volume2, Music, Download, Loader2, Undo2, Redo2, Copy, Gauge, PanelLeftClose, PanelRightClose, Save, FolderOpen, Clock, FileAudio, Upload, Mic, Wand2, History, Sliders, Activity, Waves, Music2, Bookmark, Grid3X3, ChevronUp, ChevronDown, GripVertical, Scissors, ZoomIn, ZoomOut, Keyboard, Eye, CheckSquare, Square, Layers, TrendingUp, TrendingDown } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { TrackWaveform } from "@/components/TrackWaveform";
 import { TrackControls } from "@/components/TrackControls";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -130,6 +131,7 @@ const audioBufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
 
 const MiniDAWIntegrated = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [history, setHistory] = useState<HistoryState[]>([{ tracks: [], description: "Estado inicial" }]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const tracks = history[historyIndex]?.tracks || [];
@@ -561,6 +563,24 @@ const MiniDAWIntegrated = () => {
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
+              <Button 
+                onClick={() => navigate("/busca-noticias")} 
+                variant="outline" 
+                className="gap-2 border-blue-500/50 hover:bg-blue-500/10"
+              >
+                <Search className="w-4 h-4 text-blue-400" />
+                Busca Notícias RSS
+              </Button>
+              
+              <Button 
+                onClick={() => navigate("/newpost-manager")} 
+                variant="outline" 
+                className="gap-2 border-purple-500/50 hover:bg-purple-500/10"
+              >
+                <Newspaper className="w-4 h-4 text-purple-400" />
+                NewPost-IA Manager
+              </Button>
+              
               <VoiceGenerator onAudioGenerated={handleAudioGenerated} />
               
               <Button onClick={() => addTrack("voiceover")} className="gap-2">

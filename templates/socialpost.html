@@ -558,6 +558,10 @@
                     <input type="text" class="form-control" id="new-hashtags" placeholder="brasil, noticias, ia, locutores">
                 </div>
                 <div class="mb-3">
+                    <label class="form-label">URL da Fonte (Link da Notícia)</label>
+                    <input type="text" class="form-control" id="new-source-url" placeholder="https://exame.com/... ou https://veja.abril.com.br/...">
+                </div>
+                <div class="mb-3">
                     <label class="form-label">Status Inicial</label>
                     <select class="form-select" id="new-status">
                         <option value="rascunho">Rascunho</option>
@@ -623,6 +627,10 @@
                 <div class="mb-3">
                     <label class="form-label">Hashtags</label>
                     <input type="text" class="form-control" id="edit-hashtags" placeholder="brasil, noticias, ia">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">URL da Fonte (Link da Notícia)</label>
+                    <input type="text" class="form-control" id="edit-source-url" placeholder="https://exame.com/... ou https://veja.abril.com.br/...">
                 </div>
                 <div id="edit-image-preview" class="d-none text-center mb-3">
                     <img id="edit-img-src" src="" class="img-fluid rounded" style="max-height:160px">
@@ -911,13 +919,14 @@
     // CRIAR NOVO POST
     // ============================================================
     async function saveNewPost() {
-        const title    = document.getElementById('new-title').value.trim();
-        const caption  = document.getElementById('new-caption').value.trim();
-        const audioUrl = document.getElementById('new-audio-url').value.trim();
-        const imageUrl = document.getElementById('new-image-url').value.trim();
-        const status   = document.getElementById('new-status').value;
-        const rawTags  = document.getElementById('new-hashtags').value;
-        const hashtags = rawTags.split(',').map(h => h.trim().replace('#', '')).filter(Boolean);
+        const title     = document.getElementById('new-title').value.trim();
+        const caption   = document.getElementById('new-caption').value.trim();
+        const audioUrl  = document.getElementById('new-audio-url').value.trim();
+        const imageUrl  = document.getElementById('new-image-url').value.trim();
+        const sourceUrl = document.getElementById('new-source-url').value.trim();
+        const status    = document.getElementById('new-status').value;
+        const rawTags   = document.getElementById('new-hashtags').value;
+        const hashtags  = rawTags.split(',').map(h => h.trim().replace('#', '')).filter(Boolean);
 
         if (!title) { showToast('Título é obrigatório!', 'error'); return; }
 
@@ -930,7 +939,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    title, caption, audio_url: audioUrl, image_url: imageUrl,
+                    title, caption, audio_url: audioUrl, image_url: imageUrl, source_url: sourceUrl,
                     platforms: ['newpost_ia'], hashtags, status,
                     ai_caption_generated: !!lastAICaption
                 })
@@ -953,7 +962,7 @@
     }
 
     function resetCreateForm() {
-        ['new-title','new-caption','new-audio-url','new-image-url','new-hashtags'].forEach(id => {
+        ['new-title','new-caption','new-audio-url','new-image-url','new-hashtags','new-source-url'].forEach(id => {
             document.getElementById(id).value = '';
         });
         document.getElementById('new-status').value = 'rascunho';
@@ -973,6 +982,7 @@
         document.getElementById('edit-audio-url').value = post.audio_url || '';
         document.getElementById('edit-image-url').value = post.image_url || '';
         document.getElementById('edit-hashtags').value = (post.hashtags || []).join(', ');
+        document.getElementById('edit-source-url').value = post.source_url || '';
 
         const imgPreview = document.getElementById('edit-image-preview');
         if (post.image_url) {
@@ -985,13 +995,14 @@
     }
 
     async function updatePost() {
-        const id       = document.getElementById('edit-post-id').value;
-        const title    = document.getElementById('edit-title').value.trim();
-        const caption  = document.getElementById('edit-caption').value.trim();
-        const audioUrl = document.getElementById('edit-audio-url').value.trim();
-        const imageUrl = document.getElementById('edit-image-url').value.trim();
-        const rawTags  = document.getElementById('edit-hashtags').value;
-        const hashtags = rawTags.split(',').map(h => h.trim().replace('#', '')).filter(Boolean);
+        const id        = document.getElementById('edit-post-id').value;
+        const title     = document.getElementById('edit-title').value.trim();
+        const caption   = document.getElementById('edit-caption').value.trim();
+        const audioUrl  = document.getElementById('edit-audio-url').value.trim();
+        const imageUrl  = document.getElementById('edit-image-url').value.trim();
+        const sourceUrl = document.getElementById('edit-source-url').value.trim();
+        const rawTags   = document.getElementById('edit-hashtags').value;
+        const hashtags  = rawTags.split(',').map(h => h.trim().replace('#', '')).filter(Boolean);
 
         const btn = document.getElementById('btn-update-post');
         btn.disabled = true;
@@ -1001,7 +1012,7 @@
             const res = await fetch(`/api/social/posts/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, caption, audio_url: audioUrl, image_url: imageUrl, hashtags })
+                body: JSON.stringify({ title, caption, audio_url: audioUrl, image_url: imageUrl, source_url: sourceUrl, hashtags })
             });
             const data = await res.json();
             if (data.success) {
@@ -1141,6 +1152,25 @@
     // ============================================================
     document.addEventListener('DOMContentLoaded', () => {
         refreshPosts();
+        
+        // Verificar se há dados de notícia via query params
+        const params = new URLSearchParams(window.location.search);
+        const title = params.get('title');
+        const caption = params.get('caption');
+        const image_url = params.get('image_url');
+        
+        if (title) {
+            document.getElementById('new-title').value = title;
+            if (caption) document.getElementById('new-caption').value = caption;
+            if (image_url) document.getElementById('new-image-url').value = image_url;
+            
+            // Abrir o modal de novo post automaticamente
+            setTimeout(() => {
+                createModal.show();
+                // Limpar os params da URL sem recarregar a página
+                window.history.replaceState({}, document.title, '/social-posts');
+            }, 500);
+        }
     });
 </script>
 </body>

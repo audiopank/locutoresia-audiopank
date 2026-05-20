@@ -2,21 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --primary: 99 102 241;
-  --secondary: 139 92 246;
-  --accent: 217 70 239;
-  --destructive: 239 68 68;
-  --muted: 107 114 128;
-  --accent-foreground: 210 230 255;
-  --foreground: 15 23 42;
-  --background: 0 0 0;
-  --card: 255 255 255;
-  --card-foreground: 15 23 42;
-  --border: 214 211 209;
-  --input: 255 255 255;
-  --ring: 99 102 241;
-  --radius: 0.5rem;
+@layer base {
+  :root {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
 body {
@@ -26,8 +43,6 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
 }
 
 #root {

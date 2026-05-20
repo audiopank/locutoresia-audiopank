@@ -1026,18 +1026,18 @@ def get_trends():
         from backend.supabase_config import get_supabase_client
         supabase = get_supabase_client()
         
-        # Buscar posts da tabela newpost_posts
-        result = supabase.table('newpost_posts').select('*').order('criado_em', desc=True).limit(100).execute()
+        # Buscar posts da tabela posts (tabela principal do Locutores IA)
+        result = supabase.table('posts').select('*').order('created_at', desc=True).limit(100).execute()
         posts = result.data if result.data else []
         
         # Análise por autor
-        by_source = Counter([p.get('autor_id', 'Desconhecido') for p in posts if p.get('autor_id')])
+        by_source = Counter([p.get('author_id', 'Desconhecido') for p in posts if p.get('author_id')])
         
-        # Análise por categoria (usando hashtags como proxy)
+        # Análise por categoria (usando tags como proxy)
         by_category = Counter()
         for post in posts:
-            if post.get('hashtags'):
-                for tag in post['hashtags']:
+            if post.get('tags'):
+                for tag in post['tags']:
                     by_category[tag] += 1
         
         # Simular análise de sentimentos (em produção usar IA)
@@ -1047,8 +1047,8 @@ def get_trends():
             'neutro': len(posts) * 0.50
         }
         
-        # Extrair palavras-chave dos títulos e descrições
-        all_text = ' '.join([f"{p.get('titulo', '')} {p.get('descricao', '')}" for p in posts])
+        # Extrair palavras-chave dos títulos e conteúdos
+        all_text = ' '.join([f"{p.get('title', '')} {p.get('content', '')}" for p in posts])
         words = [word.lower() for word in all_text.split() if len(word) > 3]
         global_keywords = [word for word, count in Counter(words).most_common(15)]
         
@@ -1080,7 +1080,7 @@ def get_trends():
                 'trending_topics': trending_topics[:10],
                 'period_hours': hours,
                 'generated_at': datetime.now().isoformat(),
-                'data_source': 'Supabase (tabela newpost_posts - dados reais do NewPost-IA)'
+                'data_source': 'Supabase (tabela posts - dados reais do Locutores IA)'
             }
         })
         

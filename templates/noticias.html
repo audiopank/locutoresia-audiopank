@@ -386,9 +386,12 @@
                         <h5 class="card-title">${post.title}</h5>
                         <p class="text-muted mb-2"><small>Coletada em ${dateHtml} | Categoria: ${post.category || 'Geral'}</small></p>
                         <p class="card-text">${post.content}</p>
-                        <div class="d-flex gap-2 mt-3">
+                        <div class="d-flex gap-2 mt-3 flex-wrap">
                             <button class="btn btn-primary btn-sm" onclick="viewNewsDetails('${post.id}')">
                                 <i class="fas fa-eye me-1"></i>Ver Detalhes
+                            </button>
+                            <button class="btn btn-success btn-sm" onclick="sendToSocialPost('${post.id}')">
+                                <i class="fas fa-share-alt me-1"></i>Enviar para Novo Post
                             </button>
                             <a href="${post.metadata?.url || '#'}" target="_blank" class="btn btn-outline-primary btn-sm">
                                 <i class="fas fa-external-link-alt me-1"></i>Ver Original
@@ -535,6 +538,21 @@
             if (!news) return;
             
             alert(`Detalhes da Notícia:\n\nTítulo: ${news.title}\nFonte: ${news.metadata?.source}\nCategoria: ${news.category}\nColetada em: ${new Date(news.created_at).toLocaleString('pt-BR')}\n\nURL: ${news.metadata?.url}`);
+        }
+
+        function sendToSocialPost(newsId) {
+            const news = currentNews.find(n => n.id === newsId);
+            if (!news) return;
+            
+            const params = new URLSearchParams({
+                title: news.title,
+                caption: news.content,
+                category: news.category || 'Geral',
+                image_url: news.image_url || '',
+                source: news.metadata?.source || ''
+            });
+            
+            window.location.href = `/social-posts?${params.toString()}`;
         }
 
         // Carregar notícias ao abrir a página
@@ -773,6 +791,7 @@
             });
         }
 
+        function saveAndPublish() {
             const id = document.getElementById('edit-post-id').value;
             const title = document.getElementById('edit-title').value;
             const content = document.getElementById('edit-content').value;

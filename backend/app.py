@@ -1447,7 +1447,7 @@ def api_list_social_posts():
         print("[DEBUG] === api_list_social_posts ===")
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
         supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
         print(f"[DEBUG] SUPABASE_URL: {repr(supabase_url)}")
         print(f"[DEBUG] SUPABASE_ANON_KEY: {repr(supabase_key[:50] + '...' if supabase_key else 'VAZIO')}")
@@ -1466,15 +1466,15 @@ def api_list_social_posts():
         status_filter = request.args.get('status')
         limit = int(request.args.get('limit', 50))
         
-        # Mapear status de português para inglês para o filtro
+        # Mapear status de português para inglês para o filtro (valores corretos da tabela)
         status_map = {
             'rascunho': 'draft',
-            'pendente': 'pending',
-            'aprovado': 'approved',
-            'rejeitado': 'rejected',
+            'pendente': 'ready',
+            'aprovado': 'ready',
+            'rejeitado': 'draft',
             'publicado': 'published',
-            'agendado': 'scheduled',
-            'erro': 'error'
+            'agendado': 'ready',
+            'erro': 'draft'
         }
         status_filter_en = status_map.get(status_filter, status_filter) if status_filter else None
         
@@ -1491,10 +1491,11 @@ def api_list_social_posts():
             # Mapear status de inglês para português e garantir campo 'caption'
             status_map_reverse = {
                 'draft': 'rascunho',
+                'ready': 'pendente',  # ready → pendente (ou aprovado)
+                'published': 'publicado',
                 'pending': 'pendente',
                 'approved': 'aprovado',
                 'rejected': 'rejeitado',
-                'published': 'publicado',
                 'scheduled': 'agendado',
                 'error': 'erro'
             }
@@ -1536,6 +1537,8 @@ def api_list_social_posts():
                 print(f"[DEBUG]   Caption final: {repr(caption)}")
                 
                 # Mapear campos que existem na tabela
+                if post.get('source_url'):
+                    processed_post['source_url'] = post['source_url']
                 if post.get('image_url'):
                     processed_post['image_url'] = post['image_url']
                 if post.get('audio_url'):
@@ -1584,17 +1587,17 @@ def api_create_social_post():
             'Prefer': 'return=representation'
         }
         
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
-        # Mapear status de português para inglês
+        # Mapear status de português para inglês (valores corretos da tabela)
         status_map = {
             'rascunho': 'draft',
-            'pendente': 'pending',
-            'aprovado': 'approved',
-            'rejeitado': 'rejected',
+            'pendente': 'ready',  # Pendente → ready
+            'aprovado': 'ready',  # Aprovado → ready
+            'rejeitado': 'draft',
             'publicado': 'published',
-            'agendado': 'scheduled',
-            'erro': 'error'
+            'agendado': 'ready',
+            'erro': 'draft'
         }
         status_pt = data.get('status', 'rascunho')
         status_en = status_map.get(status_pt, 'draft')
@@ -1603,6 +1606,8 @@ def api_create_social_post():
             'author_id': newpost_author_id,
             'title': data.get('title', ''),
             'content': data.get('caption', ''),
+            'source_url': data.get('source_url', ''),
+            'tags': data.get('hashtags', []),  # Usar tags (schema cache reconhece)
             'status': status_en,
             'is_ia_generated': True,
             'created_at': datetime.now(timezone.utc).isoformat(),
@@ -1699,6 +1704,8 @@ def api_get_social_post(post_id):
                 print(f"[DEBUG]   Caption final: {repr(caption)}")
                 
                 # Mapear campos que existem na tabela
+                if post.get('source_url'):
+                    processed_post['source_url'] = post['source_url']
                 if post.get('image_url'):
                     processed_post['image_url'] = post['image_url']
                 if post.get('audio_url'):
@@ -1741,15 +1748,15 @@ def api_update_social_post(post_id):
             'Prefer': 'return=representation'
         }
         
-        # Mapear status de português para inglês
+        # Mapear status de português para inglês (valores corretos da tabela)
         status_map = {
             'rascunho': 'draft',
-            'pendente': 'pending',
-            'aprovado': 'approved',
-            'rejeitado': 'rejected',
+            'pendente': 'ready',
+            'aprovado': 'ready',
+            'rejeitado': 'draft',
             'publicado': 'published',
-            'agendado': 'scheduled',
-            'erro': 'error'
+            'agendado': 'ready',
+            'erro': 'draft'
         }
         
         update_data = {}
@@ -1757,8 +1764,10 @@ def api_update_social_post(post_id):
             update_data['title'] = data['title']
         if 'caption' in data:
             update_data['content'] = data['caption']
+        if 'source_url' in data:
+            update_data['source_url'] = data['source_url']
         if 'hashtags' in data and data['hashtags']:
-            update_data['tags'] = data['hashtags']  # Usar tags para hashtags
+            update_data['tags'] = data['hashtags']  # Usar tags (schema cache reconhece)
         if 'status' in data:
             update_data['status'] = status_map.get(data['status'], data['status'])
         
@@ -1929,9 +1938,14 @@ def api_generate_social_caption():
         title = data.get('title', '')
         content = data.get('content', '')
         
-        # Gerar uma legenda simples
-        caption = f"{title}\n\n{content[:200]}..."
-        hashtags = ['noticia', 'brasil', 'ia']
+        # Gerar uma legenda com TODO o conteúdo (não cortar!)
+        if content.strip():
+            caption = f"{title}\n\n{content.strip()}"
+        else:
+            caption = f"{title}\n\nNotícia importante sobre o tema."
+        
+        # Hashtags relevantes
+        hashtags = ['noticia', 'brasil', 'atualidades']
         
         return jsonify({
             "success": True,
@@ -2723,7 +2737,7 @@ def handle_publications():
     try:
         supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
         supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -2745,10 +2759,11 @@ def handle_publications():
             # Mapear status de inglês para português e garantir campo 'caption'
             status_map_reverse = {
                 'draft': 'rascunho',
+                'ready': 'pendente',  # ready → pendente (ou aprovado)
+                'published': 'publicado',
                 'pending': 'pendente',
                 'approved': 'aprovado',
                 'rejected': 'rejeitado',
-                'published': 'publicado',
                 'scheduled': 'agendado',
                 'error': 'erro'
             }

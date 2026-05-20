@@ -462,25 +462,25 @@ def get_real_dashboard_data():
         # Conectar ao Supabase
         supabase = get_supabase_client()
         
-        # Buscar posts reais da tabela newpost_posts (tabela correta do NewPost-IA)
-        result = supabase.table('newpost_posts').select('*').order('criado_em', desc=True).limit(100).execute()
+        # Buscar posts reais da tabela posts (tabela principal do Locutores IA)
+        result = supabase.table('posts').select('*').order('created_at', desc=True).limit(100).execute()
         posts = result.data if result.data else []
         
         # Buscar fontes
         result_sources = supabase.table('sources').select('*').execute()
         sources = result_sources.data if result_sources.data else []
         
-        # Estatísticas (adaptado para tabela newpost_posts)
+        # Estatísticas (adaptado para tabela posts)
         stats = {
             'total_publications': len(posts),
             'total_sources': len(sources),
-            'published': len(posts),  # Todos os posts em newpost_posts são publicados
-            'pending': 0,
-            'error': 0
+            'published': len([p for p in posts if p.get('status') == 'published']),
+            'pending': len([p for p in posts if p.get('status') == 'ready']),
+            'error': len([p for p in posts if p.get('status') == 'draft' and p.get('is_ia_generated') is False])
         }
         
-        # Agrupar por autor (source_url não existe em newpost_posts)
-        by_source = Counter([p.get('autor_id', 'Desconhecido') for p in posts if p.get('autor_id')])
+        # Agrupar por autor
+        by_source = Counter([p.get('author_id', 'Desconhecido') for p in posts if p.get('author_id')])
         
         # Agrupar por status
         by_status = {
@@ -500,7 +500,7 @@ def get_real_dashboard_data():
             'recent_publications': recent,
             'sources': sources,
             'generated_at': datetime.now().isoformat(),
-            'data_source': 'Supabase (tabela newpost_posts - dados reais do NewPost-IA)'
+            'data_source': 'Supabase (tabela posts - dados reais do Locutores IA)'
         })
         
     except Exception as e:
