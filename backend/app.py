@@ -1446,7 +1446,7 @@ def api_list_social_posts():
     try:
         print("[DEBUG] === api_list_social_posts ===")
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_SERVICE_KEY', ''))
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
         print(f"[DEBUG] SUPABASE_URL: {repr(supabase_url)}")
@@ -1575,7 +1575,7 @@ def api_create_social_post():
 
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_SERVICE_KEY', ''))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1648,7 +1648,7 @@ def api_get_social_post(post_id):
     """Obtém um SocialPost pelo ID (usando Supabase real)"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_SERVICE_KEY', ''))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1731,12 +1731,14 @@ def api_update_social_post(post_id):
     """Atualiza campos de um SocialPost (usando Supabase real)"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_SERVICE_KEY', ''))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
         
         data = request.get_json()
+        print(f"[DEBUG] api_update_social_post - Dados recebidos do frontend: {json.dumps(data, ensure_ascii=False, indent=2)}")
+        
         if not data:
             return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
         
@@ -1766,12 +1768,14 @@ def api_update_social_post(post_id):
         if 'hashtags' in data and data['hashtags']:
             update_data['tags'] = data['hashtags']  # Usar tags (schema cache reconhece)
         if 'status' in data:
-            update_data['status'] = status_map.get(data['status'], data['status'])
+            status_en = status_map.get(data['status'], data['status'])
+            update_data['status'] = status_en
+            print(f"[DEBUG] Mapeando status '{data['status']}' para '{status_en}'")
         
         update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
         
         print(f"[DEBUG] api_update_social_post - post_id: {post_id}")
-        print(f"[DEBUG] update_data: {update_data}")
+        print(f"[DEBUG] update_data final: {json.dumps(update_data, ensure_ascii=False, indent=2)}")
         
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
@@ -1796,10 +1800,10 @@ def api_update_social_post(post_id):
 
 @app.route('/api/social/posts/<post_id>/approve', methods=['POST'])
 def api_approve_social_post(post_id):
-    """Aprova um SocialPost para publicação (usando Supabase real)"""
+    """Aprova um SocialPost (usando Supabase real)"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_SERVICE_KEY', ''))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1832,7 +1836,7 @@ def api_reject_social_post(post_id):
     """Rejeita um SocialPost (usando Supabase real)"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_SERVICE_KEY', ''))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1871,8 +1875,10 @@ def api_publish_social_post(post_id):
         print(f"[DEBUG] === api_publish_social_post - Post ID: {post_id} ===")
         
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', ''))
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('SUPABASE_SERVICE_KEY', ''))
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
+        
+        print(f"[DEBUG] Usando NEWPOST_SUPABASE_SERVICE_KEY: {repr(supabase_key[:50] + '...' if supabase_key else 'VAZIO')}")
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
