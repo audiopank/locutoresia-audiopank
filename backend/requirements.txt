@@ -13,3 +13,4 @@ gtts==2.5.1
 elevenlabs==1.6.0
 numpy==1.26.4
 pydub==0.25.1
+supabase==2.12.0
