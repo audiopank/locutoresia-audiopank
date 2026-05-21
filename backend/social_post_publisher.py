@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 NEWPOST_IA_URL = os.getenv("NEWPOST_IA_URL", "https://plugpost-ai.lovable.app")
 NEWPOST_SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", os.getenv("SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co"))
 # Usar a chave ANON para NewPost-IA (conforme configuração oficial)
-NEWPOST_SUPABASE_KEY = os.getenv("NEWPOST_ANON_KEY", os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")))
+NEWPOST_SUPABASE_KEY = os.getenv("NEWPOST_SUPABASE_ANON_KEY", os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")))
 
 # Supabase local (Locutores IA)
 LOCAL_SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
@@ -56,7 +56,7 @@ class SocialPostPublisher:
         self.local_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", LOCAL_SUPABASE_KEY))
         self.newpost_url = NEWPOST_IA_URL
         self.newpost_supabase_url = os.getenv("NEWPOST_SUPABASE_URL", NEWPOST_SUPABASE_URL)
-        self.newpost_supabase_key = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", NEWPOST_SUPABASE_KEY)))
+        self.newpost_supabase_key = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("NEWPOST_SUPABASE_ANON_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_KEY", NEWPOST_SUPABASE_KEY))))
 
     # ----------------------------------------------------------
     # HEADERS SUPABASE LOCAL
