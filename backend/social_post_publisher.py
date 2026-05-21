@@ -268,6 +268,8 @@ Responda APENAS com o JSON, sem markdown.
         post = result["post"]
 
         # 2. Verificar se está aprovado
+        logger.info(f"[DEBUG] Post completo: {json.dumps(post, ensure_ascii=False, indent=2)}")
+        
         if post.get("approval_status") != "aprovado":
             return {
                 "success": False,
@@ -277,7 +279,11 @@ Responda APENAS com o JSON, sem markdown.
         # 3. Preparar dados
         hashtags = post.get("hashtags", [])
         hashtag_str = " ".join([f"#{h}" for h in hashtags])
-        full_caption = f"{post.get('caption', '')} {hashtag_str}".strip()
+        caption = post.get('caption', '')
+        logger.info(f"[DEBUG] Caption do post: {repr(caption)}")
+        logger.info(f"[DEBUG] Hashtags: {repr(hashtags)}")
+        full_caption = f"{caption} {hashtag_str}".strip()
+        logger.info(f"[DEBUG] Full caption final: {repr(full_caption)}")
 
         # Obter autor_id do .env (conforme configuração oficial da NewPost-IA)
         autor_id = os.getenv("NEWPOST_AUTHOR_ID", "e387d9c0-31d9-409c-b3ac-5d31109630b4")
@@ -300,6 +306,7 @@ Responda APENAS com o JSON, sem markdown.
                 'media_types': ['image'] if post.get("image_url") else []
             }
             
+            logger.info(f"[DEBUG] Payload para tabela 'posts': {json.dumps(posts_payload, ensure_ascii=False, indent=2)}")
             logger.info(f"🚀 [PASSO 1] Salvando post na tabela 'posts'...")
             resp_posts = requests.post(
                 f"{self.newpost_supabase_url}/rest/v1/posts",
