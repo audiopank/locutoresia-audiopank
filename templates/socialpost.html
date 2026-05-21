@@ -632,6 +632,14 @@
                     <label class="form-label">URL da Fonte (Link da Notícia)</label>
                     <input type="text" class="form-control" id="edit-source-url" placeholder="https://exame.com/... ou https://veja.abril.com.br/...">
                 </div>
+                <div class="mb-3">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" id="edit-status">
+                        <option value="rascunho">Rascunho</option>
+                        <option value="pendente">Pendente de Aprovação</option>
+                        <option value="aprovado">Aprovado (pronto para publicar)</option>
+                    </select>
+                </div>
                 <div id="edit-image-preview" class="d-none text-center mb-3">
                     <img id="edit-img-src" src="" class="img-fluid rounded" style="max-height:160px">
                 </div>
@@ -983,6 +991,7 @@
         document.getElementById('edit-image-url').value = post.image_url || '';
         document.getElementById('edit-hashtags').value = (post.hashtags || []).join(', ');
         document.getElementById('edit-source-url').value = post.source_url || '';
+        document.getElementById('edit-status').value = post.status || 'rascunho';
 
         const imgPreview = document.getElementById('edit-image-preview');
         if (post.image_url) {
@@ -1003,6 +1012,7 @@
         const sourceUrl = document.getElementById('edit-source-url').value.trim();
         const rawTags   = document.getElementById('edit-hashtags').value;
         const hashtags  = rawTags.split(',').map(h => h.trim().replace('#', '')).filter(Boolean);
+        const status    = document.getElementById('edit-status').value;
 
         const btn = document.getElementById('btn-update-post');
         btn.disabled = true;
@@ -1012,7 +1022,7 @@
             const res = await fetch(`/api/social/posts/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, caption, audio_url: audioUrl, image_url: imageUrl, hashtags })
+                body: JSON.stringify({ title, caption, audio_url: audioUrl, image_url: imageUrl, hashtags, status })
             });
             const data = await res.json();
             if (data.success) {
