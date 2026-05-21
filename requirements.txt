@@ -12,3 +12,4 @@ google-genai==0.7.0
 gtts==2.5.1
 elevenlabs==1.6.0
 numpy==1.26.4
+supabase==2.12.0
