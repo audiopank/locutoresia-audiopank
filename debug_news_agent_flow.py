@@ -10,7 +10,7 @@ from backend.supabase_news_log import SupabaseNewsLog
 def debug_news_agent_flow():
     """Debug passo a passo do NewsAgent"""
     
-    print("🔍 DEBUG DO NEWSAGENT FLOW")
+    print("DEBUG DO NEWSAGENT FLOW")
     print("=" * 50)
     
     # Carregar variáveis
@@ -24,10 +24,10 @@ def debug_news_agent_flow():
     # Criar agente
     try:
         agent = NewsAgent()
-        print("✅ NewsAgent criado")
+        print("OK - NewsAgent criado")
         
         # Testar coleta de uma fonte só
-        print("\n🧪 TESTANDO COLETA SIMPLES...")
+        print("\nTESTANDO COLETA SIMPLES...")
         
         # Simular dados de notícia
         test_news_data = {
@@ -69,19 +69,19 @@ def debug_news_agent_flow():
                 registered = supabase_log.registrar_noticia(noticia_log, agente='debug')
                 print(f"   Registrado: {registered}")
             else:
-                print("   ❌ Falha no save_to_supabase")
+                print("   Falha no save_to_supabase")
         else:
-            print("   ⚠️ Notícia já existe (duplicata)")
+            print("   Notícia já existe (duplicata)")
         
     except Exception as e:
-        print(f"❌ Erro no debug: {e}")
+        print(f"ERRO no debug: {e}")
         import traceback
         traceback.print_exc()
 
 def test_direct_supabase_insert():
     """Testa inserção direta no Supabase"""
     
-    print("\n🔌 TESTE DIRETO SUPABASE")
+    print("\nTESTE DIRETO SUPABASE")
     print("=" * 50)
     
     load_dotenv('.env.local', override=True)
@@ -106,10 +106,10 @@ def test_direct_supabase_insert():
     
     try:
         result = supabase.table('news_log').insert(test_data).execute()
-        print("✅ Inserção direta bem-sucedida!")
+        print("Inserção direta bem-sucedida!")
         print(f"   Resultado: {result}")
     except Exception as e:
-        print(f"❌ Erro na inserção direta: {e}")
+        print(f"Erro na inserção direta: {e}")
 
 if __name__ == "__main__":
     debug_news_agent_flow()

@@ -1,26 +1,35 @@
 import os
-import sys
 from dotenv import load_dotenv
 
-# Carregar variáveis de ambiente
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+load_dotenv('.env.local', override=True)
 
-# Adicionar diretório core ao path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+print("Carregadas variáveis de ambiente")
+print(f"SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
+print(f"SUPABASE_SERVICE_ROLE_KEY: {os.getenv('SUPABASE_SERVICE_ROLE_KEY')}")
+print(f"NEWPOST_SUPABASE_URL: {os.getenv('NEWPOST_SUPABASE_URL')}")
 
-from core.tts_generator import TTSGenerator, save_binary_file
+# Testar importar SupabaseNewsLog
+print("\nImportando SupabaseNewsLog...")
+from backend.supabase_news_log import SupabaseNewsLog
+supabase_log = SupabaseNewsLog()
+print(f"Supabase enabled: {supabase_log.enabled}")
 
-print("Inicializando TTS Generator...")
-tts = TTSGenerator()
+# Testar importar NewsAgent
+print("\nImportando NewsAgent...")
+from backend.news_agent import NewsAgent
+agent = NewsAgent()
+print("OK")
 
-text = """Olá! Este é um teste do novo gerador de vozes do Gemini 3.1 Flash TTS Preview!"""
+# Testar normalize_news
+test_data = {
+    "title": "Teste Simples",
+    "url": "https://teste.com/123",
+    "snippet": "Conteúdo de teste",
+    "source": "Fonte Teste",
+    "published_at": "2026-05-21T14:00:00Z",
+    "category": "teste"
+}
 
-print(f"Gerando áudio com voz Sadachbia...")
-audio_data = tts._generate_with_gemini(text, "Sadachbia", "normal", "pt-BR")
-
-output_file = "teste_gemini.mp3"
-with open(output_file, "wb") as f:
-    f.write(audio_data)
-
-print(f"✅ Áudio gerado com sucesso! Salvo como {output_file}")
-print(f"   Tamanho: {len(audio_data)} bytes")
+print("\nTestando normalize_news...")
+processed = agent.news_utils.normalize_news(test_data)
+print(processed)
