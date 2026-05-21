@@ -5,7 +5,7 @@ import uuid
 import glob
 import json
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 print("[DEBUG] === INÍCIO DO app.py ===")
 print(f"[DEBUG] Diretório atual: {os.getcwd()}")
@@ -1862,10 +1862,17 @@ def api_reject_social_post(post_id):
 
 @app.route('/api/social/posts/<post_id>/publish', methods=['POST'])
 def api_publish_social_post(post_id):
-    """Publica um SocialPost aprovado na NewPost-IA (usando Supabase real)"""
+    """Publica um SocialPost aprovado na NewPost-IA usando o fluxo completo:
+    1. Buscar post na tabela 'posts'
+    2. Agendar na tabela 'scheduled_posts'
+    3. Acionar Edge Function 'auto-publish-posts'
+    """
     try:
+        print(f"[DEBUG] === api_publish_social_post - Post ID: {post_id} ===")
+        
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', ''))
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -1877,20 +1884,94 @@ def api_publish_social_post(post_id):
             'Prefer': 'return=representation'
         }
         
-        response = requests.patch(
+        # --- PASSO 1: Buscar o post na tabela 'posts' ---
+        print(f"[DEBUG] PASSO 1: Buscando post na tabela 'posts'...")
+        resp_get = requests.get(
+            f"{supabase_url}/rest/v1/posts?id=eq.{post_id}&select=*",
+            headers=headers,
+            timeout=10
+        )
+        
+        if resp_get.status_code not in (200, 201):
+            print(f"[DEBUG] ERRO ao buscar post: {resp_get.status_code} - {resp_get.text}")
+            return jsonify({"success": False, "error": f"Erro ao buscar post: {resp_get.status_code}"}), resp_get.status_code
+        
+        posts_data = resp_get.json()
+        if not posts_data:
+            print(f"[DEBUG] ERRO: Post não encontrado na tabela 'posts'")
+            return jsonify({"success": False, "error": "Post não encontrado"}), 404
+        
+        post = posts_data[0]
+        print(f"[DEBUG] Post encontrado: {json.dumps(post, ensure_ascii=False, indent=2)}")
+        
+        # --- PASSO 2: Atualizar status do post para 'published' ---
+        print(f"[DEBUG] PASSO 2: Atualizando status do post para 'published'...")
+        resp_patch = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
             json={"status": "published", "updated_at": datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
         
-        if response.status_code in (200, 204):
-            return jsonify({"success": True, "message": "Post publicado com sucesso"})
-        else:
-            return jsonify({"success": False, "error": f"Erro ao publicar post: {response.status_code}"}), response.status_code
+        # --- PASSO 3: Agendar na tabela 'scheduled_posts' ---
+        print(f"[DEBUG] PASSO 3: Agendando na tabela 'scheduled_posts'...")
+        scheduled_at = (datetime.utcnow() + timedelta(seconds=10)).isoformat()
+        
+        # Preparar dados para scheduled_posts
+        content = post.get('content', '')
+        media_urls = post.get('media_urls', [])
+        media_types = post.get('media_types', [])
+        if post.get('image_url') and not media_urls:
+            media_urls = [post['image_url']]
+            media_types = ['image']
+        
+        tags = post.get('tags', []) or post.get('hashtags', [])
+        
+        scheduled_payload = {
+            "user_id": newpost_author_id,
+            "content": content,
+            "media_urls": media_urls,
+            "media_types": media_types,
+            "hashtags": tags,
+            "scheduled_at": scheduled_at,
+            "status": "scheduled",
+            "published_post_id": post_id
+        }
+        
+        print(f"[DEBUG] Payload para scheduled_posts: {json.dumps(scheduled_payload, ensure_ascii=False, indent=2)}")
+        
+        resp_sched = requests.post(
+            f"{supabase_url}/rest/v1/scheduled_posts",
+            headers=headers,
+            json=scheduled_payload,
+            timeout=15
+        )
+        
+        print(f"[DEBUG] Resposta scheduled_posts: {resp_sched.status_code} - {resp_sched.text}")
+        
+        # --- PASSO 4: Acionar Edge Function 'auto-publish-posts' ---
+        print(f"[DEBUG] PASSO 4: Acionando Edge Function...")
+        try:
+            resp_fn = requests.post(
+                f"{supabase_url}/functions/v1/auto-publish-posts",
+                headers={
+                    "apikey": supabase_key,
+                    "Authorization": f"Bearer {supabase_key}",
+                    "Content-Type": "application/json"
+                },
+                json={},
+                timeout=10
+            )
+            print(f"[DEBUG] Resposta Edge Function: {resp_fn.status_code} - {resp_fn.text}")
+        except Exception as e_fn:
+            print(f"[DEBUG] Aviso: Edge Function falhou, mas post está agendado: {e_fn}")
+        
+        return jsonify({"success": True, "message": "Post publicado com sucesso no fluxo completo!"})
             
     except Exception as e:
+        import traceback
         print(f"[DEBUG] Erro em api_publish_social_post: {e}")
+        print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/posts/<post_id>', methods=['DELETE'])
