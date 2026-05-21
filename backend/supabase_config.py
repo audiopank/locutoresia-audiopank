@@ -7,8 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configurações do Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://sua-url.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", os.getenv("SUPABASE_KEY", "sua-chave-anon"))
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL", 
+                          os.getenv("SUPABASE_URL", "https://sua-url.supabase.co"))
+SUPABASE_KEY = os.getenv("VITE_SUPABASE_PUBLISHABLE_KEY", 
+                          os.getenv("SUPABASE_SERVICE_KEY", 
+                          os.getenv("SUPABASE_SERVICE_ROLE_KEY", 
+                          os.getenv("SUPABASE_ANON_KEY", 
+                          os.getenv("SUPABASE_KEY", "sua-chave-anon")))))
 
 def get_supabase_client() -> Client:
     """Retorna cliente Supabase configurado"""

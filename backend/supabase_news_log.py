@@ -21,8 +21,10 @@ class SupabaseNewsLog:
         self.enabled = False
         
         # Verificar variáveis de ambiente
-        supabase_url = os.environ.get("SUPABASE_URL")
-        service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        supabase_url = os.environ.get("VITE_SUPABASE_URL", os.environ.get("SUPABASE_URL"))
+        service_role_key = os.environ.get("VITE_SUPABASE_PUBLISHABLE_KEY", 
+                                      os.environ.get("SUPABASE_SERVICE_KEY", 
+                                      os.environ.get("SUPABASE_SERVICE_ROLE_KEY")))
         
         if supabase_url and service_role_key:
             try:

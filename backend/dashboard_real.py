@@ -11,14 +11,8 @@ from collections import Counter
 
 logger = logging.getLogger(__name__)
 
-# Importar Supabase diretamente
-try:
-    from backend.supabase_config import get_supabase_client
-    HAS_SUPABASE = True
-    logger.info("Supabase config carregado com sucesso")
-except ImportError as e:
-    HAS_SUPABASE = False
-    logger.warning(f"Supabase config não disponível: {e}")
+# Supabase será importado dinamicamente na rota para garantir que o .env esteja carregado
+HAS_SUPABASE = None
 
 dashboard_real_bp = Blueprint('dashboard_real', __name__)
 
@@ -453,11 +447,8 @@ def dashboard_real():
 def get_real_dashboard_data():
     """API que retorna dados REAIS do Supabase"""
     try:
-        if not HAS_SUPABASE:
-            return jsonify({
-                'success': False,
-                'error': 'Supabase não disponível. Verifique as variáveis de ambiente.'
-            }), 503
+        # Importar Supabase dinamicamente aqui para garantir que .env esteja carregado
+        from backend.supabase_config import get_supabase_client
         
         # Conectar ao Supabase
         supabase = get_supabase_client()
@@ -466,9 +457,13 @@ def get_real_dashboard_data():
         result = supabase.table('posts').select('*').order('created_at', desc=True).limit(100).execute()
         posts = result.data if result.data else []
         
-        # Buscar fontes
-        result_sources = supabase.table('sources').select('*').execute()
-        sources = result_sources.data if result_sources.data else []
+        # Buscar fontes (se a tabela existir)
+        sources = []
+        try:
+            result_sources = supabase.table('sources').select('*').execute()
+            sources = result_sources.data if result_sources.data else []
+        except Exception as e:
+            logger.warning(f"Tabela 'sources' não encontrada ou erro ao consultar: {e}")
         
         # Estatísticas (adaptado para tabela posts)
         stats = {

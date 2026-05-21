@@ -27,12 +27,15 @@ logger = logging.getLogger(__name__)
 
 class NewsUtils:
     def __init__(self):
-        self.supabase_url = os.getenv("NEWPOST_SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co").strip()
+        self.supabase_url = os.getenv("VITE_SUPABASE_URL", 
+                                      os.getenv("NEWPOST_SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co")).strip()
         # Usar URL base, não adicionar /rest/v1/posts automaticamente
         self.supabase_url = self.supabase_url.rstrip('/')
         
         # Tentar diferentes variáveis de ambiente (usar ANON KEY primeiro para a tabela posts)
-        self.supabase_key = os.getenv("NEWPOST_SUPABASE_ANON_KEY", "").strip()
+        self.supabase_key = os.getenv("VITE_SUPABASE_PUBLISHABLE_KEY", "").strip()
+        if not self.supabase_key:
+            self.supabase_key = os.getenv("NEWPOST_SUPABASE_ANON_KEY", "").strip()
         if not self.supabase_key:
             self.supabase_key = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "").strip()
         if not self.supabase_key:

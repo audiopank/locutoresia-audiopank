@@ -1447,7 +1447,7 @@ def api_list_social_posts():
         print("[DEBUG] === api_list_social_posts ===")
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
         
         print(f"[DEBUG] SUPABASE_URL: {repr(supabase_url)}")
         print(f"[DEBUG] SUPABASE_ANON_KEY: {repr(supabase_key[:50] + '...' if supabase_key else 'VAZIO')}")
@@ -1587,7 +1587,7 @@ def api_create_social_post():
             'Prefer': 'return=representation'
         }
         
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
         
         # Mapear status de português para inglês (valores corretos da tabela)
         status_map = {
@@ -2650,7 +2650,7 @@ def newpost_publish():
         # Credenciais do Supabase da NewPost-IA (projeto: ykswhzqdjoshjoaruhqs)
         newpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         newpost_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTA4MjYsImV4cCI6MjA4NzE4NjgyNn0.yzezm6VZ5U_O7Txaj8B4_TD0PFVSpjZspYcZ1CYD0jo')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
         
         if not newpost_url or not newpost_key:
             return jsonify({"success": False, "error": "Credenciais NewPost-IA não configuradas"}), 500
@@ -2821,7 +2821,7 @@ def handle_publications():
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
