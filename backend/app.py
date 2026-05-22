@@ -3241,4 +3241,4 @@ if __name__ == '__main__':
     print("Dashboard: http://localhost:5000/dashboard")
     app.run(host='0.0.0.0', port=port, debug=True)
 
-# Fim do arquivo app.py - Atualizado 2026-05-22# FORCE UPDATE 1
+# Fim do arquivo app.py - Atualizado 2026-05-22
