@@ -1305,6 +1305,19 @@ def api_generate_content():
         goals = data.get('goals', 'Engajamento')
         
         news_entries = fetch_news_from_rss(niche, limit=7)
+        
+        if not news_entries:
+            fallback_topics = {
+                "Tecnologia": ["IA revoluciona mercado", "5 tendências 2025", "Ferramentas essenciais", "Novidades do tech", "Dicas de produtividade", "Inovações em AI", "Tecnologia no dia a dia"],
+                "Economia": ["Mercados em alta", "Dicas de investimento", "Economia brasileira", "Finanças pessoais", "Negócios em 2025", "Estratégias de crescimento", "Notícias econômicas"],
+                "Turismo": ["Destinos incríveis", "Dicas de viagem", "Turismo no Brasil", "Viagem econômica", "Melhores locais", "Aventuras turísticas", "Cultura e turismo"],
+                "Cultura": ["Arte e cultura", "Novidades do cinema", "Música brasileira", "Literatura", "Eventos culturais", "Cultura pop", "Artes visuais"],
+                "Notícias Gerais": ["Notícias do dia", "Brasil em foco", "Mundo atual", "Política e economia", "Sociedade", "Tecnologia e inovação", "Cultura e entretenimento"]
+            }
+            
+            topics = fallback_topics.get(niche, fallback_topics["Notícias Gerais"])
+            news_entries = [{"title": t, "summary": ""} for t in topics]
+        
         content_plan = []
         types = ['post', 'story', 'reel', 'post', 'story', 'reel', 'post']
         
