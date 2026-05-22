@@ -348,6 +348,9 @@
             document.getElementById('preview-empty').style.display = 'none';
 
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
                 const response = await fetch('/api/news/generate-post', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -355,20 +358,24 @@
                         titulo: noticia.titulo, 
                         resumo: noticia.resumo, 
                         categoria: selectedCategory 
-                    })
+                    }),
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 const data = await response.json();
                 if (data.success && data.data) {
                     postGerado[idx] = data.data.post_gerado;
-                    renderPreview(idx);
+                } else {
+                    postGerado[idx] = `${noticia.titulo}\n\n${noticia.resumo}\n\n#${selectedCategory} #Notícias #IA`;
                 }
             } catch (error) {
                 console.error(error);
-                postGerado[idx] = noticia.resumo;
-                renderPreview(idx);
+                postGerado[idx] = `${noticia.titulo}\n\n${noticia.resumo}\n\n#${selectedCategory} #Notícias #IA`;
             } finally {
                 gerando[idx] = false;
+                renderPreview(idx);
             }
         }
 
