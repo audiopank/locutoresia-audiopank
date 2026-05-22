@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, make_response
 import os
 import sys
 import uuid
@@ -104,6 +104,28 @@ RSS_FEEDS = {
         "https://exame.com/mercados/feed/",
         "https://g1.globo.com/rss/g1/economia/",
         "https://forbes.com.br/feed/"
+    ],
+    "Esportes": [
+        "https://ge.globo.com/rss/ultimas-noticias/",
+        "https://www.lance.com.br/rss/ultimas-noticias/",
+        "https://globoesporte.globo.com/rss/feed/"
+    ],
+    "Política": [
+        "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml",
+        "https://noticias.uol.com.br/politica/ultimas-noticias/feed/",
+        "https://g1.globo.com/rss/g1/politica/"
+    ],
+    "Saúde": [
+        "https://g1.globo.com/rss/g1/saude/",
+        "https://noticias.uol.com.br/saude/ultimas-noticias/feed/"
+    ],
+    "Ciência": [
+        "https://g1.globo.com/rss/g1/ciencia-e-saude/",
+        "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml"
+    ],
+    "Entretenimento": [
+        "https://g1.globo.com/rss/g1/pop-arte/",
+        "https://entretenimento.uol.com.br/feed/ultimas-noticias/"
     ],
     "Turismo": [
         "https://g1.globo.com/rss/g1/turismo-e-viagem/",
