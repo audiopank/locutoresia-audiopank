@@ -3323,39 +3323,49 @@ Responda apenas o texto do post, sem aspas ou explicações."""
 @app.route('/api/news/publish-to-newpost', methods=['POST', 'OPTIONS'])
 def api_publish_to_newpost():
     """Publica o post na NewPost-IA via Supabase"""
+    print("[DEBUG] api_publish_to_newpost called!")
     if request.method == 'OPTIONS':
+        print("[DEBUG] OPTIONS request received!")
         response = make_response()
         response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey')
         response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         return response
     
     try:
+        print("[DEBUG] Getting JSON data!")
         data = request.get_json()
+        print(f"[DEBUG] Data received: {data}")
         titulo = data.get('titulo', '')
         conteudo = data.get('conteudo', '')
         categoria = data.get('categoria', 'Tecnologia')
         link_fonte = data.get('link', '')
         
-        supabase_url = os.getenv('SUPABASE_URL') or os.getenv('VITE_SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_ANON_KEY') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY')
+        print("[DEBUG] Getting Supabase credentials!")
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL') or os.getenv('SUPABASE_URL') or os.getenv('VITE_SUPABASE_URL')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_ANON_KEY') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY')
+        
+        print(f"[DEBUG] SUPABASE_URL: {supabase_url}")
+        print(f"[DEBUG] SUPABASE_KEY: {supabase_key[:10]}...")
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais do Supabase não configuradas"}), 500
         
+        print("[DEBUG] Creating Supabase client!")
         from supabase import create_client, Client
         supabase: Client = create_client(supabase_url, supabase_key)
         
+        print("[DEBUG] Preparing payload!")
         payload = {
             "title": titulo,
-            "content": conteudo[:1000],
-            "source_url": link_fonte,
-            "category": categoria.lower(),
-            "status": "ready"
+            "content": conteudo[:1000]
         }
         
+        print(f"[DEBUG] Payload: {payload}")
+        print("[DEBUG] Inserting into Supabase!")
         response = supabase.table('posts').insert(payload).execute()
         
+        print(f"[DEBUG] Supabase response: {response}")
         return jsonify({
             "success": True,
             "data": {
