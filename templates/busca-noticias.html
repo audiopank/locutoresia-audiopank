@@ -217,6 +217,9 @@
                             <button id="edit-btn" class="btn btn-secondary-custom btn-sm">
                                 <i class="fas fa-pencil me-1"></i>Editar
                             </button>
+                            <button id="publish-btn" class="btn btn-primary-custom btn-sm">
+                                <i class="fas fa-paper-plane me-1"></i>Publicar na NewPost-IA
+                            </button>
                         </div>
                     </div>
                     <div class="post-preview" id="post-preview-box"></div>
@@ -423,6 +426,40 @@
                 postGerado[selectedPostIndex] = newPost;
                 renderPreview(selectedPostIndex);
                 showToast('✅ Post atualizado!');
+            }
+        });
+
+        document.getElementById('publish-btn').addEventListener('click', async function() {
+            const n = noticias[selectedPostIndex];
+            const post = postGerado[selectedPostIndex];
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Publicando...';
+
+            try {
+                const response = await fetch('/api/news/publish-to-newpost', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        titulo: n.titulo, 
+                        conteudo: post, 
+                        categoria: selectedCategory,
+                        link: n.link
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showToast('✅ Post publicado na NewPost-IA com sucesso!');
+                } else {
+                    showToast(`❌ Erro: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('❌ Erro ao publicar na NewPost-IA', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Publicar na NewPost-IA';
             }
         });
 

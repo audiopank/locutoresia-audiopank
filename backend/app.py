@@ -3320,6 +3320,57 @@ Responda apenas o texto do post, sem aspas ou explicações."""
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/news/publish-to-newpost', methods=['POST', 'OPTIONS'])
+def api_publish_to_newpost():
+    """Publica o post na NewPost-IA via Supabase"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        data = request.get_json()
+        titulo = data.get('titulo', '')
+        conteudo = data.get('conteudo', '')
+        categoria = data.get('categoria', 'Tecnologia')
+        link_fonte = data.get('link', '')
+        
+        supabase_url = os.getenv('SUPABASE_URL') or os.getenv('VITE_SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_ANON_KEY') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais do Supabase não configuradas"}), 500
+        
+        from supabase import create_client, Client
+        supabase: Client = create_client(supabase_url, supabase_key)
+        
+        payload = {
+            "title": titulo,
+            "content": conteudo[:1000],
+            "source_url": link_fonte,
+            "image_url": None,
+            "category": categoria.lower(),
+            "status": "ready",
+            "published_at": datetime.now().isoformat(),
+            "metadata": {}
+        }
+        
+        response = supabase.table('posts').insert(payload).execute()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "post_id": response.data[0].get('id') if response.data else None
+            }
+        })
+    except Exception as e:
+        print(f"Erro publish to newpost: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/busca-noticias')
 def busca_noticias_page():
     """Página de Busca de Notícias + Geração de Posts"""
