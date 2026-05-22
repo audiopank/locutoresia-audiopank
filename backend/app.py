@@ -3199,7 +3199,7 @@ def voxcraft_chat():
         
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         chat_messages = [{"role": "user", "parts": [VOXCRAFT_SYSTEM_PROMPT]}]
         for msg in messages:
