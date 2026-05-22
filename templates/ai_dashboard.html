@@ -643,7 +643,7 @@
             button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Gerando...';
 
             try {
-                const response = await fetch('https://locutores-ia-cyan.vercel.app/api/ai/generate-content', {
+                const response = await fetch('/api/ai/generate-content', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -912,7 +912,7 @@
             button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Salvando...';
 
             try {
-                const response = await fetch('https://locutores-ia-cyan.vercel.app/api/ai/save-calendar', {
+                const response = await fetch('/api/ai/save-calendar', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

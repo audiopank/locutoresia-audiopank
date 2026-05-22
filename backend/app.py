@@ -3219,6 +3219,80 @@ def voxcraft_chat():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ============================================================
+# CENTRAL IA - ROTAS MOCKADAS
+# ============================================================
+
+from datetime import datetime, timedelta
+
+@app.route('/api/ai/generate-content', methods=['POST', 'OPTIONS'])
+def generate_content():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        data = request.get_json()
+        niche = data.get('niche', 'Tecnologia')
+        goals = data.get('goals', 'Engajamento')
+        
+        content_plan = []
+        types = ['post', 'story', 'reel']
+        topics = {
+            'Tecnologia': ['Inovação em IA', 'Novidades do mercado', 'Dicas de produtividade', 'Tendências 2025', 'Ferramentas essenciais'],
+            'Fitness': ['Treino de força', 'Alimentação saudável', 'Recuperação muscular', 'Mentalidade', 'Progresso sem sofrimento'],
+            'Gastronomia': ['Receitas rápidas', 'Dicas de chef', 'Ingredientes secretos', 'Técnicas profissionais', 'Menu da semana']
+        }
+        selected_topics = topics.get(niche, topics['Tecnologia'])
+        
+        for i in range(5):
+            topic = selected_topics[i % len(selected_topics)]
+            post_type = types[i % len(types)]
+            best_time = ['09:00', '12:30', '18:00', '20:30', '21:00'][i]
+            
+            content_plan.append({
+                "topic": topic,
+                "caption": f"🚀 {topic}! Confira as dicas exclusivas que preparei para você! #dicas #{niche.lower()}",
+                "best_time": best_time,
+                "type": post_type,
+                "predicted_engagement": {"score": 85 + i},
+                "date": (datetime.now() + timedelta(days=i)).isoformat(),
+                "bestTime": best_time,
+                "predictedEngagement": {"score": 85 + i, "reach": 1000 + (i * 200)},
+                "hashtags": [f"#{niche.lower()}", "#dicas", "#conteudo", "#viral", "#trending"]
+            })
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "content_plan": content_plan
+            }
+        })
+    except Exception as e:
+        print(f"Erro generate-content: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/ai/save-calendar', methods=['POST', 'OPTIONS'])
+def save_calendar():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        return jsonify({"success": True, "message": "Calendário salvo com sucesso!"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/ai-dashboard')
+def ai_dashboard():
+    return render_template('ai_dashboard.html')
+
 # Para desenvolvimento local
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
