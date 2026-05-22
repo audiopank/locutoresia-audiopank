@@ -84,6 +84,63 @@ else:
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# Importar feedparser para RSS
+try:
+    import feedparser
+    HAS_FEEDPARSER = True
+except ImportError:
+    HAS_FEEDPARSER = False
+    print("⚠️ feedparser não instalado, usando notícias mockadas")
+
+# Fontes RSS (Notícias Reais)
+RSS_FEEDS = {
+    "Tecnologia": [
+        "https://g1.globo.com/rss/g1/tecnologia/",
+        "https://techtudo.com.br/rss/feed/",
+        "https://olhardigital.com.br/feed/",
+        "https://exame.com/tecnologia/feed/"
+    ],
+    "Economia": [
+        "https://exame.com/mercados/feed/",
+        "https://g1.globo.com/rss/g1/economia/",
+        "https://forbes.com.br/feed/"
+    ],
+    "Turismo": [
+        "https://g1.globo.com/rss/g1/turismo-e-viagem/",
+        "https://veja.abril.com.br/feed/turismo/"
+    ],
+    "Cultura": [
+        "https://g1.globo.com/rss/g1/pop-arte/",
+        "https://veja.abril.com.br/feed/cultura/"
+    ],
+    "Notícias Gerais": [
+        "https://g1.globo.com/rss/g1/",
+        "https://oglobo.globo.com/rss/",
+        "https://gazetadopovo.com.br/feed/",
+        "https://diariodonordeste.verdesmares.com.br/feed/"
+    ]
+}
+
+def fetch_news_from_rss(category="Tecnologia", limit=7):
+    """Busca notícias reais via RSS"""
+    if not HAS_FEEDPARSER:
+        return []
+    
+    feeds = RSS_FEEDS.get(category, RSS_FEEDS["Tecnologia"])
+    all_entries = []
+    
+    for feed_url in feeds:
+        try:
+            feed = feedparser.parse(feed_url)
+            entries = feed.entries[:3]
+            all_entries.extend(entries)
+        except Exception as e:
+            print(f"Erro no feed {feed_url}: {e}")
+            continue
+    
+    all_entries = all_entries[:limit]
+    return all_entries
+
 # Importar agente de notícias de forma segura
 try:
     from news_agent import news_agent, NewsAgent
@@ -1234,8 +1291,7 @@ def api_health_check():
 
 @app.route('/api/ai/generate-content', methods=['POST', 'OPTIONS'])
 def api_generate_content():
-    """Gera conteúdo usando IA para posts sociais"""
-    # CORS preflight
+    """Gera conteúdo usando notícias reais via RSS"""
     if request.method == 'OPTIONS':
         response = make_response()
         response.headers.add('Access-Control-Allow-Origin', '*')
@@ -1245,103 +1301,43 @@ def api_generate_content():
     
     try:
         data = request.get_json()
-        if not data:
-            response = jsonify({"success": False, "error": "Dados não fornecidos"})
-            response.headers.add('Access-Control-Allow-Origin', '*')
-            return response, 400
+        niche = data.get('niche', 'Tecnologia')
+        goals = data.get('goals', 'Engajamento')
         
-        niche = data.get('niche', '')
-        goals = data.get('goals', '')
-        
-        if not niche.strip():
-            return jsonify({"success": False, "error": "Nichos não informados"}), 400
-        
-        # Simulação de geração de conteúdo com IA
-        import uuid
-        from datetime import datetime, timedelta
-        
+        news_entries = fetch_news_from_rss(niche, limit=7)
         content_plan = []
+        types = ['post', 'story', 'reel', 'post', 'story', 'reel', 'post']
         
-        # Gerar conteúdo para os próximos 7 dias
-        for i in range(7):
-            date = datetime.now() + timedelta(days=i+1)
+        for i, entry in enumerate(news_entries):
+            title = entry.get('title', f'Notícia sobre {niche}')
+            summary = entry.get('summary', '')[:100] if entry.get('summary') else ''
             
-            # Tipos de conteúdo variados
-            content_types = ['post', 'story', 'reel']
-            content_type = content_types[i % 3]
-            
-            # Tópicos baseados no nicho
-            topics = [
-                f"{niche}: Tendências e Inovações",
-                f"Dicas de {niche} para Profissionais",
-                f"O Futuro do {niche}: O que esperar",
-                f"{niche} na Prática: Guia Completo",
-                f"Erros Comuns em {niche} e Como Evitar",
-                f"Ferramentas Essenciais para {niche}",
-                f"Cases de Sucesso em {niche}"
-            ]
-            
-            topic = topics[i % len(topics)]
-            
-            # Gerar caption
-            if content_type == 'post':
-                caption = f"Descubra as últimas tendências em {topic.lower()}! #{niche.replace(' ', '')} #Inovação #Tecnologia"
-            elif content_type == 'story':
-                caption = f"5 dicas rápidas sobre {topic.lower()} que você precisa conhecer! #{niche.replace(' ', '')} #Dicas #Aprendizado"
-            else:
-                caption = f"Aprenda em 60 segundos: Como dominar {topic.lower()}! #{niche.replace(' ', '')} #Tutorial #GuiaRapido"
-            
-            # Hashtags
-            hashtags = [
-                niche.replace(' ', ''),
-                'Inovação',
-                'Tecnologia' if 'tecnologia' in niche.lower() else 'Sucesso',
-                'Dicas',
-                'Guia'
-            ]
-            
-            # Melhor horário baseado no tipo
-            best_times = {'post': '09:00', 'story': '12:00', 'reel': '18:00'}
+            post_type = types[i % len(types)]
+            best_time = ['09:00', '12:30', '18:00', '09:00', '12:30', '18:00', '09:00'][i]
             
             content_plan.append({
-                'id': str(uuid.uuid4()),
-                'date': date.isoformat(),
-                'type': content_type,
-                'topic': topic,
-                'caption': caption,
-                'hashtags': hashtags[:3],  # Limitar a 3 hashtags
-                'predicted_engagement': {
-                    'score': 75 + (i * 5) % 20,  # Score entre 75-95
-                    'reach': 8000 + (i * 1000) % 15000  # Reach entre 8k-23k
-                },
-                'best_time': best_times[content_type],
-                'status': 'scheduled'
+                "topic": title,
+                "caption": f"📰 {title}! {summary} #{niche.lower().replace(' ', '')} #noticias #noticiasreais",
+                "best_time": best_time,
+                "type": post_type,
+                "predicted_engagement": {"score": 75 + i},
+                "date": (datetime.now() + timedelta(days=i+1)).isoformat(),
+                "bestTime": best_time,
+                "predictedEngagement": {"score": 75 + i, "reach": 8000 + (i * 1000)},
+                "hashtags": [f"#{niche.lower().replace(' ', '')}", "#noticias", "#noticiasreais", "#viral", "#trending"]
             })
         
-        # Estratégia gerada
-        strategy = f"Estratégia de conteúdo focada em {niche} com abordagem educacional e prática, combinando posts informativos, stories interativos e reels tutoriais para maximizar engajamento e alcance."
-        
-        response = jsonify({
+        return jsonify({
             "success": True,
             "data": {
-                "content_plan": content_plan,
-                "strategy": strategy,
-                "niche": niche,
-                "goals": goals,
-                "generated_at": datetime.now().isoformat(),
-                "total_posts": len(content_plan)
+                "content_plan": content_plan
             }
         })
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        return response
-        
     except Exception as e:
-        response = jsonify({
-            "success": False,
-            "error": f"Erro ao gerar conteúdo: {str(e)}"
-        })
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        return response, 500
+        print(f"Erro generate-content: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/ai/save-calendar', methods=['POST'])
 def api_save_calendar():
@@ -3217,121 +3213,6 @@ def voxcraft_chat():
         print(f"Erro no VoxCraft Chat: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
-
-# ============================================================
-# CENTRAL IA - LEITOR RSS E ROTAS
-# ============================================================
-
-from datetime import datetime, timedelta
-import feedparser
-
-RSS_FEEDS = {
-    "Tecnologia": [
-        "https://g1.globo.com/rss/g1/tecnologia/",
-        "https://techtudo.com.br/rss/feed/",
-        "https://olhardigital.com.br/feed/",
-        "https://exame.com/tecnologia/feed/"
-    ],
-    "Economia": [
-        "https://exame.com/mercados/feed/",
-        "https://g1.globo.com/rss/g1/economia/",
-        "https://forbes.com.br/feed/"
-    ],
-    "Turismo": [
-        "https://g1.globo.com/rss/g1/turismo-e-viagem/",
-        "https://veja.abril.com.br/feed/turismo/"
-    ],
-    "Cultura": [
-        "https://g1.globo.com/rss/g1/pop-arte/",
-        "https://veja.abril.com.br/feed/cultura/"
-    ],
-    "Notícias Gerais": [
-        "https://g1.globo.com/rss/g1/",
-        "https://oglobo.globo.com/rss/",
-        "https://gazetadopovo.com.br/feed/",
-        "https://diariodonordeste.verdesmares.com.br/feed/"
-    ]
-}
-
-def fetch_news_from_rss(category="Tecnologia", limit=5):
-    """Busca notícias reais via RSS"""
-    feeds = RSS_FEEDS.get(category, RSS_FEEDS["Tecnologia"])
-    all_entries = []
-    
-    for feed_url in feeds:
-        try:
-            feed = feedparser.parse(feed_url)
-            entries = feed.entries[:3]
-            all_entries.extend(entries)
-        except Exception as e:
-            print(f"Erro no feed {feed_url}: {e}")
-            continue
-    
-    all_entries = all_entries[:limit]
-    return all_entries
-
-@app.route('/api/ai/generate-content', methods=['POST', 'OPTIONS'])
-def generate_content():
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response
-    
-    try:
-        data = request.get_json()
-        niche = data.get('niche', 'Tecnologia')
-        goals = data.get('goals', 'Engajamento')
-        
-        news_entries = fetch_news_from_rss(niche, limit=5)
-        content_plan = []
-        types = ['post', 'story', 'reel', 'post', 'story']
-        
-        for i, entry in enumerate(news_entries):
-            title = entry.get('title', f'Notícia sobre {niche}')
-            summary = entry.get('summary', '')[:100] if entry.get('summary') else ''
-            
-            post_type = types[i % len(types)]
-            best_time = ['09:00', '12:30', '18:00', '20:30', '21:00'][i]
-            
-            content_plan.append({
-                "topic": title,
-                "caption": f"📰 {title}! {summary} #{niche.lower().replace(' ', '')} #noticias #noticiasreais",
-                "best_time": best_time,
-                "type": post_type,
-                "predicted_engagement": {"score": 80 + i},
-                "date": (datetime.now() + timedelta(days=i)).isoformat(),
-                "bestTime": best_time,
-                "predictedEngagement": {"score": 80 + i, "reach": 1000 + (i * 200)},
-                "hashtags": [f"#{niche.lower().replace(' ', '')}", "#noticias", "#noticiasreais", "#viral", "#trending"]
-            })
-        
-        return jsonify({
-            "success": True,
-            "data": {
-                "content_plan": content_plan
-            }
-        })
-    except Exception as e:
-        print(f"Erro generate-content: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/ai/save-calendar', methods=['POST', 'OPTIONS'])
-def save_calendar():
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response
-    
-    try:
-        return jsonify({"success": True, "message": "Calendário salvo com sucesso!"})
-    except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/ai-dashboard')
