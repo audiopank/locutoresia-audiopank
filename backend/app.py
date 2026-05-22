@@ -3228,6 +3228,103 @@ def voxcraft_chat():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/news/fetch', methods=['POST', 'OPTIONS'])
+def api_fetch_news():
+    """Busca notícias reais por categoria via RSS"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        data = request.get_json()
+        category = data.get('category', 'Tecnologia')
+        
+        news_entries = fetch_news_from_rss(category, limit=6)
+        news_list = []
+        
+        for entry in news_entries:
+            news_list.append({
+                "titulo": entry.get('title', f'Notícia sobre {category}'),
+                "resumo": entry.get('summary', '')[:150] if entry.get('summary') else '',
+                "fonte": entry.get('source', {}).get('title', 'Fonte'),
+                "link": entry.get('link', '')
+            })
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "noticias": news_list
+            }
+        })
+    except Exception as e:
+        print(f"Erro fetch news: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/news/generate-post', methods=['POST', 'OPTIONS'])
+def api_generate_post():
+    """Gera post de rede social com IA usando o Gemini"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        data = request.get_json()
+        titulo = data.get('titulo', '')
+        resumo = data.get('resumo', '')
+        categoria = data.get('categoria', 'Tecnologia')
+        
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        
+        if not api_key:
+            return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
+        
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        prompt = f"""Você é um redator de redes sociais especialista em notícias brasileiras. 
+Crie um post otimizado para Instagram/Twitter com base nesta notícia: 
+ 
+Título: {titulo} 
+Resumo: {resumo} 
+Categoria: {categoria} 
+ 
+Regras: 
+- Máximo 280 caracteres 
+- Tom jornalístico mas acessível 
+- Inclua 2-3 hashtags relevantes 
+- Não use emojis excessivos 
+- Termine com uma hashtag da categoria 
+ 
+Responda apenas o texto do post, sem aspas ou explicações."""
+        
+        response = model.generate_content(prompt)
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "post_gerado": response.text
+            }
+        })
+    except Exception as e:
+        print(f"Erro generate post: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/busca-noticias')
+def busca_noticias_page():
+    """Página de Busca de Notícias + Geração de Posts"""
+    return render_template('busca-noticias.html')
+
 @app.route('/ai-dashboard')
 def ai_dashboard():
     """Rota para Central IA Autônoma - Notícias Reais via RSS"""
@@ -3241,4 +3338,4 @@ if __name__ == '__main__':
     print("Dashboard: http://localhost:5000/dashboard")
     app.run(host='0.0.0.0', port=port, debug=True)
 
-# Fim do arquivo app.py - Atualizado 2026-05-22
+# Fim do arquivo app.py - Atualizado 2026-05-22 - Busca de Notícias + IA

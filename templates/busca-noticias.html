@@ -3,526 +3,437 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Busca de Notícias - Locutores IA</title>
-    
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-    
-    <!-- Supabase JS -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
+    <title>Busca de Notícias + IA | Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
     <style>
+        :root {
+            --newpost-purple: #7C3AED;
+            --newpost-pink: #EC4899;
+            --newpost-cyan: #06B6D4;
+            --newpost-dark: #0F0F1A;
+            --newpost-card: #1A1A2E;
+        }
+
         body {
-            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            background: var(--newpost-dark);
+            color: #E2E8F0;
+            min-height: 100vh;
+            font-family: 'Inter', sans-serif;
         }
-        .fade-in {
-            animation: fadeIn 0.3s ease-in-out;
+
+        .page-header {
+            background: linear-gradient(135deg, #5B21B6 0%, #7C3AED 50%, #EC4899 100%);
+            border-bottom: 1px solid rgba(124,58,237,0.3);
+            padding: 2rem 0;
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+
+        .category-btn {
+            background: var(--newpost-card);
+            border: 1px solid rgba(124,58,237,0.3);
+            border-radius: 12px;
+            color: #A78BFA;
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
         }
-        .scrollbar-thin::-webkit-scrollbar {
-            width: 6px;
+
+        .category-btn:hover, .category-btn.active {
+            background: var(--newpost-purple);
+            color: white;
+            border-color: var(--newpost-purple);
         }
-        .scrollbar-thin::-webkit-scrollbar-track {
-            background: #1e293b;
-            border-radius: 3px;
+
+        .news-card {
+            background: var(--newpost-card);
+            border-left: 4px solid var(--newpost-purple);
+            border-radius: 14px;
+            padding: 1.5rem;
+            transition: all 0.2s;
         }
-        .scrollbar-thin::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 3px;
+
+        .news-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(124,58,237,0.2);
         }
-        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, #7C3AED, #EC4899);
+            border: none;
+            color: white;
+            font-weight: 600;
+            border-radius: 12px;
         }
-        .category-btn.active {
-            ring: 2px;
-            ring-color: white;
+
+        .btn-primary-custom:hover {
+            opacity: 0.9;
+            color: white;
         }
-        .post-item.active {
-            background-color: rgba(124, 58, 237, 0.25);
-            border-color: #a855f7;
+
+        .btn-secondary-custom {
+            background: var(--newpost-card);
+            border: 1px solid rgba(124,58,237,0.3);
+            color: #A78BFA;
+            border-radius: 12px;
+        }
+
+        .btn-secondary-custom:hover {
+            background: rgba(124,58,237,0.1);
+            color: #E9D5FF;
+        }
+
+        .toast-success {
+            background: #059669;
+            color: white;
+            border-radius: 12px;
+        }
+
+        .toast-error {
+            background: #DC2626;
+            color: white;
+            border-radius: 12px;
+        }
+
+        .post-preview {
+            background: rgba(124,58,237,0.05);
+            border: 1px solid rgba(124,58,237,0.2);
+            border-radius: 12px;
+            padding: 1rem;
         }
     </style>
 </head>
-<body class="min-h-screen bg-gray-950">
-    <!-- Header -->
-    <header class="bg-gradient-to-r from-purple-900 to-purple-700 border-b border-purple-800 py-6 px-8">
-        <div class="flex items-center gap-4">
-            <a href="/" class="text-purple-200 hover:text-white transition text-sm">← Início</a>
-            <div>
-                <h1 class="text-3xl font-bold text-white flex items-center gap-3">
-                    <i data-lucide="rss" class="w-8 h-8"></i>
-                    Busca de Notícias + IA
-                </h1>
-                <p class="text-purple-200 mt-1">Coleta notícias reais via RSS · Edite · Publique na NewPost-IA</p>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top" style="background: rgba(15,15,26,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(124,58,237,0.3);">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+                <div class="p-2 bg-primary/10 rounded-lg">
+                    <i class="fas fa-microphone fa-lg text-primary"></i>
+                </div>
+                <div>
+                    <span class="fw-bold text-white">Locutores IA</span>
+                    <div class="small text-secondary">Sistema Multi-Agentes</div>
+                </div>
+            </a>
+            
+            <div class="d-flex gap-2">
+                <a class="nav-link text-light" href="/ai-dashboard">
+                    <i class="fas fa-brain me-1"></i>Central IA
+                </a>
+                <a class="nav-link text-light active" href="/busca-noticias">
+                    <i class="fas fa-search me-1"></i>Busca Notícias
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="page-header">
+        <div class="container">
+            <div class="d-flex align-items-center gap-3">
+                <a href="/" class="text-purple-200 hover:text-white transition text-sm">← Início</a>
+                <div>
+                    <h1 class="text-3xl font-bold text-white">🔍 Busca de Notícias + IA</h1>
+                    <p class="text-purple-200 mt-1">Coleta notícias reais via RSS · Edite · Publique na NewPost-IA</p>
+                </div>
             </div>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-8 py-10">
-        <!-- Fontes Info -->
-        <div class="mb-6 bg-purple-900/20 border border-purple-800 rounded-lg p-4 flex items-start gap-3">
-            <i data-lucide="rss" class="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5"></i>
-            <div>
-                <p class="text-sm font-semibold text-white">Fontes RSS Integradas</p>
-                <p class="text-xs text-gray-400 mt-1">TecMundo · CanalTech · InfoMoney · UOL · Folha · GE Globo · Agência Brasil · Lance!</p>
-            </div>
-        </div>
-
-        <!-- Categorias -->
-        <div class="mb-8">
-            <label class="block text-white font-semibold mb-3">Categoria</label>
-            <div id="categories-container" class="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
-            </div>
-        </div>
-
-        <!-- Botões Principais -->
-        <div class="flex gap-3 mb-6 flex-wrap">
-            <button id="btn-buscar" onclick="buscarNoticias()" class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition">
-                <i data-lucide="search" class="w-5 h-5"></i>
-                Buscar Notícias Reais
-            </button>
-            <button id="btn-publicar-todos" onclick="publicarTodos()" style="display:none;" class="flex items-center gap-2 bg-green-700 hover:bg-green-800 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition">
-                <i data-lucide="sparkles" class="w-5 h-5"></i>
-                Publicar Todos
-            </button>
-        </div>
-
-        <!-- Status Info -->
-        <div id="status-info" class="mb-6" style="display:none;">
-            <div class="flex items-center gap-2 text-sm text-gray-400">
-                <i data-lucide="check-circle-2" class="w-4 h-4 text-green-400"></i>
-                <span id="status-text"></span>
-            </div>
-        </div>
-
-        <!-- Grid Principal -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Lista Lateral -->
-            <div class="lg:col-span-1">
-                <h3 class="text-white font-bold mb-4 flex items-center gap-2">
-                    <i data-lucide="refresh-cw" class="w-4 h-4 text-purple-400"></i>
-                    Posts (<span id="posts-count">0</span>)
-                </h3>
-                <div id="posts-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-1 scrollbar-thin">
-                    <div class="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center">
-                        <i data-lucide="rss" class="w-10 h-10 text-gray-600 mx-auto mb-3"></i>
-                        <p class="text-gray-400 text-sm">Selecione a categoria e clique em "Buscar Notícias Reais"</p>
+    <div class="container py-5">
+        <div class="row">
+            <div class="col-12 mb-4">
+                <div class="p-4 rounded-xl" style="background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3);">
+                    <div class="d-flex align-items-start gap-3">
+                        <i class="fas fa-rss text-purple-400" style="font-size: 1.5rem;"></i>
+                        <div>
+                            <p class="text-white font-semibold mb-1">Fontes RSS Integradas</p>
+                            <p class="text-secondary small">TecMundo · CanalTech · InfoMoney · UOL · Folha · GE Globo · Agência Brasil · Lance!</p>
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- Preview / Editor -->
-            <div class="lg:col-span-2">
-                <div id="post-preview" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden" style="display:none;">
+        <div class="mb-4">
+            <p class="text-white font-semibold mb-3">Categoria</p>
+            <div class="d-flex flex-wrap gap-2" id="categories-container">
+                <button class="category-btn active" data-category="Tecnologia">
+                    <i class="fas fa-laptop-code me-2"></i>Tecnologia
+                </button>
+                <button class="category-btn" data-category="Economia">
+                    <i class="fas fa-chart-column me-2"></i>Economia
+                </button>
+                <button class="category-btn" data-category="Esportes">
+                    <i class="fas fa-futbol me-2"></i>Esportes
+                </button>
+                <button class="category-btn" data-category="Política">
+                    <i class="fas fa-landmark me-2"></i>Política
+                </button>
+                <button class="category-btn" data-category="Saúde">
+                    <i class="fas fa-heartbeat me-2"></i>Saúde
+                </button>
+                <button class="category-btn" data-category="Ciência">
+                    <i class="fas fa-flask me-2"></i>Ciência
+                </button>
+                <button class="category-btn" data-category="Entretenimento">
+                    <i class="fas fa-masks-theater me-2"></i>Entretenimento
+                </button>
+                <button class="category-btn" data-category="Cultura">
+                    <i class="fas fa-palette me-2"></i>Cultura
+                </button>
+                <button class="category-btn" data-category="Notícias Gerais">
+                    <i class="fas fa-newspaper me-2"></i>Geral
+                </button>
+            </div>
+        </div>
+
+        <div class="mb-5">
+            <button id="buscar-btn" class="btn btn-primary-custom btn-lg px-5 py-3">
+                <i class="fas fa-search me-2"></i>Buscar Notícias Reais
+            </button>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-4">
+                <h3 class="text-white font-semibold mb-3">
+                    <i class="fas fa-sync me-2"></i>Posts (<span id="posts-count">0</span>)
+                </h3>
+                <div id="posts-container" class="space-y-3">
+                    <div class="news-card text-center text-secondary py-5">
+                        <i class="fas fa-rss fa-3x opacity-50 mb-3"></i>
+                        <p class="small">Selecione a categoria e clique em "Buscar Notícias Reais"</p>
+                    </div>
                 </div>
-                <div id="empty-preview" class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
-                    <i data-lucide="rss" class="w-14 h-14 text-gray-700 mx-auto mb-4"></i>
-                    <p class="text-gray-400 text-lg font-medium">Busque notícias reais</p>
-                    <p class="text-gray-600 text-sm">Selecione uma categoria e clique em "Buscar Notícias Reais"</p>
+            </div>
+            <div class="col-lg-8">
+                <div id="preview-container" class="news-card" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-3 pb-2" style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <h4 class="text-white font-semibold mb-0">Prévia do Post</h4>
+                        <div class="d-flex gap-2">
+                            <button id="copy-btn" class="btn btn-secondary-custom btn-sm">
+                                <i class="fas fa-copy me-1"></i>Copiar
+                            </button>
+                            <button id="edit-btn" class="btn btn-secondary-custom btn-sm">
+                                <i class="fas fa-pencil me-1"></i>Editar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="post-preview" id="post-preview-box"></div>
+                </div>
+                <div id="preview-empty" class="news-card text-center text-secondary py-5">
+                    <i class="fas fa-rss fa-3x opacity-50 mb-3"></i>
+                    <p class="font-semibold mb-1">Busque notícias reais</p>
+                    <p class="small">Selecione a categoria e clique em "Buscar Notícias Reais"</p>
                 </div>
             </div>
         </div>
-    </main>
+    </div>
 
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="main-toast" class="toast align-items-center border-0" role="alert">
+            <div class="d-flex">
+                <div class="toast-body" id="toast-message">Operação realizada com sucesso!</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const API_URL = '/functions/fetchRssNews';
-        
-        const SUPABASE_URL = 'https://hzmtdfojctctvgqjdbex.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NDUwMTIsImV4cCI6MjA3OTIyMTAxMn0.bv_6SFc_vNnw_eIyD73xNsRVXtL0guSbMRNuCthIy4Q';
-        
-        const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-        
-        const categories = [
-            { id: 'tecnologia', label: '💻 Tecnologia', color: 'bg-blue-600' },
-            { id: 'economia', label: '📊 Economia', color: 'bg-green-600' },
-            { id: 'esportes', label: '⚽ Esportes', color: 'bg-yellow-600' },
-            { id: 'politica', label: '🏛️ Política', color: 'bg-red-600' },
-            { id: 'saude', label: '🏥 Saúde', color: 'bg-pink-600' },
-            { id: 'ciencia', label: '🔬 Ciência', color: 'bg-cyan-600' },
-            { id: 'entretenimento', label: '🎭 Entretenimento', color: 'bg-orange-600' },
-            { id: 'cultura', label: '🎨 Cultura', color: 'bg-indigo-600' },
-            { id: 'geral', label: '📰 Geral', color: 'bg-gray-600' },
-        ];
+        let selectedCategory = 'Tecnologia';
+        let noticias = [];
+        let buscando = false;
+        let gerando = {};
+        let postGerado = {};
+        let selectedPostIndex = 0;
 
-        let state = {
-            selectedCategory: 'tecnologia',
-            posts: [],
-            selectedPostIndex: null,
-            publishedIds: new Set(),
-            sourceInfo: null,
-            editingPostIndex: null,
-            editTitle: '',
-            editContent: ''
-        };
+        document.querySelectorAll('.category-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                selectedCategory = this.dataset.category;
+            });
+        });
 
-        function getExamplePosts() {
-            const examplesByCategory = {
-                tecnologia: [
-                    { title: 'Inteligência Artificial revoluciona o mercado de trabalho', content: 'A inteligência artificial está transformando a maneira como trabalhamos, automatizando tarefas repetitivas e criando novas oportunidades em áreas como análise de dados, desenvolvimento de software e atendimento ao cliente.', category: 'tecnologia', tags: ['IA', 'tecnologia', 'inovação'], pubDate: new Date().toISOString(), source_url: 'https://example.com/ia-mercado' },
-                    { title: 'Novo processador promete velocidade 10x maior', content: 'A nova geração de processadores chega ao mercado com desempenho incomparável, ideal para gamers, criadores de conteúdo e profissionais de design.', category: 'tecnologia', tags: ['hardware', 'processador', 'tecnologia'], pubDate: new Date(Date.now() - 86400000).toISOString(), source_url: 'https://example.com/novo-processador' },
-                    { title: '5G se expande para mais 50 cidades no Brasil', content: 'A rede 5G continua sua expansão nacional, oferecendo velocidades de internet móvel ultra-rápidas para milhões de brasileiros.', category: 'tecnologia', tags: ['5G', 'internet', 'tecnologia'], pubDate: new Date(Date.now() - 172800000).toISOString(), source_url: 'https://example.com/5g-expansao' }
-                ],
-                economia: [
-                    { title: 'Mercado de ações fecha em alta com otimismo econômico', content: 'Os principais índices de Wall Street fecharam o dia em alta, impulsionados por dados econômicos positivos e expectativas de redução de juros.', category: 'economia', tags: ['ações', 'economia', 'mercado'], pubDate: new Date().toISOString(), source_url: 'https://example.com/acoes-alta' },
-                    { title: 'Dólar cai para R$ 4,90 com boas notícias', content: 'A moeda norte-americana registrou queda significativa nesta semana, refletindo a confiança dos investidores no mercado brasileiro.', category: 'economia', tags: ['dólar', 'economia', 'câmbio'], pubDate: new Date(Date.now() - 86400000).toISOString(), source_url: 'https://example.com/dolar-cai' }
-                ],
-                esportes: [
-                    { title: 'Brasil vence partida emocionante na Copa América', content: 'A seleção brasileira conquistou uma vitória crucial na última noite, com um gol nos acréscimos que garantiu a classificação para a próxima fase.', category: 'esportes', tags: ['futebol', 'Brasil', 'Copa América'], pubDate: new Date().toISOString(), source_url: 'https://example.com/brasil-vence' },
-                    { title: 'Nadador brasileiro quebra recorde mundial', content: 'O atleta brasileiro surpreendeu o mundo ao quebrar o recorde mundial nos 100m livre, em uma performance histórica.', category: 'esportes', tags: ['natação', 'recorde', 'esportes'], pubDate: new Date(Date.now() - 172800000).toISOString(), source_url: 'https://example.com/recorde-natacao' }
-                ]
-            };
-            const generalExamples = [
-                { title: 'Nova lei de proteção de dados entra em vigor', content: 'A nova legislação que regulamenta o uso de dados pessoais começa a valer a partir de hoje, trazendo mais segurança para os cidadãos.', category: state.selectedCategory, tags: ['direito', 'dados', 'legislação'], pubDate: new Date().toISOString(), source_url: 'https://example.com/lei-dados' },
-                { title: 'Festival de música atrai milhares de pessoas', content: 'O maior festival de música do país acontece neste final de semana, com shows de artistas nacionais e internacionais.', category: state.selectedCategory, tags: ['música', 'festival', 'entretenimento'], pubDate: new Date(Date.now() - 86400000).toISOString(), source_url: 'https://example.com/festival-musica' }
-            ];
-            return examplesByCategory[state.selectedCategory] || generalExamples;
-        }
+        document.getElementById('buscar-btn').addEventListener('click', async function() {
+            if (buscando) return;
+            buscando = true;
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Buscando notícias...';
+            noticias = [];
+            postGerado = {};
+            document.getElementById('posts-container').innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border text-purple-400" style="width: 3rem; height: 3rem;"></div>
+                    <p class="text-secondary mt-3">Buscando notícias reais via RSS...</p>
+                </div>
+            `;
 
-        function renderCategories() {
-            const container = document.getElementById('categories-container');
-            container.innerHTML = categories.map(cat => `
-                <button onclick="selecionarCategoria('${cat.id}')" 
-                    class="category-btn py-2 px-3 rounded-lg text-xs font-medium transition ${
-                        state.selectedCategory === cat.id 
-                            ? `${cat.color} text-white ring-2 ring-white/30` 
-                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }" 
-                    data-category="${cat.id}">
-                    ${cat.label}
-                </button>
-            `).join('');
-        }
-
-        function selecionarCategoria(catId) {
-            state.selectedCategory = catId;
-            renderCategories();
-        }
-
-        function isPublished(post) {
-            return state.publishedIds.has(post.source_url || post.title);
-        }
-
-        function renderPosts() {
-            const container = document.getElementById('posts-list');
-            const countEl = document.getElementById('posts-count');
-            const btnPublicarTodos = document.getElementById('btn-publicar-todos');
-            
-            countEl.textContent = state.posts.length;
-            
-            if (state.posts.length === 0) {
-                container.innerHTML = `
-                    <div class="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center">
-                        <i data-lucide="rss" class="w-10 h-10 text-gray-600 mx-auto mb-3"></i>
-                        <p class="text-gray-400 text-sm">Selecione a categoria e clique em "Buscar Notícias Reais"</p>
+            try {
+                const response = await fetch('/api/news/fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: selectedCategory })
+                });
+                
+                const data = await response.json();
+                if (data.success && data.data) {
+                    noticias = data.data.noticias;
+                    document.getElementById('posts-count').textContent = noticias.length;
+                    renderPosts();
+                    if (noticias.length > 0) {
+                        selectPost(0);
+                    }
+                    showToast(`✅ ${noticias.length} notícia(s) encontradas!`);
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('❌ Erro ao buscar notícias', 'error');
+                document.getElementById('posts-container').innerHTML = `
+                    <div class="news-card text-center text-secondary py-5">
+                        <i class="fas fa-exclamation-triangle fa-3x opacity-50 mb-3"></i>
+                        <p>Erro ao buscar notícias</p>
                     </div>
                 `;
-                btnPublicarTodos.style.display = 'none';
-            } else {
-                container.innerHTML = state.posts.map((post, idx) => `
-                    <button onclick="selecionarPost(${idx})" 
-                        class="post-item w-full text-left p-3 rounded-lg border transition relative ${
-                            state.selectedPostIndex === idx 
-                                ? 'bg-purple-800/40 border-purple-500' 
-                                : 'bg-gray-900 border-gray-800 hover:border-purple-500'
-                        }"
-                        data-index="${idx}">
-                        ${isPublished(post) ? `<span class="absolute top-2 right-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-green-400"></i></span>` : ''}
-                        <p class="text-xs font-medium text-white leading-tight pr-5 line-clamp-2">${post.title}</p>
-                        <p class="text-xs text-purple-400 mt-1">${post.tags?.[0] ? `#${post.tags[0]}` : post.category}</p>
-                        ${post.pubDate ? `<p class="text-xs text-gray-600 mt-0.5 truncate">${post.pubDate.substring(0,16)}</p>` : ''}
-                    </button>
-                `).join('');
-                
-                const pendingCount = state.posts.filter(p => !isPublished(p)).length;
-                if (pendingCount > 0) {
-                    btnPublicarTodos.textContent = `Publicar Todos (${pendingCount})`;
-                    btnPublicarTodos.style.display = 'flex';
-                } else {
-                    btnPublicarTodos.style.display = 'none';
-                }
+            } finally {
+                buscando = false;
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-search me-2"></i>Buscar Notícias Reais';
             }
-            
-            if (state.sourceInfo) {
-                const statusInfo = document.getElementById('status-info');
-                const statusText = document.getElementById('status-text');
-                statusText.textContent = `${state.sourceInfo.total} notícia(s) — ${state.sourceInfo.source === 'rss' ? '📡 RSS em tempo real' : '📦 exemplos'}`;
-                statusInfo.style.display = 'flex';
-            }
-            
-            lucide.createIcons();
-        }
+        });
 
-        function selecionarPost(idx) {
-            state.selectedPostIndex = idx;
-            state.editingPostIndex = null;
-            renderPosts();
-            renderPreview();
-        }
-
-        function renderPreview() {
-            const previewEl = document.getElementById('post-preview');
-            const emptyEl = document.getElementById('empty-preview');
-            
-            if (state.selectedPostIndex === null || !state.posts[state.selectedPostIndex]) {
-                previewEl.style.display = 'none';
-                emptyEl.style.display = 'block';
-                return;
-            }
-            
-            const post = state.posts[state.selectedPostIndex];
-            const isEditing = state.editingPostIndex === state.selectedPostIndex;
-            const displayTitle = isEditing ? state.editTitle : post.title;
-            const displayContent = isEditing ? state.editContent : post.content;
-            
-            emptyEl.style.display = 'none';
-            previewEl.style.display = 'block';
-            
-            previewEl.innerHTML = `
-                <div class="px-6 py-4 border-b border-gray-800 flex items-center justify-between gap-2">
-                    <h3 class="text-white font-bold">${isEditing ? '✏️ Editando Post' : 'Prévia do Post'}</h3>
-                    <div class="flex items-center gap-2">
-                        ${!isEditing ? `<button onclick="copiarPost()" title="Copiar texto do post" class="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-3 py-1.5 rounded-lg transition"><i data-lucide="copy" class="w-3.5 h-3.5"></i> Copiar</button>` : ''}
-                        ${!isEditing 
-                            ? `<button onclick="iniciarEdicao()" title="Editar texto do post" class="flex items-center gap-1.5 bg-yellow-700 hover:bg-yellow-600 text-white text-xs px-3 py-1.5 rounded-lg transition"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Editar</button>`
-                            : `<div class="flex gap-2">
-                                <button onclick="salvarEdicao()" class="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg transition"><i data-lucide="save" class="w-3.5 h-3.5"></i> Salvar</button>
-                                <button onclick="cancelarEdicao()" class="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-lg transition"><i data-lucide="x" class="w-3.5 h-3.5"></i> Cancelar</button>
-                               </div>`
-                        }
-                        ${isPublished(post) ? `<span class="flex items-center gap-1 text-green-400 text-xs font-medium"><i data-lucide="check-circle-2" class="w-4 h-4"></i> Publicado</span>` : ''}
-                    </div>
+        function renderPosts() {
+            const container = document.getElementById('posts-container');
+            container.innerHTML = noticias.map((n, idx) => `
+                <div class="news-card mb-3" style="cursor: pointer; ${idx === selectedPostIndex ? 'border-color: #7C3AED; background: rgba(124,58,237,0.1);' : ''}" data-index="${idx}">
+                    <p class="text-white font-semibold mb-1 small">${n.titulo}</p>
+                    <p class="text-secondary small mb-2 line-clamp-2">${n.resumo}</p>
+                    ${n.fonte ? `<span class="badge bg-purple-900/50 text-purple-300 small">#${selectedCategory}</span>` : ''}
                 </div>
-                <div class="p-6">
-                    ${isEditing 
-                        ? `<div class="space-y-4 mb-5">
-                            <div><label class="text-xs text-gray-400 mb-1 block font-medium">Título</label><input id="edit-title-input" value="${displayTitle}" oninput="atualizarEditTitle(this.value)" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:border-purple-500 focus:outline-none" placeholder="Título da notícia..."></div>
-                            <div><label class="text-xs text-gray-400 mb-1 block font-medium">Conteúdo do Post</label><textarea id="edit-content-input" oninput="atualizarEditContent(this.value)" rows="10" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white text-sm focus:border-purple-500 focus:outline-none resize-none font-mono leading-relaxed" placeholder="Conteúdo do post...">${displayContent}</textarea><p class="text-xs text-gray-600 mt-1">${displayContent.length} caracteres</p></div>
-                            <div class="bg-yellow-900/20 border border-yellow-800 rounded-lg p-3"><p class="text-xs text-yellow-400">⚠️ Revise o texto para eliminar alucinações da IA antes de publicar.</p></div>
-                           </div>`
-                        : `<div class="bg-gray-800 rounded-xl p-5 mb-5">
-                            <div class="flex items-center gap-3 mb-4">
-                                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-sm">NP</div>
+            `).join('');
+            
+            container.querySelectorAll('[data-index]').forEach(el => {
+                el.addEventListener('click', function() {
+                    selectPost(parseInt(this.dataset.index));
+                });
+            });
+        }
+
+        function selectPost(idx) {
+            selectedPostIndex = idx;
+            renderPosts();
+            
+            if (!postGerado[idx]) {
+                gerarPost(idx, noticias[idx]);
+            } else {
+                renderPreview(idx);
+            }
+        }
+
+        async function gerarPost(idx, noticia) {
+            gerando[idx] = true;
+            const previewBox = document.getElementById('post-preview-box');
+            previewBox.innerHTML = `
+                <div class="text-center py-3">
+                    <div class="spinner-border text-purple-400"></div>
+                    <p class="text-secondary small mt-2">Gerando post com IA...</p>
+                </div>
+            `;
+            document.getElementById('preview-container').style.display = 'block';
+            document.getElementById('preview-empty').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/news/generate-post', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        titulo: noticia.titulo, 
+                        resumo: noticia.resumo, 
+                        categoria: selectedCategory 
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success && data.data) {
+                    postGerado[idx] = data.data.post_gerado;
+                    renderPreview(idx);
+                }
+            } catch (error) {
+                console.error(error);
+                postGerado[idx] = noticia.resumo;
+                renderPreview(idx);
+            } finally {
+                gerando[idx] = false;
+            }
+        }
+
+        function renderPreview(idx) {
+            const n = noticias[idx];
+            const post = postGerado[idx];
+            const previewBox = document.getElementById('post-preview-box');
+            
+            previewBox.innerHTML = `
+                <div style="background: rgba(30,41,59,0.95); border-radius: 16px; padding: 1.5rem;">
+                    <div class="d-flex align-items-start gap-3 mb-3">
+                        <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #7C3AED, #EC4899); display: flex; align-items: center; justify-content: center; font-weight: 700; color: white;">
+                            NP
+                        </div>
+                        <div class="flex-1">
+                            <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <p class="font-semibold text-white">NewPost-IA</p>
-                                    <p class="text-xs text-gray-400">${new Date().toLocaleDateString('pt-BR')} · pankilhas@gmail.com</p>
+                                    <p class="text-white font-semibold mb-0">NewPost-IA</p>
+                                    <p class="text-secondary small mb-0">${new Date().toLocaleDateString('pt-BR')} · usuario@gmail.com</p>
                                 </div>
-                                <span class="ml-auto text-xs bg-purple-700 text-purple-200 px-2 py-0.5 rounded-full flex items-center gap-1"><i data-lucide="sparkles" class="w-3 h-3"></i> IA</span>
-                            </div>
-                            <p class="text-white font-semibold mb-3 leading-snug">${displayTitle}</p>
-                            <pre class="text-gray-100 text-sm mb-4 leading-relaxed whitespace-pre-wrap font-sans">${displayContent}</pre>
-                            <div class="flex flex-wrap gap-2 mb-3">
-                                ${(post.tags || []).map((tag, i) => `<span key="${i}" class="text-purple-400 text-xs">#${tag}</span>`).join('')}
-                            </div>
-                            ${post.source_url ? `<a href="${post.source_url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition"><i data-lucide="external-link" class="w-3 h-3"></i> Ver fonte original</a>` : ''}
-                            <div class="mt-4 pt-3 border-t border-gray-700 text-xs text-gray-500 flex gap-4">
-                                <span>💬 Comentar</span><span>❤️ Curtir</span><span>🔄 Repostar</span><span>📤 Compartilhar</span>
-                            </div>
-                           </div>`
-                    }
-                    <div class="bg-purple-900/20 border border-purple-800 rounded-lg p-4 mb-5">
-                        <div class="flex items-start gap-3">
-                            <i data-lucide="alert-circle" class="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5"></i>
-                            <div>
-                                <p class="text-sm font-semibold text-white">Destino da publicação</p>
-                                <p class="text-xs text-gray-400 mt-1">
-                                    Edge Function <code class="text-purple-300">receive-news</code> → Supabase <code class="text-purple-300">hzmtdfojctctvgqjdbex</code><br>
-                                    status: <strong class="text-green-400">published</strong> · is_ia_generated: <strong class="text-blue-400">true</strong>
-                                </p>
-                                <p class="text-xs text-gray-500 mt-2">💡 Plano B: use o botão <strong class="text-yellow-400">Copiar</strong> e cole manualmente na NewPost-IA.</p>
+                                <span class="badge bg-purple-600"><i class="fas fa-robot me-1"></i>IA</span>
                             </div>
                         </div>
                     </div>
-                    <button onclick="publicarPost()" ${isPublished(post) ? 'disabled' : ''} class="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition">
-                        <i data-lucide="${isPublished(post) ? 'check-circle-2' : 'plus'}" class="w-5 h-5"></i>
-                        ${isPublished(post) ? 'Já publicado!' : 'Publicar na NewPost-IA'}
-                    </button>
+                    <p class="text-white font-semibold mb-2">${n.titulo}</p>
+                    <p class="text-secondary mb-2">${post}</p>
+                    <div class="mt-3">
+                        <p class="text-purple-400">#${selectedCategory} #Tech #Inovação #Brasil</p>
+                    </div>
+                    ${n.link ? `
+                    <div class="mt-3 p-3" style="background: rgba(124,58,237,0.1); border-radius: 12px; border-left: 3px solid #7C3AED;">
+                        <p class="text-secondary small mb-1"><i class="fas fa-newspaper me-2"></i>Fonte: ${n.fonte || 'Fonte'}</p>
+                        <a href="${n.link}" target="_blank" class="text-purple-400 small text-decoration-none">${n.link}</a>
+                    </div>
+                    ` : ''}
+                    <div class="mt-3">
+                        <p class="text-purple-400">#${selectedCategory} #Tech #inovação #Brasil</p>
+                    </div>
                 </div>
             `;
-            lucide.createIcons();
+            document.getElementById('preview-container').style.display = 'block';
+            document.getElementById('preview-empty').style.display = 'none';
         }
 
-        async function buscarNoticias() {
-            const btn = document.getElementById('btn-buscar');
-            btn.disabled = true;
-            btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Buscando...';
-            lucide.createIcons();
-            
-            state.posts = [];
-            state.selectedPostIndex = null;
-            state.publishedIds = new Set();
-            state.sourceInfo = null;
-            state.editingPostIndex = null;
-            
-            try {
-                const res = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ category: state.selectedCategory, deliver: false })
-                });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                if (data.error) throw new Error(data.error);
-                state.posts = data.posts || [];
-                state.selectedPostIndex = state.posts.length > 0 ? 0 : null;
-                state.sourceInfo = { total: data.total, source: data.source };
-            } catch (err) {
-                console.log('Usando notícias de exemplo (API offline)');
-                const examplePosts = getExamplePosts();
-                state.posts = examplePosts;
-                state.selectedPostIndex = examplePosts.length > 0 ? 0 : null;
-                state.sourceInfo = { total: examplePosts.length, source: 'exemplos' };
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<i data-lucide="search" class="w-5 h-5"></i> Buscar Notícias Reais';
-                renderPosts();
-                renderPreview();
-            }
-        }
-
-        async function insertPostsViaSupabase(postsList) {
-            if (!supabaseClient) throw new Error('Cliente Supabase não inicializado');
-            
-            console.log('📤 Inserindo no Supabase:', postsList);
-            
-            const postsToInsert = postsList.map(post => ({
-                title: post.title,
-                content: post.content,
-                category: post.category,
-                tags: post.tags,
-                pub_date: post.pubDate,
-                source_url: post.source_url,
-                is_ia_generated: true,
-                status: 'published',
-                created_at: new Date().toISOString()
-            }));
-            
-            const { data, error } = await supabaseClient
-                .from('posts')
-                .insert(postsToInsert)
-                .select();
-            
-            if (error) {
-                console.error('❌ Erro no Supabase:', error);
-                throw error;
-            }
-            
-            console.log('✅ Posts inseridos com sucesso:', data);
-            return { inserted: postsList.length, skipped: 0, data };
-        }
-
-        function normalizePost(post) {
-            return {
-                title: post.title || '',
-                content: post.content || '',
-                category: post.category || state.selectedCategory,
-                tags: post.tags || [],
-                pubDate: post.pubDate || new Date().toISOString(),
-                source_url: post.source_url || ''
-            };
-        }
-
-        async function publicarPost() {
-            if (state.selectedPostIndex === null) return;
-            const post = state.posts[state.selectedPostIndex];
-            
-            try {
-                if (state.sourceInfo && state.sourceInfo.source === 'exemplos') {
-                    state.publishedIds.add(post.source_url || post.title);
-                    alert('✅ Post de exemplo marcado como publicado! (Para publicar na NewPost-IA, configure a API)');
-                } else {
-                    const normalizedPost = normalizePost(post);
-                    await insertPostsViaSupabase([normalizedPost]);
-                    state.publishedIds.add(post.source_url || post.title);
-                    alert('✅ Post publicado com sucesso na NewPost-IA via Supabase!');
-                }
-                renderPosts();
-                renderPreview();
-            } catch (err) {
-                console.error('Erro completo:', err);
-                alert('Erro ao publicar: ' + (err.message || err));
-            }
-        }
-
-        async function publicarTodos() {
-            const pending = state.posts.filter(p => !isPublished(p));
-            if (!pending.length) return;
-            if (!window.confirm(`Publicar ${pending.length} posts na NewPost-IA?`)) return;
-            
-            try {
-                if (state.sourceInfo && state.sourceInfo.source === 'exemplos') {
-                    pending.forEach(p => state.publishedIds.add(p.source_url || p.title));
-                    alert(`✅ ${pending.length} posts de exemplo marcados como publicados!`);
-                } else {
-                    const normalizedPosts = pending.map(p => normalizePost(p));
-                    const result = await insertPostsViaSupabase(normalizedPosts);
-                    pending.forEach(p => state.publishedIds.add(p.source_url || p.title));
-                    alert(`✅ ${result.inserted ?? pending.length} posts publicados via Supabase!`);
-                }
-                renderPosts();
-                renderPreview();
-            } catch (err) {
-                console.error('Erro completo:', err);
-                alert('Erro ao publicar em lote: ' + (err.message || err));
-            }
-        }
-
-        async function copiarPost() {
-            if (state.selectedPostIndex === null) return;
-            const post = state.posts[state.selectedPostIndex];
-            const text = `${post.title}\n\n${post.content}`;
-            try {
-                await navigator.clipboard.writeText(text);
-                alert('✅ Texto copiado para a área de transferência!');
-            } catch {
-                alert('Não foi possível copiar. Selecione o texto manualmente.');
-            }
-        }
-
-        function iniciarEdicao() {
-            if (state.selectedPostIndex === null) return;
-            const post = state.posts[state.selectedPostIndex];
-            state.editingPostIndex = state.selectedPostIndex;
-            state.editTitle = post.title;
-            state.editContent = post.content;
-            renderPreview();
-        }
-
-        function atualizarEditTitle(val) {
-            state.editTitle = val;
-        }
-
-        function atualizarEditContent(val) {
-            state.editContent = val;
-        }
-
-        function salvarEdicao() {
-            if (state.editingPostIndex === null) return;
-            state.posts[state.editingPostIndex] = {
-                ...state.posts[state.editingPostIndex],
-                title: state.editTitle,
-                content: state.editContent
-            };
-            state.editingPostIndex = null;
-            renderPosts();
-            renderPreview();
-        }
-
-        function cancelarEdicao() {
-            state.editingPostIndex = null;
-            renderPreview();
-        }
-
-        // Inicialização
-        document.addEventListener('DOMContentLoaded', function() {
-            renderCategories();
-            lucide.createIcons();
+        document.getElementById('copy-btn').addEventListener('click', function() {
+            const post = postGerado[selectedPostIndex];
+            navigator.clipboard.writeText(post);
+            showToast('✅ Post copiado para a área de transferência!');
         });
+
+        document.getElementById('edit-btn').addEventListener('click', function() {
+            const post = postGerado[selectedPostIndex];
+            const newPost = prompt('Edite o post:', post);
+            if (newPost !== null && newPost.trim()) {
+                postGerado[selectedPostIndex] = newPost;
+                renderPreview(selectedPostIndex);
+                showToast('✅ Post atualizado!');
+            }
+        });
+
+        function showToast(msg, type = 'success') {
+            const toastEl = document.getElementById('main-toast');
+            const toastBody = document.getElementById('toast-message');
+            toastBody.textContent = msg;
+            toastEl.className = `toast align-items-center border-0 toast-${type}`;
+            const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+            toast.show();
+        }
     </script>
 </body>
 </html>
