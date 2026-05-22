@@ -3291,6 +3291,7 @@ def save_calendar():
 
 @app.route('/ai-dashboard')
 def ai_dashboard():
+    """Rota para Central IA Autônoma"""
     return render_template('ai_dashboard.html')
 
 # Para desenvolvimento local
