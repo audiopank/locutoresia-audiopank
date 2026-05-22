@@ -3350,11 +3350,8 @@ def api_publish_to_newpost():
             "title": titulo,
             "content": conteudo[:1000],
             "source_url": link_fonte,
-            "image_url": None,
             "category": categoria.lower(),
-            "status": "ready",
-            "published_at": datetime.now().isoformat(),
-            "metadata": {}
+            "status": "ready"
         }
         
         response = supabase.table('posts').insert(payload).execute()
