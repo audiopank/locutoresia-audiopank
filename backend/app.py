@@ -3226,3 +3226,5 @@ if __name__ == '__main__':
     print("Acesse: http://localhost:5000")
     print("Dashboard: http://localhost:5000/dashboard")
     app.run(host='0.0.0.0', port=port, debug=True)
+
+# Fim do arquivo app.py
