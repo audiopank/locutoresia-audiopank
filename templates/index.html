@@ -394,6 +394,186 @@
             font-weight: 500;
         }
 
+        /* VoxCraft Chat Widget */
+        .voxcraft-widget {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+
+        .voxcraft-toggle-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .voxcraft-toggle-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.5);
+        }
+
+        .voxcraft-chat {
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 380px;
+            max-width: calc(100vw - 40px);
+            height: 500px;
+            max-height: calc(100vh - 120px);
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .voxcraft-chat.open {
+            display: flex;
+        }
+
+        .voxcraft-header {
+            padding: 16px 20px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .voxcraft-header i {
+            font-size: 1.5rem;
+        }
+
+        .voxcraft-header h6 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .voxcraft-header p {
+            margin: 0;
+            font-size: 0.8rem;
+            opacity: 0.9;
+        }
+
+        .voxcraft-messages {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .voxcraft-message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.5;
+        }
+
+        .voxcraft-message.assistant {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--text-primary);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            align-self: flex-start;
+        }
+
+        .voxcraft-message.user {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            align-self: flex-end;
+        }
+
+        .voxcraft-input-container {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 12px;
+        }
+
+        .voxcraft-input {
+            flex: 1;
+            background: var(--dark-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 10px;
+            padding: 10px 16px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .voxcraft-input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+        }
+
+        .voxcraft-send-btn {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .voxcraft-send-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .voxcraft-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .voxcraft-typing {
+            display: none;
+            gap: 4px;
+            padding: 12px 16px;
+            align-self: flex-start;
+        }
+
+        .voxcraft-typing.show {
+            display: flex;
+        }
+
+        .voxcraft-typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .voxcraft-typing-dot:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .voxcraft-typing-dot:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes typing {
+            0%, 80%, 100% {
+                transform: scale(0);
+            }
+            40% {
+                transform: scale(1);
+            }
+        }
+
         /* Responsive */
         @media (max-width: 991.98px) {
             .sidebar {
@@ -498,6 +678,10 @@
                 <a href="/minidaw-react" target="_blank" class="menu-item">
                     <i class="fas fa-magic"></i>
                     <span>MiniDAW IA</span>
+                </a>
+                <a href="#" class="menu-item badge-new" id="voxcraftBtn">
+                    <i class="fas fa-headphones"></i>
+                    <span>VoxCraft AI</span>
                 </a>
                 <a href="https://app.lmnt.com/" target="_blank" class="menu-item lmnt">
                     <i class="fas fa-microphone-alt"></i>
@@ -678,6 +862,38 @@
         </div>
     </main>
 
+    <!-- VoxCraft Chat Widget -->
+    <div class="voxcraft-widget">
+        <div class="voxcraft-chat" id="voxcraftChat">
+            <div class="voxcraft-header">
+                <i class="fas fa-headphones"></i>
+                <div>
+                    <h6>VoxCraft AI</h6>
+                    <p>Especialista em Produções Audiovisuais</p>
+                </div>
+            </div>
+            <div class="voxcraft-messages" id="voxcraftMessages">
+                <div class="voxcraft-message assistant">
+                    Bem-vindo ao Locutores IA! 🎙️✨ Sou seu especialista em produções audiovisuais. Como posso te ajudar hoje?
+                </div>
+            </div>
+            <div class="voxcraft-typing" id="voxcraftTyping">
+                <div class="voxcraft-typing-dot"></div>
+                <div class="voxcraft-typing-dot"></div>
+                <div class="voxcraft-typing-dot"></div>
+            </div>
+            <div class="voxcraft-input-container">
+                <input type="text" class="voxcraft-input" id="voxcraftInput" placeholder="Digite sua mensagem...">
+                <button class="voxcraft-send-btn" id="voxcraftSendBtn">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+        <button class="voxcraft-toggle-btn" id="voxcraftToggleBtn">
+            <i class="fas fa-headphones"></i>
+        </button>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/script.js"></script>
     <script>
@@ -711,6 +927,92 @@
                 item.classList.add('active');
             } else {
                 item.classList.remove('active');
+            }
+        });
+
+        // VoxCraft Chat Logic
+        let voxcraftMessages = [
+            { role: "assistant", content: "Bem-vindo ao Locutores IA! 🎙️✨ Sou seu especialista em produções audiovisuais. Como posso te ajudar hoje?" }
+        ];
+
+        const voxcraftToggleBtn = document.getElementById('voxcraftToggleBtn');
+        const voxcraftChat = document.getElementById('voxcraftChat');
+        const voxcraftInput = document.getElementById('voxcraftInput');
+        const voxcraftSendBtn = document.getElementById('voxcraftSendBtn');
+        const voxcraftMessagesContainer = document.getElementById('voxcraftMessages');
+        const voxcraftTyping = document.getElementById('voxcraftTyping');
+        const voxcraftBtn = document.getElementById('voxcraftBtn');
+
+        function toggleVoxcraftChat() {
+            voxcraftChat.classList.toggle('open');
+        }
+
+        voxcraftToggleBtn.addEventListener('click', toggleVoxcraftChat);
+        
+        if (voxcraftBtn) {
+            voxcraftBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                voxcraftChat.classList.add('open');
+            });
+        }
+
+        function addMessage(content, isUser) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `voxcraft-message ${isUser ? 'user' : 'assistant'}`;
+            messageDiv.textContent = content;
+            voxcraftMessagesContainer.appendChild(messageDiv);
+            voxcraftMessagesContainer.scrollTop = voxcraftMessagesContainer.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const message = voxcraftInput.value.trim();
+            if (!message) return;
+
+            addMessage(message, true);
+            voxcraftInput.value = '';
+            voxcraftTyping.classList.add('show');
+            voxcraftSendBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/voxcraft/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        messages: [
+                            ...voxcraftMessages,
+                            { role: "user", content: message }
+                        ]
+                    })
+                });
+
+                const data = await response.json();
+                
+                voxcraftTyping.classList.remove('show');
+                
+                if (data.success) {
+                    addMessage(data.message, false);
+                    voxcraftMessages.push(
+                        { role: "user", content: message },
+                        { role: "assistant", content: data.message }
+                    );
+                } else {
+                    addMessage("Desculpe, houve um erro. Tente novamente.", false);
+                }
+            } catch (error) {
+                voxcraftTyping.classList.remove('show');
+                addMessage("Desculpe, houve um erro de conexão. Tente novamente.", false);
+                console.error('VoxCraft Error:', error);
+            }
+
+            voxcraftSendBtn.disabled = false;
+        }
+
+        voxcraftSendBtn.addEventListener('click', sendMessage);
+        voxcraftInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
             }
         });
     </script>
