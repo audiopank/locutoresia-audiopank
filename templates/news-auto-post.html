@@ -814,20 +814,28 @@
         }
 
         function showPreview(news) {
-            const preview = document.getElementById('preview');
-            const title = document.getElementById('previewTitle');
-            const summary = document.getElementById('previewSummary');
-            const source = document.getElementById('previewSource');
+            try {
+                const preview = document.getElementById('preview');
+                const title = document.getElementById('previewTitle');
+                const summary = document.getElementById('previewSummary');
+                const source = document.getElementById('previewSource');
 
-            preview.style.display = 'block';
-            title.textContent = news.title;
-            summary.textContent = news.summary;
-            source.textContent = `Fonte: ${news.source || 'Desconhecida'}`;
+                if (preview && title && summary && source) {
+                    preview.style.display = 'block';
+                    title.textContent = news.title || 'Título não encontrado';
+                    summary.textContent = news.summary || 'Resumo não encontrado';
+                    source.textContent = `Fonte: ${news.source || 'Desconhecida'}`;
+                } else {
+                    console.log('[DEBUG] Elementos do preview não encontrados');
+                }
+            } catch (e) {
+                console.error('[DEBUG] Erro ao exibir preview:', e);
+            }
         }
 
         async function loadPublications() {
             try {
-                const response = await fetch(`${API_BASE}/api/publications`);
+                const response = await fetch(`${API_BASE}/api/social/posts`);
                 
                 if (!response.ok) {
                     throw new Error(`Erro ao carregar publicações: ${response.status}`);
@@ -843,12 +851,13 @@
                 const publicationsList = document.getElementById('publicationsList');
                 const totalPublications = document.getElementById('totalPublications');
                 
-                totalPublications.textContent = data.total;
+                const posts = data.posts || [];
+                totalPublications.textContent = posts.length;
                 
                 // Log para debug
                 console.log('[DEBUG] Publications data:', data);
                 
-                if (!data.publications || data.publications.length === 0) {
+                if (posts.length === 0) {
                     publicationsList.innerHTML = `
                         <div style="color: #64748b; text-align: center; padding: 32px; font-style: italic;">
                             Nenhuma publicação ainda...<br>
@@ -856,7 +865,7 @@
                         </div>
                     `;
                 } else {
-                    const sortedPublications = data.publications.sort((a, b) => 
+                    const sortedPublications = posts.sort((a, b) => 
                         new Date(b.created_at || b.published_at || Date.now()) - 
                         new Date(a.created_at || a.published_at || Date.now())
                     );
@@ -878,7 +887,7 @@
                                 ${pub.title || 'Sem título'}
                             </div>
                             <div id="content-${pub.id}" style="color: #cbd5e1; font-size: 12px; margin-bottom: 8px; line-height: 1.4; max-height: 100px; overflow-y: auto;">
-                                ${pub.content ? pub.content.substring(0, 200) + '...' : 'Sem conteúdo'}
+                                ${pub.caption ? pub.caption.substring(0, 200) + '...' : pub.content ? pub.content.substring(0, 200) + '...' : 'Sem conteúdo'}
                             </div>
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;">
                                 <span style="background: #14532d; color: #4ade80; font-size: 10px; padding: 2px 6px; border-radius: 4px;">
@@ -888,7 +897,7 @@
                             </div>
                             <!-- BOTÕES DE AÇÃO -->
                             <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid #475569;">
-                                <button onclick="editPublication('${pub.id}', '${encodeURIComponent(pub.title || '')}', '${encodeURIComponent(pub.content || '')}')" 
+                                <button onclick="editPublication('${pub.id}', '${encodeURIComponent(pub.title || '')}', '${encodeURIComponent(pub.caption || pub.content || '')}')" 
                                     style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                                     ✏️ Editar
                                 </button>
@@ -896,7 +905,7 @@
                                     style="background: #f59e0b; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                                     ✓ Aprovar
                                 </button>
-                                <button onclick="postToNewPostIA('${pub.id}', '${encodeURIComponent(pub.title || '')}', '${encodeURIComponent(pub.content || '')}', '${pub.image_url || ''}')" 
+                                <button onclick="postToNewPostIA('${pub.id}', '${encodeURIComponent(pub.title || '')}', '${encodeURIComponent(pub.caption || pub.content || '')}', '${pub.image_url || ''}')" 
                                     style="background: #8b5cf6; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                                     🚀 Postar
                                 </button>
@@ -924,23 +933,10 @@
 
             try {
                 addLog('🗑️ Limpando publicações...', 'info');
+                // A página Posts Sociais (/social-posts) é a responsável por gerenciar os posts
+                addLog('👉 Acesse /social-posts para gerenciar os posts', 'info');
+                loadPublications(); // Recarregar lista
                 
-                const response = await fetch(`${API_BASE}/api/publications`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-
-                const data = await response.json();
-                
-                if (response.ok && data.success) {
-                    addLog('✅ Publicações limpas com sucesso', 'success');
-                    // Limpar também o cache de deduplicação
-                    publishedTitles.clear();
-                    addLog('🔄 Cache de títulos limpo', 'info');
-                    loadPublications(); // Recarregar lista vazia
-                } else {
-                    throw new Error(data.error || 'Erro ao limpar publicações');
-                }
             } catch (error) {
                 addLog(`❌ Erro ao limpar publicações: ${error.message}`, 'error');
             }

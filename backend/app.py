@@ -40,9 +40,12 @@ except Exception as e:
 # Precisamos adicionar o diretório atual (onde está app.py) ao sys.path explicitamente
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Adicionar diretório raiz do projeto para importar o módulo core
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 # As variáveis de ambiente são configuradas diretamente no painel
 # Não precisamos carregar de arquivo .env em produção
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core'))
 
 # Criar app Flask primeiro
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1696,10 +1699,43 @@ def api_create_social_post():
         status_pt = data.get('status', 'rascunho')
         status_en = status_map.get(status_pt, 'draft')
         
+        # Formatar o conteúdo com TÍTULO, SINOPSE e LINK DA FONTE (mesmo formato do publish)
+        title_sp = data.get('title', '')
+        if title_sp:
+            title_sp = title_sp.strip()
+        
+        summary_sp = data.get('caption')
+        if not summary_sp:
+            summary_sp = data.get('summary')
+        if not summary_sp:
+            summary_sp = data.get('content', '')
+        if summary_sp:
+            summary_sp = summary_sp.strip()
+        
+        source_url_sp = data.get('url')
+        if not source_url_sp:
+            source_url_sp = data.get('source_url', '')
+        if source_url_sp:
+            source_url_sp = source_url_sp.strip()
+        
+        formatted_content_sp = []
+        if title_sp:
+            formatted_content_sp.append(f"📰 {title_sp}\n")
+        if summary_sp:
+            if len(summary_sp) > 500:
+                summary_sp = summary_sp[:500] + "..."
+            formatted_content_sp.append(summary_sp)
+        if source_url_sp:
+            formatted_content_sp.append(f"\n🔗 Fonte: {source_url_sp}")
+        
+        final_content_sp = '\n'.join(formatted_content_sp).strip()
+        
         post_data = {
             'author_id': newpost_author_id,
-            'title': data.get('title', ''),
-            'content': data.get('caption', ''),
+            'title': title_sp,
+            'content': final_content_sp,
+            'caption': final_content_sp,
+            'source_url': source_url_sp,
             'tags': data.get('hashtags', []),  # Usar tags (schema cache reconhece)
             'status': status_en,
             'is_ia_generated': True,
@@ -1894,7 +1930,7 @@ def api_update_social_post(post_id):
 
 @app.route('/api/social/posts/<post_id>/approve', methods=['POST'])
 def api_approve_social_post(post_id):
-    """Aprova um SocialPost (usando Supabase real)"""
+    """Aprova um SocialPost (usando Supabase real) - status 'ready' para pendente/aprovado"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
@@ -1911,7 +1947,7 @@ def api_approve_social_post(post_id):
         
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-            json={"status": "approved", "updated_at": datetime.now(timezone.utc).isoformat()},
+            json={"status": "ready", "updated_at": datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
@@ -1927,7 +1963,7 @@ def api_approve_social_post(post_id):
 
 @app.route('/api/social/posts/<post_id>/reject', methods=['POST'])
 def api_reject_social_post(post_id):
-    """Rejeita um SocialPost (usando Supabase real)"""
+    """Rejeita um SocialPost (usando Supabase real) - status 'draft' para rascunho/rejeitado"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
@@ -1944,7 +1980,7 @@ def api_reject_social_post(post_id):
         
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-            json={"status": "rejected", "updated_at": datetime.now(timezone.utc).isoformat()},
+            json={"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
@@ -2103,6 +2139,53 @@ def api_delete_social_post(post_id):
             return jsonify({"success": False, "error": f"Erro ao deletar post: {response.status_code}"}), response.status_code
             
     except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/social/posts/rejected', methods=['DELETE'])
+def api_delete_all_rejected_posts():
+    """Deleta TODOS os posts com status = 'rejeitado' ou 'draft' (rejeitados)"""
+    try:
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        # Deletar posts com status = 'draft' ou 'rejeitado' e author_id correto
+        response = requests.delete(
+            f"{supabase_url}/rest/v1/posts?author_id=eq.{newpost_author_id}&status=in.(draft,rejeitado)",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            deleted_count = 0
+            try:
+                if response.json():
+                    deleted_count = len(response.json())
+            except:
+                pass
+                
+            return jsonify({
+                "success": True, 
+                "message": "Posts rejeitados deletados com sucesso",
+                "deleted_count": deleted_count
+            })
+        else:
+            return jsonify({"success": False, "error": f"Erro ao deletar posts: {response.status_code}"}), response.status_code
+            
+    except Exception as e:
+        import traceback
+        print(f"[DEBUG] Erro em api_delete_all_rejected_posts: {e}")
+        print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/social/generate-caption', methods=['POST'])
@@ -2754,10 +2837,28 @@ def newpost_publish():
         
         # Preparar dados para tabela newpost_posts (colunas exatas: titulo, descricao, conteudo, hashtags, autor_id, criado_em, atualizado_em)
         # Usar UTC para timestamptz do Supabase
+        title_np = data.get('title', '').strip()
+        summary_np = data.get('summary', data.get('content', '')).strip()
+        source_url_np = data.get('url', '').strip()
+        
+        # Montar o conteúdo formatado para newpost_posts
+        formatted_content_np = []
+        if title_np:
+            formatted_content_np.append(f"📰 {title_np}\n")
+        if summary_np:
+            if len(summary_np) > 500:
+                summary_np = summary_np[:500] + "..."
+            formatted_content_np.append(summary_np)
+        if source_url_np:
+            formatted_content_np.append(f"\n🔗 Fonte: {source_url_np}")
+        
+        final_content_np = '\n'.join(formatted_content_np).strip()
+        descricao_np = summary_np[:200] if summary_np else title_np[:200]
+        
         post_data = {
-            'titulo': data.get('title', ''),
-            'descricao': data.get('content', data.get('summary', ''))[:200],
-            'conteudo': data.get('content', data.get('summary', '')),
+            'titulo': title_np,
+            'descricao': descricao_np,
+            'conteudo': final_content_np,
             'hashtags': data.get('hashtags', ['notícia', 'Brasil']),
             'autor_id': data.get('author_id', DEFAULT_AUTHOR_ID),
             'criado_em': datetime.now(timezone.utc).isoformat(),
@@ -2798,9 +2899,30 @@ def newpost_publish():
         # POST para tabela posts (visível na interface da NewPost-IA)
         # Estrutura correta: title, content, image_url, author_id, created_at, updated_at, status, published_at, is_ia_generated, source_url
         now_utc = datetime.now(timezone.utc).isoformat()
+        
+        # Formatar o conteúdo com TÍTULO, SINOPSE e LINK DA FONTE
+        title = data.get('title', '').strip()
+        summary = data.get('summary', data.get('content', '')).strip()
+        source_url = data.get('url', '').strip()
+        
+        # Montar o conteúdo formatado
+        formatted_content = []
+        if title:
+            formatted_content.append(f"📰 {title}\n")
+        if summary:
+            # Garantir que a sinopse não fique muito longa
+            if len(summary) > 500:
+                summary = summary[:500] + "..."
+            formatted_content.append(summary)
+        if source_url:
+            formatted_content.append(f"\n🔗 Fonte: {source_url}")
+        
+        # Juntar tudo
+        final_content = '\n'.join(formatted_content).strip()
+        
         posts_data = {
-            'title': data.get('title', ''),
-            'content': data.get('content', data.get('summary', '')),
+            'title': title,
+            'content': final_content,
             'image_url': data.get('image_url', ''),
             'author_id': DEFAULT_AUTHOR_ID,
             'created_at': now_utc,
@@ -2808,7 +2930,7 @@ def newpost_publish():
             'published_at': now_utc,
             'status': 'published',
             'is_ia_generated': True,
-            'source_url': data.get('url', '')
+            'source_url': source_url
         }
         
         posts_response = requests.post(
@@ -3418,7 +3540,7 @@ Responda apenas o texto do post, sem aspas ou explicações."""
 
 @app.route('/api/news/publish-to-newpost', methods=['POST', 'OPTIONS'])
 def api_publish_to_newpost():
-    """Publica o post na NewPost-IA via Supabase"""
+    """Publica o post na NewPost-IA via NewsAutomationAgent"""
     print("[DEBUG] api_publish_to_newpost called!")
     if request.method == 'OPTIONS':
         print("[DEBUG] OPTIONS request received!")
@@ -3428,46 +3550,18 @@ def api_publish_to_newpost():
         response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         return response
     
+    if not HAS_NEWS_AUTOMATION or not news_automation:
+        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
+    
     try:
         print("[DEBUG] Getting JSON data!")
         data = request.get_json()
         print(f"[DEBUG] Data received: {data}")
         titulo = data.get('titulo', '')
         conteudo = data.get('conteudo', '')
-        categoria = data.get('categoria', 'Tecnologia')
-        link_fonte = data.get('link', '')
         
-        print("[DEBUG] Getting Supabase credentials!")
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL') or os.getenv('SUPABASE_URL') or os.getenv('VITE_SUPABASE_URL')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_ANON_KEY') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY')
-        
-        print(f"[DEBUG] SUPABASE_URL: {supabase_url}")
-        print(f"[DEBUG] SUPABASE_KEY: {supabase_key[:10]}...")
-        
-        if not supabase_url or not supabase_key:
-            return jsonify({"success": False, "error": "Credenciais do Supabase não configuradas"}), 500
-        
-        print("[DEBUG] Creating Supabase client!")
-        from supabase import create_client, Client
-        supabase: Client = create_client(supabase_url, supabase_key)
-        
-        print("[DEBUG] Preparing payload!")
-        payload = {
-            "title": titulo,
-            "content": conteudo[:500]
-        }
-        
-        print(f"[DEBUG] Payload: {payload}")
-        print("[DEBUG] Inserting into Supabase!")
-        response = supabase.table('posts').insert(payload).execute()
-        
-        print(f"[DEBUG] Supabase response: {response}")
-        return jsonify({
-            "success": True,
-            "data": {
-                "post_id": response.data[0].get('id') if response.data else None
-            }
-        })
+        result = news_automation.publish_single(titulo, conteudo)
+        return jsonify(result)
     except Exception as e:
         print(f"Erro publish to newpost: {e}")
         import traceback

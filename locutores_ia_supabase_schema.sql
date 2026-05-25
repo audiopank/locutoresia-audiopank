@@ -107,6 +107,13 @@ DROP POLICY IF EXISTS "posts_delete_own" ON posts;
 CREATE POLICY "posts_delete_own" ON posts FOR DELETE
 USING (auth.uid() = author_id OR auth.jwt() ->> 'role' = 'service_role');
 
+-- Política ADICIONAL: Permitir TUDO para service role
+DROP POLICY IF EXISTS "posts_service_role_all" ON posts;
+CREATE POLICY "posts_service_role_all" ON posts
+FOR ALL
+USING (auth.jwt() ->> 'role' = 'service_role')
+WITH CHECK (auth.jwt() ->> 'role' = 'service_role');
+
 -- ============================================================
 -- TABELA 2: SCHEDULED_POSTS (Agendamento)
 -- ============================================================
