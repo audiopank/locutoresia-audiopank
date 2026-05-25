@@ -50,6 +50,17 @@ app = Flask(__name__,
            template_folder=os.path.join(base_dir, 'templates'),
            static_folder=os.path.join(base_dir, 'static'))
 
+# Inicializar NewsAutomationAgent
+try:
+    from core.news_automation_agent import NewsAutomationAgent
+    news_automation = NewsAutomationAgent()
+    HAS_NEWS_AUTOMATION = True
+    print("✅ NewsAutomationAgent inicializado com sucesso!")
+except Exception as e:
+    print(f"⚠️ Erro ao inicializar NewsAutomationAgent: {e}")
+    HAS_NEWS_AUTOMATION = False
+    news_automation = None
+
 # Helper para obter a chave Supabase correta
 def get_supabase_key():
     return os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
@@ -3472,6 +3483,108 @@ def busca_noticias_page():
 def ai_dashboard():
     """Rota para Central IA Autônoma - Notícias Reais via RSS"""
     return render_template('ai_dashboard.html')
+
+@app.route('/api/news/automation/status', methods=['GET'])
+def api_news_automation_status():
+    """Endpoint para verificar status da integração"""
+    if not HAS_NEWS_AUTOMATION or not news_automation:
+        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
+    
+    try:
+        status = news_automation.get_status()
+        return jsonify(status)
+    except Exception as e:
+        print(f"Erro no status: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/news/automation/fetch', methods=['POST', 'OPTIONS'])
+def api_news_automation_fetch():
+    """Endpoint para buscar notícias via RSS"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    if not HAS_NEWS_AUTOMATION or not news_automation:
+        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
+    
+    try:
+        data = request.get_json() or {}
+        category = data.get('category', 'Tecnologia')
+        limit = data.get('limit', 7)
+        result = news_automation.fetch_news(category, limit)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Erro no fetch: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/news/automation/publish-single', methods=['POST', 'OPTIONS'])
+def api_news_automation_publish_single():
+    """Endpoint para publicar uma única notícia"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    if not HAS_NEWS_AUTOMATION or not news_automation:
+        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
+    
+    try:
+        data = request.get_json() or {}
+        title = data.get('title', '')
+        content = data.get('content', '')
+        result = news_automation.publish_single(title, content)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Erro no publish single: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/news/automation/fetch-and-publish', methods=['POST', 'OPTIONS'])
+def api_news_automation_fetch_and_publish():
+    """Endpoint PRINCIPAL: busca e publica notícias na NewPost-IA"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    if not HAS_NEWS_AUTOMATION or not news_automation:
+        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
+    
+    try:
+        data = request.get_json() or {}
+        categories = data.get('categories', ['Tecnologia'])
+        limit_per_category = data.get('limit_per_category', 5)
+        auto_publish = data.get('auto_publish', True)
+        result = news_automation.fetch_and_publish(categories, limit_per_category, auto_publish)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Erro no fetch and publish: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/news/automation/published', methods=['GET'])
+def api_news_automation_published():
+    """Endpoint para listar posts já publicados"""
+    if not HAS_NEWS_AUTOMATION or not news_automation:
+        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
+    
+    try:
+        limit = request.args.get('limit', 20, type=int)
+        result = news_automation.get_published_posts(limit)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Erro no published: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # Para desenvolvimento local
 if __name__ == '__main__':
