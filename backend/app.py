@@ -70,7 +70,7 @@ def get_supabase_key():
 
 # Validação de segurança do Supabase
 try:
-    from backend.supabase_guard import validate_supabase_target
+    from supabase_guard import validate_supabase_target
     # Recarregar .env explicitamente para garantir chaves novas
     from dotenv import load_dotenv
     load_dotenv(override=True)
