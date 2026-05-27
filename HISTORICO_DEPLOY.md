@@ -227,6 +227,17 @@ NEWPOST_AUTHOR_ID=3a1a93d0-e451-47a4-a126-f1b7375895eb
 - Execute o SQL `CREAR_TABELAS_NEWPOST_IA.sql`
 - Confira o `author_id` selecionado
 
+### Erro: "Read-only file system" no Vercel
+- O Vercel não permite criar arquivos no disco!
+- Correções aplicadas:
+  - Removidos `FileHandler` de todos os arquivos de logging
+  - Protegidas tentativas de salvar arquivos (usam `os.environ.get('VERCEL')` para detectar ambiente)
+  - Arquivos corrigidos:
+    - `news_agent.py` - Removido logging em arquivo
+    - `backend/autonomous_news_agent.py` - Removido logging em arquivo
+    - `news_scheduler.py` - Removido logging em arquivo
+    - `backend/app.py` - Protegido salvamento de automation_state.json
+
 ---
 
 ## ✅ Funcionalidades Concluídas (Checklist)
@@ -247,6 +258,8 @@ NEWPOST_AUTHOR_ID=3a1a93d0-e451-47a4-a126-f1b7375895eb
 - [x] Criar página de clonagem de vozes (templates/voice-cloning.html)
 - [x] Adicionar rota /voice-cloning no app.py
 - [x] News Auto Post já existe COMPLETO!
+- [x] Corrigir logging para Vercel (remover FileHandlers)
+- [x] Proteger salvamento de arquivos no Vercel
 
 ---
 

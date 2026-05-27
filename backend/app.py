@@ -2696,20 +2696,26 @@ def api_toggle_automation(type):
                 'error': f'Tipo inválido. Tipos válidos: {valid_types}'
             }), 400
         
-        # Salvar estado no arquivo de configuração
+        # Salvar estado no arquivo de configuração (apenas se não estiver no Vercel)
         import json
-        config_file = 'automation_state.json'
-        
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                state = json.load(f)
-        except:
-            state = {}
-        
-        state[f'{type}_enabled'] = enabled
-        
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(state, f, indent=2)
+        if not os.environ.get('VERCEL'):
+            config_file = 'automation_state.json'
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+            except:
+                state = {}
+            
+            state[f'{type}_enabled'] = enabled
+            
+            try:
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    json.dump(state, f, indent=2)
+            except Exception as e:
+                print(f"⚠️ Não foi possível salvar estado (Read-only): {e}")
+        else:
+            # No Vercel, não salvar estado em arquivo
+            print("ℹ️ No Vercel, estado não é salvo em arquivo")
         
         print(f"✅ Automação {type} {'ativada' if enabled else 'desativada'}")
         
