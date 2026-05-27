@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autores NewPost-IA | Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        :root {
+            --newpost-purple: #7C3AED;
+            --newpost-pink: #EC4899;
+            --newpost-cyan: #06B6D4;
+            --newpost-dark: #0F0F1A;
+            --newpost-card: #1A1A2E;
+        }
+
+        body {
+            background: var(--newpost-dark);
+            color: #E2E8F0;
+            min-height: 100vh;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, #5B21B6 0%, #7C3AED 50%, #EC4899 100%);
+            border-bottom: 1px solid rgba(124,58,237,0.3);
+            padding: 2rem 0;
+        }
+
+        .author-card {
+            background: var(--newpost-card);
+            border-left: 4px solid var(--newpost-purple);
+            border-radius: 14px;
+            padding: 1.5rem;
+            transition: all 0.2s;
+        }
+
+        .author-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(124,58,237,0.2);
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, #7C3AED, #EC4899);
+            border: none;
+            color: white;
+            font-weight: 600;
+            border-radius: 12px;
+        }
+
+        .btn-primary-custom:hover {
+            opacity: 0.9;
+            color: white;
+        }
+
+        .btn-secondary-custom {
+            background: var(--newpost-card);
+            border: 1px solid rgba(124,58,237,0.3);
+            color: #A78BFA;
+            border-radius: 12px;
+        }
+
+        .btn-secondary-custom:hover {
+            background: rgba(124,58,237,0.1);
+            color: #E9D5FF;
+        }
+
+        .toast-success {
+            background: #059669;
+            color: white;
+            border-radius: 12px;
+        }
+
+        .toast-error {
+            background: #DC2626;
+            color: white;
+            border-radius: 12px;
+        }
+
+        .form-control, .form-select {
+            background: rgba(30, 41, 59, 0.95);
+            border: 1px solid rgba(124,58,237,0.3);
+            color: #E2E8F0;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background: rgba(30, 41, 59, 0.95);
+            border-color: var(--newpost-purple);
+            color: #E2E8F0;
+            box-shadow: 0 0 0 0.25rem rgba(124, 58, 237, 0.25);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top" style="background: rgba(15,15,26,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(124,58,237,0.3);">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+                <div class="p-2 bg-primary/10 rounded-lg">
+                    <i class="fas fa-microphone fa-lg text-primary"></i>
+                </div>
+                <div>
+                    <span class="fw-bold text-white">Locutores IA</span>
+                    <div class="small text-secondary">Sistema Multi-Agentes</div>
+                </div>
+            </a>
+            
+            <div class="d-flex gap-2">
+                <a class="nav-link text-light" href="/ai-dashboard">
+                    <i class="fas fa-brain me-1"></i>Central IA
+                </a>
+                <a class="nav-link text-light" href="/busca-noticias">
+                    <i class="fas fa-search me-1"></i>Busca Notícias
+                </a>
+                <a class="nav-link text-light active" href="/newpost-authors">
+                    <i class="fas fa-user-tie me-1"></i>Autores NewPost
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="page-header">
+        <div class="container">
+            <div class="d-flex align-items-center gap-3">
+                <a href="/" class="text-purple-200 hover:text-white transition text-sm">← Início</a>
+                <div>
+                    <h1 class="text-3xl font-bold text-white">👤 Autores NewPost-IA</h1>
+                    <p class="text-purple-200 mt-1">Gerencie perfis de autores para publicar na NewPost-IA</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container py-5">
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="p-4 rounded-xl" style="background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3);">
+                    <h4 class="text-white font-semibold mb-3">
+                        <i class="fas fa-user-plus me-2"></i>Criar Novo Autor
+                    </h4>
+                    <form id="create-author-form">
+                        <div class="row g-3">
+                            <div class="col-md-5">
+                                <label class="form-label text-white">Nome</label>
+                                <input type="text" class="form-control" id="author-name" placeholder="Nome do autor" required>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label text-white">E-mail</label>
+                                <input type="email" class="form-control" id="author-email" placeholder="email@exemplo.com" required>
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary-custom w-100">
+                                    <i class="fas fa-plus me-1"></i>Criar
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12 mb-3">
+                <h3 class="text-white font-semibold">
+                    <i class="fas fa-users me-2"></i>Lista de Autores
+                </h3>
+                <p class="text-secondary small">Clique em "Selecionar" para definir como padrão</p>
+            </div>
+            <div class="col-12" id="authors-container">
+                <div class="author-card text-center text-secondary py-5">
+                    <i class="fas fa-spinner fa-spin fa-3x opacity-50 mb-3"></i>
+                    <p class="small">Carregando autores...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="main-toast" class="toast align-items-center border-0" role="alert">
+            <div class="d-flex">
+                <div class="toast-body" id="toast-message">Operação realizada com sucesso!</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let selectedAuthorId = localStorage.getItem('newpost_selected_author_id') || '';
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAuthors();
+            document.getElementById('create-author-form').addEventListener('submit', createAuthor);
+        });
+
+        async function loadAuthors() {
+            try {
+                const response = await fetch('/api/newpost/authors', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    renderAuthors(data.authors);
+                } else {
+                    showToast('❌ Erro ao carregar autores', 'error');
+                    document.getElementById('authors-container').innerHTML = `
+                        <div class="author-card text-center text-secondary py-5">
+                            <i class="fas fa-exclamation-triangle fa-3x opacity-50 mb-3"></i>
+                            <p>Erro ao carregar autores</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('❌ Erro ao carregar autores', 'error');
+            }
+        }
+
+        function renderAuthors(authors) {
+            const container = document.getElementById('authors-container');
+            
+            if (!authors || authors.length === 0) {
+                container.innerHTML = `
+                    <div class="author-card text-center text-secondary py-5">
+                        <i class="fas fa-users fa-3x opacity-50 mb-3"></i>
+                        <p class="font-semibold mb-1">Nenhum autor encontrado</p>
+                        <p class="small">Crie um novo autor usando o formulário acima</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = authors.map(author => `
+                <div class="author-card mb-3" data-author-id="${author.id}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-1">
+                            <h5 class="text-white font-semibold mb-1">
+                                <i class="fas fa-user-circle me-2 text-purple-400"></i>${author.nome || 'Nome não informado'}
+                            </h5>
+                            <p class="text-secondary small mb-2">
+                                <i class="fas fa-envelope me-1"></i>${author.email || 'E-mail não informado'}
+                            </p>
+                            <p class="text-purple-400 small mb-0">
+                                <i class="fas fa-key me-1"></i>ID: <code class="text-purple-300 bg-purple-900/30 px-2 py-1 rounded">${author.id}</code>
+                            </p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-secondary-custom btn-sm copy-id-btn" data-author-id="${author.id}">
+                                <i class="fas fa-copy me-1"></i>Copiar ID
+                            </button>
+                            <button class="btn btn-primary-custom btn-sm select-author-btn" data-author-id="${author.id}" ${selectedAuthorId === author.id ? 'disabled' : ''}>
+                                <i class="fas fa-check-circle me-1"></i>${selectedAuthorId === author.id ? 'Selecionado' : 'Selecionar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            container.querySelectorAll('.copy-id-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const authorId = this.dataset.authorId;
+                    navigator.clipboard.writeText(authorId);
+                    showToast('✅ ID copiado para a área de transferência!');
+                });
+            });
+
+            container.querySelectorAll('.select-author-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const authorId = this.dataset.authorId;
+                    localStorage.setItem('newpost_selected_author_id', authorId);
+                    selectedAuthorId = authorId;
+                    showToast('✅ Autor selecionado como padrão!');
+                    renderAuthors(authors);
+                });
+            });
+        }
+
+        async function createAuthor(e) {
+            e.preventDefault();
+            const name = document.getElementById('author-name').value.trim();
+            const email = document.getElementById('author-email').value.trim();
+            
+            if (!name || !email) {
+                showToast('❌ Preencha todos os campos', 'error');
+                return;
+            }
+
+            const btn = e.submitter;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Criando...';
+
+            try {
+                const response = await fetch('/api/newpost/authors', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nome: name, email: email })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showToast('✅ Autor criado com sucesso!');
+                    document.getElementById('create-author-form').reset();
+                    loadAuthors();
+                } else {
+                    showToast(`❌ Erro: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('❌ Erro ao criar autor', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-plus me-1"></i>Criar';
+            }
+        }
+
+        function showToast(msg, type = 'success') {
+            const toastEl = document.getElementById('main-toast');
+            const toastBody = document.getElementById('toast-message');
+            toastBody.textContent = msg;
+            toastEl.className = `toast align-items-center border-0 toast-${type}`;
+            const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+            toast.show();
+        }
+    </script>
+</body>
+</html>

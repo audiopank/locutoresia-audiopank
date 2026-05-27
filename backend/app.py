@@ -333,6 +333,96 @@ def social_genius():
     """Social Genius - Ferramentas de IA para Redes Sociais (em desenvolvimento)"""
     return render_template('index.html')
 
+@app.route('/newpost-authors')
+def newpost_authors():
+    """Autores NewPost-IA - Gerenciamento de perfis"""
+    return render_template('newpost-authors.html')
+
+# =========================================================
+# APIs para Autores NewPost-IA
+# =========================================================
+@app.route('/api/newpost/authors', methods=['GET'])
+def api_list_newpost_authors():
+    """Lista todos os autores do newpost_profiles via Supabase"""
+    try:
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.get(
+            f"{supabase_url}/rest/v1/newpost_profiles?select=*&order=criado_em.desc",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 201):
+            authors = response.json()
+            return jsonify({"success": True, "authors": authors})
+        else:
+            return jsonify({"success": False, "error": response.text}), response.status_code
+            
+    except Exception as e:
+        import traceback
+        print(f"[DEBUG] Erro em api_list_newpost_authors: {e}")
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/newpost/authors', methods=['POST'])
+def api_create_newpost_author():
+    """Cria um novo autor no newpost_profiles"""
+    try:
+        data = request.get_json()
+        nome = data.get('nome')
+        email = data.get('email')
+        
+        if not nome or not email:
+            return jsonify({"success": False, "error": "Nome e e-mail são obrigatórios"}), 400
+        
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        author_data = {
+            'nome': nome,
+            'email': email
+        }
+        
+        response = requests.post(
+            f"{supabase_url}/rest/v1/newpost_profiles",
+            json=author_data,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 201):
+            result = response.json()
+            return jsonify({"success": True, "author": result[0] if isinstance(result, list) else result})
+        else:
+            return jsonify({"success": False, "error": response.text}), response.status_code
+            
+    except Exception as e:
+        import traceback
+        print(f"[DEBUG] Erro em api_create_newpost_author: {e}")
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/news/collect', methods=['POST'])
 def collect_news():
     """Endpoint para iniciar coleta de notícias"""
@@ -3540,7 +3630,7 @@ Responda apenas o texto do post, sem aspas ou explicações."""
 
 @app.route('/api/news/publish-to-newpost', methods=['POST', 'OPTIONS'])
 def api_publish_to_newpost():
-    """Publica o post na NewPost-IA via NewsAutomationAgent"""
+    """Publica o post na NewPost-IA via NewsAutomationAgent, com suporte a author_id override"""
     print("[DEBUG] api_publish_to_newpost called!")
     if request.method == 'OPTIONS':
         print("[DEBUG] OPTIONS request received!")
@@ -3559,8 +3649,17 @@ def api_publish_to_newpost():
         print(f"[DEBUG] Data received: {data}")
         titulo = data.get('titulo', '')
         conteudo = data.get('conteudo', '')
+        author_id = data.get('author_id')
+        
+        if not author_id:
+            author_id = os.getenv("NEWPOST_AUTHOR_ID")
         
         result = news_automation.publish_single(titulo, conteudo)
+        
+        if author_id and hasattr(news_automation, 'supabase'):
+            # Se temos um author_id específico, usamos diretamente o supabase_manager
+            result = news_automation.supabase.publish_to_newpost(titulo, conteudo, author_id)
+        
         return jsonify(result)
     except Exception as e:
         print(f"Erro publish to newpost: {e}")
