@@ -338,6 +338,11 @@ def newpost_authors():
     """Autores NewPost-IA - Gerenciamento de perfis"""
     return render_template('newpost-authors.html')
 
+@app.route('/voice-cloning')
+def voice_cloning():
+    """Clonagem de Voz - Crie clones de voz personalizados"""
+    return render_template('voice-cloning.html')
+
 # =========================================================
 # APIs para Autores NewPost-IA
 # =========================================================

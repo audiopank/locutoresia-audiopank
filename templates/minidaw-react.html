@@ -606,29 +606,15 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
     <script src="/static/minidaw-react-app.js"></script>
+    <script src="/static/js/cloned-voices-library.js"></script>
     
     <!-- Load Components -->
     <script>
         // Funções para carregar componentes
         function loadVoicesLibrary() {
-            const container = document.getElementById('react-voices-container');
-            if (!container) return;
-
-            container.innerHTML = `
-                <div style="padding: 2rem;">
-                    <h3 style="color: #6366f1; margin-bottom: 1.5rem;">
-                        <i class="fas fa-microphone me-2"></i>Biblioteca de Vozes Clonadas
-                    </h3>
-                    <div style="background: rgba(30, 41, 59, 0.8); border-radius: 8px; padding: 1.5rem;">
-                        <p style="color: #94a3b8;">Biblioteca de vozes clonadas disponíveis para geração de áudio.</p>
-                        <div style="margin-top: 1rem;">
-                            <button onclick="alert('Redirecionando para clonagem...')" style="background: #6366f1; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px;">
-                                <i class="fas fa-plus me-2"></i>Clonar Nova Voz
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
+            if (window.clonedVoicesLibrary) {
+                window.clonedVoicesLibrary.render('react-voices-container');
+            }
         }
 
         function loadVoiceCloning() {
@@ -643,9 +629,9 @@
                     <div style="background: rgba(30, 41, 59, 0.8); border-radius: 8px; padding: 1.5rem;">
                         <p style="color: #94a3b8;">Clone sua voz para criar áudios personalizados.</p>
                         <div style="margin-top: 1rem;">
-                            <button onclick="alert('Função de clonagem em desenvolvimento...')" style="background: #6366f1; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px;">
-                                <i class="fas fa-microphone me-2"></i>Iniciar Clonagem
-                            </button>
+                            <a href="/voice-cloning" class="btn btn-primary">
+                                <i class="fas fa-microphone me-2"></i>Ir para Clonagem de Voz
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -654,6 +640,11 @@
 
         // Carrega componentes quando as abas são ativadas
         document.addEventListener('DOMContentLoaded', function() {
+            // Inicializa a biblioteca de vozes
+            if (window.clonedVoicesLibrary) {
+                window.clonedVoicesLibrary.render('react-voices-container');
+            }
+
             // Event listeners para abas
             document.getElementById('voices-tab')?.addEventListener('shown.bs.tab', loadVoicesLibrary);
             document.getElementById('cloning-tab')?.addEventListener('shown.bs.tab', loadVoiceCloning);

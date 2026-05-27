@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clonagem de Voz - Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --accent-color: #ec4899;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .main-header {
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .card {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-outline-light {
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .btn-outline-light:hover {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+        }
+
+        .upload-area {
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-height: 250px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .upload-area:hover {
+            border-color: var(--primary-color);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-area.recording {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .upload-area.has-audio {
+            border-color: var(--primary-color);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .recording-indicator {
+            width: 16px;
+            height: 16px;
+            background: #ef4444;
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .progress-bar {
+            background: rgba(99, 102, 241, 0.2);
+            border-radius: 8px;
+            height: 8px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .form-control, .form-select, textarea {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .form-control:focus, .form-select:focus, textarea:focus {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+        }
+
+        .back-btn {
+            background: var(--secondary-color);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: var(--primary-color);
+            transform: translateY(-2px);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <header class="main-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-clone me-2"></i>
+                        Clonagem de Voz
+                    </h1>
+                    <p class="mb-0 text-muted">Crie clones de voz personalizados a partir de amostras de áudio</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <a href="/minidaw-react" class="back-btn me-2">
+                        <i class="fas fa-arrow-left"></i>
+                        Voltar para MiniDAW
+                    </a>
+                    <a href="/" class="back-btn">
+                        <i class="fas fa-home"></i>
+                        Início
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container-fluid py-4">
+        <div class="row">
+            <div class="col-lg-6 mb-4">
+                <div class="card p-4">
+                    <h5 class="mb-4">
+                        <i class="fas fa-info-circle me-2 text-primary"></i>
+                        Detalhes da Voz
+                    </h5>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Nome da Voz <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="voiceName" placeholder="Ex: Minha Voz Narrativa">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <textarea class="form-control" id="voiceDescription" rows="3" placeholder="Ex: Voz profissional para documentários"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Gênero</label>
+                        <select class="form-select" id="voiceGender">
+                            <option value="">Selecione (Opcional)</option>
+                            <option value="male">Masculino</option>
+                            <option value="female">Feminino</option>
+                            <option value="neutral">Neutro</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6 mb-4">
+                <div class="card p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5>
+                            <i class="fas fa-microphone me-2 text-primary"></i>
+                            Entrada de Áudio
+                        </h5>
+                        <span class="text-muted small">💡 Dicas para melhor qualidade</span>
+                    </div>
+
+                    <div class="d-flex gap-2 mb-4">
+                        <button class="btn btn-outline-light flex-1" id="uploadMethodBtn" onclick="setUploadMethod('upload')">
+                            <i class="fas fa-upload me-1"></i>Upload Áudio
+                        </button>
+                        <button class="btn btn-outline-light flex-1" id="recordMethodBtn" onclick="setUploadMethod('record')">
+                            <i class="fas fa-microphone me-1"></i>Gravar Voz
+                        </button>
+                    </div>
+
+                    <div id="uploadArea" class="upload-area" onclick="handleAreaClick()">
+                        <input type="file" id="fileInput" accept="audio/*" class="d-none" onchange="handleFileUpload(event)">
+                        <div id="uploadContent">
+                            <div class="mb-3">
+                                <i class="fas fa-upload fa-3x text-muted"></i>
+                            </div>
+                            <p class="fw-medium mb-1">Clique para fazer upload ou arraste e solte</p>
+                            <p class="text-muted small mb-2">Suporta mp3, wav, mp4, m4a, webm, ogg</p>
+                            <p class="text-muted small">Para melhores resultados, envie pelo menos 5 segundos de fala clara</p>
+                        </div>
+                        <div id="audioContent" class="d-none">
+                            <div class="mb-3">
+                                <i class="fas fa-file-audio fa-3x text-primary"></i>
+                            </div>
+                            <p class="fw-medium mb-1" id="audioFileName">Áudio carregado</p>
+                            <p class="text-muted small mb-3" id="audioFileSize"></p>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-outline-light btn-sm" onclick="togglePreview(event)">
+                                    <i class="fas fa-play me-1" id="previewIcon"></i>
+                                    <span id="previewText">Ouvir Preview</span>
+                                </button>
+                                <button class="btn btn-outline-light btn-sm" onclick="clearAudio(event)">
+                                    <i class="fas fa-times me-1"></i>Remover
+                                </button>
+                            </div>
+                        </div>
+                        <div id="recordingContent" class="d-none">
+                            <div class="mb-3">
+                                <div class="recording-indicator"></div>
+                            </div>
+                            <p class="fw-bold text-danger mb-1" id="recordingTime">00:00</p>
+                            <p class="fw-medium mb-1">Gravando... Clique para parar</p>
+                            <p class="text-muted small">Fale claramente para melhor qualidade</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row" id="progressSection" style="display: none;">
+            <div class="col-12">
+                <div class="card p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <p class="fw-medium mb-0" id="progressStep">Preparando áudio...</p>
+                        <span class="text-muted small" id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12 text-center">
+                <button class="btn btn-primary btn-lg px-5" id="cloneBtn" onclick="handleCreateVoiceClone()">
+                    <i class="fas fa-magic me-2"></i>
+                    Clonar Voz
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const CLONED_VOICES_KEY = "cloned_voices_library";
+        const CLONING_STEPS = [
+            { label: "Preparando áudio...", progress: 20 },
+            { label: "Enviando para servidor...", progress: 40 },
+            { label: "Processando características...", progress: 60 },
+            { label: "Criando modelo de voz...", progress: 80 },
+            { label: "Finalizando clone...", progress: 95 }
+        ];
+
+        let uploadMethod = 'upload';
+        let uploadedFile = null;
+        let recordedBlob = null;
+        let isRecording = false;
+        let recordingDuration = 0;
+        let isCreating = false;
+        let isPreviewPlaying = false;
+        let previewAudioUrl = null;
+        let previewAudio = null;
+        let mediaRecorder = null;
+        let chunks = [];
+        let stream = null;
+        let recordingInterval = null;
+        let recordingStart = 0;
+
+        function showToast(title, description = '', variant = 'success') {
+            const toast = document.createElement('div');
+            toast.className = 'position-fixed bottom-0 end-0 p-3 z-toast';
+            const bgClass = variant === 'destructive' ? 'bg-danger' : 'bg-success';
+            toast.innerHTML = `
+                <div class="toast align-items-center border-0 ${bgClass} text-white" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <strong>${title}</strong>
+                            ${description ? `<br><small>${description}</small>` : ''}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            const bootstrapToast = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3500 });
+            bootstrapToast.show();
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        function setUploadMethod(method) {
+            uploadMethod = method;
+            document.getElementById('uploadMethodBtn').className = method === 'upload' ? 'btn btn-primary flex-1' : 'btn btn-outline-light flex-1';
+            document.getElementById('recordMethodBtn').className = method === 'record' ? 'btn btn-primary flex-1' : 'btn btn-outline-light flex-1';
+            clearAudio();
+        }
+
+        function handleAreaClick(event) {
+            if (isRecording) {
+                stopRecording();
+            } else if (uploadMethod === 'upload') {
+                document.getElementById('fileInput').click();
+            } else {
+                startRecording();
+            }
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files?.[0];
+            if (file) {
+                uploadedFile = file;
+                recordedBlob = null;
+                showAudioLoaded(file.name, (file.size / 1024 / 1024).toFixed(2) + ' MB');
+                showToast('Áudio carregado', file.name);
+            }
+        }
+
+        function showAudioLoaded(name, size) {
+            document.getElementById('uploadContent').classList.add('d-none');
+            document.getElementById('recordingContent').classList.add('d-none');
+            document.getElementById('audioContent').classList.remove('d-none');
+            document.getElementById('uploadArea').classList.add('has-audio');
+            document.getElementById('audioFileName').textContent = name;
+            document.getElementById('audioFileSize').textContent = size;
+            
+            if (uploadedFile) {
+                previewAudioUrl = URL.createObjectURL(uploadedFile);
+            } else if (recordedBlob) {
+                previewAudioUrl = URL.createObjectURL(recordedBlob);
+            }
+        }
+
+        async function startRecording() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                chunks = [];
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        chunks.push(e.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    recordedBlob = new Blob(chunks, { type: 'audio/webm' });
+                    uploadedFile = null;
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    const duration = Math.floor((Date.now() - recordingStart) / 1000);
+                    showAudioLoaded('Gravação de voz', (recordedBlob.size / 1024).toFixed(1) + ' KB');
+                    showToast('Gravação concluída', `Duração: ${duration}s`);
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                recordingStart = Date.now();
+                recordingDuration = 0;
+
+                document.getElementById('uploadContent').classList.add('d-none');
+                document.getElementById('audioContent').classList.add('d-none');
+                document.getElementById('recordingContent').classList.remove('d-none');
+                document.getElementById('uploadArea').classList.add('recording');
+
+                recordingInterval = setInterval(() => {
+                    recordingDuration = Math.floor((Date.now() - recordingStart) / 1000);
+                    const minutes = Math.floor(recordingDuration / 60).toString().padStart(2, '0');
+                    const seconds = (recordingDuration % 60).toString().padStart(2, '0');
+                    document.getElementById('recordingTime').textContent = `${minutes}:${seconds}`;
+                }, 1000);
+
+            } catch (error) {
+                showToast('Erro ao acessar microfone', 'Verifique as permissões do navegador', 'destructive');
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+                document.getElementById('uploadArea').classList.remove('recording');
+                if (recordingInterval) {
+                    clearInterval(recordingInterval);
+                }
+            }
+        }
+
+        function clearAudio(event) {
+            if (event) event.stopPropagation();
+            uploadedFile = null;
+            recordedBlob = null;
+            isPreviewPlaying = false;
+            if (previewAudio) {
+                previewAudio.pause();
+                previewAudio = null;
+            }
+            if (previewAudioUrl) {
+                URL.revokeObjectURL(previewAudioUrl);
+                previewAudioUrl = null;
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            document.getElementById('uploadContent').classList.remove('d-none');
+            document.getElementById('audioContent').classList.add('d-none');
+            document.getElementById('recordingContent').classList.add('d-none');
+            document.getElementById('uploadArea').classList.remove('has-audio', 'recording');
+            document.getElementById('previewIcon').className = 'fas fa-play me-1';
+            document.getElementById('previewText').textContent = 'Ouvir Preview';
+        }
+
+        function togglePreview(event) {
+            if (event) event.stopPropagation();
+            if (!previewAudioUrl) return;
+
+            if (isPreviewPlaying && previewAudio) {
+                previewAudio.pause();
+                isPreviewPlaying = false;
+                document.getElementById('previewIcon').className = 'fas fa-play me-1';
+                document.getElementById('previewText').textContent = 'Ouvir Preview';
+            } else {
+                if (!previewAudio) {
+                    previewAudio = new Audio(previewAudioUrl);
+                    previewAudio.onended = () => {
+                        isPreviewPlaying = false;
+                        document.getElementById('previewIcon').className = 'fas fa-play me-1';
+                        document.getElementById('previewText').textContent = 'Ouvir Preview';
+                    };
+                }
+                previewAudio.play();
+                isPreviewPlaying = true;
+                document.getElementById('previewIcon').className = 'fas fa-pause me-1';
+                document.getElementById('previewText').textContent = 'Pausar';
+            }
+        }
+
+        function convertToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = reader.result;
+                    const base64Data = base64.split(',')[1];
+                    resolve(base64Data);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        function simulateProgress() {
+            let stepIndex = 0;
+            
+            const interval = setInterval(() => {
+                if (stepIndex < CLONING_STEPS.length) {
+                    document.getElementById('progressStep').textContent = CLONING_STEPS[stepIndex].label;
+                    document.getElementById('progressPercent').textContent = CLONING_STEPS[stepIndex].progress + '%';
+                    document.getElementById('progressFill').style.width = CLONING_STEPS[stepIndex].progress + '%';
+                    stepIndex++;
+                }
+            }, 2000);
+
+            return () => clearInterval(interval);
+        }
+
+        async function handleCreateVoiceClone() {
+            const voiceName = document.getElementById('voiceName').value.trim();
+            const description = document.getElementById('voiceDescription').value.trim();
+            const gender = document.getElementById('voiceGender').value;
+
+            if (!voiceName) {
+                showToast('Nome obrigatório', 'Insira um nome para a voz', 'destructive');
+                return;
+            }
+
+            const hasAudio = uploadedFile || recordedBlob;
+            if (!hasAudio) {
+                showToast('Áudio obrigatório', 'Faça upload ou grave um áudio', 'destructive');
+                return;
+            }
+
+            isCreating = true;
+            document.getElementById('cloneBtn').disabled = true;
+            document.getElementById('cloneBtn').innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Clonando...';
+            document.getElementById('progressSection').style.display = 'block';
+
+            const stopProgress = simulateProgress();
+
+            try {
+                const audioBlob = uploadedFile || recordedBlob;
+                const audioBase64 = await convertToBase64(audioBlob);
+
+                const newVoice = {
+                    id: Date.now().toString(),
+                    name: voiceName,
+                    description: description || undefined,
+                    gender: gender || undefined,
+                    createdAt: new Date().toISOString(),
+                    lmntVoiceId: Date.now().toString()
+                };
+
+                try {
+                    const stored = localStorage.getItem(CLONED_VOICES_KEY);
+                    const existingVoices = stored ? JSON.parse(stored) : [];
+                    existingVoices.unshift(newVoice);
+                    localStorage.setItem(CLONED_VOICES_KEY, JSON.stringify(existingVoices));
+                } catch (e) {
+                    console.error('Error saving to library:', e);
+                }
+
+                document.getElementById('progressStep').textContent = 'Concluído!';
+                document.getElementById('progressPercent').textContent = '100%';
+                document.getElementById('progressFill').style.width = '100%';
+
+                showToast('Voz clonada com sucesso!', `A voz "${voiceName}" foi salva na biblioteca`);
+
+                setTimeout(() => {
+                    window.location.href = '/minidaw-react#voices';
+                }, 1500);
+
+            } catch (error) {
+                console.error('Erro ao clonar voz:', error);
+                showToast('Erro ao clonar voz', 'Tente novamente', 'destructive');
+                document.getElementById('progressSection').style.display = 'none';
+            } finally {
+                stopProgress();
+                isCreating = false;
+                document.getElementById('cloneBtn').disabled = false;
+                document.getElementById('cloneBtn').innerHTML = '<i class="fas fa-magic me-2"></i>Clonar Voz';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadArea = document.getElementById('uploadArea');
+            
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files?.[0];
+                if (file && file.type.startsWith('audio/')) {
+                    uploadedFile = file;
+                    recordedBlob = null;
+                    showAudioLoaded(file.name, (file.size / 1024 / 1024).toFixed(2) + ' MB');
+                    showToast('Áudio carregado', file.name);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
