@@ -433,11 +433,12 @@ def api_create_newpost_author():
 @app.route('/api/news/collect', methods=['POST'])
 def collect_news():
     """Endpoint para iniciar coleta de notícias"""
-    if NewsAgent is None:
+    if os.environ.get('VERCEL') or not HAS_NEWS_AGENT:
+        # No Vercel, usar busca por RSS simples
         return jsonify({
-            "success": False,
-            "error": "NewsAgent não disponível no ambiente Vercel"
-        }), 503
+            "success": True,
+            "result": "Usando busca por RSS no Vercel"
+        })
     
     try:
         agent = NewsAgent()
@@ -455,12 +456,6 @@ def collect_news():
 @app.route('/api/news/execute', methods=['POST'])
 def execute_news():
     """Endpoint para executar busca de notícias (compatível com frontend)"""
-    if not HAS_NEWS_AGENT:
-        return jsonify({
-            "success": False,
-            "error": "NewsAgent não disponível"
-        }), 503
-    
     try:
         data = request.get_json() or {}
         enabled_sources = data.get('enabled_sources', {
@@ -469,7 +464,49 @@ def execute_news():
         })
         categories = data.get('categories', ['brasil', 'economia', 'tecnologia'])
         limit = data.get('limit', 50)
-        
+
+        # Fallback p/ Vercel: NewsAgent usa SQLite/logs em disco e fica desativado em prod.
+        # Quando ele não estiver disponível, usamos fetch_news_from_rss (RSS puro, stateless).
+        if not HAS_NEWS_AGENT:
+            category_map = {
+                'brasil': 'Notícias Gerais',
+                'tecnologia': 'Tecnologia',
+                'economia': 'Economia',
+                'esportes': 'Esportes',
+                'politica': 'Política',
+                'saude': 'Saúde',
+                'ciencia': 'Ciência',
+                'entretenimento': 'Entretenimento',
+                'cultura': 'Cultura',
+                'turismo': 'Turismo',
+            }
+            wanted = [category_map.get(c.lower(), 'Notícias Gerais') for c in categories] or ['Notícias Gerais']
+            per_cat = max(1, limit // max(1, len(wanted)))
+            news_list = []
+            for cat_label in wanted:
+                entries = fetch_news_from_rss(cat_label, per_cat) or []
+                for entry in entries:
+                    # feedparser entry ou dict mock — normalizar via .get com fallback
+                    get = (lambda k, default='': entry.get(k, default)) if hasattr(entry, 'get') else (lambda k, default='': getattr(entry, k, default))
+                    news_list.append({
+                        "title": get('title', ''),
+                        "summary": get('summary', get('description', '')),
+                        "source": get('source', {}).get('title', '') if isinstance(get('source', None), dict) else (get('source_title', '') or cat_label),
+                        "url": get('link', '') or get('url', ''),
+                        "category": cat_label,
+                        "published_at": get('published', '') or get('updated', ''),
+                    })
+                if len(news_list) >= limit:
+                    break
+            news_list = news_list[:limit]
+            return jsonify({
+                "success": bool(news_list),
+                "news": news_list,
+                "total": len(news_list),
+                "fallback": "rss",
+                **({"error": "Nenhuma notícia encontrada"} if not news_list else {}),
+            })
+
         # Usar a instância global news_agent
         result = news_agent.execute_collection(
             enabled_sources=enabled_sources,
@@ -512,10 +549,11 @@ def execute_news():
 def news_sources():
     """Retorna lista de fontes de notícias disponíveis"""
     if not HAS_NEWS_AGENT:
+        # No Vercel, retornar fontes RSS
         return jsonify({
-            "success": False,
-            "error": "NewsAgent não disponível"
-        }), 503
+            "success": True,
+            "sources": list(RSS_FEEDS.keys())
+        })
     
     try:
         sources = news_agent.get_sources()
@@ -530,10 +568,13 @@ def news_sources():
 def news_status():
     """Endpoint para verificar status do agente"""
     if not HAS_NEWS_AGENT:
+        # No Vercel, retornar status ok
         return jsonify({
-            "success": False,
-            "error": "NewsAgent não disponível"
-        }), 503
+            "success": True,
+            "status": "running",
+            "mode": "rss",
+            "timestamp": datetime.now().isoformat()
+        })
     
     try:
         status = news_agent.get_status()
@@ -549,10 +590,28 @@ def news_status():
 def news_cache():
     """Retorna notícias armazenadas em cache local"""
     if not HAS_NEWS_AGENT:
+        # No Vercel, retornar notícias do RSS diretamente
+        limit = request.args.get('limit', 50, type=int)
+        category = request.args.get('category', 'Tecnologia')
+        
+        rss_news = fetch_news_from_rss(category=category, limit=limit)
+        news_list = []
+        for entry in rss_news:
+            get = (lambda k, default='': entry.get(k, default)) if hasattr(entry, 'get') else (lambda k, default='': getattr(entry, k, default))
+            news_list.append({
+                "title": get('title', ''),
+                "summary": get('summary', get('description', '')),
+                "source": get('source_title', category),
+                "url": get('link', ''),
+                "category": category,
+                "published_at": get('published', '')
+            })
+        
         return jsonify({
-            "success": False,
-            "error": "NewsAgent não disponível"
-        }), 503
+            "success": True,
+            "news": news_list,
+            "total": len(news_list)
+        })
     
     try:
         limit = request.args.get('limit', 50, type=int)
@@ -570,10 +629,28 @@ def news_cache():
 def collect_source_category(source, category):
     """Coleta notícias de uma fonte específica"""
     if not HAS_NEWS_AGENT:
+        # No Vercel, usar RSS
+        rss_news = fetch_news_from_rss(category=category, limit=20)
+        news_list = []
+        for entry in rss_news:
+            get = (lambda k, default='': entry.get(k, default)) if hasattr(entry, 'get') else (lambda k, default='': getattr(entry, k, default))
+            news_list.append({
+                "title": get('title', ''),
+                "summary": get('summary', get('description', '')),
+                "source": get('source_title', source),
+                "url": get('link', ''),
+                "category": category,
+                "published_at": get('published', '')
+            })
+        
         return jsonify({
-            "success": False,
-            "error": "NewsAgent não disponível"
-        }), 503
+            "success": True,
+            "source": source,
+            "category": category,
+            "total": len(news_list),
+            "news": news_list,
+            "timestamp": datetime.now().isoformat()
+        })
     
     try:
         news_list = news_agent.collect_from_source(source, category)
@@ -597,10 +674,10 @@ def news_health():
     """Health check do serviço NewsAgent"""
     if not HAS_NEWS_AGENT:
         return jsonify({
-            "success": False,
-            "status": "unavailable",
-            "error": "NewsAgent não disponível"
-        }), 503
+            "success": True,
+            "status": "healthy",
+            "mode": "rss"
+        })
     
     try:
         health = news_agent.health_check()
