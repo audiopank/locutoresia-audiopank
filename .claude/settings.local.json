@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /B)",
+      "PowerShell(\\(Get-Content \"backend\\\\app.py\"\\).Count)",
+      "PowerShell($env:VERCEL='1'; python test_vercel_import.py 2>&1)",
+      "Bash(awk -F= '/^[A-Z_]+=/{print $1}' .env.local)",
+      "PowerShell(Get-Content \".env\" | Where-Object { $_ -match '^[A-Za-z_]+=' } | ForEach-Object { \\($_ -split '=', 2\\)[0] } | Sort-Object -Unique)"
+    ]
+  }
+}
