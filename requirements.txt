@@ -11,4 +11,4 @@ gtts==2.5.1
 elevenlabs==1.6.0
 supabase==2.12.0
 pydub==0.25.1
-lmnt==0.6.0
+lmnt==2.6.1
