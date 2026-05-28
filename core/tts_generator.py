@@ -1,12 +1,12 @@
 """
 GERADOR TTS MULTI-API - Locutores IA
-Suporta Google Gemini TTS E ElevenLabs
-Escolha qual API usar para cada voz!
+Suporta Google Gemini TTS, ElevenLabs, E EdgeTTS (Gratuito!)
+EdgeTTS é o padrão, pois é gratuito e não precisa de chave!
 
 Instalação:
-    pip install google-genai elevenlabs
+    pip install google-genai elevenlabs edge-tts
 
-Configuração:
+Configuração (opcional):
     export GEMINI_API_KEY="sua-chave-google"
     export ELEVENLABS_API_KEY="sua-chave-elevenlabs"
 """
@@ -17,8 +17,17 @@ import mimetypes
 import os
 import struct
 from typing import Literal
-from google import genai
-from google.genai import types
+
+# EdgeTTS (Gratuito e padrão)
+import edge_tts
+
+# Google Gemini (opcional)
+try:
+    from google import genai
+    from google.genai import types
+    GOOGLE_GENAI_AVAILABLE = True
+except ImportError:
+    GOOGLE_GENAI_AVAILABLE = False
 
 # ElevenLabs (opcional)
 try:
@@ -30,7 +39,62 @@ except ImportError:
 
 
 # ============================================================================
-# MAPEAMENTO DE VOZES - GOOGLE GEMINI TTS
+# MAPEAMENTO DE VOZES - EDGETTS (PADRÃO, GRATUITO!)
+# ============================================================================
+
+EDGE_VOICE_MAP = {
+    # Vozes do Google Gemini mapeadas para EdgeTTS (pt-BR)
+    "Zephyr": "pt-BR-AntonioNeural",
+    "Puck": "pt-BR-FranciscaNeural",
+    "Charon": "pt-BR-AntonioNeural",
+    "Kore": "pt-BR-FranciscaNeural",
+    "Fenrir": "pt-BR-AntonioNeural",
+    "Leda": "pt-BR-FranciscaNeural",
+    "Orus": "pt-BR-AntonioNeural",
+    "Aoede": "pt-BR-FranciscaNeural",
+    "Callirrhoe": "pt-BR-FranciscaNeural",
+    "Autonoe": "pt-BR-FranciscaNeural",
+    "Enceladus": "pt-BR-AntonioNeural",
+    "Iapetus": "pt-BR-AntonioNeural",
+    "Umbriel": "pt-BR-AntonioNeural",
+    "Algieba": "pt-BR-FranciscaNeural",
+    "Despina": "pt-BR-FranciscaNeural",
+    "Erinome": "pt-BR-FranciscaNeural",
+    "Algenib": "pt-BR-AntonioNeural",
+    "Rasalgethi": "pt-BR-AntonioNeural",
+    "Laomedeia": "pt-BR-FranciscaNeural",
+    "Achernar": "pt-BR-FranciscaNeural",
+    "Alnilam": "pt-BR-FranciscaNeural",
+    "Schedar": "pt-BR-AntonioNeural",
+    "Gacrux": "pt-BR-AntonioNeural",
+    "Pulcherrima": "pt-BR-FranciscaNeural",
+    "Achird": "pt-BR-FranciscaNeural",
+    "Zubenelgenubi": "pt-BR-AntonioNeural",
+    "Vindemiatrix": "pt-BR-AntonioNeural",
+    "Sadachbia": "pt-BR-AntonioNeural",
+    "Sadaltager": "pt-BR-FranciscaNeural",
+    "Sulafat": "pt-BR-FranciscaNeural",
+    # Aliases para compatibilidade
+    "Alex Professional": "pt-BR-AntonioNeural",
+    # Outros idiomas
+    "en-US-GuyNeural": "en-US-GuyNeural",
+    "en-US-JennyNeural": "en-US-JennyNeural",
+    "es-ES-AlvaroNeural": "es-ES-AlvaroNeural",
+    # Fallback
+    "default": "pt-BR-AntonioNeural",
+}
+
+# Mapeamento de estilos para EdgeTTS
+EDGE_STYLE_MAP = {
+    "normal":   {"rate": "+0%",  "pitch": "+0Hz"},
+    "fast":     {"rate": "+30%", "pitch": "+0Hz"},
+    "slow":     {"rate": "-25%", "pitch": "-5Hz"},
+    "cheerful": {"rate": "+10%", "pitch": "+10Hz"},
+    "serious":  {"rate": "-10%", "pitch": "-10Hz"},
+}
+
+# ============================================================================
+# MAPEAMENTO DE VOZES - GOOGLE GEMINI TTS (OPCIONAL)
 # ============================================================================
 
 GOOGLE_VOICE_MAP = {
@@ -145,6 +209,7 @@ class TTSGenerator:
     def __init__(self, google_api_key: str = None, elevenlabs_api_key: str = None):
         """
         Inicializa o gerador com suporte a múltiplas APIs.
+        EdgeTTS é a padrão e gratuita!
 
         Parâmetros
         ----------
@@ -152,50 +217,36 @@ class TTSGenerator:
             API key do Google. Se não fornecido, usa GEMINI_API_KEY do ambiente.
         elevenlabs_api_key : str, optional
             API key do ElevenLabs. Se não fornecido, usa ELEVENLABS_API_KEY do ambiente.
-
-        Levanta
-        -------
-        ValueError
-            Se nenhuma API estiver disponível.
         """
         self.google_available = False
         self.elevenlabs_available = False
+        self.edge_available = True  # EdgeTTS está sempre disponível!
         
-        # ==================== GOOGLE GEMINI ====================
+        print("✓ EdgeTTS (Gratuito) disponível como padrão!")
+        
+        # ==================== GOOGLE GEMINI (OPCIONAL) ====================
         google_key = google_api_key or os.environ.get("GEMINI_API_KEY")
-        if google_key:
+        if google_key and GOOGLE_GENAI_AVAILABLE:
             try:
                 self.google_client = genai.Client(api_key=google_key)
                 self.google_model = "gemini-3.1-flash-tts-preview"
                 self.google_available = True
-                print("✓ Google Gemini TTS disponível")
+                print("✓ Google Gemini TTS disponível (opcional)")
             except Exception as e:
                 print(f"⚠️  Google Gemini TTS indisponível: {e}")
         
-        # ==================== ELEVENLABS ====================
+        # ==================== ELEVENLABS (OPCIONAL) ====================
         elevenlabs_key = elevenlabs_api_key or os.environ.get("ELEVENLABS_API_KEY")
         if elevenlabs_key and ELEVENLABS_AVAILABLE:
             try:
                 self.elevenlabs_client = ElevenLabs(api_key=elevenlabs_key)
                 self.elevenlabs_available = True
-                print("✓ ElevenLabs TTS disponível")
+                print("✓ ElevenLabs TTS disponível (opcional)")
             except Exception as e:
                 print(f"⚠️  ElevenLabs TTS indisponível: {e}")
         elif elevenlabs_key and not ELEVENLABS_AVAILABLE:
             print("⚠️  ElevenLabs API key configurada mas biblioteca não instalada")
             print("   Instale com: pip install elevenlabs")
-        
-        # ==================== VALIDAÇÃO ====================
-        if not self.google_available and not self.elevenlabs_available:
-            raise ValueError(
-                "❌ Nenhuma API TTS disponível!\n"
-                "Configure pelo menos uma:\n"
-                "- Google: export GEMINI_API_KEY='sua-chave'\n"
-                "- ElevenLabs: export ELEVENLABS_API_KEY='sua-chave'\n"
-                "Obtenha chaves em:\n"
-                "- Google: https://aistudio.google.com/\n"
-                "- ElevenLabs: https://elevenlabs.io/\n"
-            )
 
     def generate_speech(
         self,
@@ -203,7 +254,7 @@ class TTSGenerator:
         voice_model: str = "Zephyr",
         style: str = "normal",
         language: str = "pt-BR",
-        api: Literal["google", "elevenlabs", "auto"] = "auto"
+        api: Literal["edge", "google", "elevenlabs", "auto"] = "auto"
     ) -> bytes:
         """
         Gera áudio WAV a partir de texto usando a API especificada.
@@ -219,7 +270,7 @@ class TTSGenerator:
         language : str, default "pt-BR"
             Código do idioma (pt-BR, en-US, es-ES)
         api : str, default "auto"
-            Qual API usar: "google", "elevenlabs", ou "auto" (usa melhor disponível)
+            Qual API usar: "edge", "google", "elevenlabs", ou "auto" (usa EdgeTTS por padrão)
 
         Retorna
         -------
@@ -237,20 +288,14 @@ class TTSGenerator:
         -------
         >>> generator = TTSGenerator()
         
-        >>> # Usar Google (padrão)
+        >>> # Usar EdgeTTS (padrão e gratuito!)
         >>> audio = generator.generate_speech("Olá!")
         
-        >>> # Usar ElevenLabs (qualidade superior)
-        >>> audio = generator.generate_speech(
-        ...     "Olá!",
-        ...     api="elevenlabs"
-        ... )
+        >>> # Usar Google Gemini
+        >>> audio = generator.generate_speech("Olá!", api="google")
         
-        >>> # Deixar escolher automaticamente
-        >>> audio = generator.generate_speech(
-        ...     "Olá!",
-        ...     api="auto"
-        ... )
+        >>> # Usar ElevenLabs (qualidade superior)
+        >>> audio = generator.generate_speech("Olá!", api="elevenlabs")
         """
         # Validar texto
         if not text or not text.strip():
@@ -258,19 +303,15 @@ class TTSGenerator:
 
         # Determinar qual API usar
         if api == "auto":
-            # Preferir ElevenLabs se disponível (melhor qualidade)
-            if self.elevenlabs_available:
-                api = "elevenlabs"
-            elif self.google_available:
-                api = "google"
-            else:
-                raise ValueError("❌ Nenhuma API TTS disponível")
+            # EdgeTTS é o padrão (gratuito!)
+            api = "edge"
         
         # Verificar se API está disponível
         if api == "google" and not self.google_available:
             raise ValueError("❌ Google Gemini TTS não disponível")
         if api == "elevenlabs" and not self.elevenlabs_available:
             raise ValueError("❌ ElevenLabs não disponível")
+        # EdgeTTS sempre está disponível!
 
         # Log informativo
         print(f"🎙️  Gerando áudio com {api.upper()}...")
@@ -279,7 +320,9 @@ class TTSGenerator:
 
         # Chamar API apropriada
         try:
-            if api == "google":
+            if api == "edge":
+                return self._generate_edge(text, voice_model, style, language)
+            elif api == "google":
                 return self._generate_google(text, voice_model, style, language)
             elif api == "elevenlabs":
                 return self._generate_elevenlabs(text, voice_model, style)
@@ -288,6 +331,42 @@ class TTSGenerator:
         except Exception as e:
             print(f"❌ Erro ao gerar áudio: {e}")
             raise
+
+    # ========================================================================
+    # EDGETTS (PADRÃO, GRATUITO!)
+    # ========================================================================
+
+    def _generate_edge(
+        self,
+        text: str,
+        voice_model: str,
+        style: str,
+        language: str
+    ) -> bytes:
+        """Gera áudio com EdgeTTS (gratuita!)."""
+        voice = EDGE_VOICE_MAP.get(voice_model, EDGE_VOICE_MAP["default"])
+        style_params = EDGE_STYLE_MAP.get(style, EDGE_STYLE_MAP["normal"])
+        
+        # Ajustar voz por idioma
+        if language.startswith("en") and voice not in ["en-US-GuyNeural", "en-US-JennyNeural"]:
+            voice = "en-US-GuyNeural"
+        elif language.startswith("es") and voice not in ["es-ES-AlvaroNeural"]:
+            voice = "es-ES-AlvaroNeural"
+        
+        audio_bytes = asyncio.run(self._synthesize_edge(text, voice, style_params["rate"], style_params["pitch"]))
+        print(f"✓ Áudio gerado ({len(audio_bytes)} bytes)")
+        return audio_bytes
+
+    @staticmethod
+    async def _synthesize_edge(text: str, voice: str, rate: str, pitch: str) -> bytes:
+        """Síntese assíncrona com EdgeTTS."""
+        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
+        buffer = io.BytesIO()
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                buffer.write(chunk["data"])
+        buffer.seek(0)
+        return buffer.read()
 
     # ========================================================================
     # GOOGLE GEMINI TTS
