@@ -1857,9 +1857,12 @@ def api_create_social_post():
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         }
-        
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
-        
+
+        # IMPORTANTE: precisa ser o MESMO author_id usado em api_list_social_posts (GET),
+        # senão o rascunho é salvo sob um autor e a tela de aprovação (/social-posts)
+        # busca por outro, e a notícia nunca aparece. Ver newpost_author_id.txt.
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
+
         # Mapear status de português para inglês (valores corretos da tabela)
         status_map = {
             'rascunho': 'draft',
@@ -2289,7 +2292,7 @@ def api_delete_social_post(post_id):
     """Deleta um SocialPost (usando Supabase real)"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '') or os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -3007,8 +3010,8 @@ def newpost_publish():
         # Credenciais do Supabase da NewPost-IA (projeto: ykswhzqdjoshjoaruhqs)
         newpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         newpost_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTA4MjYsImV4cCI6MjA4NzE4NjgyNn0.yzezm6VZ5U_O7Txaj8B4_TD0PFVSpjZspYcZ1CYD0jo')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
-        
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
+
         if not newpost_url or not newpost_key:
             return jsonify({"success": False, "error": "Credenciais NewPost-IA não configuradas"}), 500
         

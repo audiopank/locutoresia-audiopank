@@ -6,7 +6,8 @@
       "use": "@vercel/python@4.3.0",
       "config": {
         "maxLambdaSize": "50mb",
-        "runtime": "python3.12"
+        "runtime": "python3.12",
+        "includeFiles": "{static,templates}/**"
       }
     }
   ],
