@@ -53,16 +53,19 @@ app = Flask(__name__,
            template_folder=os.path.join(base_dir, 'templates'),
            static_folder=os.path.join(base_dir, 'static'))
 
-# Inicializar NewsAutomationAgent
-try:
-    from core.news_automation_agent import NewsAutomationAgent
-    news_automation = NewsAutomationAgent()
-    HAS_NEWS_AUTOMATION = True
-    print("✅ NewsAutomationAgent inicializado com sucesso!")
-except Exception as e:
-    print(f"⚠️ Erro ao inicializar NewsAutomationAgent: {e}")
-    HAS_NEWS_AUTOMATION = False
-    news_automation = None
+# Inicializar NewsAutomationAgent (apenas se não estiver no Vercel)
+news_automation = None
+HAS_NEWS_AUTOMATION = False
+if not os.environ.get('VERCEL'):
+    try:
+        from core.news_automation_agent import NewsAutomationAgent
+        news_automation = NewsAutomationAgent()
+        HAS_NEWS_AUTOMATION = True
+        print("✅ NewsAutomationAgent inicializado com sucesso!")
+    except Exception as e:
+        print(f"⚠️ Erro ao inicializar NewsAutomationAgent: {e}")
+        HAS_NEWS_AUTOMATION = False
+        news_automation = None
 
 # Helper para obter a chave Supabase correta
 def get_supabase_key():
@@ -229,30 +232,34 @@ def fetch_news_from_rss(category="Tecnologia", limit=7):
     
     return all_entries
 
-# Importar agente de notícias de forma segura
-try:
-    from news_agent import news_agent, NewsAgent
-    HAS_NEWS_AGENT = True
-    print("✓ NewsAgent carregado")
-except ImportError:
-    # Fallback caso a importação direta falhe
+# Importar agente de notícias de forma segura (apenas se não estiver no Vercel)
+news_agent = None
+NewsAgent = None
+HAS_NEWS_AGENT = False
+if not os.environ.get('VERCEL'):
     try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("news_agent", os.path.join(os.path.dirname(__file__), 'news_agent.py'))
-        news_agent_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(news_agent_module)
-        news_agent = news_agent_module.news_agent
-        NewsAgent = news_agent_module.NewsAgent
+        from news_agent import news_agent, NewsAgent
         HAS_NEWS_AGENT = True
-        print("✓ NewsAgent carregado via spec")
-    except Exception as e:
-        news_agent = None
-        NewsAgent = None
-        HAS_NEWS_AGENT = False
-        print(f"⚠️ NewsAgent não disponível: {e}")
+        print("✓ NewsAgent carregado")
+    except ImportError:
+        # Fallback caso a importação direta falhe
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("news_agent", os.path.join(os.path.dirname(__file__), 'news_agent.py'))
+            news_agent_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(news_agent_module)
+            news_agent = news_agent_module.news_agent
+            NewsAgent = news_agent_module.NewsAgent
+            HAS_NEWS_AGENT = True
+            print("✓ NewsAgent carregado via spec")
+        except Exception as e:
+            news_agent = None
+            NewsAgent = None
+            HAS_NEWS_AGENT = False
+            print(f"⚠️ NewsAgent não disponível: {e}")
 
 # DEBUG — verificar se execute_collection existe (apenas em desenvolvimento, não no Vercel)
-if not os.environ.get('VERCEL'):
+if not os.environ.get('VERCEL') and HAS_NEWS_AGENT:
     try:
         _agent_test = news_agent
         _methods = [m for m in dir(_agent_test) if not m.startswith('_')]
