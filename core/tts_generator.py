@@ -1,12 +1,12 @@
 """
 GERADOR TTS MULTI-API - Locutores IA
 Suporta Google Gemini TTS, ElevenLabs, E EdgeTTS (Gratuito!)
-EdgeTTS é o padrão, pois é gratuito e não precisa de chave!
+EdgeTTS ├® o padr├úo, pois ├® gratuito e n├úo precisa de chave!
 
-Instalação:
+Instala├º├úo:
     pip install google-genai elevenlabs edge-tts
 
-Configuração (opcional):
+Configura├º├úo (opcional):
     export GEMINI_API_KEY="sua-chave-google"
     export ELEVENLABS_API_KEY="sua-chave-elevenlabs"
 """
@@ -18,7 +18,7 @@ import os
 import struct
 from typing import Literal
 
-# EdgeTTS (Gratuito e padrão)
+# EdgeTTS (Gratuito e padr├úo)
 import edge_tts
 
 # Google Gemini (opcional)
@@ -37,55 +37,9 @@ try:
 except ImportError:
     ELEVENLABS_AVAILABLE = False
 
-# LMNT (opcional, profissional!)
-try:
-    from lmnt.api import Speech
-    LMNT_AVAILABLE = True
-except ImportError:
-    LMNT_AVAILABLE = False
-
 
 # ============================================================================
-# MAPEAMENTO DE VOZES - LMNT (PROFISSIONAL!)
-# ============================================================================
-
-LMNT_VOICE_MAP = {
-    "Zephyr": "147f0624-b047-402c-9d9b-c9b984671e05",  # LMNT Portuguese male
-    "Puck": "c14a3079-4d74-4465-80c8-9b3394190e3d",    # LMNT Portuguese female
-    "Charon": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Kore": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Fenrir": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Leda": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Orus": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Aoede": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Callirrhoe": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Autonoe": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Enceladus": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Iapetus": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Umbriel": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Algieba": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Despina": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Erinome": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Algenib": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Rasalgethi": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Laomedeia": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Achernar": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Alnilam": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Schedar": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Gacrux": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Pulcherrima": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Achird": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Zubenelgenubi": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Vindemiatrix": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Sadachbia": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "Sadaltager": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Sulafat": "c14a3079-4d74-4465-80c8-9b3394190e3d",
-    "Alex Professional": "147f0624-b047-402c-9d9b-c9b984671e05",
-    "default": "147f0624-b047-402c-9d9b-c9b984671e05"
-}
-
-# ============================================================================
-# MAPEAMENTO DE VOZES - EDGETTS (PADRÃO, GRATUITO!)
+# MAPEAMENTO DE VOZES - EDGETTS (PADR├âO, GRATUITO!)
 # ============================================================================
 
 EDGE_VOICE_MAP = {
@@ -144,7 +98,7 @@ EDGE_STYLE_MAP = {
 # ============================================================================
 
 GOOGLE_VOICE_MAP = {
-    # Todas as vozes do Google Gemini TTS (30 opções)
+    # Todas as vozes do Google Gemini TTS (30 op├º├Áes)
     "Zephyr": "Zephyr",
     "Puck": "Puck",
     "Charon": "Charon",
@@ -226,10 +180,10 @@ STYLE_MAP = {
 
 class TTSGenerator:
     """
-    Gerador TTS profissional com suporte a MÚLTIPLAS APIs.
+    Gerador TTS profissional com suporte a M├ÜLTIPLAS APIs.
     
     Suporta:
-    - Google Gemini 3.1 Flash TTS (padrão)
+    - Google Gemini 3.1 Flash TTS (padr├úo)
     - ElevenLabs (opcional)
     
     Escolha qual API usar para cada voz!
@@ -237,65 +191,49 @@ class TTSGenerator:
     Exemplo de uso:
         >>> generator = TTSGenerator()
         >>> 
-        >>> # Usar Google Gemini TTS (padrão)
+        >>> # Usar Google Gemini TTS (padr├úo)
         >>> audio = generator.generate_speech(
-        ...     "Olá mundo!",
+        ...     "Ol├í mundo!",
         ...     voice_model="Zephyr",
         ...     api="google"
         ... )
         >>> 
         >>> # Usar ElevenLabs (qualidade superior)
         >>> audio = generator.generate_speech(
-        ...     "Olá mundo!",
+        ...     "Ol├í mundo!",
         ...     voice_model="Elena",
         ...     api="elevenlabs"
         ... )
     """
 
-    def __init__(self, google_api_key: str = None, elevenlabs_api_key: str = None, lmnt_api_key: str = None):
+    def __init__(self, google_api_key: str = None, elevenlabs_api_key: str = None):
         """
-        Inicializa o gerador com suporte a múltiplas APIs.
-        LMNT é o padrão para vozes profissionais!
+        Inicializa o gerador com suporte a m├║ltiplas APIs.
+        EdgeTTS ├® a padr├úo e gratuita!
 
-        Parâmetros
+        Par├ómetros
         ----------
         google_api_key : str, optional
-            API key do Google. Se não fornecido, usa GEMINI_API_KEY do ambiente.
+            API key do Google. Se n├úo fornecido, usa GEMINI_API_KEY do ambiente.
         elevenlabs_api_key : str, optional
-            API key do ElevenLabs. Se não fornecido, usa ELEVENLABS_API_KEY do ambiente.
-        lmnt_api_key : str, optional
-            API key do LMNT. Se não fornecido, usa LMNT_API_KEY do ambiente.
+            API key do ElevenLabs. Se n├úo fornecido, usa ELEVENLABS_API_KEY do ambiente.
         """
         self.google_available = False
         self.elevenlabs_available = False
-        self.lmnt_available = False
-        self.edge_available = True  # EdgeTTS está sempre disponível!
+        self.edge_available = True  # EdgeTTS est├í sempre dispon├¡vel!
         
-        print("✓ EdgeTTS (Gratuito) disponível!")
-        
-        # ==================== LMNT (PRIORIDADE, PROFISSIONAL!) ====================
-        lmnt_key = lmnt_api_key or os.environ.get("LMNT_API_KEY")
-        if lmnt_key and LMNT_AVAILABLE:
-            try:
-                self.lmnt_speech = Speech(lmnt_key)
-                self.lmnt_available = True
-                print("✓ LMNT TTS (Profissional) disponível como padrão!")
-            except Exception as e:
-                print(f"⚠️  LMNT TTS indisponível: {e}")
-        elif lmnt_key and not LMNT_AVAILABLE:
-            print("⚠️  LMNT API key configurada mas biblioteca não instalada")
-            print("   Instale com: pip install lmnt")
+        print("Ô£ô EdgeTTS (Gratuito) dispon├¡vel como padr├úo!")
         
         # ==================== GOOGLE GEMINI (OPCIONAL) ====================
         google_key = google_api_key or os.environ.get("GEMINI_API_KEY")
         if google_key and GOOGLE_GENAI_AVAILABLE:
             try:
                 self.google_client = genai.Client(api_key=google_key)
-                self.google_model = "gemini-2.0-flash"  # Modelo válido
+                self.google_model = "gemini-2.5-flash-preview-tts"
                 self.google_available = True
                 print("✓ Google Gemini TTS disponível (opcional)")
             except Exception as e:
-                print(f"⚠️  Google Gemini TTS indisponível: {e}")
+                print(f"ÔÜá´©Å  Google Gemini TTS indispon├¡vel: {e}")
         
         # ==================== ELEVENLABS (OPCIONAL) ====================
         elevenlabs_key = elevenlabs_api_key or os.environ.get("ELEVENLABS_API_KEY")
@@ -303,11 +241,11 @@ class TTSGenerator:
             try:
                 self.elevenlabs_client = ElevenLabs(api_key=elevenlabs_key)
                 self.elevenlabs_available = True
-                print("✓ ElevenLabs TTS disponível (opcional)")
+                print("Ô£ô ElevenLabs TTS dispon├¡vel (opcional)")
             except Exception as e:
-                print(f"⚠️  ElevenLabs TTS indisponível: {e}")
+                print(f"ÔÜá´©Å  ElevenLabs TTS indispon├¡vel: {e}")
         elif elevenlabs_key and not ELEVENLABS_AVAILABLE:
-            print("⚠️  ElevenLabs API key configurada mas biblioteca não instalada")
+            print("ÔÜá´©Å  ElevenLabs API key configurada mas biblioteca n├úo instalada")
             print("   Instale com: pip install elevenlabs")
 
     def generate_speech(
@@ -316,12 +254,12 @@ class TTSGenerator:
         voice_model: str = "Zephyr",
         style: str = "normal",
         language: str = "pt-BR",
-        api: Literal["lmnt", "edge", "google", "elevenlabs", "auto"] = "auto"
+        api: Literal["edge", "google", "elevenlabs", "auto"] = "auto"
     ) -> bytes:
         """
-        Gera áudio WAV a partir de texto usando a API especificada.
+        Gera ├íudio WAV a partir de texto usando a API especificada.
 
-        Parâmetros
+        Par├ómetros
         ----------
         text : str
             Texto a ser convertido em fala
@@ -330,118 +268,76 @@ class TTSGenerator:
         style : str, default "normal"
             Estilo de fala (normal, fast, slow, cheerful, serious)
         language : str, default "pt-BR"
-            Código do idioma (pt-BR, en-US, es-ES)
+            C├│digo do idioma (pt-BR, en-US, es-ES)
         api : str, default "auto"
-            Qual API usar: "lmnt", "edge", "google", "elevenlabs", ou "auto" (usa LMNT se disponível)
+            Qual API usar: "edge", "google", "elevenlabs", ou "auto" (usa EdgeTTS por padr├úo)
 
         Retorna
         -------
         bytes
-            Conteúdo do arquivo WAV
+            Conte├║do do arquivo WAV
 
         Levanta
         ------
         ValueError
-            Se texto vazio ou API não disponível
+            Se texto vazio ou API n├úo dispon├¡vel
         RuntimeError
-            Se houver erro na síntese
+            Se houver erro na s├¡ntese
 
         Exemplo
         -------
         >>> generator = TTSGenerator()
         
-        >>> # Usar LMNT (padrão profissional)
-        >>> audio = generator.generate_speech("Olá!")
-        
-        >>> # Usar EdgeTTS (gratuito)
-        >>> audio = generator.generate_speech("Olá!", api="edge")
+        >>> # Usar EdgeTTS (padr├úo e gratuito!)
+        >>> audio = generator.generate_speech("Ol├í!")
         
         >>> # Usar Google Gemini
-        >>> audio = generator.generate_speech("Olá!", api="google")
+        >>> audio = generator.generate_speech("Ol├í!", api="google")
         
-        >>> # Usar ElevenLabs
-        >>> audio = generator.generate_speech("Olá!", api="elevenlabs")
+        >>> # Usar ElevenLabs (qualidade superior)
+        >>> audio = generator.generate_speech("Ol├í!", api="elevenlabs")
         """
         # Validar texto
         if not text or not text.strip():
-            raise ValueError("❌ Texto não pode estar vazio")
+            raise ValueError("ÔØî Texto n├úo pode estar vazio")
 
-        # Determinar qual API usar
+        # Determinar qual API usar (priorizar Google e ElevenLabs)
         if api == "auto":
-            # LMNT é o padrão profissional
-            if self.lmnt_available:
-                api = "lmnt"
+            if self.elevenlabs_available:
+                api = "elevenlabs"
             elif self.google_available:
                 api = "google"
-            elif self.elevenlabs_available:
-                api = "elevenlabs"
             else:
                 api = "edge"
         
-        # Verificar se API está disponível
-        if api == "lmnt" and not self.lmnt_available:
-            raise ValueError("❌ LMNT TTS não disponível")
+        # Verificar se API est├í dispon├¡vel
         if api == "google" and not self.google_available:
-            raise ValueError("❌ Google Gemini TTS não disponível")
+            raise ValueError("ÔØî Google Gemini TTS n├úo dispon├¡vel")
         if api == "elevenlabs" and not self.elevenlabs_available:
-            raise ValueError("❌ ElevenLabs não disponível")
-        # EdgeTTS sempre está disponível!
+            raise ValueError("ÔØî ElevenLabs n├úo dispon├¡vel")
+        # EdgeTTS sempre est├í dispon├¡vel!
 
         # Log informativo
-        print(f"🎙️  Gerando áudio com {api.upper()}...")
+        print(f"­ƒÄÖ´©Å  Gerando ├íudio com {api.upper()}...")
         print(f"    Voz: {voice_model}")
         print(f"    Estilo: {style}")
 
         # Chamar API apropriada
         try:
-            if api == "lmnt":
-                return self._generate_lmnt(text, voice_model, style, language)
-            elif api == "edge":
+            if api == "edge":
                 return self._generate_edge(text, voice_model, style, language)
             elif api == "google":
                 return self._generate_google(text, voice_model, style, language)
             elif api == "elevenlabs":
                 return self._generate_elevenlabs(text, voice_model, style)
             else:
-                raise ValueError(f"API inválida: {api}")
+                raise ValueError(f"API inv├ílida: {api}")
         except Exception as e:
-            print(f"❌ Erro ao gerar áudio: {e}")
+            print(f"ÔØî Erro ao gerar ├íudio: {e}")
             raise
 
     # ========================================================================
-    # LMNT (PRIORIDADE, PROFISSIONAL!)
-    # ========================================================================
-
-    def _generate_lmnt(
-        self,
-        text: str,
-        voice_model: str,
-        style: str,
-        language: str
-    ) -> bytes:
-        """Gera áudio com LMNT (profissional!)."""
-        voice = LMNT_VOICE_MAP.get(voice_model, LMNT_VOICE_MAP["default"])
-        
-        try:
-            # Gerar áudio com LMNT
-            response = self.lmnt_speech.synthesize(
-                text=text,
-                voice=voice,
-                format="wav"
-            )
-            
-            audio_data = io.BytesIO()
-            audio_data.write(response["audio"])
-            audio_data.seek(0)
-            
-            print(f"✓ Áudio gerado ({len(audio_data.getvalue())} bytes)")
-            return audio_data.getvalue()
-            
-        except Exception as e:
-            raise RuntimeError(f"Erro ao sintetizar com LMNT: {str(e)}") from e
-
-    # ========================================================================
-    # EDGETTS (PADRÃO, GRATUITO!)
+    # EDGETTS (PADR├âO, GRATUITO!)
     # ========================================================================
 
     def _generate_edge(
@@ -451,7 +347,7 @@ class TTSGenerator:
         style: str,
         language: str
     ) -> bytes:
-        """Gera áudio com EdgeTTS (gratuita!)."""
+        """Gera ├íudio com EdgeTTS (gratuita!)."""
         voice = EDGE_VOICE_MAP.get(voice_model, EDGE_VOICE_MAP["default"])
         style_params = EDGE_STYLE_MAP.get(style, EDGE_STYLE_MAP["normal"])
         
@@ -462,12 +358,12 @@ class TTSGenerator:
             voice = "es-ES-AlvaroNeural"
         
         audio_bytes = asyncio.run(self._synthesize_edge(text, voice, style_params["rate"], style_params["pitch"]))
-        print(f"✓ Áudio gerado ({len(audio_bytes)} bytes)")
+        print(f"Ô£ô ├üudio gerado ({len(audio_bytes)} bytes)")
         return audio_bytes
 
     @staticmethod
     async def _synthesize_edge(text: str, voice: str, rate: str, pitch: str) -> bytes:
-        """Síntese assíncrona com EdgeTTS."""
+        """S├¡ntese ass├¡ncrona com EdgeTTS."""
         communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
         buffer = io.BytesIO()
         async for chunk in communicate.stream():
@@ -487,13 +383,13 @@ class TTSGenerator:
         style: str,
         language: str
     ) -> bytes:
-        """Gera áudio com Google Gemini TTS."""
+        """Gera ├íudio com Google Gemini TTS."""
         voice = GOOGLE_VOICE_MAP.get(voice_model, GOOGLE_VOICE_MAP["default"])
         style_params = STYLE_MAP.get(style, STYLE_MAP["normal"])
         temperature = style_params["temperature"]
 
         audio_bytes = self._synthesize_google(text, voice, temperature, language)
-        print(f"✓ Áudio gerado ({len(audio_bytes)} bytes)")
+        print(f"Ô£ô ├üudio gerado ({len(audio_bytes)} bytes)")
         return audio_bytes
 
     def _synthesize_google(
@@ -503,7 +399,7 @@ class TTSGenerator:
         temperature: float,
         language: str
     ) -> bytes:
-        """Síntese síncrona com Google Gemini."""
+        """S├¡ntese s├¡ncrona com Google Gemini."""
         try:
             generate_content_config = types.GenerateContentConfig(
                 temperature=temperature,
@@ -534,7 +430,7 @@ class TTSGenerator:
 
             audio_bytes = audio_data.getvalue()
             if not audio_bytes:
-                raise RuntimeError("Nenhum dado de áudio recebido")
+                raise RuntimeError("Nenhum dado de ├íudio recebido")
 
             mime_type = "audio/L16;rate=24000"
             wav_data = self._convert_to_wav(audio_bytes, mime_type)
@@ -553,12 +449,12 @@ class TTSGenerator:
         voice_model: str,
         style: str
     ) -> bytes:
-        """Gera áudio com ElevenLabs."""
+        """Gera ├íudio com ElevenLabs."""
         voice_id = ELEVENLABS_VOICE_MAP.get(voice_model, ELEVENLABS_VOICE_MAP["default"])
         style_params = STYLE_MAP.get(style, STYLE_MAP["normal"])
 
         try:
-            # Gerar áudio com ElevenLabs
+            # Gerar ├íudio com ElevenLabs
             audio_stream = self.elevenlabs_client.text_to_speech.convert(
                 voice_id=voice_id,
                 text=text,
@@ -569,7 +465,7 @@ class TTSGenerator:
                 }
             )
 
-            # Coletar dados de áudio
+            # Coletar dados de ├íudio
             audio_data = io.BytesIO()
             for chunk in audio_stream:
                 audio_data.write(chunk)
@@ -577,23 +473,23 @@ class TTSGenerator:
             audio_bytes = audio_data.getvalue()
             
             if not audio_bytes:
-                raise RuntimeError("Nenhum áudio gerado pelo ElevenLabs")
+                raise RuntimeError("Nenhum ├íudio gerado pelo ElevenLabs")
 
             # ElevenLabs retorna MP3, converter para WAV
             wav_data = self._convert_mp3_to_wav(audio_bytes)
-            print(f"✓ Áudio gerado ({len(wav_data)} bytes)")
+            print(f"Ô£ô ├üudio gerado ({len(wav_data)} bytes)")
             return wav_data
 
         except Exception as e:
             raise RuntimeError(f"Erro ao sintetizar com ElevenLabs: {str(e)}") from e
 
     # ========================================================================
-    # CONVERSÃO DE ÁUDIO
+    # CONVERS├âO DE ├üUDIO
     # ========================================================================
 
     @staticmethod
     def _convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
-        """Converte áudio PCM (Google) para WAV."""
+        """Converte ├íudio PCM (Google) para WAV."""
         parameters = TTSGenerator._parse_audio_mime_type(mime_type)
         bits_per_sample = parameters["bits_per_sample"]
         sample_rate = parameters["rate"]
@@ -644,7 +540,7 @@ class TTSGenerator:
             
             return wav_buffer.getvalue()
         except ImportError:
-            print("⚠️  Biblioteca pydub não instalada")
+            print("ÔÜá´©Å  Biblioteca pydub n├úo instalada")
             print("   Para usar ElevenLabs, instale: pip install pydub")
             print("   E ffmpeg: apt-get install ffmpeg")
             raise
@@ -674,7 +570,7 @@ class TTSGenerator:
 
 
 # ============================================================================
-# FUNÇÃO FACTORY
+# FUN├ç├âO FACTORY
 # ============================================================================
 
 def get_tts_generator(
@@ -687,7 +583,7 @@ def get_tts_generator(
     Exemplo
     -------
     >>> generator = get_tts_generator()
-    >>> audio = generator.generate_speech("Olá!")
+    >>> audio = generator.generate_speech("Ol├í!")
     """
     try:
         return TTSGenerator(
@@ -719,13 +615,13 @@ if __name__ == "__main__":
         # Exemplos
         exemplos = [
             {
-                "text": "Olá! Usando Google Gemini TTS.",
+                "text": "Ol├í! Usando Google Gemini TTS.",
                 "voice": "Zephyr",
                 "api": "google",
                 "file": "exemplo_google.wav"
             },
             {
-                "text": "Olá! Usando ElevenLabs TTS.",
+                "text": "Ol├í! Usando ElevenLabs TTS.",
                 "voice": "Elena",
                 "api": "elevenlabs",
                 "file": "exemplo_elevenlabs.wav"
@@ -753,19 +649,19 @@ if __name__ == "__main__":
                 with open(exemplo['file'], "wb") as f:
                     f.write(audio_data)
 
-                print(f"      ✓ Salvo: {exemplo['file']}\n")
+                print(f"      Ô£ô Salvo: {exemplo['file']}\n")
 
             except Exception as e:
-                print(f"      ✗ Erro: {e}\n")
+                print(f"      Ô£ù Erro: {e}\n")
                 continue
 
         print("=" * 70)
-        print("✓ Exemplos gerados com sucesso!")
+        print("Ô£ô Exemplos gerados com sucesso!")
         print("=" * 70 + "\n")
 
     except ValueError as e:
-        print(f"✗ Erro de Configuração:\n  {e}\n", file=sys.stderr)
+        print(f"Ô£ù Erro de Configura├º├úo:\n  {e}\n", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"✗ Erro inesperado:\n  {e}\n", file=sys.stderr)
+        print(f"Ô£ù Erro inesperado:\n  {e}\n", file=sys.stderr)
         sys.exit(1)
