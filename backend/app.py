@@ -1717,8 +1717,8 @@ def api_list_social_posts():
     try:
         print("[DEBUG] === api_list_social_posts ===")
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '') or os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
         print(f"[DEBUG] SUPABASE_URL: {repr(supabase_url)}")
         print(f"[DEBUG] SUPABASE_ANON_KEY: {repr(supabase_key[:50] + '...' if supabase_key else 'VAZIO')}")
@@ -2179,8 +2179,8 @@ def api_publish_social_post(post_id):
         print(f"[DEBUG] === api_publish_social_post - Post ID: {post_id} ===")
         
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '') or os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
         print(f"[DEBUG] Usando NEWPOST_SUPABASE_SERVICE_KEY: {repr(supabase_key[:50] + '...' if supabase_key else 'VAZIO')}")
         
@@ -2320,8 +2320,8 @@ def api_delete_all_rejected_posts():
     """Deleta TODOS os posts com status = 'rejeitado' ou 'draft' (rejeitados)"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '') or os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -3216,8 +3216,8 @@ def handle_publications():
     # GET - Listar publicações
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '506fbd9d-7668-4244-90b3-495d0db2f518')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '') or os.getenv('NEWPOST_SUPABASE_ANON_KEY', '')
+        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
