@@ -77,5 +77,12 @@ Desktop.ini
 
 .vercel
 
+# Arquivos temporários de deploy
+deploy-*.bat
+push-*.bat
+iniciar-servidor-simples.bat
+excluidos.txt
+locutoresia2026/
+
 .vercel
 .env*.local

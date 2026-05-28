@@ -323,11 +323,6 @@ def news_auto_post():
     """Dashboard de Automação de Notícias - News Auto Post"""
     return render_template('news-auto-post.html')
 
-@app.route('/voice-cloning')
-def voice_cloning():
-    """Voice Cloning - Clonagem de Voz (em desenvolvimento)"""
-    return render_template('index.html')
-
 @app.route('/social-genius')
 def social_genius():
     """Social Genius - Ferramentas de IA para Redes Sociais (em desenvolvimento)"""
