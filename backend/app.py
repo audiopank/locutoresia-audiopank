@@ -2387,11 +2387,94 @@ def api_publish_social_post(post_id):
             return jsonify({"success": False, "error": f"Erro ao buscar post: {resp_get.status_code}"}), resp_get.status_code
         
         posts_data = resp_get.json()
-        if not posts_data:
-            print(f"[DEBUG] ERRO: Post não encontrado na tabela 'posts'")
-            return jsonify({"success": False, "error": "Post não encontrado"}), 404
-        
-        post = posts_data[0]
+        post = posts_data[0] if posts_data else None
+
+        # --- FALLBACK: post não existe no Supabase (provável uuid local de rascunho). ---
+        # Procura na memória local e INSERE na tabela 'posts' para obter um id real.
+        if not post:
+            print(f"[DEBUG] Post não está na tabela 'posts' — procurando na memória local...")
+            local_post = None
+            local_index = None
+            for i, p in enumerate(social_posts_store):
+                if str(p.get('id')) == str(post_id):
+                    local_post = p
+                    local_index = i
+                    break
+
+            if not local_post:
+                print(f"[DEBUG] ERRO: Post não encontrado nem no Supabase nem na memória local")
+                return jsonify({"success": False, "error": "Post não encontrado"}), 404
+
+            content_local = local_post.get('content') or local_post.get('caption') or ''
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            # Antes de inserir, evitar duplicata: procurar post existente pela mesma source_url
+            src_url_local = (local_post.get('source_url') or '').strip()
+            if src_url_local:
+                try:
+                    import urllib.parse
+                    src_q = urllib.parse.quote(src_url_local, safe='')
+                    resp_dup = requests.get(
+                        f"{supabase_url}/rest/v1/posts?source_url=eq.{src_q}&author_id=eq.{newpost_author_id}&select=*&limit=1",
+                        headers=headers,
+                        timeout=10
+                    )
+                    if resp_dup.status_code == 200 and resp_dup.json():
+                        post = resp_dup.json()[0]
+                        real_id = post.get('id')
+                        print(f"[DEBUG] Post já existia no Supabase (mesma source_url): id {real_id}")
+                        if local_index is not None and real_id:
+                            social_posts_store[local_index]['id'] = real_id
+                        if real_id:
+                            post_id = real_id
+                except Exception as e_dup:
+                    print(f"[DEBUG] Aviso: falha ao checar duplicata por source_url: {e_dup}")
+
+            # Só insere se a dedup por source_url não tiver encontrado um post existente
+            if not post:
+                insert_payload = {
+                    'author_id': newpost_author_id,
+                    'title': local_post.get('title', ''),
+                    'content': content_local,
+                    'caption': content_local,
+                    'source_url': local_post.get('source_url', ''),
+                    'tags': local_post.get('hashtags') or local_post.get('tags') or [],
+                    'status': 'ready',
+                    'is_ia_generated': True,
+                    'created_at': now_iso,
+                    'updated_at': now_iso
+                }
+                if local_post.get('image_url'):
+                    insert_payload['image_url'] = local_post['image_url']
+
+                print(f"[DEBUG] Inserindo post local na tabela 'posts' para obter id real...")
+                resp_insert = requests.post(
+                    f"{supabase_url}/rest/v1/posts",
+                    json=insert_payload,
+                    headers=headers,
+                    timeout=10
+                )
+                print(f"[DEBUG] Insert no Supabase: {resp_insert.status_code} - {resp_insert.text[:300]}")
+
+                if resp_insert.status_code not in (200, 201):
+                    if resp_insert.status_code in (401, 403):
+                        return jsonify({"success": False, "error": "Falha de autenticação/permissão no Supabase ao criar o post (401/403) — verifique NEWPOST_SUPABASE_SERVICE_KEY no Vercel"}), resp_insert.status_code
+                    return jsonify({"success": False, "error": f"Não foi possível criar o post no Supabase: {resp_insert.status_code}"}), resp_insert.status_code
+
+                inserted = resp_insert.json()
+                if not (isinstance(inserted, list) and inserted):
+                    return jsonify({"success": False, "error": "Falha ao obter id do post recém-criado"}), 500
+
+                post = inserted[0]
+                real_id = post.get('id')
+                print(f"[DEBUG] Post criado no Supabase com id real: {real_id}")
+                # Atualiza o id na memória local para futuras ações
+                if local_index is not None and real_id:
+                    social_posts_store[local_index]['id'] = real_id
+                # Daqui em diante, usar o id real
+                if real_id:
+                    post_id = real_id
+
         print(f"[DEBUG] Post encontrado: {json.dumps(post, ensure_ascii=False, indent=2)}")
         
         # --- PASSO 2: Atualizar status do post para 'published' ---
