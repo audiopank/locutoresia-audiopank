@@ -154,6 +154,12 @@
             color: #94A3B8;
             padding: 0.5rem 1.25rem;
             line-height: 1.6;
+            /* Texto cresce sempre na vertical (para baixo), nunca horizontal */
+            white-space: pre-wrap;        /* honra as quebras de linha \n -> paragrafos */
+            overflow-wrap: break-word;    /* quebra palavras/URLs longas */
+            word-break: break-word;       /* idem (fallback p/ navegadores antigos) */
+            max-width: 100%;
+            overflow-x: hidden;           /* nunca rolagem horizontal */
         }
         .post-image {
             width: 100%;

@@ -257,6 +257,12 @@
             color: #94a3b8;
             font-size: 12px;
             margin-bottom: 8px;
+            /* Texto cresce sempre na vertical (para baixo), nunca horizontal */
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            max-width: 100%;
+            overflow-x: hidden;
         }
 
         .preview-source {
@@ -886,7 +892,7 @@
                             <div id="title-${pub.id}" style="color: white; font-size: 13px; margin-bottom: 8px; line-height: 1.4; font-weight: bold;">
                                 ${pub.title || 'Sem título'}
                             </div>
-                            <div id="content-${pub.id}" style="color: #cbd5e1; font-size: 12px; margin-bottom: 8px; line-height: 1.4; max-height: 100px; overflow-y: auto;">
+                            <div id="content-${pub.id}" style="color: #cbd5e1; font-size: 12px; margin-bottom: 8px; line-height: 1.4; max-height: 100px; overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word;">
                                 ${pub.caption ? pub.caption.substring(0, 200) + '...' : pub.content ? pub.content.substring(0, 200) + '...' : 'Sem conteúdo'}
                             </div>
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;">
