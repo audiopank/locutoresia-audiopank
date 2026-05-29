@@ -3,6 +3,7 @@ import os
 import sys
 import uuid
 import re
+import html as html_lib
 import glob
 import json
 import requests
@@ -49,6 +50,26 @@ def get_newpost_author_id():
     raw = os.getenv('NEWPOST_AUTHOR_ID', '') or ''
     m = _UUID_RE.search(raw)
     return m.group(0) if m else NEWPOST_AUTHOR_ID_FALLBACK
+
+def strip_html(text):
+    """Remove tags HTML e decodifica entidades p/ texto limpo no feed da NewPost-IA.
+    Ex.: '<p>Olá &amp; bem-vindo</p>' -> 'Olá & bem-vindo'.
+    """
+    if not text:
+        return ''
+    t = str(text)
+    # Trocar <br>, </p>, </div> por quebra de linha antes de remover tags (preserva paragrafos)
+    t = re.sub(r'(?i)<\s*br\s*/?\s*>', '\n', t)
+    t = re.sub(r'(?i)</\s*(p|div|li|h[1-6])\s*>', '\n', t)
+    # Remover todas as demais tags
+    t = re.sub(r'<[^>]+>', '', t)
+    # Decodificar entidades HTML (&amp; &nbsp; &quot; etc.)
+    t = html_lib.unescape(t)
+    # Normalizar espacos e quebras de linha em excesso
+    t = re.sub(r'[ \t]+', ' ', t)
+    t = re.sub(r'\n[ \t]+', '\n', t)
+    t = re.sub(r'\n{3,}', '\n\n', t)
+    return t.strip()
 
 # No Vercel, o diretório de execução principal pode não ser 'backend'
 # Precisamos adicionar o diretório atual (onde está app.py) ao sys.path explicitamente
@@ -1878,7 +1899,7 @@ def api_create_social_post():
         title_sp = data.get('title', '').strip()
         
         summary_sp = data.get('caption') or data.get('summary') or data.get('content', '')
-        summary_sp = summary_sp.strip() if summary_sp else ''
+        summary_sp = strip_html(summary_sp) if summary_sp else ''
         
         source_url_sp = data.get('url') or data.get('source_url', '')
         source_url_sp = source_url_sp.strip() if source_url_sp else ''
@@ -2419,7 +2440,7 @@ def api_publish_social_post(post_id):
                 print(f"[DEBUG] ERRO: Post não encontrado nem no Supabase nem na memória local")
                 return jsonify({"success": False, "error": "Post não encontrado"}), 404
 
-            content_local = local_post.get('content') or local_post.get('caption') or ''
+            content_local = strip_html(local_post.get('content') or local_post.get('caption') or '')
             now_iso = datetime.now(timezone.utc).isoformat()
 
             # Antes de inserir, evitar duplicata: procurar post existente pela mesma source_url
