@@ -2432,13 +2432,12 @@ def api_publish_social_post(post_id):
 
             # Só insere se a dedup por source_url não tiver encontrado um post existente
             if not post:
+                # Apenas colunas reais da tabela 'posts' (NAO existem 'caption'/'tags' -> causavam 400)
                 insert_payload = {
                     'author_id': newpost_author_id,
                     'title': local_post.get('title', ''),
                     'content': content_local,
-                    'caption': content_local,
                     'source_url': local_post.get('source_url', ''),
-                    'tags': local_post.get('hashtags') or local_post.get('tags') or [],
                     'status': 'ready',
                     'is_ia_generated': True,
                     'created_at': now_iso,
@@ -2446,6 +2445,8 @@ def api_publish_social_post(post_id):
                 }
                 if local_post.get('image_url'):
                     insert_payload['image_url'] = local_post['image_url']
+                if local_post.get('category'):
+                    insert_payload['category'] = local_post['category']
 
                 print(f"[DEBUG] Inserindo post local na tabela 'posts' para obter id real...")
                 resp_insert = requests.post(
@@ -2466,6 +2467,8 @@ def api_publish_social_post(post_id):
                     return jsonify({"success": False, "error": "Falha ao obter id do post recém-criado"}), 500
 
                 post = inserted[0]
+                # 'posts' não guarda hashtags; preserva as do rascunho local para o feed newpost_posts
+                post['hashtags'] = local_post.get('hashtags') or local_post.get('tags') or []
                 real_id = post.get('id')
                 print(f"[DEBUG] Post criado no Supabase com id real: {real_id}")
                 # Atualiza o id na memória local para futuras ações
