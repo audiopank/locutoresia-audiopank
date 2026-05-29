@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_file, make_resp
 import os
 import sys
 import uuid
+import re
 import glob
 import json
 import requests
@@ -35,6 +36,19 @@ except ImportError:
     print("⚠️ python-dotenv não instalado, usando variáveis de ambiente do sistema")
 except Exception as e:
     print(f"❌ Erro ao carregar .env: {e}")
+
+# UUID válido conhecido (perfil 'NewPost-IA' verificado em profiles) — fallback
+NEWPOST_AUTHOR_ID_FALLBACK = 'b26b3b0d-009e-4b79-b9cc-6364c52978d7'
+_UUID_RE = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+
+def get_newpost_author_id():
+    """Lê NEWPOST_AUTHOR_ID e extrai SOMENTE o UUID.
+    Tolera valores malformados como 'NEWPOST_AUTHOR_ID=<uuid>', aspas e espaços,
+    que causariam 400 (invalid input syntax for type uuid) ao inserir em 'posts'.
+    """
+    raw = os.getenv('NEWPOST_AUTHOR_ID', '') or ''
+    m = _UUID_RE.search(raw)
+    return m.group(0) if m else NEWPOST_AUTHOR_ID_FALLBACK
 
 # No Vercel, o diretório de execução principal pode não ser 'backend'
 # Precisamos adicionar o diretório atual (onde está app.py) ao sys.path explicitamente
@@ -1724,7 +1738,7 @@ def api_list_social_posts():
         # Se não tem posts localmente, tenta o Supabase
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'b26b3b0d-009e-4b79-b9cc-6364c52978d7')
+        newpost_author_id = get_newpost_author_id()
         
         print(f"[DEBUG] SUPABASE_URL: {repr(supabase_url)}")
         print(f"[DEBUG] SUPABASE_KEY: {repr(supabase_key[:50] + '...' if supabase_key else 'VAZIO')}")
@@ -1855,7 +1869,7 @@ def api_create_social_post():
 
     try:
         # IMPORTANTE: precisa ser o MESMO author_id usado em api_list_social_posts (GET)
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'b26b3b0d-009e-4b79-b9cc-6364c52978d7')
+        newpost_author_id = get_newpost_author_id()
 
         # Mapear status
         status_pt = data.get('status', 'rascunho')
@@ -2358,7 +2372,7 @@ def api_publish_social_post(post_id):
         
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'b26b3b0d-009e-4b79-b9cc-6364c52978d7')
+        newpost_author_id = get_newpost_author_id()
         
         print(f"[DEBUG] Usando NEWPOST_SUPABASE_SERVICE_KEY: {repr(supabase_key[:50] + '...' if supabase_key else 'VAZIO')}")
         
@@ -2638,7 +2652,7 @@ def api_delete_all_rejected_posts():
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'b26b3b0d-009e-4b79-b9cc-6364c52978d7')
+        newpost_author_id = get_newpost_author_id()
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -3325,7 +3339,7 @@ def newpost_publish():
         # Mesmo padrão de fallback usado nas demais rotas; sem chaves hardcoded.
         newpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         newpost_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'b26b3b0d-009e-4b79-b9cc-6364c52978d7')
+        newpost_author_id = get_newpost_author_id()
 
         if not newpost_url or not newpost_key:
             return jsonify({"success": False, "error": "Credenciais NewPost-IA não configuradas"}), 500
@@ -3535,7 +3549,7 @@ def handle_publications():
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', 'b26b3b0d-009e-4b79-b9cc-6364c52978d7')
+        newpost_author_id = get_newpost_author_id()
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
