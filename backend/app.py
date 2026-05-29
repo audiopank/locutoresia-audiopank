@@ -2084,20 +2084,27 @@ def api_get_social_post(post_id):
 
 @app.route('/api/social/posts/<post_id>', methods=['PATCH'])
 def api_update_social_post(post_id):
-    """Atualiza campos de um SocialPost (usa armazenamento local, fallback para Supabase)"""
+    """Atualiza campos de um SocialPost.
+
+    IMPORTANTE (serverless/Vercel): social_posts_store é memória em RAM que zera
+    a cada cold start. Por isso NÃO retornamos 404 só porque o post não está na
+    memória local — o Supabase é a fonte de verdade. Atualizamos a memória local
+    se o post existir (best-effort) e SEMPRE tentamos atualizar o Supabase.
+    """
     try:
-        # Primeiro atualiza o armazenamento local
-        found = False
+        data = request.get_json()
+        print(f"[DEBUG] api_update_social_post - Dados recebidos: {json.dumps(data, ensure_ascii=False, indent=2)}")
+
+        if not data:
+            return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # --- PASSO 1: atualizar a memória local SE o post existir (best-effort) ---
+        found_local = False
         for i, post in enumerate(social_posts_store):
             if str(post.get('id')) == str(post_id):
-                found = True
-                data = request.get_json()
-                print(f"[DEBUG] api_update_social_post - Dados recebidos: {json.dumps(data, ensure_ascii=False, indent=2)}")
-                
-                if not data:
-                    return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
-                
-                # Atualiza campos no post local
+                found_local = True
                 if 'title' in data:
                     social_posts_store[i]['title'] = data['title']
                 if 'caption' in data:
@@ -2108,21 +2115,18 @@ def api_update_social_post(post_id):
                     social_posts_store[i]['tags'] = data['hashtags']
                 if 'status' in data:
                     social_posts_store[i]['status'] = data['status']
-                social_posts_store[i]['updated_at'] = datetime.now(timezone.utc).isoformat()
+                social_posts_store[i]['updated_at'] = now_iso
                 print(f"[DEBUG] Post atualizado no armazenamento local!")
                 break
-        
-        if not found:
-            return jsonify({"success": False, "error": "Post não encontrado"}), 404
-        
-        # Tentar atualizar também no Supabase (opcional)
+
+        # --- PASSO 2: SEMPRE tentar atualizar no Supabase (fonte de verdade) ---
+        supabase_ok = False
+        supabase_status = None
         try:
             supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
             supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-            
+
             if supabase_url and supabase_key:
-                data = request.get_json()
-                
                 # Mapear status de português para inglês para o Supabase
                 status_map = {
                     'rascunho': 'draft',
@@ -2133,7 +2137,7 @@ def api_update_social_post(post_id):
                     'agendado': 'ready',
                     'erro': 'draft'
                 }
-                
+
                 update_data = {}
                 if 'title' in data:
                     update_data['title'] = data['title']
@@ -2146,30 +2150,53 @@ def api_update_social_post(post_id):
                     status_en = status_map.get(data['status'], data['status'])
                     update_data['status'] = status_en
                     print(f"[DEBUG] Mapeando status para Supabase: '{data['status']}' → '{status_en}'")
-                
-                update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
-                
+
+                update_data['updated_at'] = now_iso
+
                 headers = {
                     'apikey': supabase_key,
                     'Authorization': f'Bearer {supabase_key}',
                     'Content-Type': 'application/json',
                     'Prefer': 'return=representation'
                 }
-                
+
                 response = requests.patch(
                     f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
                     json=update_data,
                     headers=headers,
                     timeout=10
                 )
-                
+                supabase_status = response.status_code
+
                 if response.status_code in (200, 204):
+                    supabase_ok = True
                     print(f"[DEBUG] Post também atualizado no Supabase!")
+                    # Se atualizou no Supabase mas não tinha na memória local, cacheia
+                    if not found_local:
+                        try:
+                            cached = response.json()
+                            if isinstance(cached, list) and cached:
+                                social_posts_store.insert(0, cached[0])
+                                print(f"[DEBUG] Post sincronizado do Supabase para a memória local")
+                        except Exception:
+                            pass
+                else:
+                    print(f"[DEBUG] Supabase retornou {response.status_code} ao atualizar: {response.text[:200]}")
+            else:
+                print(f"[DEBUG] Credenciais Supabase ausentes — atualização apenas na memória local")
         except Exception as e:
-            print(f"[DEBUG] Erro ao atualizar no Supabase (mas armazenamento local ok!): {e}")
-        
-        return jsonify({"success": True, "message": "Post atualizado com sucesso"})
-            
+            print(f"[DEBUG] Erro ao atualizar no Supabase: {e}")
+
+        # --- PASSO 3: decidir resposta ---
+        # Sucesso se atualizou em qualquer lugar (local OU Supabase).
+        if found_local or supabase_ok:
+            return jsonify({"success": True, "message": "Post atualizado com sucesso"})
+
+        # Se nem local nem Supabase aceitaram: provavelmente 401 (credencial) ou post inexistente.
+        if supabase_status == 401:
+            return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
+        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+
     except Exception as e:
         import traceback
         print(f"[DEBUG] Erro em api_update_social_post: {e}")
@@ -2182,22 +2209,25 @@ def api_approve_social_post(post_id):
     try:
         # Primeiro aprova no armazenamento local
         found = False
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # --- PASSO 1: atualizar a memória local SE existir (best-effort) ---
+        found_local = False
         for i, post in enumerate(social_posts_store):
             if str(post.get('id')) == str(post_id):
-                found = True
+                found_local = True
                 social_posts_store[i]['status'] = 'pendente'  # Aprovado é status 'pendente' no frontend
-                social_posts_store[i]['updated_at'] = datetime.now(timezone.utc).isoformat()
+                social_posts_store[i]['updated_at'] = now_iso
                 print(f"[DEBUG] Post aprovado no armazenamento local!")
                 break
-        
-        if not found:
-            return jsonify({"success": False, "error": "Post não encontrado"}), 404
-        
-        # Tentar aprovar também no Supabase (opcional)
+
+        # --- PASSO 2: SEMPRE tentar aprovar no Supabase (fonte de verdade) ---
+        supabase_ok = False
+        supabase_status = None
         try:
             supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
             supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-            
+
             if supabase_url and supabase_key:
                 headers = {
                     'apikey': supabase_key,
@@ -2205,21 +2235,41 @@ def api_approve_social_post(post_id):
                     'Content-Type': 'application/json',
                     'Prefer': 'return=representation'
                 }
-                
+
                 response = requests.patch(
                     f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-                    json={"status": "ready", "updated_at": datetime.now(timezone.utc).isoformat()},
+                    json={"status": "ready", "updated_at": now_iso},
                     headers=headers,
                     timeout=10
                 )
-                
+                supabase_status = response.status_code
+
                 if response.status_code in (200, 204):
+                    supabase_ok = True
                     print(f"[DEBUG] Post também aprovado no Supabase!")
+                    # Sincroniza para a memória local se não existia
+                    if not found_local:
+                        try:
+                            cached = response.json()
+                            if isinstance(cached, list) and cached:
+                                social_posts_store.insert(0, cached[0])
+                        except Exception:
+                            pass
+                else:
+                    print(f"[DEBUG] Supabase retornou {response.status_code} ao aprovar: {response.text[:200]}")
+            else:
+                print(f"[DEBUG] Credenciais Supabase ausentes — aprovação apenas na memória local")
         except Exception as e:
-            print(f"[DEBUG] Erro ao aprovar no Supabase (mas armazenamento local ok!): {e}")
-        
-        return jsonify({"success": True, "message": "Post aprovado com sucesso"})
-            
+            print(f"[DEBUG] Erro ao aprovar no Supabase: {e}")
+
+        # --- PASSO 3: decidir resposta ---
+        if found_local or supabase_ok:
+            return jsonify({"success": True, "message": "Post aprovado com sucesso"})
+
+        if supabase_status == 401:
+            return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
+        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+
     except Exception as e:
         import traceback
         print(f"[DEBUG] Erro em api_approve_social_post: {e}")
@@ -2230,24 +2280,25 @@ def api_approve_social_post(post_id):
 def api_reject_social_post(post_id):
     """Rejeita um SocialPost (usa armazenamento local, fallback para Supabase) - status 'rascunho'"""
     try:
-        # Primeiro rejeita no armazenamento local
-        found = False
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # --- PASSO 1: atualizar a memória local SE existir (best-effort) ---
+        found_local = False
         for i, post in enumerate(social_posts_store):
             if str(post.get('id')) == str(post_id):
-                found = True
+                found_local = True
                 social_posts_store[i]['status'] = 'rascunho'
-                social_posts_store[i]['updated_at'] = datetime.now(timezone.utc).isoformat()
+                social_posts_store[i]['updated_at'] = now_iso
                 print(f"[DEBUG] Post rejeitado no armazenamento local!")
                 break
-        
-        if not found:
-            return jsonify({"success": False, "error": "Post não encontrado"}), 404
-        
-        # Tentar rejeitar também no Supabase (opcional)
+
+        # --- PASSO 2: SEMPRE tentar rejeitar no Supabase (fonte de verdade) ---
+        supabase_ok = False
+        supabase_status = None
         try:
             supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
             supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-            
+
             if supabase_url and supabase_key:
                 headers = {
                     'apikey': supabase_key,
@@ -2255,21 +2306,40 @@ def api_reject_social_post(post_id):
                     'Content-Type': 'application/json',
                     'Prefer': 'return=representation'
                 }
-                
+
                 response = requests.patch(
                     f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-                    json={"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()},
+                    json={"status": "draft", "updated_at": now_iso},
                     headers=headers,
                     timeout=10
                 )
-                
+                supabase_status = response.status_code
+
                 if response.status_code in (200, 204):
+                    supabase_ok = True
                     print(f"[DEBUG] Post também rejeitado no Supabase!")
+                    if not found_local:
+                        try:
+                            cached = response.json()
+                            if isinstance(cached, list) and cached:
+                                social_posts_store.insert(0, cached[0])
+                        except Exception:
+                            pass
+                else:
+                    print(f"[DEBUG] Supabase retornou {response.status_code} ao rejeitar: {response.text[:200]}")
+            else:
+                print(f"[DEBUG] Credenciais Supabase ausentes — rejeição apenas na memória local")
         except Exception as e:
-            print(f"[DEBUG] Erro ao rejeitar no Supabase (mas armazenamento local ok!): {e}")
-        
-        return jsonify({"success": True, "message": "Post rejeitado com sucesso"})
-            
+            print(f"[DEBUG] Erro ao rejeitar no Supabase: {e}")
+
+        # --- PASSO 3: decidir resposta ---
+        if found_local or supabase_ok:
+            return jsonify({"success": True, "message": "Post rejeitado com sucesso"})
+
+        if supabase_status == 401:
+            return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
+        return jsonify({"success": False, "error": "Post não encontrado"}), 404
+
     except Exception as e:
         import traceback
         print(f"[DEBUG] Erro em api_reject_social_post: {e}")
@@ -2312,6 +2382,8 @@ def api_publish_social_post(post_id):
         
         if resp_get.status_code not in (200, 201):
             print(f"[DEBUG] ERRO ao buscar post: {resp_get.status_code} - {resp_get.text}")
+            if resp_get.status_code == 401:
+                return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
             return jsonify({"success": False, "error": f"Erro ao buscar post: {resp_get.status_code}"}), resp_get.status_code
         
         posts_data = resp_get.json()
@@ -2383,9 +2455,17 @@ def api_publish_social_post(post_id):
             print(f"[DEBUG] Resposta Edge Function: {resp_fn.status_code} - {resp_fn.text}")
         except Exception as e_fn:
             print(f"[DEBUG] Aviso: Edge Function falhou, mas post está agendado: {e_fn}")
-        
+
+        # --- PASSO 5: sincronizar memória local (best-effort) ---
+        for i, p in enumerate(social_posts_store):
+            if str(p.get('id')) == str(post_id):
+                social_posts_store[i]['status'] = 'publicado'
+                social_posts_store[i]['updated_at'] = datetime.now(timezone.utc).isoformat()
+                print(f"[DEBUG] Post marcado como 'publicado' na memória local")
+                break
+
         return jsonify({"success": True, "message": "Post publicado com sucesso no fluxo completo!"})
-            
+
     except Exception as e:
         import traceback
         print(f"[DEBUG] Erro em api_publish_social_post: {e}")
@@ -2414,12 +2494,20 @@ def api_delete_social_post(post_id):
             headers=headers,
             timeout=10
         )
-        
+
         if response.status_code in (200, 204):
+            # Remover também da memória local (best-effort)
+            for i, p in enumerate(list(social_posts_store)):
+                if str(p.get('id')) == str(post_id):
+                    social_posts_store.pop(i)
+                    print(f"[DEBUG] Post removido da memória local")
+                    break
             return jsonify({"success": True, "message": "Post deletado com sucesso"})
+        elif response.status_code == 401:
+            return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
         else:
             return jsonify({"success": False, "error": f"Erro ao deletar post: {response.status_code}"}), response.status_code
-            
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -3112,9 +3200,10 @@ def newpost_publish():
         if not data:
             return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
         
-        # Credenciais do Supabase da NewPost-IA (projeto: ykswhzqdjoshjoaruhqs)
-        newpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-        newpost_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTA4MjYsImV4cCI6MjA4NzE4NjgyNn0.yzezm6VZ5U_O7Txaj8B4_TD0PFVSpjZspYcZ1CYD0jo')
+        # Credenciais do Supabase da NewPost-IA (projeto correto: hzmtdfojctctvgqjdbex)
+        # Mesmo padrão de fallback usado nas demais rotas; sem chaves hardcoded.
+        newpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        newpost_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
 
         if not newpost_url or not newpost_key:
@@ -3379,37 +3468,38 @@ def update_publication(id):
     """Atualiza uma publicação (usando Supabase real)"""
     try:
         data = request.get_json()
-        
+
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        
+        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+
         if not supabase_url or not supabase_key:
-            return jsonify({"success": False, "error": "Credenciais Supabase configuradas"}), 200
-        
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+
         headers = {
             'apikey': supabase_key,
             'Authorization': f'Bearer {supabase_key}',
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         }
-        
+
         update_data = {}
         if 'title' in data:
             update_data['title'] = data['title']
         if 'content' in data:
             update_data['content'] = data['content']
-        update_data['updated_at'] = datetime.now().isoformat()
-        
+        update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
+
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{id}",
             json=update_data,
             headers=headers,
             timeout=10
         )
-        
+
         if response.status_code in (200, 204):
             return jsonify({"success": True, "message": "Publicação atualizada"})
-        
+        if response.status_code == 401:
+            return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
         return jsonify({"success": False, "error": f"Erro: {response.status_code}"}), response.status_code
         
     except Exception as e:
@@ -3420,28 +3510,31 @@ def approve_publication(id):
     """Aprova uma publicação (usando Supabase real)"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        
+        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
-        
+
         headers = {
             'apikey': supabase_key,
             'Authorization': f'Bearer {supabase_key}',
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         }
-        
+
+        # Tabela 'posts' usa status em inglês: aprovado → 'ready'
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{id}",
-            json={'status': 'aprovado', 'updated_at': datetime.now().isoformat()},
+            json={'status': 'ready', 'updated_at': datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
-        
+
         if response.status_code in (200, 204):
             return jsonify({"success": True, "message": "Publicação aprovada"})
-        
+        if response.status_code == 401:
+            return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
+
         error_msg = f"Erro: {response.status_code}"
         try:
             error_data = response.json()
@@ -3449,7 +3542,7 @@ def approve_publication(id):
                 error_msg = error_data['message']
         except:
             pass
-        
+
         return jsonify({"success": False, "error": error_msg}), response.status_code
         
     except Exception as e:
@@ -3460,25 +3553,26 @@ def publish_to_newpost_route(id):
     """Publica um post diretamente na NewPost-IA (usando Supabase real)"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        
+        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
-        
+
         headers = {
             'apikey': supabase_key,
             'Authorization': f'Bearer {supabase_key}',
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         }
-        
+
+        # Tabela 'posts' usa status em inglês: publicado → 'published'
         response = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{id}",
-            json={'status': 'publicado', 'updated_at': datetime.now(timezone.utc).isoformat()},
+            json={'status': 'published', 'updated_at': datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
-        
+
         if response.status_code in (200, 204):
             return jsonify({
                 "success": True,
@@ -3488,7 +3582,9 @@ def publish_to_newpost_route(id):
                     "status": "success"
                 }
             })
-        
+        if response.status_code == 401:
+            return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
+
         return jsonify({"success": False, "error": "Post não encontrado"}), 404
         
     except Exception as e:
