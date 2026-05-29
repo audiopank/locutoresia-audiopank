@@ -1911,9 +1911,9 @@ def api_create_social_post():
             if len(summary_sp) > 500:
                 summary_sp = summary_sp[:500] + "..."
             formatted_content_sp.append(summary_sp)
-        if source_url_sp:
-            formatted_content_sp.append(f"\n🔗 Fonte: {source_url_sp}")
-        
+        # NAO adicionar "🔗 Fonte: url" no corpo — o feed ja mostra source_url como link separado.
+        # source_url_sp continua sendo salvo na coluna source_url (usado pelo feed).
+
         final_content_sp = '\n'.join(formatted_content_sp).strip()
         
         # Gerar um ID único para o post
@@ -2526,6 +2526,9 @@ def api_publish_social_post(post_id):
         # Vale tanto p/ post recem-criado quanto p/ post ja existente no Supabase
         # (rascunhos salvos antes desta limpeza ainda tinham HTML cru no content).
         clean_content = strip_html(post.get('content') or post.get('caption') or '')
+        # Remove a linha "🔗 Fonte: <url>" do corpo — o feed ja exibe source_url como link separado (evita duplicata)
+        clean_content = re.sub(r'(?m)^\s*🔗?\s*Fonte:.*$', '', clean_content)
+        clean_content = re.sub(r'\n{3,}', '\n\n', clean_content).strip()
         post['content'] = clean_content
 
         # --- PASSO 2 (best-effort): tabela 'newpost_posts' NAO existe neste projeto Supabase ---
