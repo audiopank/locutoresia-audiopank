@@ -2522,6 +2522,12 @@ def api_publish_social_post(post_id):
 
         print(f"[DEBUG] Post encontrado: {json.dumps(post, ensure_ascii=False, indent=2)}")
 
+        # --- LIMPEZA: garante corpo limpo no feed (remove <img>, <br>, tags) ---
+        # Vale tanto p/ post recem-criado quanto p/ post ja existente no Supabase
+        # (rascunhos salvos antes desta limpeza ainda tinham HTML cru no content).
+        clean_content = strip_html(post.get('content') or post.get('caption') or '')
+        post['content'] = clean_content
+
         # --- PASSO 2 (best-effort): tabela 'newpost_posts' NAO existe neste projeto Supabase ---
         # O feed REAL da NewPost-IA e a propria tabela 'posts' (ja inserida acima como published/public).
         # Mantido como best-effort: se a tabela existir em outro ambiente, alimenta; senao, ignora (nao derruba o publish).
@@ -2557,7 +2563,7 @@ def api_publish_social_post(post_id):
         print(f"[DEBUG] PASSO 3: Atualizando status do post para 'published'...")
         resp_patch = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-            json={"status": "published", "updated_at": datetime.now(timezone.utc).isoformat()},
+            json={"status": "published", "content": clean_content, "updated_at": datetime.now(timezone.utc).isoformat()},
             headers=headers,
             timeout=10
         )
