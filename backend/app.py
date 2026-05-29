@@ -352,7 +352,7 @@ def voice_cloning():
 def api_list_newpost_authors():
     """Lista todos os autores do newpost_profiles via Supabase"""
     try:
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         
         if not supabase_url or not supabase_key:
@@ -393,7 +393,7 @@ def api_create_newpost_author():
         if not nome or not email:
             return jsonify({"success": False, "error": "Nome e e-mail são obrigatórios"}), 400
         
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         
         if not supabase_url or not supabase_key:
@@ -1722,7 +1722,7 @@ def api_list_social_posts():
             return jsonify({"success": True, "posts": social_posts_store})
         
         # Se não tem posts localmente, tenta o Supabase
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
@@ -1907,7 +1907,7 @@ def api_create_social_post():
         
         # Tentar salvar também no Supabase (se as credenciais estiverem corretas)
         try:
-            supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
             supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
             
             if supabase_url and supabase_key:
@@ -1989,7 +1989,7 @@ def api_get_social_post(post_id):
                 return jsonify({"success": True, "post": processed_post})
         
         # Se não encontrar, tenta o Supabase
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         
         if not supabase_url or not supabase_key:
@@ -2123,7 +2123,7 @@ def api_update_social_post(post_id):
         supabase_ok = False
         supabase_status = None
         try:
-            supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
             supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
 
             if supabase_url and supabase_key:
@@ -2225,7 +2225,7 @@ def api_approve_social_post(post_id):
         supabase_ok = False
         supabase_status = None
         try:
-            supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
             supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
 
             if supabase_url and supabase_key:
@@ -2296,7 +2296,7 @@ def api_reject_social_post(post_id):
         supabase_ok = False
         supabase_status = None
         try:
-            supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
             supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
 
             if supabase_url and supabase_key:
@@ -2356,7 +2356,7 @@ def api_publish_social_post(post_id):
     try:
         print(f"[DEBUG] === api_publish_social_post - Post ID: {post_id} ===")
         
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
@@ -2476,9 +2476,41 @@ def api_publish_social_post(post_id):
                     post_id = real_id
 
         print(f"[DEBUG] Post encontrado: {json.dumps(post, ensure_ascii=False, indent=2)}")
-        
-        # --- PASSO 2: Atualizar status do post para 'published' ---
-        print(f"[DEBUG] PASSO 2: Atualizando status do post para 'published'...")
+
+        # --- PASSO 2: Inserir na tabela 'newpost_posts' (feed REAL do dashboard NewPost-IA) ---
+        # Esta é a tabela que alimenta o feed em plugpost-ai.lovable.app/dashboard.
+        # Colunas em PT: titulo, descricao, conteudo, hashtags, autor_id, criado_em, atualizado_em (RLS disabled).
+        print(f"[DEBUG] PASSO 2: Inserindo na tabela 'newpost_posts' (feed do dashboard)...")
+        titulo_np = (post.get('title') or '').strip()
+        conteudo_np = (post.get('content') or post.get('caption') or '').strip()
+        if len(conteudo_np) > 2000:
+            conteudo_np = conteudo_np[:2000] + "..."
+        descricao_np = conteudo_np[:200] if conteudo_np else titulo_np[:200]
+        hashtags_np = post.get('tags') or post.get('hashtags') or ['notícia', 'Brasil']
+        now_np = datetime.now(timezone.utc).isoformat()
+        newpost_payload = {
+            'titulo': titulo_np,
+            'descricao': descricao_np,
+            'conteudo': conteudo_np,
+            'hashtags': hashtags_np,
+            'autor_id': newpost_author_id,
+            'criado_em': now_np,
+            'atualizado_em': now_np
+        }
+        resp_np = requests.post(
+            f"{supabase_url}/rest/v1/newpost_posts",
+            json=newpost_payload,
+            headers=headers,
+            timeout=15
+        )
+        print(f"[DEBUG] Resposta newpost_posts: {resp_np.status_code} - {resp_np.text[:300]}")
+        if resp_np.status_code in (401, 403):
+            return jsonify({"success": False, "error": "Falha de autenticação/permissão ao inserir em newpost_posts (401/403) — verifique NEWPOST_SUPABASE_ANON_KEY/SERVICE_KEY no Vercel"}), resp_np.status_code
+        if resp_np.status_code not in (200, 201, 204, 409):
+            return jsonify({"success": False, "error": f"Erro ao inserir em newpost_posts: {resp_np.status_code} - {resp_np.text[:200]}"}), resp_np.status_code
+
+        # --- PASSO 3: Atualizar status do post para 'published' ---
+        print(f"[DEBUG] PASSO 3: Atualizando status do post para 'published'...")
         resp_patch = requests.patch(
             f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
             json={"status": "published", "updated_at": datetime.now(timezone.utc).isoformat()},
@@ -2486,8 +2518,8 @@ def api_publish_social_post(post_id):
             timeout=10
         )
         
-        # --- PASSO 3: Agendar na tabela 'scheduled_posts' ---
-        print(f"[DEBUG] PASSO 3: Agendando na tabela 'scheduled_posts'...")
+        # --- PASSO 4: Agendar na tabela 'scheduled_posts' ---
+        print(f"[DEBUG] PASSO 4: Agendando na tabela 'scheduled_posts'...")
         scheduled_at = (datetime.utcnow() + timedelta(seconds=10)).isoformat()
         
         # Preparar dados para scheduled_posts
@@ -2522,8 +2554,8 @@ def api_publish_social_post(post_id):
         
         print(f"[DEBUG] Resposta scheduled_posts: {resp_sched.status_code} - {resp_sched.text}")
         
-        # --- PASSO 4: Acionar Edge Function 'auto-publish-posts' ---
-        print(f"[DEBUG] PASSO 4: Acionando Edge Function...")
+        # --- PASSO 5: Acionar Edge Function 'auto-publish-posts' ---
+        print(f"[DEBUG] PASSO 5: Acionando Edge Function...")
         try:
             resp_fn = requests.post(
                 f"{supabase_url}/functions/v1/auto-publish-posts",
@@ -2539,7 +2571,7 @@ def api_publish_social_post(post_id):
         except Exception as e_fn:
             print(f"[DEBUG] Aviso: Edge Function falhou, mas post está agendado: {e_fn}")
 
-        # --- PASSO 5: sincronizar memória local (best-effort) ---
+        # --- PASSO 6: sincronizar memória local (best-effort) ---
         for i, p in enumerate(social_posts_store):
             if str(p.get('id')) == str(post_id):
                 social_posts_store[i]['status'] = 'publicado'
@@ -2559,7 +2591,7 @@ def api_publish_social_post(post_id):
 def api_delete_social_post(post_id):
     """Deleta um SocialPost (usando Supabase real)"""
     try:
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         
         if not supabase_url or not supabase_key:
@@ -2598,7 +2630,7 @@ def api_delete_social_post(post_id):
 def api_delete_all_rejected_posts():
     """Deleta TODOS os posts com status = 'rejeitado' ou 'draft' (rejeitados)"""
     try:
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
@@ -3283,9 +3315,9 @@ def newpost_publish():
         if not data:
             return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
         
-        # Credenciais do Supabase da NewPost-IA (projeto correto: hzmtdfojctctvgqjdbex)
+        # Credenciais do Supabase da NewPost-IA (projeto correto: ykswhzqdjoshjoaruhqs)
         # Mesmo padrão de fallback usado nas demais rotas; sem chaves hardcoded.
-        newpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        newpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         newpost_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
 
@@ -3438,7 +3470,7 @@ def handle_publications():
     if request.method == 'DELETE':
         """Limpa todas as publicações"""
         try:
-            supabase_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            supabase_url = os.getenv('SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
             supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
             
             if not supabase_url or not supabase_key:
@@ -3495,7 +3527,7 @@ def handle_publications():
     
     # GET - Listar publicações
     try:
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
         newpost_author_id = os.getenv('NEWPOST_AUTHOR_ID', '3a1a93d0-e451-47a4-a126-f1b7375895eb')
         
@@ -3552,7 +3584,7 @@ def update_publication(id):
     try:
         data = request.get_json()
 
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
 
         if not supabase_url or not supabase_key:
@@ -3592,7 +3624,7 @@ def update_publication(id):
 def approve_publication(id):
     """Aprova uma publicação (usando Supabase real)"""
     try:
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
 
         if not supabase_url or not supabase_key:
@@ -3635,7 +3667,7 @@ def approve_publication(id):
 def publish_to_newpost_route(id):
     """Publica um post diretamente na NewPost-IA (usando Supabase real)"""
     try:
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
 
         if not supabase_url or not supabase_key:
