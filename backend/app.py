@@ -2446,17 +2446,21 @@ def api_publish_social_post(post_id):
 
             # Só insere se a dedup por source_url não tiver encontrado um post existente
             if not post:
-                # 'posts' NAO tem coluna 'caption' (causava 400); 'tags' existe e e mantido
+                # 'posts' E o feed da NewPost-IA. Publicar = inserir como published/public
+                # (mesmo payload da Edge Function fetchAndSaveNews que funciona no feed).
                 insert_payload = {
                     'author_id': newpost_author_id,
                     'title': local_post.get('title', ''),
                     'content': content_local,
                     'source_url': local_post.get('source_url', ''),
                     'tags': local_post.get('hashtags') or local_post.get('tags') or [],
-                    'status': 'ready',
+                    'status': 'published',
+                    'privacy': 'public',
+                    'watch_projected': 100,
                     'is_ia_generated': True,
                     'created_at': now_iso,
-                    'updated_at': now_iso
+                    'updated_at': now_iso,
+                    'published_at': now_iso
                 }
                 # 'posts' NAO tem coluna 'image_url' -> usar media_urls/media_types (senao causa 400)
                 if local_post.get('image_url'):
@@ -2497,37 +2501,36 @@ def api_publish_social_post(post_id):
 
         print(f"[DEBUG] Post encontrado: {json.dumps(post, ensure_ascii=False, indent=2)}")
 
-        # --- PASSO 2: Inserir na tabela 'newpost_posts' (feed REAL do dashboard NewPost-IA) ---
-        # Esta é a tabela que alimenta o feed em plugpost-ai.lovable.app/dashboard.
-        # Colunas em PT: titulo, descricao, conteudo, hashtags, autor_id, criado_em, atualizado_em (RLS disabled).
-        print(f"[DEBUG] PASSO 2: Inserindo na tabela 'newpost_posts' (feed do dashboard)...")
-        titulo_np = (post.get('title') or '').strip()
-        conteudo_np = (post.get('content') or post.get('caption') or '').strip()
-        if len(conteudo_np) > 2000:
-            conteudo_np = conteudo_np[:2000] + "..."
-        descricao_np = conteudo_np[:200] if conteudo_np else titulo_np[:200]
-        hashtags_np = post.get('tags') or post.get('hashtags') or ['notícia', 'Brasil']
-        now_np = datetime.now(timezone.utc).isoformat()
-        newpost_payload = {
-            'titulo': titulo_np,
-            'descricao': descricao_np,
-            'conteudo': conteudo_np,
-            'hashtags': hashtags_np,
-            'autor_id': newpost_author_id,
-            'criado_em': now_np,
-            'atualizado_em': now_np
-        }
-        resp_np = requests.post(
-            f"{supabase_url}/rest/v1/newpost_posts",
-            json=newpost_payload,
-            headers=headers,
-            timeout=15
-        )
-        print(f"[DEBUG] Resposta newpost_posts: {resp_np.status_code} - {resp_np.text[:300]}")
-        if resp_np.status_code in (401, 403):
-            return jsonify({"success": False, "error": "Falha de autenticação/permissão ao inserir em newpost_posts (401/403) — verifique NEWPOST_SUPABASE_ANON_KEY/SERVICE_KEY no Vercel"}), resp_np.status_code
-        if resp_np.status_code not in (200, 201, 204, 409):
-            return jsonify({"success": False, "error": f"Erro ao inserir em newpost_posts: {resp_np.status_code} - {resp_np.text[:200]}"}), resp_np.status_code
+        # --- PASSO 2 (best-effort): tabela 'newpost_posts' NAO existe neste projeto Supabase ---
+        # O feed REAL da NewPost-IA e a propria tabela 'posts' (ja inserida acima como published/public).
+        # Mantido como best-effort: se a tabela existir em outro ambiente, alimenta; senao, ignora (nao derruba o publish).
+        print(f"[DEBUG] PASSO 2 (best-effort): tentando 'newpost_posts'...")
+        try:
+            titulo_np = (post.get('title') or '').strip()
+            conteudo_np = (post.get('content') or post.get('caption') or '').strip()
+            if len(conteudo_np) > 2000:
+                conteudo_np = conteudo_np[:2000] + "..."
+            descricao_np = conteudo_np[:200] if conteudo_np else titulo_np[:200]
+            hashtags_np = post.get('tags') or post.get('hashtags') or ['notícia', 'Brasil']
+            now_np = datetime.now(timezone.utc).isoformat()
+            newpost_payload = {
+                'titulo': titulo_np,
+                'descricao': descricao_np,
+                'conteudo': conteudo_np,
+                'hashtags': hashtags_np,
+                'autor_id': newpost_author_id,
+                'criado_em': now_np,
+                'atualizado_em': now_np
+            }
+            resp_np = requests.post(
+                f"{supabase_url}/rest/v1/newpost_posts",
+                json=newpost_payload,
+                headers=headers,
+                timeout=15
+            )
+            print(f"[DEBUG] (best-effort) newpost_posts: {resp_np.status_code} - {resp_np.text[:200]}")
+        except Exception as e_np:
+            print(f"[DEBUG] (best-effort) newpost_posts ignorado: {e_np}")
 
         # --- PASSO 3: Atualizar status do post para 'published' ---
         print(f"[DEBUG] PASSO 3: Atualizando status do post para 'published'...")
