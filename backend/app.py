@@ -1923,12 +1923,13 @@ def api_create_social_post():
                 }
                 status_en = status_map.get(status_pt, 'draft')
                 
-                # Apenas colunas reais da tabela 'posts' (NAO existem 'caption'/'tags' -> causavam 400)
+                # 'posts' NAO tem coluna 'caption' (causava 400); 'tags' existe e e mantido
                 post_data_supabase = {
                     'author_id': newpost_author_id,
                     'title': title_sp,
                     'content': final_content_sp,
                     'source_url': source_url_sp,
+                    'tags': data.get('hashtags', []),
                     'status': status_en,
                     'is_ia_generated': True,
                     'created_at': datetime.now(timezone.utc).isoformat(),
@@ -2431,19 +2432,22 @@ def api_publish_social_post(post_id):
 
             # Só insere se a dedup por source_url não tiver encontrado um post existente
             if not post:
-                # Apenas colunas reais da tabela 'posts' (NAO existem 'caption'/'tags' -> causavam 400)
+                # 'posts' NAO tem coluna 'caption' (causava 400); 'tags' existe e e mantido
                 insert_payload = {
                     'author_id': newpost_author_id,
                     'title': local_post.get('title', ''),
                     'content': content_local,
                     'source_url': local_post.get('source_url', ''),
+                    'tags': local_post.get('hashtags') or local_post.get('tags') or [],
                     'status': 'ready',
                     'is_ia_generated': True,
                     'created_at': now_iso,
                     'updated_at': now_iso
                 }
+                # 'posts' NAO tem coluna 'image_url' -> usar media_urls/media_types (senao causa 400)
                 if local_post.get('image_url'):
-                    insert_payload['image_url'] = local_post['image_url']
+                    insert_payload['media_urls'] = [local_post['image_url']]
+                    insert_payload['media_types'] = ['image']
                 if local_post.get('category'):
                     insert_payload['category'] = local_post['category']
 
