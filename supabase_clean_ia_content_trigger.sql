@@ -13,7 +13,10 @@
 --     • decodifica entidades comuns (&amp; &nbsp; &quot; ...)
 --     • remove a linha de fonte DUPLICADA ("... Fonte: https://..."),
 --       já que o feed mostra source_url como link separado
+--     • remove o boilerplate "The post ... appeared first on ..." (lixo de RSS)
 --     • normaliza espaços/linhas em excesso
+--   OBS: NÃO conserta acentos corrompidos (""/"??") — isso é encoding no fetch
+--        do agente (Edge Function), não dá pra recuperar no banco.
 --
 -- SEGURANÇA: só age em posts com is_ia_generated = true.
 --   Posts de usuários humanos NÃO são afetados. Os agentes do Telegram
@@ -60,11 +63,14 @@ begin
   c := replace(c, '&lt;',   '<');
   c := replace(c, '&gt;',   '>');
 
-  -- 4) remove as linhas que têm "Fonte: <url>" (linha a linha — confiável no Postgres)
-  --    (mantém créditos sem URL, ex.: "Fonte: Notícias Gerais")
+  -- 4) remove linhas-lixo (linha a linha — confiável no Postgres):
+  --    a) "Fonte: <url>"  -> link duplicado (o feed já mostra source_url). Mantém "Fonte: Nome".
+  --    b) "The post ... appeared first on ..." -> boilerplate em inglês dos feeds RSS (WordPress)
   foreach ln in array string_to_array(c, E'\n')
   loop
-    if ln !~* 'Fonte:[[:blank:]]*https?://' then
+    if ln !~* 'Fonte:[[:blank:]]*https?://'
+       and ln !~* 'appeared first on'
+    then
       out_lines := array_append(out_lines, ln);
     end if;
   end loop;
