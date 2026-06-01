@@ -27,10 +27,12 @@ try:
     print(f"[DEBUG] Tentando carregar .env de: {env_path}")
     print(f"[DEBUG] Arquivo .env existe? {os.path.exists(env_path)}")
     if os.path.exists(env_path):
-        load_dotenv(env_path)
-        print(f"✅ Arquivo .env carregado: {env_path}")
+        load_dotenv(env_path, override=True)
+        print(f"✅ Arquivo .env carregado com override=True: {env_path}")
         # Verificar variáveis imediatamente após o load
         print(f"[DEBUG] SUPABASE_URL após load_dotenv: {repr(os.getenv('SUPABASE_URL'))}")
+        print(f"[DEBUG] NEWPOST_SUPABASE_URL: {repr(os.getenv('NEWPOST_SUPABASE_URL'))}")
+        print(f"[DEBUG] NEWPOST_SUPABASE_SERVICE_KEY (primeiros 30): {repr(os.getenv('NEWPOST_SUPABASE_SERVICE_KEY')[:30])}")
     else:
         print(f"⚠️ Arquivo .env não encontrado em: {env_path}")
 except ImportError:
@@ -388,7 +390,7 @@ def api_list_newpost_authors():
     """Lista todos os autores do newpost_profiles via Supabase"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', ''))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -429,7 +431,7 @@ def api_create_newpost_author():
             return jsonify({"success": False, "error": "Nome e e-mail são obrigatórios"}), 400
         
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', ''))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -441,6 +443,7 @@ def api_create_newpost_author():
             'Prefer': 'return=representation'
         }
         
+        # O banco de dados gera o UUID automaticamente agora
         author_data = {
             'nome': nome,
             'email': email
