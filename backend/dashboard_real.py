@@ -447,55 +447,33 @@ def dashboard_real():
 def get_real_dashboard_data():
     """API que retorna dados REAIS do Supabase"""
     try:
-        # Importar Supabase dinamicamente aqui para garantir que .env esteja carregado
-        from backend.supabase_config import get_supabase_client
-        
-        # Conectar ao Supabase
-        supabase = get_supabase_client()
-        
-        # Buscar posts reais da tabela posts (tabela principal do Locutores IA)
-        result = supabase.table('posts').select('*').order('created_at', desc=True).limit(100).execute()
-        posts = result.data if result.data else []
-        
-        # Buscar fontes (se a tabela existir)
-        sources = []
-        try:
-            result_sources = supabase.table('sources').select('*').execute()
-            sources = result_sources.data if result_sources.data else []
-        except Exception as e:
-            logger.warning(f"Tabela 'sources' não encontrada ou erro ao consultar: {e}")
-        
-        # Estatísticas (adaptado para tabela posts)
+        hours = request.args.get('hours', 24, type=int)
+
+        # Dados REAIS via módulo compartilhado (lê o feed hzmt, agrupa por fonte real)
+        from backend.news_metrics import compute_news_metrics
+        m = compute_news_metrics(hours)
+
+        by_source = m['by_source']
+        by_status = m['by_status']
         stats = {
-            'total_publications': len(posts),
-            'total_sources': len(sources),
-            'published': len([p for p in posts if p.get('status') == 'published']),
-            'pending': len([p for p in posts if p.get('status') == 'ready']),
-            'error': len([p for p in posts if p.get('status') == 'draft' and p.get('is_ia_generated') is False])
+            'total_publications': m['total_news'],
+            'total_sources': len(by_source),
+            'published': by_status.get('published', 0),
+            'pending': by_status.get('pending', 0),
+            'error': by_status.get('draft', 0),
         }
-        
-        # Agrupar por autor
-        by_source = Counter([p.get('author_id', 'Desconhecido') for p in posts if p.get('author_id')])
-        
-        # Agrupar por status
-        by_status = {
-            'published': stats['published'],
-            'pending': stats['pending'],
-            'error': stats['error']
-        }
-        
-        # Publicações recentes (últimas 10)
-        recent = posts[:10]
-        
+
         return jsonify({
             'success': True,
             'stats': stats,
-            'by_source': dict(by_source),
+            'by_source': by_source,
             'by_status': by_status,
-            'recent_publications': recent,
-            'sources': sources,
+            'recent_publications': m['recent'],
+            'sources': list(by_source.keys()),
+            'trending_topics': m['trending_topics'][:10],
+            'period_hours': hours,
             'generated_at': datetime.now().isoformat(),
-            'data_source': 'Supabase (tabela posts - dados reais do Locutores IA)'
+            'data_source': 'Supabase hzmtdfojctctvgqjdbex (posts reais, agrupado por fonte)'
         })
         
     except Exception as e:

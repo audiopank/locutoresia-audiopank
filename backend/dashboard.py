@@ -534,63 +534,23 @@ def get_trends():
     """API para obter tendências e análises avançadas - DADOS REAIS DO SUPABASE"""
     try:
         hours = request.args.get('hours', 24, type=int)
-        
-        # Conectar ao Supabase (importar dinamicamente)
-        from backend.supabase_config import get_supabase_client
-        supabase = get_supabase_client()
-        
-        # Buscar posts da tabela posts (tabela principal do Locutores IA)
-        result = supabase.table('posts').select('*').order('created_at', desc=True).limit(100).execute()
-        posts = result.data if result.data else []
-        
-        # Análise por autor
-        by_source = Counter([p.get('author_id', 'Desconhecido') for p in posts if p.get('author_id')])
-        
-        # Análise por categoria (usando tags como proxy)
-        by_category = Counter()
-        for post in posts:
-            if post.get('tags'):
-                for tag in post['tags']:
-                    by_category[tag] += 1
-        
-        # Simular análise de sentimentos (em produção usar IA)
-        sentiment_distribution = {
-            'positivo': len(posts) * 0.3,
-            'negativo': len(posts) * 0.2,
-            'neutro': len(posts) * 0.5
-        }
-        
-        # Extrair palavras-chave dos títulos e conteúdos
-        all_text = ' '.join([f"{p.get('title', '')} {p.get('content', '')}" for p in posts])
-        words = [word.lower() for word in all_text.split() if len(word) > 3]
-        global_keywords = [word for word, count in Counter(words).most_common(15)]
-        
-        # Simular tópicos em alta
-        trending_topics = []
-        topics = [
-            {'topic': 'Economia', 'mentions': 15, 'sources': ['G1', 'Exame', 'Folha']},
-            {'topic': 'Tecnologia', 'mentions': 12, 'sources': ['Olhar Digital', 'G1']},
-            {'topic': 'Política', 'mentions': 10, 'sources': ['G1', 'Veja', 'Folha']},
-            {'topic': 'Brasil', 'mentions': 8, 'sources': ['G1', 'Folha']},
-            {'topic': 'Negócios', 'mentions': 6, 'sources': ['Exame', 'Forbes Brasil']}
-        ]
-        
-        for topic in topics:
-            if topic['mentions'] > 0:
-                trending_topics.append(topic)
-        
+
+        # Dados REAIS via módulo compartilhado (lê o feed hzmt, agrupa por fonte real)
+        from backend.news_metrics import compute_news_metrics
+        m = compute_news_metrics(hours)
+
         return jsonify({
             'success': True,
             'trends': {
-                'total_news': len(posts),
-                'by_source': dict(by_source),
-                'by_category': dict(by_category),
-                'sentiment_distribution': sentiment_distribution,
-                'global_keywords': global_keywords,
-                'trending_topics': trending_topics[:10],
+                'total_news': m['total_news'],
+                'by_source': m['by_source'],
+                'by_category': m['by_category'],
+                'sentiment_distribution': m['sentiment_distribution'],
+                'global_keywords': m['global_keywords'],
+                'trending_topics': m['trending_topics'][:10],
                 'period_hours': hours,
                 'generated_at': datetime.now().isoformat(),
-                'data_source': 'Supabase (tabela posts - dados reais do Locutores IA)'
+                'data_source': 'Supabase hzmtdfojctctvgqjdbex (posts reais, agrupado por fonte)'
             }
         })
         
