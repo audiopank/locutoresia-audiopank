@@ -1,4 +1,10 @@
 -- ============================================================================
+-- ⚠️⚠️ RODAR NO PROJETO CERTO! ⚠️⚠️
+--   O feed da NewPost-IA roda no Supabase **hzmtdfojctctvgqjdbex** (o que a Lovable usa).
+--   NÃO rode no ykswhzqdjoshjoaruhqs (Locutores IA) — é o projeto ERRADO p/ o feed.
+--   Confirme pela URL do SQL Editor: .../project/hzmtdfojctctvgqjdbex/sql
+--   (Acesso a esse projeto: pela integração Supabase da Lovable da NewPost-IA.)
+-- ============================================================================
 -- NewPost-IA — Limpeza automática de conteúdo de posts de IA/agentes
 -- ----------------------------------------------------------------------------
 -- O QUE FAZ: a cada INSERT/UPDATE em public.posts, SE o post for is_ia_generated,
@@ -23,11 +29,16 @@
 -- ============================================================================
 -- SEÇÃO 0 — Função de limpeza (necessária para o dry-run e para o trigger)
 -- ============================================================================
+-- (versão à prova de bala — remove a linha "Fonte: url" filtrando linha a linha,
+--  sem depender de regex multilinha, que se comporta diferente no Postgres)
 create or replace function public.np_clean_content(c text)
 returns text
 language plpgsql
 immutable
 as $$
+declare
+  ln text;
+  out_lines text[] := '{}';
 begin
   if c is null or c = '' then
     return c;
@@ -49,13 +60,19 @@ begin
   c := replace(c, '&lt;',   '<');
   c := replace(c, '&gt;',   '>');
 
-  -- 4) remove a linha de fonte DUPLICADA: qualquer linha com "Fonte:" seguida de URL
+  -- 4) remove as linhas que têm "Fonte: <url>" (linha a linha — confiável no Postgres)
   --    (mantém créditos sem URL, ex.: "Fonte: Notícias Gerais")
-  c := regexp_replace(c, '(^|\n)[^\n]*Fonte:[ \t]*https?://[^\n]*', '\1', 'gi');
+  foreach ln in array string_to_array(c, E'\n')
+  loop
+    if ln !~* 'Fonte:[[:blank:]]*https?://' then
+      out_lines := array_append(out_lines, ln);
+    end if;
+  end loop;
+  c := array_to_string(out_lines, E'\n');
 
   -- 5) normaliza espaços e quebras de linha em excesso
-  c := regexp_replace(c, '[ \t]+', ' ', 'g');
-  c := regexp_replace(c, '\n[ \t]+', E'\n', 'g');
+  c := regexp_replace(c, '[[:blank:]]+', ' ', 'g');
+  c := regexp_replace(c, '\n[[:blank:]]+', E'\n', 'g');
   c := regexp_replace(c, '\n{3,}', E'\n\n', 'g');
   c := btrim(c);
 
