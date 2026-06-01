@@ -208,39 +208,30 @@
 
         <!-- Stats Overview -->
         <div class="row mb-4">
-            <div class="col-md-3 mb-3">
+            <div class="col-md-4 mb-3">
                 <div class="stat-card">
-                    <div class="stat-number">1,247</div>
-                    <div class="stat-label">Posts Criados</div>
+                    <div class="stat-number" id="stat-posts">—</div>
+                    <div class="stat-label">Notícias (7 dias)</div>
                     <div class="text-success small mt-2">
-                        <i class="fas fa-arrow-up"></i> 12% esta semana
+                        <i class="fas fa-database"></i> dados reais do feed
                     </div>
                 </div>
             </div>
-            <div class="col-md-3 mb-3">
+            <div class="col-md-4 mb-3">
                 <div class="stat-card">
-                    <div class="stat-number">89.2%</div>
-                    <div class="stat-label">Taxa de Engajamento</div>
+                    <div class="stat-number" id="stat-sources">—</div>
+                    <div class="stat-label">Fontes Ativas</div>
                     <div class="text-success small mt-2">
-                        <i class="fas fa-arrow-up"></i> 5.3% este mês
+                        <i class="fas fa-rss"></i> portais coletados
                     </div>
                 </div>
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card">
-                    <div class="stat-number">45.3K</div>
-                    <div class="stat-label">Alcance Total</div>
-                    <div class="text-warning small mt-2">
-                        <i class="fas fa-minus"></i> Estável
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
+            <div class="col-md-4 mb-3">
                 <div class="stat-card">
                     <div class="stat-number">24/7</div>
                     <div class="stat-label">Automação Ativa</div>
                     <div class="text-success small mt-2">
-                        <i class="fas fa-check-circle"></i> 99.9% uptime
+                        <i class="fas fa-check-circle"></i> agentes coletando
                     </div>
                 </div>
             </div>
@@ -248,54 +239,14 @@
 
         <!-- Charts -->
         <div class="row mb-4">
-            <div class="col-md-8">
+            <div class="col-12">
                 <div class="card card-dark">
                     <div class="card-body">
                         <h5 class="text-white mb-4">
-                            <i class="fas fa-chart-area me-2"></i>Tendência de Posts
+                            <i class="fas fa-chart-area me-2"></i>Tendência de Notícias (por dia)
                         </h5>
                         <div class="chart-container">
                             <canvas id="postsChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card card-dark">
-                    <div class="card-body">
-                        <h5 class="text-white mb-4">
-                            <i class="fas fa-chart-pie me-2"></i>Distribuição por Tipo
-                        </h5>
-                        <div class="chart-container">
-                            <canvas id="typeChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Performance Metrics -->
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="card card-dark">
-                    <div class="card-body">
-                        <h5 class="text-white mb-4">
-                            <i class="fas fa-tachometer-alt me-2"></i>Métricas de Performance
-                        </h5>
-                        <div class="chart-container">
-                            <canvas id="performanceChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card card-dark">
-                    <div class="card-body">
-                        <h5 class="text-white mb-4">
-                            <i class="fas fa-clock me-2"></i>Tempo de Resposta
-                        </h5>
-                        <div class="chart-container">
-                            <canvas id="responseChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -418,24 +369,17 @@
         Chart.defaults.color = '#e2e8f0';
         Chart.defaults.borderColor = 'rgba(139, 92, 246, 0.2)';
 
-        // Gráfico de Tendência de Posts
+        // Gráfico de Tendência de Notícias (dados REAIS via API)
         const postsCtx = document.getElementById('postsChart').getContext('2d');
-        new Chart(postsCtx, {
+        const postsChart = new Chart(postsCtx, {
             type: 'line',
             data: {
-                labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
+                labels: [],
                 datasets: [{
-                    label: 'Posts Criados',
-                    data: [12, 19, 15, 25, 22, 30, 28],
+                    label: 'Notícias por dia',
+                    data: [],
                     borderColor: '#8b5cf6',
-                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }, {
-                    label: 'Posts Publicados',
-                    data: [10, 17, 13, 22, 20, 28, 25],
-                    borderColor: '#ec4899',
-                    backgroundColor: 'rgba(236, 72, 153, 0.1)',
+                    backgroundColor: 'rgba(139, 92, 246, 0.15)',
                     tension: 0.4,
                     fill: true
                 }]
@@ -464,113 +408,34 @@
             }
         });
 
-        // Gráfico de Distribuição por Tipo
-        const typeCtx = document.getElementById('typeChart').getContext('2d');
-        new Chart(typeCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Posts', 'Stories', 'Reels', 'Tweets'],
-                datasets: [{
-                    data: [45, 25, 20, 10],
-                    backgroundColor: [
-                        '#8b5cf6',
-                        '#ec4899',
-                        '#06b6d4',
-                        '#f59e0b'
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                    }
-                }
+        // Carrega dados REAIS do feed (últimos 7 dias) e popula cards + gráfico
+        async function carregarReais() {
+            try {
+                const resp = await fetch('/api/advanced/trends?hours=168');
+                const json = await resp.json();
+                const t = json.trends || {};
+                const elPosts = document.getElementById('stat-posts');
+                const elSrc = document.getElementById('stat-sources');
+                if (elPosts) elPosts.textContent = (t.total_news || 0).toLocaleString('pt-BR');
+                if (elSrc) elSrc.textContent = Object.keys(t.by_source || {}).length;
+                const byDay = t.by_day || {};
+                const dias = Object.keys(byDay).sort();
+                const fmt = d => { const p = d.split('-'); return p.length === 3 ? (p[2] + '/' + p[1]) : d; };
+                postsChart.data.labels = dias.map(fmt);
+                postsChart.data.datasets[0].data = dias.map(d => byDay[d]);
+                postsChart.update();
+            } catch (e) {
+                console.error('Erro ao carregar dados reais:', e);
             }
-        });
-
-        // Gráfico de Performance
-        const performanceCtx = document.getElementById('performanceChart').getContext('2d');
-        new Chart(performanceCtx, {
-            type: 'bar',
-            data: {
-                labels: ['CPU', 'Memória', 'Storage', 'Rede', 'API'],
-                datasets: [{
-                    label: 'Uso (%)',
-                    data: [45, 62, 28, 35, 52],
-                    backgroundColor: [
-                        'rgba(139, 92, 246, 0.8)',
-                        'rgba(236, 72, 153, 0.8)',
-                        'rgba(6, 182, 212, 0.8)',
-                        'rgba(245, 158, 11, 0.8)',
-                        'rgba(16, 185, 129, 0.8)'
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100,
-                        grid: {
-                            color: 'rgba(139, 92, 246, 0.1)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
-            }
-        });
-
-        // Gráfico de Tempo de Resposta
-        const responseCtx = document.getElementById('responseChart').getContext('2d');
-        new Chart(responseCtx, {
-            type: 'line',
-            data: {
-                labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
-                datasets: [{
-                    label: 'Tempo de Resposta (ms)',
-                    data: [23, 19, 45, 67, 52, 38, 25],
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(139, 92, 246, 0.1)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            color: 'rgba(139, 92, 246, 0.1)'
-                        }
-                    }
-                }
-            }
-        });
+        }
+        carregarReais();
 
         function refreshDashboard() {
-            location.reload();
+            carregarReais();
         }
 
-        // Auto-refresh a cada 60 segundos
-        setInterval(refreshDashboard, 60000);
+        // Auto-refresh a cada 60 segundos (só os dados, sem recarregar a página)
+        setInterval(carregarReais, 60000);
     </script>
 </body>
 </html>

@@ -1035,6 +1035,7 @@ def get_trends():
                 'sentiment_distribution': m['sentiment_distribution'],
                 'global_keywords': m['global_keywords'],
                 'trending_topics': m['trending_topics'][:10],
+                'by_day': m['by_day'],
                 'period_hours': hours,
                 'generated_at': datetime.now().isoformat(),
                 'data_source': 'Supabase hzmtdfojctctvgqjdbex (posts reais, agrupado por fonte)'

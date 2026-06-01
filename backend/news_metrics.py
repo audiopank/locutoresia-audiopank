@@ -126,6 +126,14 @@ def compute_news_metrics(hours=24, limit=2000):
                 break
         trending_topics.append({'topic': w.capitalize(), 'mentions': c, 'sources': srcs})
 
+    # posts por dia (p/ gráfico de tendência) — chave YYYY-MM-DD
+    by_day = Counter()
+    for p in news:
+        ca = (p.get('created_at') or '')[:10]
+        if ca:
+            by_day[ca] += 1
+    by_day = dict(sorted(by_day.items()))
+
     total = len(news)
     by_status = {
         'published': len([p for p in news if p.get('status') == 'published']),
@@ -149,5 +157,6 @@ def compute_news_metrics(hours=24, limit=2000):
         'global_keywords': global_keywords,
         'trending_topics': trending_topics,
         'recent': news[:10],
+        'by_day': by_day,
         'hours': hours,
     }
