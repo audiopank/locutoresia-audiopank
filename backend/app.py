@@ -2477,10 +2477,21 @@ def api_publish_social_post(post_id):
                     'title': local_post.get('title', ''),
                     'content': content_local,
                     'source_url': local_post.get('source_url', ''),
-                    'source': local_post.get('source') or 'rss',
+                    'tags': local_post.get('hashtags') or local_post.get('tags') or [],
                     'status': 'published',
-                    'is_ia_generated': True
+                    'privacy': 'public',
+                    'watch_projected': 100,
+                    'is_ia_generated': True,
+                    'created_at': now_iso,
+                    'updated_at': now_iso,
+                    'published_at': now_iso
                 }
+                # 'posts' NAO tem coluna 'image_url' -> usar media_urls/media_types (senao causa 400)
+                if local_post.get('image_url'):
+                    insert_payload['media_urls'] = [local_post['image_url']]
+                    insert_payload['media_types'] = ['image']
+                if local_post.get('category'):
+                    insert_payload['category'] = local_post['category']
 
                 print(f"[DEBUG] Inserindo post local na tabela 'posts' para obter id real...")
                 resp_insert = requests.post(
