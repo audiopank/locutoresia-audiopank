@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Biblioteca de Trilhas - Locutores IA</title>
+    <title>Biblioteca de Trilhas Sonoras - Locutores IA</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -49,6 +49,30 @@
             margin-bottom: 1.5rem;
         }
 
+        .upload-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--primary-color);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--accent-color);
+        }
+
         .track-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -56,6 +80,7 @@
             padding: 1.5rem;
             transition: all 0.3s ease;
             cursor: pointer;
+            position: relative;
         }
 
         .track-card:hover {
@@ -73,7 +98,7 @@
 
         .track-meta {
             display: flex;
-            gap: 1rem;
+            gap: 0.5rem;
             flex-wrap: wrap;
             margin-top: 0.5rem;
         }
@@ -94,8 +119,8 @@
         }
 
         .play-btn {
-            width: 50px;
-            height: 50px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             background: var(--primary-color);
             border: none;
@@ -111,19 +136,17 @@
             transform: scale(1.1);
         }
 
-        .use-btn {
-            background: linear-gradient(135deg, var(--accent-color), var(--secondary-color));
-            border: none;
-            color: white;
-            padding: 0.5rem 1.5rem;
+        .delete-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+            padding: 0.375rem 0.75rem;
             border-radius: 8px;
-            font-weight: 500;
             transition: all 0.3s ease;
         }
 
-        .use-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+        .delete-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
         }
 
         .progress-bar {
@@ -141,29 +164,65 @@
             transition: width 0.1s linear;
         }
 
-        .search-box {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
+        .search-box,
+        .form-control,
+        .form-select {
             background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
             color: var(--text-primary);
-            margin-bottom: 1rem;
         }
 
-        .search-box:focus {
+        .search-box:focus,
+        .form-control:focus,
+        .form-select:focus {
             outline: none;
             border-color: var(--primary-color);
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-        }
-
-        .filter-select {
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
             background: rgba(15, 23, 42, 0.6);
             color: var(--text-primary);
-            margin-right: 0.5rem;
+        }
+
+        .upload-progress {
+            height: 8px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .upload-progress.active {
+            display: block;
+        }
+
+        .upload-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            color: white;
+            font-weight: 500;
+        }
+
+        .btn-primary-custom:hover {
+            background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
+        }
+
+        .track-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .track-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -171,18 +230,19 @@
     <header class="main-header">
         <div class="container-fluid">
             <div class="row align-items-center">
-                <div class="col-md-8">
+                <div class="col-md-6">
                     <h1 class="h3 mb-0">
                         <i class="fas fa-music me-2"></i>
                         Biblioteca de Trilhas Sonoras
                     </h1>
+                    <p class="mb-0 text-muted">Gerencie suas trilhas musicais</p>
                 </div>
-                <div class="col-md-4 text-md-end">
-                    <a href="/" class="btn btn-daw btn-sm">
-                        <i class="fas fa-home me-1"></i>
+                <div class="col-md-6 text-md-end">
+                    <a href="/" class="btn btn-secondary me-2">
+                        <i class="fas fa-arrow-left me-1"></i>
                         Voltar ao Início
                     </a>
-                    <a href="/minidaw" class="btn btn-daw btn-success btn-sm ms-2">
+                    <a href="/minidaw" class="btn btn-primary-custom me-2">
                         <i class="fas fa-sliders-h me-1"></i>
                         Abrir MiniDAW
                     </a>
@@ -192,10 +252,95 @@
     </header>
 
     <main class="library-container">
+        <!-- Seção de Upload -->
+        <div class="upload-section" id="uploadSection">
+            <h5 class="mb-3">
+                <i class="fas fa-cloud-upload-alt me-2"></i>
+                Adicionar Novas Trilhas
+            </h5>
+            
+            <div class="drop-zone" id="dropZone">
+                <i class="fas fa-music fa-3x mb-3" style="color: var(--primary-color);"></i>
+                <h5>Arraste e solte seus arquivos de áudio aqui</h5>
+                <p class="text-muted mb-3">ou clique para selecionar</p>
+                <p class="text-muted small">MP3, WAV, OGG, M4A (1 arquivo ou vários)</p>
+                <input type="file" id="fileInput" accept="audio/*" multiple style="display: none;">
+                <button class="btn btn-primary-custom mt-2" onclick="document.getElementById('fileInput').click()">
+                    <i class="fas fa-folder-open me-1"></i>
+                    Selecionar Arquivos
+                </button>
+            </div>
+
+            <!-- Formulário de Dados da Trilha (para upload individual) -->
+            <div class="mt-4" id="trackForm" style="display: none;">
+                <hr class="my-4" style="border-color: var(--border-color);">
+                <h6 class="mb-3">Informações da Trilha</h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Nome da Trilha *</label>
+                        <input type="text" class="form-control" id="trackName" placeholder="Ex: Trilha Epica">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Artista</label>
+                        <input type="text" class="form-control" id="trackArtist" value="Locutores IA" placeholder="Ex: Locutores IA">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Gênero *</label>
+                        <select class="form-select" id="trackGenre">
+                            <option value="pop">Pop</option>
+                            <option value="rock">Rock</option>
+                            <option value="electronic">Eletrônica</option>
+                            <option value="hip-hop">Hip-Hop</option>
+                            <option value="lofi">Lo-Fi</option>
+                            <option value="cinematic">Cinemática</option>
+                            <option value="jazz">Jazz</option>
+                            <option value="classical">Clássica</option>
+                            <option value="other">Outro</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Mood *</label>
+                        <select class="form-select" id="trackMood">
+                            <option value="energetic">Energético</option>
+                            <option value="happy">Feliz</option>
+                            <option value="chill">Chill</option>
+                            <option value="dramatic">Dramático</option>
+                            <option value="inspirational">Inspirador</option>
+                            <option value="sad">Triste</option>
+                            <option value="neutral">Neutro</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">BPM</label>
+                        <input type="number" class="form-control" id="trackBpm" value="120" placeholder="120">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Descrição</label>
+                        <textarea class="form-control" id="trackDescription" rows="2" placeholder="Descreva a trilha..."></textarea>
+                    </div>
+                </div>
+                
+                <div class="mt-3 d-flex gap-2">
+                    <button class="btn btn-primary-custom" id="uploadBtn" onclick="uploadTracks()">
+                        <i class="fas fa-upload me-1"></i>
+                        Fazer Upload
+                    </button>
+                    <button class="btn btn-secondary" onclick="cancelUpload()">
+                        Cancelar
+                    </button>
+                </div>
+                
+                <div class="upload-progress" id="uploadProgress">
+                    <div class="upload-progress-fill" id="uploadProgressFill"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtros e Busca -->
         <div class="filter-section">
-            <input type="text" class="search-box" id="searchInput" placeholder="Pesquise por nome, gênero ou mood...">
-            <div class="d-flex flex-wrap gap-2">
-                <select class="filter-select" id="genreSelect">
+            <input type="text" class="form-control search-box" id="searchInput" placeholder="Pesquise por nome, gênero ou mood...">
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <select class="form-select" id="genreSelect" style="max-width: 200px;">
                     <option value="">Todos os Gêneros</option>
                     <option value="pop">Pop</option>
                     <option value="rock">Rock</option>
@@ -204,7 +349,7 @@
                     <option value="lofi">Lo-Fi</option>
                     <option value="cinematic">Cinemática</option>
                 </select>
-                <select class="filter-select" id="moodSelect">
+                <select class="form-select" id="moodSelect" style="max-width: 200px;">
                     <option value="">Todos os Moods</option>
                     <option value="energetic">Energético</option>
                     <option value="happy">Feliz</option>
@@ -212,24 +357,32 @@
                     <option value="dramatic">Dramático</option>
                     <option value="inspirational">Inspirador</option>
                 </select>
-                <select class="filter-select" id="durationSelect">
+                <select class="form-select" id="durationSelect" style="max-width: 200px;">
                     <option value="">Todas as Durações</option>
                     <option value="15">15 segundos</option>
                     <option value="30">30 segundos</option>
                     <option value="60">1 minuto</option>
                     <option value="120">2 minutos+</option>
                 </select>
+                <button class="btn btn-primary-custom" onclick="loadTracks()">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    Atualizar
+                </button>
             </div>
         </div>
 
-        <div class="row" id="tracksGrid">
-            <!-- Trilhas serão adicionadas aqui via JS -->
+        <!-- Grid de Trilhas -->
+        <div id="tracksContainer">
+            <div class="track-grid" id="tracksGrid">
+                <!-- Trilhas serão carregadas aqui via JS -->
+            </div>
         </div>
 
+        <!-- Estado Vazio -->
         <div class="text-center mt-5" id="emptyState" style="display: none;">
             <i class="fas fa-music fa-4x mb-3" style="color: var(--text-secondary); opacity: 0.5;"></i>
             <h4>Nenhuma trilha encontrada</h4>
-            <p class="text-muted">Tente ajustar os filtros</p>
+            <p class="text-muted">Faça o upload de novas trilhas acima!</p>
         </div>
     </main>
 
@@ -237,89 +390,157 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Catálogo de trilhas de exemplo
-        const TRACKS = [
-            {
-                id: 1,
-                name: "Energia Positiva",
-                artist: "Locutores IA",
-                genre: "pop",
-                mood: "energetic",
-                duration: 15,
-                bpm: 120,
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-                description: "Trilha animada e otimista para comerciais"
-            },
-            {
-                id: 2,
-                name: "Chill Vibes",
-                artist: "Locutores IA",
-                genre: "lofi",
-                mood: "chill",
-                duration: 30,
-                bpm: 90,
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-                description: "Lo-fi relaxante para fundo de vídeos"
-            },
-            {
-                id: 3,
-                name: "Epic Cinematic",
-                artist: "Locutores IA",
-                genre: "cinematic",
-                mood: "dramatic",
-                duration: 60,
-                bpm: 70,
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-                description: "Trilha cinematográfica épica para trailers"
-            },
-            {
-                id: 4,
-                name: "Inspiration Drive",
-                artist: "Locutores IA",
-                genre: "electronic",
-                mood: "inspirational",
-                duration: 45,
-                bpm: 110,
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
-                description: "Trilha motivacional e inspiradora"
-            },
-            {
-                id: 5,
-                name: "Happy Pop",
-                artist: "Locutores IA",
-                genre: "pop",
-                mood: "happy",
-                duration: 30,
-                bpm: 130,
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
-                description: "Pop alegre para conteúdos divertidos"
-            },
-            {
-                id: 6,
-                name: "Urban Beat",
-                artist: "Locutores IA",
-                genre: "hip-hop",
-                mood: "energetic",
-                duration: 40,
-                bpm: 95,
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
-                description: "Beat urbano moderno para conteúdos street"
-            }
-        ];
-
+        let TRACKS = [];
+        let selectedFiles = [];
         let currentPlayingTrackId = null;
         const audioPlayer = document.getElementById('audioPlayer');
 
-        function init() {
-            renderTracks(TRACKS);
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTracks();
+            setupDragAndDrop();
             setupEventListeners();
-        }
+        });
 
         function setupEventListeners() {
             document.getElementById('searchInput').addEventListener('input', filterTracks);
             document.getElementById('genreSelect').addEventListener('change', filterTracks);
             document.getElementById('moodSelect').addEventListener('change', filterTracks);
             document.getElementById('durationSelect').addEventListener('change', filterTracks);
+        }
+
+        async function loadTracks() {
+            try {
+                const response = await fetch('/api/tracks');
+                const data = await response.json();
+                
+                if (data.success) {
+                    TRACKS = data.tracks;
+                    renderTracks(TRACKS);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar trilhas:', error);
+            }
+        }
+
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+
+            dropZone.addEventListener('click', () => fileInput.click());
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('dragover');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+        }
+
+        function handleFiles(files) {
+            selectedFiles = Array.from(files);
+            if (selectedFiles.length > 0) {
+                document.getElementById('trackForm').style.display = 'block';
+                document.getElementById('trackName').value = selectedFiles[0].name.replace(/\.[^/.]+$/, '');
+            }
+        }
+
+        async function uploadTracks() {
+            if (selectedFiles.length === 0) {
+                alert('Selecione pelo menos um arquivo!');
+                return;
+            }
+
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadProgress = document.getElementById('uploadProgress');
+            const uploadProgressFill = document.getElementById('uploadProgressFill');
+            
+            uploadBtn.disabled = true;
+            uploadProgress.classList.add('active');
+            
+            try {
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
+                    const formData = new FormData();
+                    
+                    // Obtém a duração do arquivo de áudio
+                    let duration = 0;
+                    try {
+                        duration = await getAudioDuration(file);
+                    } catch (e) {
+                        console.error('Erro ao obter duração:', e);
+                    }
+                    
+                    formData.append('file', file);
+                    formData.append('name', selectedFiles.length === 1 
+                        ? document.getElementById('trackName').value || file.name 
+                        : file.name.replace(/\.[^/.]+$/, ''));
+                    formData.append('artist', document.getElementById('trackArtist').value);
+                    formData.append('genre', document.getElementById('trackGenre').value);
+                    formData.append('mood', document.getElementById('trackMood').value);
+                    formData.append('duration', duration);
+                    formData.append('bpm', document.getElementById('trackBpm').value);
+                    formData.append('description', document.getElementById('trackDescription').value);
+
+                    const response = await fetch('/api/tracks/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+                    
+                    if (!result.success) {
+                        throw new Error(result.error);
+                    }
+
+                    // Atualiza progresso
+                    const progress = ((i + 1) / selectedFiles.length) * 100;
+                    uploadProgressFill.style.width = `${progress}%`;
+                }
+
+                alert('Upload concluído com sucesso!');
+                cancelUpload();
+                loadTracks();
+
+            } catch (error) {
+                console.error('Erro no upload:', error);
+                alert(`Erro ao fazer upload: ${error.message}`);
+            } finally {
+                uploadBtn.disabled = false;
+                uploadProgress.classList.remove('active');
+                uploadProgressFill.style.width = '0%';
+            }
+        }
+
+        function getAudioDuration(file) {
+            return new Promise((resolve) => {
+                const url = URL.createObjectURL(file);
+                const audio = new Audio();
+                audio.src = url;
+                audio.addEventListener('loadedmetadata', () => {
+                    resolve(Math.round(audio.duration));
+                    URL.revokeObjectURL(url);
+                });
+            });
+        }
+
+        function cancelUpload() {
+            selectedFiles = [];
+            document.getElementById('trackForm').style.display = 'none';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('trackName').value = '';
+            document.getElementById('trackDescription').value = '';
         }
 
         function filterTracks() {
@@ -329,9 +550,10 @@
             const duration = document.getElementById('durationSelect').value;
 
             let filtered = TRACKS.filter(track => {
-                const matchesSearch = track.name.toLowerCase().includes(search) || 
-                                      track.genre.toLowerCase().includes(search) || 
-                                      track.mood.toLowerCase().includes(search);
+                const matchesSearch = (track.name?.toLowerCase().includes(search) || 
+                                      track.genre?.toLowerCase().includes(search) || 
+                                      track.mood?.toLowerCase().includes(search) ||
+                                      track.description?.toLowerCase().includes(search));
                 const matchesGenre = !genre || track.genre === genre;
                 const matchesMood = !mood || track.mood === mood;
                 let matchesDuration = true;
@@ -360,39 +582,40 @@
 
             emptyState.style.display = 'none';
             grid.innerHTML = tracks.map(track => `
-                <div class="col-md-6 col-lg-4 mb-4">
-                    <div class="track-card">
-                        <div class="track-info">
-                            <div>
-                                <h5 class="mb-0">${track.name}</h5>
-                                <p class="mb-1 text-muted small">${track.artist}</p>
-                                <p class="mb-0 small text-secondary">${track.description}</p>
-                                <div class="track-meta">
-                                    <span class="meta-tag"><i class="fas fa-tag me-1"></i>${track.genre}</span>
-                                    <span class="meta-tag"><i class="fas fa-heart me-1"></i>${track.mood}</span>
-                                    <span class="meta-tag"><i class="fas fa-clock me-1"></i>${track.duration}s</span>
-                                    <span class="meta-tag"><i class="fas fa-tachometer-alt me-1"></i>${track.bpm} BPM</span>
-                                </div>
+                <div class="track-card" data-track-id="${track.id}">
+                    <div class="track-info">
+                        <div class="flex-1">
+                            <h6 class="mb-1">${escapeHtml(track.name)}</h6>
+                            <p class="mb-1 text-muted small">${escapeHtml(track.artist)}</p>
+                            ${track.description ? `<p class="mb-1 text-muted small">${escapeHtml(track.description)}</p>` : ''}
+                            <div class="track-meta">
+                                <span class="meta-tag"><i class="fas fa-tag me-1"></i>${escapeHtml(track.genre)}</span>
+                                <span class="meta-tag"><i class="fas fa-heart me-1"></i>${escapeHtml(track.mood)}</span>
+                                <span class="meta-tag"><i class="fas fa-clock me-1"></i>${track.duration}s</span>
+                                <span class="meta-tag"><i class="fas fa-tachometer-alt me-1"></i>${track.bpm || 120} BPM</span>
                             </div>
                         </div>
-                        <div class="audio-controls mt-3">
-                            <button class="play-btn" onclick="togglePlay(${track.id}, '${track.url}')" id="playBtn-${track.id}">
-                                <i class="fas fa-play" id="playIcon-${track.id}"></i>
+                    </div>
+                    <div class="audio-controls mt-3">
+                        <button class="play-btn" onclick="togglePlay('${track.id}', '${track.file_url}')" id="playBtn-${track.id}">
+                            <i class="fas fa-play" id="playIcon-${track.id}"></i>
+                        </button>
+                        <div class="progress-bar" id="progress-${track.id}">
+                            <div class="progress-fill" id="progressFill-${track.id}"></div>
+                        </div>
+                        <div class="dropdown" style="display: inline-block;">
+                            <button class="btn btn-primary-custom dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-plus me-1"></i>
+                                Usar no MiniDAW
                             </button>
-                            <div class="progress-bar" id="progress-${track.id}">
-                                <div class="progress-fill" id="progressFill-${track.id}"></div>
-                            </div>
-                            <div class="dropdown" style="display: inline-block;">
-                                <button class="use-btn dropdown-toggle" type="button" id="dropdownMenuButton-${track.id}" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fas fa-plus me-1"></i>
-                                    Usar no MiniDAW
-                                </button>
-                                <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton-${track.id}" style="background: var(--card-bg); border-color: var(--border-color);">
-                                    <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw', '${track.url}', '${track.name}')">MiniDAW Clássica</a></li>
-                                    <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw-react', '${track.url}', '${track.name}')">MiniDAW React</a></li>
-                                </ul>
-                            </div>
+                            <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton" style="background: var(--card-bg); border-color: var(--border-color);">
+                                <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw', '${track.file_url}', '${escapeHtml(track.name)}')">MiniDAW Clássica</a></li>
+                                <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw-react', '${track.file_url}', '${escapeHtml(track.name)}')">MiniDAW React</a></li>
+                            </ul>
                         </div>
+                        <button class="delete-btn" onclick="deleteTrack('${track.id}')" title="Excluir trilha">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </div>
                 </div>
             `).join('');
@@ -408,9 +631,11 @@
                     updatePlayIcon(trackId, true);
                 }
             } else {
+                // Para a trilha anterior
                 if (currentPlayingTrackId) {
                     updatePlayIcon(currentPlayingTrackId, true);
                 }
+                
                 audioPlayer.src = url;
                 audioPlayer.play();
                 currentPlayingTrackId = trackId;
@@ -450,16 +675,37 @@
         }
 
         function useTrack(targetMinidaw, url, name) {
-            // Armazenar na localStorage para o MiniDAW pegar
             localStorage.setItem('selectedTrackUrl', url);
             localStorage.setItem('selectedTrackName', name);
-            
-            // Redirecionar para o MiniDAW escolhido
             window.location.href = targetMinidaw === 'minidaw-react' ? '/minidaw-react' : '/minidaw';
         }
 
-        // Inicializar a página
-        init();
+        async function deleteTrack(trackId) {
+            if (!confirm('Tem certeza que deseja excluir esta trilha?')) return;
+            
+            try {
+                const response = await fetch(`/api/tracks/${trackId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    loadTracks();
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                console.error('Erro ao excluir:', error);
+                alert(`Erro ao excluir: ${error.message}`);
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
     </script>
 </body>
 </html>

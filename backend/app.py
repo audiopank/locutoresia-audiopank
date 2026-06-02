@@ -337,6 +337,241 @@ def library():
     """Biblioteca de Trilhas Sonoras"""
     return render_template('library.html')
 
+
+# ===========================================
+# API de Trilhas Sonoras
+# ===========================================
+
+@app.route('/api/tracks', methods=['GET'])
+def get_tracks():
+    """Obtém todas as trilhas da biblioteca"""
+    try:
+        # Verifica se temos o cliente do Supabase configurado
+        if not hasattr(app, 'supabase'):
+            # Fallback para trilhas locais se não houver Supabase
+            local_tracks = [
+                {
+                    "id": 1,
+                    "name": "Energia Positiva",
+                    "artist": "Locutores IA",
+                    "genre": "pop",
+                    "mood": "energetic",
+                    "duration": 15,
+                    "bpm": 120,
+                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+                    "description": "Trilha animada e otimista para comerciais"
+                },
+                {
+                    "id": 2,
+                    "name": "Chill Vibes",
+                    "artist": "Locutores IA",
+                    "genre": "lofi",
+                    "mood": "chill",
+                    "duration": 30,
+                    "bpm": 90,
+                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+                    "description": "Lo-fi relaxante para fundo de vídeos"
+                },
+                {
+                    "id": 3,
+                    "name": "Epic Cinematic",
+                    "artist": "Locutores IA",
+                    "genre": "cinematic",
+                    "mood": "dramatic",
+                    "duration": 60,
+                    "bpm": 70,
+                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+                    "description": "Trilha cinematográfica épica para trailers"
+                },
+                {
+                    "id": 4,
+                    "name": "Inspiration Drive",
+                    "artist": "Locutores IA",
+                    "genre": "electronic",
+                    "mood": "inspirational",
+                    "duration": 45,
+                    "bpm": 110,
+                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+                    "description": "Trilha motivacional e inspiradora"
+                },
+                {
+                    "id": 5,
+                    "name": "Happy Pop",
+                    "artist": "Locutores IA",
+                    "genre": "pop",
+                    "mood": "happy",
+                    "duration": 30,
+                    "bpm": 130,
+                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+                    "description": "Pop alegre para conteúdos divertidos"
+                },
+                {
+                    "id": 6,
+                    "name": "Urban Beat",
+                    "artist": "Locutores IA",
+                    "genre": "hip-hop",
+                    "mood": "energetic",
+                    "duration": 40,
+                    "bpm": 95,
+                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+                    "description": "Beat urbano moderno para conteúdos street"
+                }
+            ]
+            return jsonify({
+                "success": True,
+                "tracks": local_tracks
+            }), 200
+        
+        # Se temos o Supabase, busca as trilhas do banco
+        response = app.supabase.table('music_tracks') \
+            .select('*') \
+            .eq('is_active', True) \
+            .order('created_at', desc=True) \
+            .execute()
+        
+        return jsonify({
+            "success": True,
+            "tracks": response.data
+        }), 200
+        
+    except Exception as e:
+        print(f"Erro ao buscar trilhas: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/tracks/upload', methods=['POST', 'OPTIONS'])
+def upload_track():
+    """Faz upload de uma nova trilha"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        # Verifica se temos arquivo na requisição
+        if 'file' not in request.files:
+            return jsonify({
+                "success": False,
+                "error": "Nenhum arquivo enviado"
+            }), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({
+                "success": False,
+                "error": "Nome do arquivo vazio"
+            }), 400
+        
+        # Obtém os dados do formulário
+        name = request.form.get('name', file.filename)
+        artist = request.form.get('artist', 'Locutores IA')
+        genre = request.form.get('genre', 'other')
+        mood = request.form.get('mood', 'neutral')
+        duration = int(request.form.get('duration', 0))
+        bpm = int(request.form.get('bpm', 120))
+        description = request.form.get('description', '')
+        
+        # Salva o arquivo localmente (como fallback)
+        import os
+        upload_dir = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads', 'tracks')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Gera um nome único para o arquivo
+        import uuid
+        file_extension = os.path.splitext(file.filename)[1]
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(upload_dir, unique_filename)
+        
+        file.save(file_path)
+        
+        # Cria a URL para acessar o arquivo
+        file_url = f"/static/uploads/tracks/{unique_filename}"
+        
+        # Prepara os dados da trilha
+        track_data = {
+            "name": name,
+            "artist": artist,
+            "genre": genre,
+            "mood": mood,
+            "duration": duration,
+            "bpm": bpm,
+            "description": description,
+            "file_url": file_url,
+            "file_size": os.path.getsize(file_path),
+            "mime_type": file.mimetype,
+            "is_active": True
+        }
+        
+        # Tenta salvar no Supabase, se disponível
+        if hasattr(app, 'supabase'):
+            try:
+                response = app.supabase.table('music_tracks').insert(track_data).execute()
+                track_data['id'] = response.data[0]['id']
+            except Exception as e:
+                print(f"Não foi possível salvar no Supabase: {e}")
+                # Fallback para ID local
+                track_data['id'] = str(uuid.uuid4())
+        else:
+            track_data['id'] = str(uuid.uuid4())
+        
+        return jsonify({
+            "success": True,
+            "track": track_data
+        }), 201
+        
+    except Exception as e:
+        print(f"Erro ao fazer upload da trilha: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/tracks/<track_id>', methods=['DELETE', 'OPTIONS'])
+def delete_track(track_id):
+    """Exclui uma trilha"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'DELETE, OPTIONS')
+        return response
+    
+    try:
+        # Tenta excluir do Supabase
+        if hasattr(app, 'supabase'):
+            try:
+                app.supabase.table('music_tracks') \
+                    .delete() \
+                    .eq('id', track_id) \
+                    .execute()
+            except Exception as e:
+                print(f"Não foi possível excluir do Supabase: {e}")
+        
+        return jsonify({
+            "success": True,
+            "message": "Trilha excluída com sucesso"
+        }), 200
+        
+    except Exception as e:
+        print(f"Erro ao excluir trilha: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route('/busca-noticias')
 def busca_noticias():
     """Busca de Notícias + IA"""
