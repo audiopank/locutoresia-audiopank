@@ -677,7 +677,7 @@ def api_list_newpost_authors():
     """Lista todos os autores da tabela users (NewPost-IA) via Supabase"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', ''))
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8'))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
@@ -718,7 +718,7 @@ def api_create_newpost_author():
             return jsonify({"success": False, "error": "Nome e e-mail são obrigatórios"}), 400
         
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', ''))
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8'))
         
         if not supabase_url or not supabase_key:
             return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
