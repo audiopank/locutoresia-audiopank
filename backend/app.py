@@ -755,6 +755,65 @@ def api_create_newpost_author():
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/newpost/diagnosis', methods=['GET'])
+def api_newpost_diagnosis():
+    """Diagnóstico das tabelas do Supabase da NewPost-IA"""
+    try:
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais NewPost-IA não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        tables_to_check = [
+            "newpost_profiles", 
+            "newpost_posts", 
+            "users"
+        ]
+        
+        tables_result = []
+        
+        for table_name in tables_to_check:
+            exists = False
+            try:
+                response = requests.get(
+                    f"{supabase_url}/rest/v1/{table_name}",
+                    headers=headers,
+                    params={"select": "id", "limit": 1},
+                    timeout=10
+                )
+                exists = response.status_code in (200, 206)
+            except Exception as e:
+                print(f"[DEBUG] Tabela {table_name}: erro {e}")
+            
+            tables_result.append({
+                "name": table_name,
+                "exists": exists
+            })
+        
+        message = "Diagnóstico concluído! Verifique as tabelas acima."
+        all_ok = all(t.get('exists') for t in tables_result)
+        if not all_ok:
+            message = "Algumas tabelas podem não existir ou não estar acessíveis."
+        
+        return jsonify({
+            "success": True,
+            "tables": tables_result,
+            "message": message
+        })
+        
+    except Exception as e:
+        import traceback
+        print(f"[DEBUG] Erro em api_newpost_diagnosis: {e}")
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/news/collect', methods=['POST'])
 def collect_news():
     """Endpoint para iniciar coleta de notícias"""
@@ -3692,12 +3751,15 @@ def newpost_publish():
         final_content_np = '\n'.join(formatted_content_np).strip()
         descricao_np = summary_np[:200] if summary_np else title_np[:200]
         
+        # Aceitar tanto 'authorId' (camelCase do frontend) quanto 'author_id' (snake_case)
+        author_id = data.get('authorId') or data.get('author_id', DEFAULT_AUTHOR_ID)
+        
         post_data = {
             'titulo': title_np,
             'descricao': descricao_np,
             'conteudo': final_content_np,
             'hashtags': data.get('hashtags', ['notícia', 'Brasil']),
-            'autor_id': data.get('author_id', DEFAULT_AUTHOR_ID),
+            'autor_id': author_id,
             'criado_em': datetime.now(timezone.utc).isoformat(),
             'atualizado_em': datetime.now(timezone.utc).isoformat()
         }

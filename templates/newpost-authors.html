@@ -91,6 +91,20 @@
             color: #E2E8F0;
             box-shadow: 0 0 0 0.25rem rgba(124, 58, 237, 0.25);
         }
+
+        .nav-pills .nav-link {
+            color: #A78BFA;
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 12px;
+            margin-right: 0.5rem;
+            border: 1px solid rgba(124,58,237,0.2);
+        }
+
+        .nav-pills .nav-link.active {
+            background: linear-gradient(135deg, #7C3AED, #EC4899);
+            color: white;
+            border-color: transparent;
+        }
     </style>
 </head>
 <body>
@@ -128,49 +142,139 @@
                     <h1 class="text-3xl font-bold text-white">👤 Autores NewPost-IA</h1>
                     <p class="text-purple-200 mt-1">Gerencie perfis de autores para publicar na NewPost-IA</p>
                 </div>
+                <div class="ms-auto">
+                    <span class="badge bg-success text-white"><i class="fas fa-check-circle me-1"></i>Conectado</span>
+                </div>
             </div>
         </div>
     </header>
 
     <div class="container py-5">
-        <div class="row mb-5">
-            <div class="col-12">
-                <div class="p-4 rounded-xl" style="background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3);">
-                    <h4 class="text-white font-semibold mb-3">
-                        <i class="fas fa-user-plus me-2"></i>Criar Novo Autor
-                    </h4>
-                    <form id="create-author-form">
-                        <div class="row g-3">
-                            <div class="col-md-5">
-                                <label class="form-label text-white">Nome</label>
-                                <input type="text" class="form-control" id="author-name" placeholder="Nome do autor" required>
-                            </div>
-                            <div class="col-md-5">
-                                <label class="form-label text-white">E-mail</label>
-                                <input type="email" class="form-control" id="author-email" placeholder="email@exemplo.com" required>
-                            </div>
-                            <div class="col-md-2 d-flex align-items-end">
-                                <button type="submit" class="btn btn-primary-custom w-100">
-                                    <i class="fas fa-plus me-1"></i>Criar
-                                </button>
-                            </div>
+        <!-- Abas -->
+        <ul class="nav nav-pills mb-5" id="main-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-authors" data-bs-toggle="pill" data-bs-target="#content-authors" type="button" role="tab" aria-controls="content-authors" aria-selected="true">
+                    <i class="fas fa-users me-2"></i>Autores
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-publish" data-bs-toggle="pill" data-bs-target="#content-publish" type="button" role="tab" aria-controls="content-publish" aria-selected="false">
+                    <i class="fas fa-paper-plane me-2"></i>Postar
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-diagnosis" data-bs-toggle="pill" data-bs-target="#content-diagnosis" type="button" role="tab" aria-controls="content-diagnosis" aria-selected="false">
+                    <i class="fas fa-bug me-2"></i>Diagnóstico
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="main-tabs-content">
+            <!-- Aba Autores -->
+            <div class="tab-pane fade show active" id="content-authors" role="tabpanel" aria-labelledby="tab-authors">
+                <div class="row mb-5">
+                    <div class="col-12">
+                        <div class="p-4 rounded-xl" style="background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3);">
+                            <h4 class="text-white font-semibold mb-3">
+                                <i class="fas fa-user-plus me-2"></i>Criar Novo Autor
+                            </h4>
+                            <form id="create-author-form">
+                                <div class="row g-3">
+                                    <div class="col-md-5">
+                                        <label class="form-label text-white">Nome</label>
+                                        <input type="text" class="form-control" id="author-name" placeholder="Nome do autor" required>
+                                    </div>
+                                    <div class="col-md-5">
+                                        <label class="form-label text-white">E-mail</label>
+                                        <input type="email" class="form-control" id="author-email" placeholder="email@exemplo.com" required>
+                                    </div>
+                                    <div class="col-md-2 d-flex align-items-end">
+                                        <button type="submit" class="btn btn-primary-custom w-100">
+                                            <i class="fas fa-plus me-1"></i>Criar
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
                         </div>
-                    </form>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <h3 class="text-white font-semibold">
+                            <i class="fas fa-users me-2"></i>Lista de Autores
+                        </h3>
+                        <p class="text-secondary small">Clique em "Selecionar" para definir como padrão</p>
+                    </div>
+                    <div class="col-12" id="authors-container">
+                        <div class="author-card text-center text-secondary py-5">
+                            <i class="fas fa-spinner fa-spin fa-3x opacity-50 mb-3"></i>
+                            <p class="small">Carregando autores...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="row">
-            <div class="col-12 mb-3">
-                <h3 class="text-white font-semibold">
-                    <i class="fas fa-users me-2"></i>Lista de Autores
-                </h3>
-                <p class="text-secondary small">Clique em "Selecionar" para definir como padrão</p>
+            <!-- Aba Postar -->
+            <div class="tab-pane fade" id="content-publish" role="tabpanel" aria-labelledby="tab-publish">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="p-4 rounded-xl" style="background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3);">
+                            <h4 class="text-white font-semibold mb-3">
+                                <i class="fas fa-paper-plane me-2"></i>Publicar Novo Post
+                            </h4>
+                            <form id="publish-post-form">
+                                <div class="row g-3">
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label text-white">Selecione o Autor</label>
+                                        <select id="publish-author-select" class="form-select" required>
+                                            <option value="">-- Carregando autores --</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <label class="form-label text-white">Título</label>
+                                        <input type="text" class="form-control" id="publish-title" placeholder="Título do post" required>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <label class="form-label text-white">Conteúdo</label>
+                                        <textarea id="publish-content" class="form-control" rows="8" placeholder="Escreva o conteúdo do post aqui..." required></textarea>
+                                    </div>
+                                    <div class="col-md-12 d-flex justify-content-end mt-4">
+                                        <button type="submit" class="btn btn-primary-custom">
+                                            <i class="fas fa-paper-plane me-1"></i>Publicar na NewPost-IA
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="col-12" id="authors-container">
-                <div class="author-card text-center text-secondary py-5">
-                    <i class="fas fa-spinner fa-spin fa-3x opacity-50 mb-3"></i>
-                    <p class="small">Carregando autores...</p>
+
+            <!-- Aba Diagnóstico -->
+            <div class="tab-pane fade" id="content-diagnosis" role="tabpanel" aria-labelledby="tab-diagnosis">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="p-4 rounded-xl" style="background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3);">
+                            <h4 class="text-white font-semibold mb-3">
+                                <i class="fas fa-stethoscope me-2"></i>Diagnóstico do Supabase
+                            </h4>
+                            <div class="row mb-3">
+                                <div class="col-auto">
+                                    <button id="run-diagnosis-btn" class="btn btn-primary-custom">
+                                        <i class="fas fa-play-circle me-1"></i>Executar Escaneamento
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-12">
+                                    <div id="diagnosis-results" class="text-secondary small">
+                                        <p>Pressione o botão para escanear as tabelas do Supabase da NewPost-IA...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -188,10 +292,13 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let selectedAuthorId = localStorage.getItem('newpost_selected_author_id') || '';
+        let authorsList = [];
 
         document.addEventListener('DOMContentLoaded', function() {
             loadAuthors();
             document.getElementById('create-author-form').addEventListener('submit', createAuthor);
+            document.getElementById('publish-post-form').addEventListener('submit', publishPost);
+            document.getElementById('run-diagnosis-btn').addEventListener('click', runDiagnosis);
         });
 
         async function loadAuthors() {
@@ -203,7 +310,9 @@
                 
                 const data = await response.json();
                 if (data.success) {
-                    renderAuthors(data.authors);
+                    authorsList = data.authors;
+                    renderAuthors(authorsList);
+                    renderAuthorsSelect(authorsList);
                 } else {
                     showToast('❌ Erro ao carregar autores', 'error');
                     document.getElementById('authors-container').innerHTML = `
@@ -274,8 +383,19 @@
                     selectedAuthorId = authorId;
                     showToast('✅ Autor selecionado como padrão!');
                     renderAuthors(authors);
+                    renderAuthorsSelect(authors);
                 });
             });
+        }
+
+        function renderAuthorsSelect(authors) {
+            const select = document.getElementById('publish-author-select');
+            if (!authors || authors.length === 0) {
+                select.innerHTML = '<option value="">-- Nenhum autor encontrado --</option>';
+                return;
+            }
+            select.innerHTML = `<option value="">-- Selecione um autor --</option>` + 
+                authors.map(author => `<option value="${author.id}" ${author.id === selectedAuthorId ? 'selected' : ''}>${author.nome || author.id}</option>`).join('');
         }
 
         async function createAuthor(e) {
@@ -313,6 +433,90 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-plus me-1"></i>Criar';
+            }
+        }
+
+        async function publishPost(e) {
+            e.preventDefault();
+            const authorId = document.getElementById('publish-author-select').value;
+            const title = document.getElementById('publish-title').value.trim();
+            const content = document.getElementById('publish-content').value.trim();
+            
+            if (!authorId || !title || !content) {
+                showToast('❌ Preencha todos os campos', 'error');
+                return;
+            }
+
+            const btn = e.submitter;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Publicando...';
+
+            try {
+                const response = await fetch('/api/newpost/publish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        authorId: authorId, 
+                        title: title, 
+                        content: content 
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showToast('✅ Post publicado com sucesso na NewPost-IA!');
+                    document.getElementById('publish-post-form').reset();
+                    renderAuthorsSelect(authorsList);
+                } else {
+                    showToast(`❌ Erro: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('❌ Erro ao publicar post', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Publicar na NewPost-IA';
+            }
+        }
+
+        async function runDiagnosis() {
+            const btn = document.getElementById('run-diagnosis-btn');
+            const resultsContainer = document.getElementById('diagnosis-results');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Escaneando...';
+            resultsContainer.innerHTML = `<p><i class="fas fa-spinner fa-spin"></i> Escaneando as tabelas do Supabase da NewPost-IA...</p>`;
+
+            try {
+                const response = await fetch('/api/newpost/diagnosis', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    let html = `<h6 class="text-white">Resultados do Escaneamento:</h6><ul>`;
+                    if (data.tables && data.tables.length > 0) {
+                        data.tables.forEach(table => {
+                            html += `<li class="mb-1"><i class="fas fa-table text-purple-400 me-2"></i><strong>${table.name}</strong> ${table.exists ? '<span class="badge bg-success ms-2">OK</span>' : '<span class="badge bg-danger ms-2">Faltando</span>'}</li>`;
+                        });
+                    }
+                    html += `</ul>`;
+                    if (data.message) {
+                        html += `<p class="mt-3 text-purple-200">${data.message}</p>`;
+                    }
+                    resultsContainer.innerHTML = html;
+                    showToast('✅ Escaneamento concluído!');
+                } else {
+                    resultsContainer.innerHTML = `<p class="text-danger">${data.error}</p>`;
+                    showToast('❌ Erro no diagnóstico', 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                resultsContainer.innerHTML = `<p class="text-danger">Erro ao realizar diagnóstico: ${error.message}</p>`;
+                showToast('❌ Erro ao realizar diagnóstico', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play-circle me-1"></i>Executar Escaneamento';
             }
         }
 
