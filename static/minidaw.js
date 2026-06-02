@@ -308,6 +308,42 @@ class MiniDAW {
         }
     }
 
+    async loadAudioFromUrl(url, trackId, name = 'Trilha') {
+        try {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+            
+            const track = this.tracks.find(t => t.id === trackId);
+            if (track) {
+                // Initialize missing properties
+                track.audioUrl = url;
+                track.audioBuffer = audioBuffer;
+                track.duration = audioBuffer.duration;
+                track.zoom = track.zoom || 1;
+                track.eqSettings = track.eqSettings || { low: 0, mid: 0, high: 0 };
+                track.name = name;
+                
+                // Update duration if this is the longest track
+                if (audioBuffer.duration > this.duration) {
+                    this.duration = audioBuffer.duration;
+                    this.updateDuration();
+                }
+                
+                this.createTrackNodes(track);
+                this.updateTrackUI(track);
+                this.drawWaveform(track);
+                this.saveToLocalStorage();
+                
+                console.log(`Audio loaded successfully for track ${trackId}:`, name);
+                this.showNotification(`Trilha "${name}" carregada com sucesso!`, 'success');
+            }
+        } catch (error) {
+            console.error('Error loading audio from URL:', error);
+            this.showNotification('Erro ao carregar trilha da biblioteca', 'error');
+        }
+    }
+
     createTrackNodes(track) {
         // Create effect nodes
         const eqNode = this.audioContext.createBiquadFilter();

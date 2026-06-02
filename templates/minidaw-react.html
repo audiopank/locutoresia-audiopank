@@ -487,6 +487,10 @@
                     <p class="mb-0 text-muted">Estúdio de áudio com geração de voz IA integrada</p>
                 </div>
                 <div class="col-md-6 text-md-end">
+                    <button class="btn btn-secondary me-2" onclick="window.location.href='/library'" style="background: linear-gradient(135deg, var(--accent-color), var(--secondary-color)); border: none;">
+                        <i class="fas fa-book-open me-1"></i>
+                        Biblioteca de Trilhas
+                    </button>
                     <button class="btn btn-secondary me-2" onclick="window.minidawReact.newProject()">
                         <i class="fas fa-plus me-1"></i>
                         Novo Projeto
@@ -648,6 +652,23 @@
             // Event listeners para abas
             document.getElementById('voices-tab')?.addEventListener('shown.bs.tab', loadVoicesLibrary);
             document.getElementById('cloning-tab')?.addEventListener('shown.bs.tab', loadVoiceCloning);
+        });
+
+        // Carrega trilha selecionada da biblioteca
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                const selectedTrackUrl = localStorage.getItem('selectedTrackUrl');
+                const selectedTrackName = localStorage.getItem('selectedTrackName');
+                
+                if (selectedTrackUrl && window.minidawReact && window.minidawReact.addMusicTrack) {
+                    console.log('Carregando trilha da biblioteca na MiniDAW React:', selectedTrackName);
+                    window.minidawReact.addMusicTrack(selectedTrackUrl, selectedTrackName || 'Trilha da Biblioteca');
+                    
+                    // Limpa o localStorage para não carregar a mesma trilha novamente
+                    localStorage.removeItem('selectedTrackUrl');
+                    localStorage.removeItem('selectedTrackName');
+                }
+            }, 1500); // Espera um pouco mais para o MiniDAW React inicializar
         });
 
         // Função de exportação

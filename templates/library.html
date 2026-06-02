@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca de Trilhas - Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --accent-color: #ec4899;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .main-header {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .library-container {
+            padding: 2rem;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .filter-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .track-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .track-card:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2);
+        }
+
+        .track-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .track-meta {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+
+        .meta-tag {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary-color);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .audio-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .play-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            border: none;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .play-btn:hover {
+            background: var(--secondary-color);
+            transform: scale(1.1);
+        }
+
+        .use-btn {
+            background: linear-gradient(135deg, var(--accent-color), var(--secondary-color));
+            border: none;
+            color: white;
+            padding: 0.5rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .use-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+        }
+
+        .progress-bar {
+            flex-grow: 1;
+            height: 6px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary-color);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.6);
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .filter-select {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.6);
+            color: var(--text-primary);
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="main-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-music me-2"></i>
+                        Biblioteca de Trilhas Sonoras
+                    </h1>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <a href="/" class="btn btn-daw btn-sm">
+                        <i class="fas fa-home me-1"></i>
+                        Voltar ao Início
+                    </a>
+                    <a href="/minidaw" class="btn btn-daw btn-success btn-sm ms-2">
+                        <i class="fas fa-sliders-h me-1"></i>
+                        Abrir MiniDAW
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="library-container">
+        <div class="filter-section">
+            <input type="text" class="search-box" id="searchInput" placeholder="Pesquise por nome, gênero ou mood...">
+            <div class="d-flex flex-wrap gap-2">
+                <select class="filter-select" id="genreSelect">
+                    <option value="">Todos os Gêneros</option>
+                    <option value="pop">Pop</option>
+                    <option value="rock">Rock</option>
+                    <option value="electronic">Eletrônica</option>
+                    <option value="hip-hop">Hip-Hop</option>
+                    <option value="lofi">Lo-Fi</option>
+                    <option value="cinematic">Cinemática</option>
+                </select>
+                <select class="filter-select" id="moodSelect">
+                    <option value="">Todos os Moods</option>
+                    <option value="energetic">Energético</option>
+                    <option value="happy">Feliz</option>
+                    <option value="chill">Chill</option>
+                    <option value="dramatic">Dramático</option>
+                    <option value="inspirational">Inspirador</option>
+                </select>
+                <select class="filter-select" id="durationSelect">
+                    <option value="">Todas as Durações</option>
+                    <option value="15">15 segundos</option>
+                    <option value="30">30 segundos</option>
+                    <option value="60">1 minuto</option>
+                    <option value="120">2 minutos+</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="row" id="tracksGrid">
+            <!-- Trilhas serão adicionadas aqui via JS -->
+        </div>
+
+        <div class="text-center mt-5" id="emptyState" style="display: none;">
+            <i class="fas fa-music fa-4x mb-3" style="color: var(--text-secondary); opacity: 0.5;"></i>
+            <h4>Nenhuma trilha encontrada</h4>
+            <p class="text-muted">Tente ajustar os filtros</p>
+        </div>
+    </main>
+
+    <audio id="audioPlayer"></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Catálogo de trilhas de exemplo
+        const TRACKS = [
+            {
+                id: 1,
+                name: "Energia Positiva",
+                artist: "Locutores IA",
+                genre: "pop",
+                mood: "energetic",
+                duration: 15,
+                bpm: 120,
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+                description: "Trilha animada e otimista para comerciais"
+            },
+            {
+                id: 2,
+                name: "Chill Vibes",
+                artist: "Locutores IA",
+                genre: "lofi",
+                mood: "chill",
+                duration: 30,
+                bpm: 90,
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+                description: "Lo-fi relaxante para fundo de vídeos"
+            },
+            {
+                id: 3,
+                name: "Epic Cinematic",
+                artist: "Locutores IA",
+                genre: "cinematic",
+                mood: "dramatic",
+                duration: 60,
+                bpm: 70,
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+                description: "Trilha cinematográfica épica para trailers"
+            },
+            {
+                id: 4,
+                name: "Inspiration Drive",
+                artist: "Locutores IA",
+                genre: "electronic",
+                mood: "inspirational",
+                duration: 45,
+                bpm: 110,
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+                description: "Trilha motivacional e inspiradora"
+            },
+            {
+                id: 5,
+                name: "Happy Pop",
+                artist: "Locutores IA",
+                genre: "pop",
+                mood: "happy",
+                duration: 30,
+                bpm: 130,
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+                description: "Pop alegre para conteúdos divertidos"
+            },
+            {
+                id: 6,
+                name: "Urban Beat",
+                artist: "Locutores IA",
+                genre: "hip-hop",
+                mood: "energetic",
+                duration: 40,
+                bpm: 95,
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+                description: "Beat urbano moderno para conteúdos street"
+            }
+        ];
+
+        let currentPlayingTrackId = null;
+        const audioPlayer = document.getElementById('audioPlayer');
+
+        function init() {
+            renderTracks(TRACKS);
+            setupEventListeners();
+        }
+
+        function setupEventListeners() {
+            document.getElementById('searchInput').addEventListener('input', filterTracks);
+            document.getElementById('genreSelect').addEventListener('change', filterTracks);
+            document.getElementById('moodSelect').addEventListener('change', filterTracks);
+            document.getElementById('durationSelect').addEventListener('change', filterTracks);
+        }
+
+        function filterTracks() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const genre = document.getElementById('genreSelect').value;
+            const mood = document.getElementById('moodSelect').value;
+            const duration = document.getElementById('durationSelect').value;
+
+            let filtered = TRACKS.filter(track => {
+                const matchesSearch = track.name.toLowerCase().includes(search) || 
+                                      track.genre.toLowerCase().includes(search) || 
+                                      track.mood.toLowerCase().includes(search);
+                const matchesGenre = !genre || track.genre === genre;
+                const matchesMood = !mood || track.mood === mood;
+                let matchesDuration = true;
+                if (duration) {
+                    if (duration === '120') {
+                        matchesDuration = track.duration >= 120;
+                    } else {
+                        matchesDuration = track.duration <= parseInt(duration);
+                    }
+                }
+                return matchesSearch && matchesGenre && matchesMood && matchesDuration;
+            });
+
+            renderTracks(filtered);
+        }
+
+        function renderTracks(tracks) {
+            const grid = document.getElementById('tracksGrid');
+            const emptyState = document.getElementById('emptyState');
+
+            if (tracks.length === 0) {
+                grid.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            grid.innerHTML = tracks.map(track => `
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="track-card">
+                        <div class="track-info">
+                            <div>
+                                <h5 class="mb-0">${track.name}</h5>
+                                <p class="mb-1 text-muted small">${track.artist}</p>
+                                <p class="mb-0 small text-secondary">${track.description}</p>
+                                <div class="track-meta">
+                                    <span class="meta-tag"><i class="fas fa-tag me-1"></i>${track.genre}</span>
+                                    <span class="meta-tag"><i class="fas fa-heart me-1"></i>${track.mood}</span>
+                                    <span class="meta-tag"><i class="fas fa-clock me-1"></i>${track.duration}s</span>
+                                    <span class="meta-tag"><i class="fas fa-tachometer-alt me-1"></i>${track.bpm} BPM</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="audio-controls mt-3">
+                            <button class="play-btn" onclick="togglePlay(${track.id}, '${track.url}')" id="playBtn-${track.id}">
+                                <i class="fas fa-play" id="playIcon-${track.id}"></i>
+                            </button>
+                            <div class="progress-bar" id="progress-${track.id}">
+                                <div class="progress-fill" id="progressFill-${track.id}"></div>
+                            </div>
+                            <div class="dropdown" style="display: inline-block;">
+                                <button class="use-btn dropdown-toggle" type="button" id="dropdownMenuButton-${track.id}" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-plus me-1"></i>
+                                    Usar no MiniDAW
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton-${track.id}" style="background: var(--card-bg); border-color: var(--border-color);">
+                                    <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw', '${track.url}', '${track.name}')">MiniDAW Clássica</a></li>
+                                    <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw-react', '${track.url}', '${track.name}')">MiniDAW React</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function togglePlay(trackId, url) {
+            if (currentPlayingTrackId === trackId) {
+                if (audioPlayer.paused) {
+                    audioPlayer.play();
+                    updatePlayIcon(trackId, false);
+                } else {
+                    audioPlayer.pause();
+                    updatePlayIcon(trackId, true);
+                }
+            } else {
+                if (currentPlayingTrackId) {
+                    updatePlayIcon(currentPlayingTrackId, true);
+                }
+                audioPlayer.src = url;
+                audioPlayer.play();
+                currentPlayingTrackId = trackId;
+                updatePlayIcon(trackId, false);
+                setupProgress(trackId);
+            }
+        }
+
+        function updatePlayIcon(trackId, isPaused) {
+            const icon = document.getElementById(`playIcon-${trackId}`);
+            if (icon) {
+                icon.className = isPaused ? 'fas fa-play' : 'fas fa-pause';
+            }
+        }
+
+        function setupProgress(trackId) {
+            audioPlayer.ontimeupdate = () => {
+                if (currentPlayingTrackId === trackId && audioPlayer.duration) {
+                    const percent = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+                    const progressFill = document.getElementById(`progressFill-${trackId}`);
+                    if (progressFill) {
+                        progressFill.style.width = `${percent}%`;
+                    }
+                }
+            };
+
+            audioPlayer.onended = () => {
+                if (currentPlayingTrackId === trackId) {
+                    updatePlayIcon(trackId, true);
+                    const progressFill = document.getElementById(`progressFill-${trackId}`);
+                    if (progressFill) {
+                        progressFill.style.width = '0%';
+                    }
+                    currentPlayingTrackId = null;
+                }
+            };
+        }
+
+        function useTrack(targetMinidaw, url, name) {
+            // Armazenar na localStorage para o MiniDAW pegar
+            localStorage.setItem('selectedTrackUrl', url);
+            localStorage.setItem('selectedTrackName', name);
+            
+            // Redirecionar para o MiniDAW escolhido
+            window.location.href = targetMinidaw === 'minidaw-react' ? '/minidaw-react' : '/minidaw';
+        }
+
+        // Inicializar a página
+        init();
+    </script>
+</body>
+</html>

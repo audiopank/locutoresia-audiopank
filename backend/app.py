@@ -332,6 +332,11 @@ def minidaw_react():
     """MiniDAW React Interface"""
     return render_template('minidaw-react.html')
 
+@app.route('/library')
+def library():
+    """Biblioteca de Trilhas Sonoras"""
+    return render_template('library.html')
+
 @app.route('/busca-noticias')
 def busca_noticias():
     """Busca de Notícias + IA"""
@@ -1486,6 +1491,8 @@ def voxcraft_complete():
         else:
             response.headers.add('Access-Control-Allow-Origin', '*')
         return response
+
+
 
 @app.route('/api/voxcraft/logs', methods=['GET'])
 def voxcraft_logs():
@@ -3970,7 +3977,24 @@ def voxcraft_chat():
         
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Listar modelos disponíveis para encontrar um que funcione
+        available_models = []
+        try:
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    available_models.append(m.name)
+            print(f"Modelos disponíveis: {available_models}")
+        except Exception as e:
+            print(f"Erro ao listar modelos: {e}")
+        
+        # Tentar usar o primeiro modelo disponível ou fallback
+        model_name = 'gemini-1.5-pro-latest'
+        if available_models:
+            model_name = available_models[0]
+        
+        print(f"Usando modelo: {model_name}")
+        model = genai.GenerativeModel(model_name)
         
         chat_messages = [{"role": "user", "parts": [VOXCRAFT_SYSTEM_PROMPT]}]
         for msg in messages:
@@ -3988,7 +4012,10 @@ def voxcraft_chat():
         print(f"Erro no VoxCraft Chat: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+        # Fallback: resposta manual se o Gemini não funcionar
+        last_user_msg = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+        fallback_response = f"Olá! Eu sou o VoxCraft AI! 😊\n\nPercebi que houve um problema com a conexão do Gemini, mas posso te ajudar com dicas rápidas sobre:\n- Trilhas sonoras para comerciais (use a Biblioteca!)\n- Mixagem de voz e música (80% voz, 30% música)\n- Geração de locuções com IA\n\nComo posso te ajudar? 🎙️"
+        return jsonify({"success": True, "message": fallback_response})
 
 @app.route('/api/news/fetch', methods=['POST', 'OPTIONS'])
 def api_fetch_news():
@@ -4061,7 +4088,7 @@ def api_generate_post():
         
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         
         prompt = f"""Você é um redator de redes sociais especialista em notícias brasileiras. 
 Crie um post otimizado para Instagram/Twitter com base nesta notícia: 
