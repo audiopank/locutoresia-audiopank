@@ -674,7 +674,7 @@ def voice_cloning():
 # =========================================================
 @app.route('/api/newpost/authors', methods=['GET'])
 def api_list_newpost_authors():
-    """Lista todos os autores do newpost_profiles via Supabase"""
+    """Lista todos os autores da tabela users (NewPost-IA) via Supabase"""
     try:
         supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
         supabase_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', ''))
@@ -689,7 +689,7 @@ def api_list_newpost_authors():
         }
         
         response = requests.get(
-            f"{supabase_url}/rest/v1/newpost_profiles?select=*&order=criado_em.desc",
+            f"{supabase_url}/rest/v1/users?select=*&order=created_at.desc",
             headers=headers,
             timeout=10
         )
@@ -708,7 +708,7 @@ def api_list_newpost_authors():
 
 @app.route('/api/newpost/authors', methods=['POST'])
 def api_create_newpost_author():
-    """Cria um novo autor no newpost_profiles"""
+    """Cria um novo autor na tabela users (NewPost-IA)"""
     try:
         data = request.get_json()
         nome = data.get('nome')
@@ -732,12 +732,12 @@ def api_create_newpost_author():
         
         # O banco de dados gera o UUID automaticamente agora
         author_data = {
-            'nome': nome,
+            'name': nome,   # tabela users usa 'name'
             'email': email
         }
         
         response = requests.post(
-            f"{supabase_url}/rest/v1/newpost_profiles",
+            f"{supabase_url}/rest/v1/users",
             json=author_data,
             headers=headers,
             timeout=10
@@ -772,7 +772,7 @@ def api_newpost_diagnosis():
         }
         
         tables_to_check = [
-            "newpost_profiles", 
+            "users", 
             "newpost_posts", 
             "users"
         ]
