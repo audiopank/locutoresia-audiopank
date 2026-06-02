@@ -53,47 +53,39 @@ class SupabaseManager:
 
     def _ensure_profile_exists(self, author_id: str) -> bool:
         """
-        Verifica se o perfil existe e cria automaticamente se não existir,
-        com fallback inteligente (ignora colunas inexistentes)
+        Verifica se o usuário existe na tabela 'users' da NewPost-IA.
+        Cria automaticamente se não existir.
+        CORRIGIDO: era newpost_profiles (não existe) → agora usa 'users'
         """
         if not self.newpost_client:
             return False
-        
+
         try:
-            # Primeiro, tenta buscar o perfil para verificar se existe
-            check = self.newpost_client.table("newpost_profiles").select("id").eq("id", author_id).limit(1).execute()
+            # Busca na tabela 'users' (schema real da NewPost-IA)
+            check = self.newpost_client.table("users").select("id").eq("id", author_id).limit(1).execute()
             if check.data and len(check.data) > 0:
-                logger.info(f"✅ Perfil {author_id} já existe")
+                logger.info(f"✅ Usuário {author_id} já existe em users")
                 return True
         except Exception as e:
-            logger.warning(f"⚠️ Não foi possível verificar perfil (provavelmente tabela não existe): {e}")
+            logger.warning(f"⚠️ Não foi possível verificar usuário: {e}")
             return True  # Se não pode verificar, assume que existe
-        
-        # Se chegou aqui, tenta criar o perfil
+
+        # Usuário não existe — cria com campos mínimos da tabela users
         try:
-            # Tenta criar com o mínimo de campos possível para evitar erros de schema
-            create_data = {"id": author_id}
-            
-            # Tenta adicionar campos com fallback (se falhar, ignora)
-            try:
-                create_data["nome"] = "Usuário IA"
-            except Exception:
-                pass
-                
-            try:
-                create_data["email"] = "usuario@ia.local"
-            except Exception:
-                pass
-                
-            response = self.newpost_client.table("newpost_profiles").insert(create_data).execute()
+            create_data = {
+                "id": author_id,
+                "name": "Usuário IA",        # coluna real: 'name' (não 'nome')
+                "email": "usuario@ia.local",  # coluna real: 'email'
+                # role e status têm DEFAULT no banco ('user' e 'active')
+            }
+            response = self.newpost_client.table("users").insert(create_data).execute()
             if response.data:
-                logger.info(f"✅ Perfil {author_id} criado automaticamente")
+                logger.info(f"✅ Usuário {author_id} criado automaticamente em users")
                 return True
         except Exception as e:
-            logger.warning(f"⚠️ Não foi possível criar perfil (ignorando): {e}")
-            # Mesmo se falhar, tenta publicar o post de qualquer forma
-            return True
-        
+            logger.warning(f"⚠️ Não foi possível criar usuário (ignorando): {e}")
+            return True  # Tenta publicar mesmo assim
+
         return False
 
     def publish_to_newpost(self, title: str, content: str, author_id: Optional[str] = None) -> Dict[str, Any]:
@@ -105,10 +97,10 @@ class SupabaseManager:
             # Se não tem author_id, usa o padrão do .env
             if not author_id:
                 author_id = os.getenv("NEWPOST_AUTHOR_ID", "3a1a93d0-e451-47a4-a126-f1b7375895eb")
-            
-            # Garante que o perfil existe (auto-cria se necessário)
+
+            # Garante que o usuário existe em 'users' antes de publicar
             self._ensure_profile_exists(author_id)
-            
+
             payload = {
                 "title": title,
                 "content": content[:500],
