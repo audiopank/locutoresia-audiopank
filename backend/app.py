@@ -689,7 +689,7 @@ def api_list_newpost_authors():
         }
         
         response = requests.get(
-            f"{supabase_url}/rest/v1/users?select=*&order=created_at.desc",
+            f"{supabase_url}/rest/v1/newpost_profiles?select=*&order=criado_em.desc",
             headers=headers,
             timeout=10
         )
@@ -732,12 +732,12 @@ def api_create_newpost_author():
         
         # O banco de dados gera o UUID automaticamente agora
         author_data = {
-            'name': nome,   # tabela users usa 'name'
+            'nome': nome,   # campo correto da tabela newpost_profiles
             'email': email
         }
         
         response = requests.post(
-            f"{supabase_url}/rest/v1/users",
+            f"{supabase_url}/rest/v1/newpost_profiles",
             json=author_data,
             headers=headers,
             timeout=10
