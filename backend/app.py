@@ -482,11 +482,13 @@ def upload_track():
         import uuid
         import os
         
+        # Lê o arquivo uma única vez e armazena os bytes
+        file_bytes = file.read()
+        file_size = len(file_bytes)
+        
         # Primeiro, gera um nome único para o arquivo
         file_extension = os.path.splitext(file.filename)[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
-        file_size = len(file.read())
-        file.seek(0)  # Reinicia o cursor do arquivo
         
         file_url = ""
         
@@ -501,7 +503,6 @@ def upload_track():
                 # Tenta fazer o upload
                 try:
                     storage_path = f"tracks/{unique_filename}"
-                    file_bytes = file.read()
                     
                     upload_result = app.supabase.storage.from_(bucket_name).upload(
                         path=storage_path,
@@ -527,9 +528,14 @@ def upload_track():
                 upload_dir = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads', 'tracks')
                 os.makedirs(upload_dir, exist_ok=True)
                 file_path = os.path.join(upload_dir, unique_filename)
-                file.save(file_path)
+                
+                # Salva usando os bytes que já temos
+                with open(file_path, 'wb') as f:
+                    f.write(file_bytes)
+                
                 file_url = f"/static/uploads/tracks/{unique_filename}"
             except Exception as local_error:
+                print(f"Erro no fallback local: {local_error}")
                 # Na Vercel, aqui falhará, mas vamos retornar um erro claro
                 return jsonify({
                     "success": False,
