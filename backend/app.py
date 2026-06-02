@@ -479,21 +479,62 @@ def upload_track():
         bpm = int(request.form.get('bpm', 120))
         description = request.form.get('description', '')
         
-        # Salva o arquivo localmente (como fallback)
-        import os
-        upload_dir = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads', 'tracks')
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        # Gera um nome único para o arquivo
         import uuid
+        import os
+        
+        # Primeiro, gera um nome único para o arquivo
         file_extension = os.path.splitext(file.filename)[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
-        file_path = os.path.join(upload_dir, unique_filename)
+        file_size = len(file.read())
+        file.seek(0)  # Reinicia o cursor do arquivo
         
-        file.save(file_path)
+        file_url = ""
         
-        # Cria a URL para acessar o arquivo
-        file_url = f"/static/uploads/tracks/{unique_filename}"
+        # Primeiro tenta usar o Supabase Storage e banco de dados
+        if hasattr(app, 'supabase'):
+            try:
+                # Upload para o Supabase Storage
+                # Primeiro, criamos um bucket se não existir (ou usamos o padrão)
+                # Vamos usar um bucket chamado 'music-tracks'
+                bucket_name = 'music-tracks'
+                
+                # Tenta fazer o upload
+                try:
+                    storage_path = f"tracks/{unique_filename}"
+                    file_bytes = file.read()
+                    
+                    upload_result = app.supabase.storage.from_(bucket_name).upload(
+                        path=storage_path,
+                        file=file_bytes,
+                        file_options={"content-type": file.mimetype}
+                    )
+                    
+                    # Obtém a URL pública
+                    file_url = app.supabase.storage.from_(bucket_name).get_public_url(storage_path)
+                    
+                except Exception as storage_error:
+                    print(f"Erro no Supabase Storage: {storage_error}")
+                    # Se o bucket não existir, tenta salvar localmente (apenas para desenvolvimento)
+                    # Na Vercel, isso falhará, mas é um fallback para local
+                    pass
+            
+            except Exception as e:
+                print(f"Erro no Supabase: {e}")
+        
+        # Se não conseguiu usar o Supabase Storage, tenta salvar localmente (apenas para dev)
+        if not file_url:
+            try:
+                upload_dir = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads', 'tracks')
+                os.makedirs(upload_dir, exist_ok=True)
+                file_path = os.path.join(upload_dir, unique_filename)
+                file.save(file_path)
+                file_url = f"/static/uploads/tracks/{unique_filename}"
+            except Exception as local_error:
+                # Na Vercel, aqui falhará, mas vamos retornar um erro claro
+                return jsonify({
+                    "success": False,
+                    "error": "Para usar na Vercel, é necessário configurar o Supabase Storage com o bucket 'music-tracks'"
+                }), 500
         
         # Prepara os dados da trilha
         track_data = {
@@ -505,12 +546,12 @@ def upload_track():
             "bpm": bpm,
             "description": description,
             "file_url": file_url,
-            "file_size": os.path.getsize(file_path),
+            "file_size": file_size,
             "mime_type": file.mimetype,
             "is_active": True
         }
         
-        # Tenta salvar no Supabase, se disponível
+        # Salva os metadados no Supabase, se disponível
         if hasattr(app, 'supabase'):
             try:
                 response = app.supabase.table('music_tracks').insert(track_data).execute()
