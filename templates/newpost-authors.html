@@ -516,12 +516,11 @@
 
         function renderAuthorsSelect(authors) {
             const select = document.getElementById('publish-author-select');
-            if (!authors || authors.length === 0) {
-                select.innerHTML = '<option value="">-- Nenhum autor encontrado --</option>';
-                return;
+            let html = `<option value="b26b3b0d-009e-4b79-b9cc-6364c52978d7" selected>-- Autor Padrão (NewPost-IA) --</option>`;
+            if (authors && authors.length > 0) {
+                html += authors.map(author => `<option value="${author.id}" ${author.id === selectedAuthorId ? 'selected' : ''}>${author.nome || author.id}</option>`).join('');
             }
-            select.innerHTML = `<option value="">-- Selecione um autor --</option>` + 
-                authors.map(author => `<option value="${author.id}" ${author.id === selectedAuthorId ? 'selected' : ''}>${author.nome || author.id}</option>`).join('');
+            select.innerHTML = html;
         }
 
         async function createAuthor(e) {
@@ -668,6 +667,21 @@
                         });
                     }
                     html += `</ul>`;
+                    
+                    if (data.users && data.users.length > 0) {
+                        html += `<h6 class="text-white mt-4">Usuários Disponíveis (para usar como autor):</h6><ul>`;
+                        data.users.forEach(user => {
+                            html += `<li class="mb-1"><i class="fas fa-user text-purple-400 me-2"></i><strong>${user.email || user.id}</strong><br><small class="text-purple-300">ID: <code class="text-xs bg-purple-900/30 px-1 py-0.5 rounded">${user.id}</code></small></li>`;
+                        });
+                        html += `</ul>`;
+                        
+                        // Update the author select with these users
+                        const select = document.getElementById('publish-author-select');
+                        select.innerHTML = data.users.map(user => 
+                            `<option value="${user.id}" selected="${user.id === selectedAuthorId}">${user.email || user.id}</option>`
+                        ).join('');
+                    }
+                    
                     if (data.message) {
                         html += `<p class="mt-3 text-purple-200">${data.message}</p>`;
                     }

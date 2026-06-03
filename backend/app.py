@@ -880,6 +880,20 @@ def api_newpost_diagnosis():
                 "exists": exists
             })
         
+        # Tentar listar usuários existentes
+        users_list = []
+        try:
+            users_response = requests.get(
+                f"{supabase_url}/rest/v1/users",
+                headers=headers,
+                params={"select": "id,email", "limit": 10},
+                timeout=10
+            )
+            if users_response.status_code in (200, 206):
+                users_list = users_response.json()
+        except Exception as e:
+            print(f"[DEBUG] Erro ao buscar usuários: {e}")
+        
         message = "Diagnóstico concluído! Verifique as tabelas acima."
         all_ok = all(t.get('exists') for t in tables_result)
         if not all_ok:
@@ -888,6 +902,7 @@ def api_newpost_diagnosis():
         return jsonify({
             "success": True,
             "tables": tables_result,
+            "users": users_list,
             "message": message
         })
         
@@ -3878,78 +3893,103 @@ def newpost_publish():
             except ValueError:
                 newpost_post_id = None
         
-        # POST para tabela posts (visível na interface da NewPost-IA)
-        # Estrutura correta: title, content, image_url, author_id, created_at, updated_at, status, published_at, is_ia_generated, source_url
-        now_utc = datetime.now(timezone.utc).isoformat()
+        # POST para tabela posts no PLUGPOST (visível no feed)
+        plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', '')
+        plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY', '') or os.getenv('PLUGPOST_SUPABASE_ANON_KEY', '')
+        plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
         
-        # Formatar o conteúdo com TÍTULO, SINOPSE e LINK DA FONTE
-        title = data.get('title', '').strip()
-        summary = data.get('summary', data.get('content', '')).strip()
-        source_url = data.get('url', '').strip()
+        posts_response = None
         
-        # Montar o conteúdo formatado
-        formatted_content = []
-        if title:
-            formatted_content.append(f"📰 {title}\n")
-        if summary:
-            # Garantir que a sinopse não fique muito longa
-            if len(summary) > 500:
-                summary = summary[:500] + "..."
-            formatted_content.append(summary)
-        if source_url:
-            formatted_content.append(f"\n🔗 Fonte: {source_url}")
+        if plugpost_url and plugpost_key:
+            # Estrutura EXATA do JavaScript que você me mostrou
+            now_utc = datetime.now(timezone.utc).isoformat()
+            title = data.get('title', '').strip()
+            summary = data.get('summary', data.get('content', '')).strip()
+            source_url = data.get('url', '').strip()
+            
+            # Gerar tags como no JavaScript
+            def generate_tags(title_text, category_text):
+                base = [category_text.capitalize(), "NewPostIA", "Noticias"]
+                keywords = []
+                import re
+                words = re.sub(r'[^a-záéíóúãõâêôàüç\s]', '', title_text.lower()).split()
+                for w in words:
+                    if len(w) > 5:
+                        keywords.append(w.capitalize())
+                        if len(keywords) >= 3:
+                            break
+                all_tags = list(set(base + keywords))[:6]
+                return all_tags
+            
+            tags = generate_tags(title, data.get('category', 'geral'))
+            hashtag_str = ' '.join([f'#{t}' for t in tags])
+            body = summary[:280] + ('...' if len(summary) > 280 else '')
+            final_content = f"📰 {title}\n\n{body}\n\n💬 O que você acha? Comente! 👇\n\n{hashtag_str}\n\n📰 Fonte: Locutores IA"
+            
+            posts_data = {
+                'author_id': plugpost_author_id,
+                'content': final_content,
+                'status': 'published',
+                'privacy': 'public',
+                'is_ia_generated': True,
+                'source_url': source_url,
+                'category': data.get('category', 'geral'),
+                'media_urls': [],
+                'media_types': [],
+                'tags': tags,
+                'watch_projected': 100,
+                'published_at': now_utc
+            }
+            
+            headers_plugpost = {
+                'apikey': plugpost_key,
+                'Authorization': f'Bearer {plugpost_key}',
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+            }
+            
+            posts_response = requests.post(
+                f"{plugpost_url}/rest/v1/posts",
+                json=posts_data,
+                headers=headers_plugpost,
+                timeout=30
+            )
+            
+            print(f"[DEBUG] Resposta do PlugPost: Status={posts_response.status_code}, Conteúdo={posts_response.text}")
         
-        # Juntar tudo
-        final_content = '\n'.join(formatted_content).strip()
-        
-        posts_data = {
-            'title': title,
-            'content': final_content,
-            'image_url': data.get('image_url', ''),
-            'author_id': DEFAULT_AUTHOR_ID,
-            'created_at': now_utc,
-            'updated_at': now_utc,
-            'published_at': now_utc,
-            'status': 'published',
-            'is_ia_generated': True,
-            'source_url': source_url
-        }
-        
-        posts_response = requests.post(
-            f"{newpost_url}/rest/v1/posts",
-            json=posts_data,
-            headers=headers,
-            timeout=30
-        )
-        
-        if posts_response.status_code in (200, 201):
+        if posts_response and posts_response.status_code in (200, 201):
             result = posts_response.json()
             if result and len(result) > 0:
                 return jsonify({
                     "success": True,
                     "post_id": newpost_post_id or result[0].get('id'),
-                    "message": "Notícia publicada com sucesso na NewPost-IA"
+                    "message": "Notícia publicada com sucesso na NewPost-IA e no feed do PlugPost!"
                 })
         
-        if posts_response.status_code == 409:
+        if posts_response and posts_response.status_code == 409:
             return jsonify({
                 "success": True,
                 "post_id": newpost_post_id,
-                "message": "Notícia já estava publicada na NewPost-IA (URL duplicada)"
+                "message": "Notícia já estava publicada no PlugPost (URL duplicada), mas foi salva na NewPost-IA!"
             })
         
-        # Se publicarmos em newpost_posts mas falharmos em posts, ainda consideramos como publicado para o dashboard real
+        # Se publicarmos em newpost_posts mas falharmos em posts (ou não tivermos credenciais), ainda consideramos como publicado
         if newpost_posts_response.status_code in (200, 201, 204):
+            message = "Notícia publicada com sucesso na NewPost-IA!"
+            if not plugpost_url or not plugpost_key:
+                message += " (Credenciais do PlugPost não configuradas)"
+            elif posts_response:
+                message += f" (Erro no PlugPost: {posts_response.status_code})"
             return jsonify({
                 "success": True,
                 "post_id": newpost_post_id,
-                "message": "Notícia publicada na NewPost-IA (newpost_posts), mas houve falha ao gravar em posts. Verifique o dashboard real."
+                "message": message
             })
         
         return jsonify({
             "success": False,
-            "error": f"Erro ao publicar: {posts_response.status_code} - {posts_response.text}"
-        }), posts_response.status_code
+            "error": f"Erro ao publicar na NewPost-IA: {newpost_posts_response.status_code} - {newpost_posts_response.text}"
+        }), newpost_posts_response.status_code
         
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
