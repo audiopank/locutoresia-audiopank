@@ -347,7 +347,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="flex-1">
                             <h5 class="text-white font-semibold mb-1">
-                                <i class="fas fa-user-circle me-2 text-purple-400"></i>${author.nome || 'Nome não informado'}
+                                <i class="fas fa-user-circle me-2 text-purple-400"></i>${author.name || 'Nome não informado'}
                             </h5>
                             <p class="text-secondary small mb-2">
                                 <i class="fas fa-envelope me-1"></i>${author.email || 'E-mail não informado'}
@@ -395,7 +395,7 @@
                 return;
             }
             select.innerHTML = `<option value="">-- Selecione um autor --</option>` + 
-                authors.map(author => `<option value="${author.id}" ${author.id === selectedAuthorId ? 'selected' : ''}>${author.nome || author.id}</option>`).join('');
+                authors.map(author => `<option value="${author.id}" ${author.id === selectedAuthorId ? 'selected' : ''}>${author.name || author.id}</option>`).join('');
         }
 
         async function createAuthor(e) {
