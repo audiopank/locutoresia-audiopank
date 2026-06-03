@@ -67,30 +67,6 @@
             color: #E9D5FF;
         }
 
-        .btn-info-custom {
-            background: var(--newpost-card);
-            border: 1px solid rgba(6,182,212,0.3);
-            color: #06B6D4;
-            border-radius: 12px;
-        }
-
-        .btn-info-custom:hover {
-            background: rgba(6,182,212,0.1);
-            color: #22D3EE;
-        }
-
-        .btn-danger-custom {
-            background: var(--newpost-card);
-            border: 1px solid rgba(239,68,68,0.3);
-            color: #EF4444;
-            border-radius: 12px;
-        }
-
-        .btn-danger-custom:hover {
-            background: rgba(239,68,68,0.1);
-            color: #F87171;
-        }
-
         .toast-success {
             background: #059669;
             color: white;
@@ -204,19 +180,15 @@
                             </h4>
                             <form id="create-author-form">
                                 <div class="row g-3">
-                                    <div class="col-md-4">
+                                    <div class="col-md-5">
                                         <label class="form-label text-white">Nome</label>
                                         <input type="text" class="form-control" id="author-name" placeholder="Nome do autor" required>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-5">
                                         <label class="form-label text-white">E-mail</label>
                                         <input type="email" class="form-control" id="author-email" placeholder="email@exemplo.com" required>
                                     </div>
-                                    <div class="col-md-3">
-                                        <label class="form-label text-white">Categoria</label>
-                                        <input type="text" class="form-control" id="author-categoria" placeholder="Geral" value="Geral">
-                                    </div>
-                                    <div class="col-md-1 d-flex align-items-end">
+                                    <div class="col-md-2 d-flex align-items-end">
                                         <button type="submit" class="btn btn-primary-custom w-100">
                                             <i class="fas fa-plus me-1"></i>Criar
                                         </button>
@@ -317,43 +289,6 @@
         </div>
     </div>
 
-    <!-- Modal de Edição de Autor -->
-    <div class="modal fade" id="edit-author-modal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content" style="background: var(--newpost-card); border: 1px solid rgba(124,58,237,0.3);">
-                <div class="modal-header" style="border-bottom: 1px solid rgba(124,58,237,0.3);">
-                    <h5 class="modal-title text-white">
-                        <i class="fas fa-edit me-2"></i>Editar Autor
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="edit-author-form">
-                        <input type="hidden" id="edit-author-id">
-                        <div class="mb-3">
-                            <label class="form-label text-white">Nome</label>
-                            <input type="text" class="form-control" id="edit-author-name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label text-white">E-mail</label>
-                            <input type="email" class="form-control" id="edit-author-email" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label text-white">Categoria</label>
-                            <input type="text" class="form-control" id="edit-author-categoria" value="Geral">
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer" style="border-top: 1px solid rgba(124,58,237,0.3);">
-                    <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary-custom" id="save-edit-btn">
-                        <i class="fas fa-save me-1"></i>Salvar Alterações
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let selectedAuthorId = localStorage.getItem('newpost_selected_author_id') || '';
@@ -364,11 +299,6 @@
             document.getElementById('create-author-form').addEventListener('submit', createAuthor);
             document.getElementById('publish-post-form').addEventListener('submit', publishPost);
             document.getElementById('run-diagnosis-btn').addEventListener('click', runDiagnosis);
-            document.getElementById('save-edit-btn').addEventListener('click', saveAuthorEdit);
-            document.getElementById('edit-author-form').addEventListener('submit', function(e) {
-                e.preventDefault();
-                saveAuthorEdit();
-            });
         });
 
         async function loadAuthors() {
@@ -431,12 +361,6 @@
                             <button class="btn btn-secondary-custom btn-sm copy-id-btn" data-author-id="${author.id}">
                                 <i class="fas fa-copy me-1"></i>Copiar ID
                             </button>
-                            <button class="btn btn-info-custom btn-sm edit-author-btn" data-author-id="${author.id}" data-author-nome="${author.nome}" data-author-email="${author.email}" data-author-categoria="${author.categoria}">
-                                <i class="fas fa-edit me-1"></i>Editar
-                            </button>
-                            <button class="btn btn-danger-custom btn-sm delete-author-btn" data-author-id="${author.id}">
-                                <i class="fas fa-trash me-1"></i>Deletar
-                            </button>
                             <button class="btn btn-primary-custom btn-sm select-author-btn" data-author-id="${author.id}" ${selectedAuthorId === author.id ? 'disabled' : ''}>
                                 <i class="fas fa-check-circle me-1"></i>${selectedAuthorId === author.id ? 'Selecionado' : 'Selecionar'}
                             </button>
@@ -463,55 +387,6 @@
                     renderAuthorsSelect(authors);
                 });
             });
-
-            container.querySelectorAll('.edit-author-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const authorId = this.dataset.authorId;
-                    const authorNome = this.dataset.authorNome;
-                    const authorEmail = this.dataset.authorEmail;
-                    const authorCategoria = this.dataset.authorCategoria;
-                    
-                    document.getElementById('edit-author-id').value = authorId;
-                    document.getElementById('edit-author-name').value = authorNome;
-                    document.getElementById('edit-author-email').value = authorEmail;
-                    document.getElementById('edit-author-categoria').value = authorCategoria || 'Geral';
-                    
-                    const modal = new bootstrap.Modal(document.getElementById('edit-author-modal'));
-                    modal.show();
-                });
-            });
-
-            container.querySelectorAll('.delete-author-btn').forEach(btn => {
-                btn.addEventListener('click', async function() {
-                    const authorId = this.dataset.authorId;
-                    if (confirm('Tem certeza que deseja deletar este autor?')) {
-                        const btnElement = this;
-                        btnElement.disabled = true;
-                        btnElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                        
-                        try {
-                            const response = await fetch(`/api/newpost/authors/${authorId}`, {
-                                method: 'DELETE',
-                                headers: { 'Content-Type': 'application/json' }
-                            });
-                            
-                            const data = await response.json();
-                            if (data.success) {
-                                showToast('✅ Autor deletado com sucesso!');
-                                loadAuthors();
-                            } else {
-                                showToast(`❌ Erro: ${data.error}`, 'error');
-                            }
-                        } catch (error) {
-                            console.error(error);
-                            showToast('❌ Erro ao deletar autor', 'error');
-                        } finally {
-                            btnElement.disabled = false;
-                            btnElement.innerHTML = '<i class="fas fa-trash me-1"></i>Deletar';
-                        }
-                    }
-                });
-            });
         }
 
         function renderAuthorsSelect(authors) {
@@ -528,7 +403,7 @@
             e.preventDefault();
             const name = document.getElementById('author-name').value.trim();
             const email = document.getElementById('author-email').value.trim();
-            const categoria = document.getElementById('author-categoria').value.trim() || 'Geral';
+            const categoria = document.getElementById('author-categoria').value.trim();
             
             if (!name || !email) {
                 showToast('❌ Preencha todos os campos', 'error');
@@ -603,46 +478,6 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Publicar na NewPost-IA';
-            }
-        }
-
-        async function saveAuthorEdit() {
-            const authorId = document.getElementById('edit-author-id').value;
-            const name = document.getElementById('edit-author-name').value.trim();
-            const email = document.getElementById('edit-author-email').value.trim();
-            const categoria = document.getElementById('edit-author-categoria').value.trim() || 'Geral';
-            
-            if (!name || !email) {
-                showToast('❌ Preencha todos os campos', 'error');
-                return;
-            }
-
-            const btn = document.getElementById('save-edit-btn');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Salvando...';
-
-            try {
-                const response = await fetch(`/api/newpost/authors/${authorId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nome: name, email: email, categoria: categoria })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    showToast('✅ Autor atualizado com sucesso!');
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('edit-author-modal'));
-                    modal.hide();
-                    loadAuthors();
-                } else {
-                    showToast(`❌ Erro: ${data.error}`, 'error');
-                }
-            } catch (error) {
-                console.error(error);
-                showToast('❌ Erro ao atualizar autor', 'error');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-save me-1"></i>Salvar Alterações';
             }
         }
 

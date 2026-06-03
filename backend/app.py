@@ -713,6 +713,7 @@ def api_create_newpost_author():
         data = request.get_json()
         nome = data.get('nome')
         email = data.get('email')
+        categoria = data.get('categoria', 'Geral')
         
         if not nome or not email:
             return jsonify({"success": False, "error": "Nome e e-mail são obrigatórios"}), 400
@@ -733,7 +734,8 @@ def api_create_newpost_author():
         # O banco de dados gera o UUID automaticamente agora
         author_data = {
             'nome': nome,   # campo correto da tabela newpost_profiles
-            'email': email
+            'email': email,
+            'categoria': categoria
         }
         
         response = requests.post(
@@ -755,6 +757,88 @@ def api_create_newpost_author():
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/newpost/authors/<author_id>', methods=['PUT'])
+def api_update_newpost_author(author_id):
+    """Atualiza um autor existente"""
+    try:
+        data = request.get_json()
+        nome = data.get('nome')
+        email = data.get('email')
+        categoria = data.get('categoria')
+        
+        if not nome or not email:
+            return jsonify({"success": False, "error": "Nome e e-mail são obrigatórios"}), 400
+        
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8'))
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        
+        author_data = {
+            'nome': nome,
+            'email': email,
+            'categoria': categoria or 'Geral'
+        }
+        
+        response = requests.patch(
+            f"{supabase_url}/rest/v1/newpost_profiles?id=eq.{author_id}",
+            json=author_data,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Autor atualizado com sucesso!"})
+        else:
+            return jsonify({"success": False, "error": response.text}), response.status_code
+            
+    except Exception as e:
+        import traceback
+        print(f"[DEBUG] Erro em api_update_newpost_author: {e}")
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/newpost/authors/<author_id>', methods=['DELETE'])
+def api_delete_newpost_author(author_id):
+    """Deleta um autor existente"""
+    try:
+        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
+        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8'))
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
+        
+        headers = {
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.delete(
+            f"{supabase_url}/rest/v1/newpost_profiles?id=eq.{author_id}",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code in (200, 204):
+            return jsonify({"success": True, "message": "Autor deletado com sucesso!"})
+        else:
+            return jsonify({"success": False, "error": response.text}), response.status_code
+            
+    except Exception as e:
+        import traceback
+        print(f"[DEBUG] Erro em api_delete_newpost_author: {e}")
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/newpost/diagnosis', methods=['GET'])
 def api_newpost_diagnosis():
     """Diagnóstico das tabelas do Supabase da NewPost-IA"""
@@ -772,9 +856,8 @@ def api_newpost_diagnosis():
         }
         
         tables_to_check = [
-            "users", 
-            "newpost_posts", 
-            "users"
+            "newpost_profiles", 
+            "newpost_posts"
         ]
         
         tables_result = []
