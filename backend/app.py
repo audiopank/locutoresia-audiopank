@@ -4538,7 +4538,7 @@ def api_publish_to_newpost():
         # 2. Publicar no PlugPost Feed (hzmtdfojctctvgqjdbex) - exatamente como /api/newpost/publish
         try:
             plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-            plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
+            plugpost_key = os.getenv('PLUGPOST_SUPABASE_ANON_KEY') or os.getenv('NEWPOST_SUPABASE_ANON_KEY')
             plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
             
             if plugpost_url and plugpost_key:
