@@ -37,8 +37,8 @@ except ImportError:
 
 # Configuração Supabase da NewPost-IA (PROJETO ATIVO)
 # Usa variáveis do .env se disponíveis, caso contrário usa fallback
-SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", "https://ykswhzqdjoshjoaruhqs.supabase.co")
-SUPABASE_SERVICE_KEY = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8")
+SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co")
+SUPABASE_SERVICE_KEY = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM")
 
 from postgrest.exceptions import APIError
 
@@ -368,33 +368,46 @@ class NewsAgent:
         # Timeout padrão para requisições (10 segundos)
         self.timeout = 10
 
+    def formatar_legenda(self, news):
+        """Formata a legenda no padrão da NewPost-IA"""
+        categoria = news.get("category", "geral")
+        emojis = {"tecnologia": "💻", "economia": "📈", "brasil": "📰", "politica": "🗳️", "geral": "📰"}
+        emoji = emojis.get(categoria.lower(), "📰")
+        titulo = news.get("title", "")
+        desc = news.get("summary", news.get("snippet", ""))
+        desc = desc[:120] if len(desc) > 120 else desc
+        palavras_titulo = titulo.split()
+        keyword = palavras_titulo[1] if len(palavras_titulo) > 1 else categoria
+        return f"{emoji} {titulo}\n\n{desc}\n\n#{categoria.capitalize()} #NewPostIA #{keyword}"
+
     def save_to_supabase(self, news: Dict):
-        """Salva notícia na tabela posts (local) para aparecer na lista de Publicações Salvas"""
+        """Salva notícia na tabela posts usando o payload que você informou"""
+        # TODO: Substitua pelo ID correto do perfil Locutores IA na variável NEWPOST_AUTHOR_ID
         AI_AUTHOR_ID = os.getenv("NEWPOST_AUTHOR_ID", "3f51ca52-5a5c-4cf0-a95a-ec26c96245e3")
         
-        # Preparar payload com colunas do novo projeto
+        # Preparar payload usando o formato que você informou
+        categoria = news.get("category", "geral")
+        legenda_formatada = self.formatar_legenda(news)
         payload = { 
             "author_id": AI_AUTHOR_ID, 
-            "title": news.get("title", ""), 
-            "content": news.get("content", news.get("summary", news.get("snippet", ""))), 
-            "source_url": news.get("url", ""), 
-            "category": news.get("category", "noticias"), 
-            "is_ia_generated": True, 
-            "status": "published", 
-            "published_at": datetime.now(timezone.utc).isoformat(), 
-            "tags": [f"#{news.get('category', 'noticias')}", "#NewsAgent", "#LocutoresIA", "#Brasil"], 
-            "media_urls": [news["image_url"]] if news.get("image_url") else [], 
-            "media_types": ["image"] if news.get("image_url") else [], 
+            "content": legenda_formatada,
+            "privacy": "public",
+            "status": "published",
+            "is_ia_generated": True,
+            "category": categoria,
+            "tags": [f"#{categoria.capitalize()}", "#NewsAgent", "#LocutoresIA"],
+            "published_at": datetime.now(timezone.utc).isoformat()
         }
 
         try:
             from supabase import create_client
             supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
             
-            # Verificar se já existe
-            existing = supabase.table('posts').select('id').eq('source_url', payload['source_url']).execute()
+            # Verificar se já existe (usando o título para deduplicação)
+            titulo = news.get('title', '')[:50]
+            existing = supabase.table('posts').select('id').ilike('content', f"%{titulo}%").execute()
             if existing.data:
-                logger.info(f"[SKIP] Ja existe em posts: {news.get('title', '')[:50]}...")
+                logger.info(f"[SKIP] Ja existe em posts: {titulo}...")
                 return
 
             res = supabase.table("posts").insert(payload).execute()
@@ -410,14 +423,14 @@ class NewsAgent:
             hint = getattr(e, "hint", "")
 
             if code == "23505":
-                logger.warning(f"⏭️  DUPLICATA (source_url já existe): {payload['source_url']}")
+                logger.warning(f"⏭️  DUPLICATA (post já existe): {titulo}")
             elif code == "42501":
                 logger.error(
                     f"🔒 RLS BLOQUEOU INSERT (42501) — verifique se está usando SERVICE_ROLE_KEY.\n"
-                    f"   URL: {payload['source_url']}"
+                    f"   Título: {titulo}"
                 )
             elif code == "23502":
-                logger.error(f"❌ NULL em coluna NOT NULL ({details}): {payload['source_url']}")
+                logger.error(f"❌ NULL em coluna NOT NULL ({details}): {titulo}")
             elif code == "23503":
                 logger.error(f"❌ FK inválida — author_id {AI_AUTHOR_ID} não existe em profiles")
             else:
@@ -427,7 +440,7 @@ class NewsAgent:
                 )
 
         except Exception as e:
-            logger.exception(f"❌ Erro inesperado ao salvar {news.get('url')}: {e}")
+            logger.exception(f"❌ Erro inesperado ao salvar {news.get('title', '')}: {e}")
         
     def _collect_g1(self, category: str) -> List[Dict]:
         """Coleta notícias do G1 via RSS com conteúdo completo"""

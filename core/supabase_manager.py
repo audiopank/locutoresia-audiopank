@@ -88,31 +88,34 @@ class SupabaseManager:
 
         return False
 
-    def publish_to_newpost(self, title: str, content: str, author_id: Optional[str] = None) -> Dict[str, Any]:
-        """Publica um post apenas na NewPost-IA Manager (ykswhzqdjoshjoaruhqs)"""
+    def publish_to_newpost(self, title: str, content: str, author_id: Optional[str] = None, category: str = "Geral", tags: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Publica um post na NewPost-IA usando o payload que você informou"""
         try:
             # Se não tem author_id, usa o padrão do .env
             if not author_id:
-                author_id = os.getenv("NEWPOST_AUTHOR_ID", "3a1a93d0-e451-47a4-a126-f1b7375895eb")
+                author_id = os.getenv("NEWPOST_AUTHOR_ID", "3f51ca52-5a5c-4cf0-a95a-ec26c96245e3")
+            if not tags:
+                tags = ["#NewsAgent", "#LocutoresIA", "#Brasil"]
 
             # Garante que o usuário existe no Manager antes de publicar
             self._ensure_profile_exists(author_id)
 
-            # Publicar na NewPost-IA Manager
+            # Publicar na NewPost-IA
             if self.newpost_manager_client:
                 now_iso = datetime.now(timezone.utc).isoformat()
                 manager_payload = {
-                    "title": title,
-                    "content": content[:500],
                     "author_id": author_id,
-                    "is_ia_generated": True,
-                    "source": "audio-pank-ia",
+                    "content": content,
+                    "privacy": "public",
                     "status": "published",
+                    "is_ia_generated": True,
+                    "category": category,
+                    "tags": tags,
                     "published_at": now_iso
                 }
                 manager_response = self.newpost_manager_client.table("posts").insert(manager_payload).execute()
                 if manager_response.data:
-                    logger.info(f"✅ Post publicado na NewPost-IA Manager: {title[:30]}...")
+                    logger.info(f"✅ Post publicado na NewPost-IA: {title[:30]}...")
                     return {
                         "success": True,
                         "post_id": manager_response.data[0]['id'],
@@ -120,7 +123,7 @@ class SupabaseManager:
                     }
             return {"success": False, "error": "NewPost Manager client not connected"}
         except Exception as e:
-            logger.error(f"❌ Erro ao publicar na NewPost Manager: {e}")
+            logger.error(f"❌ Erro ao publicar na NewPost-IA: {e}")
             import traceback
             traceback.print_exc()
             return {"success": False, "error": str(e)}

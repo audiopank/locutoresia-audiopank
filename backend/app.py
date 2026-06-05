@@ -2915,53 +2915,58 @@ def api_publish_social_post(post_id):
             content_local = strip_html(local_post.get('content') or local_post.get('caption') or '')
             now_iso = datetime.now(timezone.utc).isoformat()
 
-            # Antes de inserir, evitar duplicata: procurar post existente pela mesma source_url
-            src_url_local = (local_post.get('source_url') or '').strip()
-            if src_url_local:
+            # Antes de inserir, evitar duplicata: procurar post existente pelo título
+            titulo = local_post.get('title', '')[:50]
+            if titulo:
                 try:
                     import urllib.parse
-                    src_q = urllib.parse.quote(src_url_local, safe='')
+                    titulo_q = urllib.parse.quote(titulo, safe='')
                     resp_dup = requests.get(
-                        f"{supabase_url}/rest/v1/posts?source_url=eq.{src_q}&author_id=eq.{newpost_author_id}&select=*&limit=1",
+                        f"{supabase_url}/rest/v1/posts?content=ilike.%25{titulo_q}%25&author_id=eq.{newpost_author_id}&select=*&limit=1",
                         headers=headers,
                         timeout=10
                     )
                     if resp_dup.status_code == 200 and resp_dup.json():
                         post = resp_dup.json()[0]
                         real_id = post.get('id')
-                        print(f"[DEBUG] Post já existia no Supabase (mesma source_url): id {real_id}")
+                        print(f"[DEBUG] Post já existia no Supabase (mesmo título): id {real_id}")
                         if local_index is not None and real_id:
                             social_posts_store[local_index]['id'] = real_id
                         if real_id:
                             post_id = real_id
                 except Exception as e_dup:
-                    print(f"[DEBUG] Aviso: falha ao checar duplicata por source_url: {e_dup}")
+                    print(f"[DEBUG] Aviso: falha ao checar duplicata por título: {e_dup}")
+
+            def formatar_legenda(post):
+                """Formata a legenda no padrão da NewPost-IA"""
+                categoria = post.get("category", "geral")
+                emojis = {"tecnologia": "💻", "economia": "📈", "brasil": "📰", "politica": "🗳️", "geral": "📰"}
+                emoji = emojis.get(categoria.lower(), "📰")
+                titulo = post.get("title", "")
+                desc = post.get("content", post.get("caption", ""))
+                desc = desc[:120] if len(desc) > 120 else desc
+                palavras_titulo = titulo.split()
+                keyword = palavras_titulo[1] if len(palavras_titulo) > 1 else categoria
+                return f"{emoji} {titulo}\n\n{desc}\n\n#{categoria.capitalize()} #NewPostIA #{keyword}"
 
             # Só insere se a dedup por source_url não tiver encontrado um post existente
             if not post:
+                categoria = local_post.get("category", "geral")
+                legenda_formatada = formatar_legenda(local_post)
                 # 'posts' E o feed da NewPost-IA. Publicar = inserir como published/public
-                # (mesmo payload da Edge Function fetchAndSaveNews que funciona no feed).
                 insert_payload = {
                     'author_id': newpost_author_id,
-                    'title': local_post.get('title', ''),
-                    'content': content_local,
-                    'source_url': local_post.get('source_url', ''),
-                    'tags': local_post.get('hashtags') or local_post.get('tags') or [],
+                    'content': legenda_formatada,
+                    'privacy': 'public',
                     'status': 'published',
-                    'watch_projected': 100,
                     'is_ia_generated': True,
-                    'created_at': now_iso,
-                    'updated_at': now_iso,
+                    'category': categoria,
+                    'tags': [f"#{categoria.capitalize()}", "#NewPostIA", "#LocutoresIA"],
                     'published_at': now_iso
                 }
-                # 'posts' NAO tem coluna 'image_url' -> usar media_urls/media_types (senao causa 400)
-                if local_post.get('image_url'):
-                    insert_payload['media_urls'] = [local_post['image_url']]
-                    insert_payload['media_types'] = ['image']
-                if local_post.get('category'):
-                    insert_payload['category'] = local_post['category']
 
                 print(f"[DEBUG] Inserindo post local na tabela 'posts' para obter id real...")
+                print(f"[DEBUG] Payload a ser inserido: {json.dumps(insert_payload, ensure_ascii=False)}")
                 resp_insert = requests.post(
                     f"{supabase_url}/rest/v1/posts",
                     json=insert_payload,
@@ -2971,9 +2976,10 @@ def api_publish_social_post(post_id):
                 print(f"[DEBUG] Insert no Supabase: {resp_insert.status_code} - {resp_insert.text[:300]}")
 
                 if resp_insert.status_code not in (200, 201):
+                    print(f"[DEBUG] Erro detalhado do Supabase: {resp_insert.status_code} - {resp_insert.text}")
                     if resp_insert.status_code in (401, 403):
                         return jsonify({"success": False, "error": "Falha de autenticação/permissão no Supabase ao criar o post (401/403) — verifique NEWPOST_SUPABASE_SERVICE_KEY no Vercel"}), resp_insert.status_code
-                    return jsonify({"success": False, "error": f"Não foi possível criar o post no Supabase: {resp_insert.status_code}"}), resp_insert.status_code
+                    return jsonify({"success": False, "error": f"Não foi possível criar o post no Supabase: {resp_insert.status_code} - {resp_insert.text}"}), resp_insert.status_code
 
                 inserted = resp_insert.json()
                 if not (isinstance(inserted, list) and inserted):
