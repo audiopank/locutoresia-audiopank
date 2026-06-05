@@ -37,8 +37,8 @@ except ImportError:
 
 # Configuração Supabase da NewPost-IA (PROJETO ATIVO)
 # Usa variáveis do .env se disponíveis, caso contrário usa fallback
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NDUwMTIsImV4cCI6MjA3OTIyMTAxMn0.bv_6SFc_vNnw_eIyD73xNsRVXtL0guSbMRNuCthIy4Q")
+SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", "https://ykswhzqdjoshjoaruhqs.supabase.co")
+SUPABASE_SERVICE_KEY = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8")
 
 from postgrest.exceptions import APIError
 
@@ -370,7 +370,7 @@ class NewsAgent:
 
     def save_to_supabase(self, news: Dict):
         """Salva notícia na tabela posts (local) para aparecer na lista de Publicações Salvas"""
-        AI_AUTHOR_ID = '3a1a93d0-e451-47a4-a126-f1b7375895eb'
+        AI_AUTHOR_ID = os.getenv("NEWPOST_AUTHOR_ID", "3f51ca52-5a5c-4cf0-a95a-ec26c96245e3")
         
         # Preparar payload com colunas do novo projeto
         payload = { 
@@ -380,8 +380,7 @@ class NewsAgent:
             "source_url": news.get("url", ""), 
             "category": news.get("category", "noticias"), 
             "is_ia_generated": True, 
-            "status": "draft", # Usamos draft para curadoria, como antes
-            "privacy": "public", 
+            "status": "published", 
             "published_at": datetime.now(timezone.utc).isoformat(), 
             "tags": [f"#{news.get('category', 'noticias')}", "#NewsAgent", "#LocutoresIA", "#Brasil"], 
             "media_urls": [news["image_url"]] if news.get("image_url") else [], 

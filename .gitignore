@@ -60,6 +60,7 @@ list_supabase_tables.py
 
 # Cache
 .cache/
+*.db
 
 # Node (se houver)
 node_modules/
