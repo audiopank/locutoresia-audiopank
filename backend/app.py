@@ -41,7 +41,7 @@ except Exception as e:
     print(f"❌ Erro ao carregar .env: {e}")
 
 # UUID válido conhecido (perfil 'NewPost-IA' verificado em profiles) — fallback
-NEWPOST_AUTHOR_ID_FALLBACK = 'b26b3b0d-009e-4b79-b9cc-6364c52978d7'
+NEWPOST_AUTHOR_ID_FALLBACK = '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3'
 _UUID_RE = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
 
 def get_newpost_author_id():
@@ -105,7 +105,9 @@ except Exception as e:
 
 # Helper para obter a chave Supabase correta
 def get_supabase_key():
-    return os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+    return (os.getenv('PLUGPOST_SUPABASE_ANON_KEY') 
+          or os.getenv('SUPABASE_SERVICE_ROLE_KEY') 
+          or os.getenv('SUPABASE_SERVICE_KEY', ''))
 
 # Validação de segurança do Supabase
 try:
@@ -2945,7 +2947,6 @@ def api_publish_social_post(post_id):
                     'source_url': local_post.get('source_url', ''),
                     'tags': local_post.get('hashtags') or local_post.get('tags') or [],
                     'status': 'published',
-                    'privacy': 'public',
                     'watch_projected': 100,
                     'is_ia_generated': True,
                     'created_at': now_iso,
