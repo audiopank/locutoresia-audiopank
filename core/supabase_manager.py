@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 try:
@@ -101,13 +102,16 @@ class SupabaseManager:
             # Garante que o usuário existe em 'users' antes de publicar
             self._ensure_profile_exists(author_id)
 
+            now_iso = datetime.now(timezone.utc).isoformat()
+
             payload = {
                 "title": title,
                 "content": content[:500],
                 "author_id": author_id,
                 "is_ia_generated": True,
                 "source": "audio-pank-ia",
-                "status": "published"
+                "status": "published",
+                "published_at": now_iso  # CAMPO CRÍTICO! Sem isso, o feed não mostra o post
             }
 
             response = self.newpost_client.table("posts").insert(payload).execute()
