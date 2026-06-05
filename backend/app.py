@@ -3858,28 +3858,24 @@ def newpost_publish():
         # 1. Publicar na NewPost-IA original (ykswhzqdjoshjoaruhqs)
         result = news_automation.supabase.publish_to_newpost(title, content, author_id)
         
-        # 2. Publicar no PlugPost Feed (hzmtdfojctctvgqjdbex) - payload do JS do usuário!
+        # 2. Publicar no PlugPost Feed (ykswhzqdjoshjoaruhqs - o PROJETO CORRETO!)
         try:
-            plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-            plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
-            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
+            plugpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
+            plugpost_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY')
+            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3')
             
             if plugpost_url and plugpost_key:
                 print(f"[DEBUG] Publishing to PlugPost: {plugpost_url}")
                 
-                # Payload EXATO do JS do usuário!
+                # Payload EXATO do usuário (sem campo privacy!)
                 plugpost_payload = {
                     "author_id": plugpost_author_id,
                     "content": f"📰 {title}\n\n{content}",
                     "status": "published",
-                    "privacy": "public",
                     "is_ia_generated": True,
                     "source_url": "",
                     "category": "geral",
-                    "media_urls": [],
-                    "media_types": [],
-                    "tags": ["NewPostIA", "LocutoresIA"],
-                    "watch_projected": 100
+                    "tags": ["NewPostIA", "LocutoresIA"]
                 }
                 
                 headers = {
@@ -4535,28 +4531,24 @@ def api_publish_to_newpost():
         # 1. Publicar na NewPost-IA Manager (ykswhzqdjoshjoaruhqs)
         result = news_automation.supabase.publish_to_newpost(title, content, author_id)
         
-        # 2. Publicar no PlugPost Feed (hzmtdfojctctvgqjdbex) - exatamente como /api/newpost/publish
+        # 2. Publicar no PlugPost Feed (ykswhzqdjoshjoaruhqs - o PROJETO CORRETO!)
         try:
-            plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-            plugpost_key = os.getenv('PLUGPOST_SUPABASE_ANON_KEY') or os.getenv('NEWPOST_SUPABASE_ANON_KEY')
-            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
+            plugpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
+            plugpost_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY')
+            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3')
             
             if plugpost_url and plugpost_key:
                 print(f"[DEBUG] Publishing to PlugPost (busca-noticias): {plugpost_url}")
                 
-                # Payload EXATO do JS do usuário!
+                # Payload EXATO do usuário (sem campo privacy!)
                 plugpost_payload = {
                     "author_id": plugpost_author_id,
                     "content": f"📰 {title}\n\n{content}",
                     "status": "published",
-                    "privacy": "public",
                     "is_ia_generated": True,
                     "source_url": "",
                     "category": "geral",
-                    "media_urls": [],
-                    "media_types": [],
-                    "tags": ["NewPostIA", "LocutoresIA"],
-                    "watch_projected": 100
+                    "tags": ["NewPostIA", "LocutoresIA"]
                 }
                 
                 headers = {
