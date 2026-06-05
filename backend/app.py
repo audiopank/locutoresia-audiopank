@@ -4508,7 +4508,7 @@ Responda apenas o texto do post, sem aspas ou explicações."""
 
 @app.route('/api/news/publish-to-newpost', methods=['POST', 'OPTIONS'])
 def api_publish_to_newpost():
-    """Publica o post na NewPost-IA via NewsAutomationAgent, com suporte a author_id override"""
+    """Publica o post na NewPost-IA e PlugPost Feed (mesma lógica que /api/newpost/publish)"""
     print("[DEBUG] api_publish_to_newpost called!")
     if request.method == 'OPTIONS':
         print("[DEBUG] OPTIONS request received!")
@@ -4525,18 +4525,70 @@ def api_publish_to_newpost():
         print("[DEBUG] Getting JSON data!")
         data = request.get_json()
         print(f"[DEBUG] Data received: {data}")
-        titulo = data.get('titulo', '')
-        conteudo = data.get('conteudo', '')
-        author_id = data.get('author_id')
+        title = data.get('titulo', data.get('title', '')).strip()
+        content = data.get('conteudo', data.get('content', '')).strip()
+        author_id = data.get('author_id', data.get('authorId'))
         
         if not author_id:
             author_id = os.getenv("NEWPOST_AUTHOR_ID")
         
-        result = news_automation.publish_single(titulo, conteudo)
+        # 1. Publicar na NewPost-IA Manager (ykswhzqdjoshjoaruhqs)
+        result = news_automation.supabase.publish_to_newpost(title, content, author_id)
         
-        if author_id and hasattr(news_automation, 'supabase'):
-            # Se temos um author_id específico, usamos diretamente o supabase_manager
-            result = news_automation.supabase.publish_to_newpost(titulo, conteudo, author_id)
+        # 2. Publicar no PlugPost Feed (hzmtdfojctctvgqjdbex) - exatamente como /api/newpost/publish
+        try:
+            plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
+            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
+            
+            if plugpost_url and plugpost_key:
+                print(f"[DEBUG] Publishing to PlugPost (busca-noticias): {plugpost_url}")
+                
+                # Payload EXATO do JS do usuário!
+                plugpost_payload = {
+                    "author_id": plugpost_author_id,
+                    "content": f"📰 {title}\n\n{content}",
+                    "status": "published",
+                    "privacy": "public",
+                    "is_ia_generated": True,
+                    "source_url": "",
+                    "category": "geral",
+                    "media_urls": [],
+                    "media_types": [],
+                    "tags": ["NewPostIA", "LocutoresIA"],
+                    "watch_projected": 100
+                }
+                
+                headers = {
+                    "apikey": plugpost_key,
+                    "Authorization": f"Bearer {plugpost_key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                }
+                
+                plugpost_response = requests.post(
+                    f"{plugpost_url}/rest/v1/posts",
+                    json=plugpost_payload,
+                    headers=headers,
+                    timeout=30
+                )
+                
+                if plugpost_response.status_code in (200, 201):
+                    plugpost_data = plugpost_response.json()
+                    print(f"[DEBUG] PlugPost publish SUCCESS (busca-noticias)! Post ID: {plugpost_data[0]['id'] if plugpost_data else 'N/A'}")
+                    # Atualiza o resultado com o ID do PlugPost
+                    if plugpost_data and len(plugpost_data) > 0:
+                        result["plugpost_post_id"] = plugpost_data[0]['id']
+                        result["success"] = True  # Garante que retorne sucesso
+                else:
+                    print(f"[DEBUG] PlugPost publish failed (busca-noticias): {plugpost_response.status_code} - {plugpost_response.text}")
+            else:
+                print(f"[DEBUG] Skipping PlugPost (busca-noticias): missing credentials")
+                
+        except Exception as plugpost_err:
+            print(f"[DEBUG] PlugPost error (busca-noticias): {plugpost_err}")
+            import traceback
+            traceback.print_exc()
         
         return jsonify(result)
     except Exception as e:
