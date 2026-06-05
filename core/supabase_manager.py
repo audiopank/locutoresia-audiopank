@@ -107,7 +107,7 @@ class SupabaseManager:
                 "author_id": author_id,
                 "is_ia_generated": True,
                 "source": "audio-pank-ia",
-                "status": "ready"
+                "status": "published"
             }
 
             response = self.newpost_client.table("posts").insert(payload).execute()

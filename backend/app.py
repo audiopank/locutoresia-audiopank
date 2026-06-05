@@ -883,16 +883,37 @@ def api_newpost_diagnosis():
         # Tentar listar usuários existentes
         users_list = []
         try:
+            # Usar service_role key para ter mais privilégios
+            service_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
+            if not service_key:
+                service_key = supabase_key
+            
+            users_headers = {
+                'apikey': service_key,
+                'Authorization': f'Bearer {service_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            print(f"[DIAGNOSIS] Tentando buscar usuários em: {supabase_url}/auth/v1/admin/users")
             users_response = requests.get(
-                f"{supabase_url}/rest/v1/users",
-                headers=headers,
-                params={"select": "id,email", "limit": 10},
+                f"{supabase_url}/auth/v1/admin/users",
+                headers=users_headers,
                 timeout=10
             )
+            print(f"[DIAGNOSIS] Status da resposta dos usuários: {users_response.status_code}")
+            print(f"[DIAGNOSIS] Conteúdo da resposta dos usuários: {users_response.text[:500]}")
+            
             if users_response.status_code in (200, 206):
-                users_list = users_response.json()
+                users_data = users_response.json()
+                # A resposta da API admin tem o formato {"users": [...]}
+                users_list = users_data.get('users', []) if isinstance(users_data, dict) else users_data
+                print(f"[DIAGNOSIS] {len(users_list)} usuários encontrados!")
+            else:
+                print(f"[DIAGNOSIS] Não foi possível buscar usuários: {users_response.text}")
         except Exception as e:
-            print(f"[DEBUG] Erro ao buscar usuários: {e}")
+            print(f"[DIAGNOSIS] Erro ao buscar usuários: {e}")
+            import traceback
+            print(traceback.format_exc())
         
         message = "Diagnóstico concluído! Verifique as tabelas acima."
         all_ok = all(t.get('exists') for t in tables_result)
@@ -3809,189 +3830,91 @@ def api_get_scheduled_posts():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/newpost/publish', methods=['POST'])
+@app.route('/api/newpost/publish', methods=['POST', 'OPTIONS'])
 def newpost_publish():
-    """Publica notícia na NewPost-IA via Supabase (tabela newpost_posts)"""
+    """Publica notícia na NewPost-IA e no PlugPost Feed"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    print("[DEBUG] newpost_publish called!")
+    
+    if not HAS_NEWS_AUTOMATION or not news_automation:
+        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
+    
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
+        print(f"[DEBUG] Data received: {data}")
         
-        # Credenciais do Supabase da NewPost-IA (projeto correto: ykswhzqdjoshjoaruhqs)
-        # Mesmo padrão de fallback usado nas demais rotas; sem chaves hardcoded.
-        newpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-        newpost_key = os.getenv('NEWPOST_SUPABASE_ANON_KEY', '') or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', '')
-        newpost_author_id = get_newpost_author_id()
-
-        if not newpost_url or not newpost_key:
-            return jsonify({"success": False, "error": "Credenciais NewPost-IA não configuradas"}), 500
+        title = data.get('title', data.get('titulo', '')).strip()
+        content = data.get('content', data.get('conteudo', '')).strip()
+        author_id = data.get('authorId', data.get('author_id'))
         
-        # Author ID padrão do NewPost-IA (pankilhas@gmail.com)
-        DEFAULT_AUTHOR_ID = newpost_author_id
+        if not author_id:
+            author_id = os.getenv("NEWPOST_AUTHOR_ID")
         
-        # Preparar dados para tabela newpost_posts (colunas exatas: titulo, descricao, conteudo, hashtags, autor_id, criado_em, atualizado_em)
-        # Usar UTC para timestamptz do Supabase
-        title_np = data.get('title', '').strip()
-        summary_np = data.get('summary', data.get('content', '')).strip()
-        source_url_np = data.get('url', '').strip()
+        # 1. Publicar na NewPost-IA original (ykswhzqdjoshjoaruhqs)
+        result = news_automation.supabase.publish_to_newpost(title, content, author_id)
         
-        # Montar o conteúdo formatado para newpost_posts
-        formatted_content_np = []
-        if title_np:
-            formatted_content_np.append(f"📰 {title_np}\n")
-        if summary_np:
-            if len(summary_np) > 500:
-                summary_np = summary_np[:500] + "..."
-            formatted_content_np.append(summary_np)
-        if source_url_np:
-            formatted_content_np.append(f"\n🔗 Fonte: {source_url_np}")
-        
-        final_content_np = '\n'.join(formatted_content_np).strip()
-        descricao_np = summary_np[:200] if summary_np else title_np[:200]
-        
-        # Aceitar tanto 'authorId' (camelCase do frontend) quanto 'author_id' (snake_case)
-        author_id = data.get('authorId') or data.get('author_id', DEFAULT_AUTHOR_ID)
-        
-        post_data = {
-            'titulo': title_np,
-            'descricao': descricao_np,
-            'conteudo': final_content_np,
-            'hashtags': data.get('hashtags', ['notícia', 'Brasil']),
-            'autor_id': author_id,
-            'criado_em': datetime.now(timezone.utc).isoformat(),
-            'atualizado_em': datetime.now(timezone.utc).isoformat()
-        }
-        
-        # Headers para API REST
-        headers = {
-            'apikey': newpost_key,
-            'Authorization': f'Bearer {newpost_key}',
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-        }
-        
-        # POST para tabela newpost_posts (dados reais do NewPost-IA e dashboard real)
-        newpost_posts_response = requests.post(
-            f"{newpost_url}/rest/v1/newpost_posts",
-            json=post_data,
-            headers=headers,
-            timeout=30
-        )
-        
-        if newpost_posts_response.status_code not in (200, 201, 204, 409):
-            return jsonify({
-                "success": False,
-                "error": f"Erro ao publicar em newpost_posts: {newpost_posts_response.status_code} - {newpost_posts_response.text}"
-            }), newpost_posts_response.status_code
-        
-        newpost_post_id = None
-        if newpost_posts_response.status_code in (200, 201):
-            try:
-                newpost_posts_result = newpost_posts_response.json()
-                if isinstance(newpost_posts_result, list) and len(newpost_posts_result) > 0:
-                    newpost_post_id = newpost_posts_result[0].get('id')
-            except ValueError:
-                newpost_post_id = None
-        
-        # POST para tabela posts no PLUGPOST (visível no feed)
-        plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', '')
-        plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY', '') or os.getenv('PLUGPOST_SUPABASE_ANON_KEY', '')
-        plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
-        
-        posts_response = None
-        
-        if plugpost_url and plugpost_key:
-            # Estrutura EXATA do JavaScript que você me mostrou
-            now_utc = datetime.now(timezone.utc).isoformat()
-            title = data.get('title', '').strip()
-            summary = data.get('summary', data.get('content', '')).strip()
-            source_url = data.get('url', '').strip()
+        # 2. Publicar no PlugPost Feed (hzmtdfojctctvgqjdbex) - payload do JS do usuário!
+        try:
+            plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+            plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
+            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', 'e387d9c0-31d9-409c-b3ac-5d31109630b4')
             
-            # Gerar tags como no JavaScript
-            def generate_tags(title_text, category_text):
-                base = [category_text.capitalize(), "NewPostIA", "Noticias"]
-                keywords = []
-                import re
-                words = re.sub(r'[^a-záéíóúãõâêôàüç\s]', '', title_text.lower()).split()
-                for w in words:
-                    if len(w) > 5:
-                        keywords.append(w.capitalize())
-                        if len(keywords) >= 3:
-                            break
-                all_tags = list(set(base + keywords))[:6]
-                return all_tags
-            
-            tags = generate_tags(title, data.get('category', 'geral'))
-            hashtag_str = ' '.join([f'#{t}' for t in tags])
-            body = summary[:280] + ('...' if len(summary) > 280 else '')
-            final_content = f"📰 {title}\n\n{body}\n\n💬 O que você acha? Comente! 👇\n\n{hashtag_str}\n\n📰 Fonte: Locutores IA"
-            
-            posts_data = {
-                'author_id': plugpost_author_id,
-                'content': final_content,
-                'status': 'published',
-                'privacy': 'public',
-                'is_ia_generated': True,
-                'source_url': source_url,
-                'category': data.get('category', 'geral'),
-                'media_urls': [],
-                'media_types': [],
-                'tags': tags,
-                'watch_projected': 100,
-                'published_at': now_utc
-            }
-            
-            headers_plugpost = {
-                'apikey': plugpost_key,
-                'Authorization': f'Bearer {plugpost_key}',
-                'Content-Type': 'application/json',
-                'Prefer': 'return=representation'
-            }
-            
-            posts_response = requests.post(
-                f"{plugpost_url}/rest/v1/posts",
-                json=posts_data,
-                headers=headers_plugpost,
-                timeout=30
-            )
-            
-            print(f"[DEBUG] Resposta do PlugPost: Status={posts_response.status_code}, Conteúdo={posts_response.text}")
+            if plugpost_url and plugpost_key:
+                print(f"[DEBUG] Publishing to PlugPost: {plugpost_url}")
+                
+                # Payload EXATO do JS do usuário!
+                plugpost_payload = {
+                    "author_id": plugpost_author_id,
+                    "content": f"📰 {title}\n\n{content}",
+                    "status": "published",
+                    "privacy": "public",
+                    "is_ia_generated": True,
+                    "source_url": "",
+                    "category": "geral",
+                    "media_urls": [],
+                    "media_types": [],
+                    "tags": ["NewPostIA", "LocutoresIA"],
+                    "watch_projected": 100
+                }
+                
+                headers = {
+                    "apikey": plugpost_key,
+                    "Authorization": f"Bearer {plugpost_key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                }
+                
+                plugpost_response = requests.post(
+                    f"{plugpost_url}/rest/v1/posts",
+                    json=plugpost_payload,
+                    headers=headers,
+                    timeout=30
+                )
+                
+                if plugpost_response.status_code in (200, 201):
+                    plugpost_data = plugpost_response.json()
+                    print(f"[DEBUG] PlugPost publish SUCCESS! Post ID: {plugpost_data[0]['id'] if plugpost_data else 'N/A'}")
+                else:
+                    print(f"[DEBUG] PlugPost publish failed: {plugpost_response.status_code} - {plugpost_response.text}")
+            else:
+                print(f"[DEBUG] Skipping PlugPost: missing credentials")
+                
+        except Exception as plugpost_err:
+            print(f"[DEBUG] PlugPost error: {plugpost_err}")
+            import traceback
+            traceback.print_exc()
         
-        if posts_response and posts_response.status_code in (200, 201):
-            result = posts_response.json()
-            if result and len(result) > 0:
-                return jsonify({
-                    "success": True,
-                    "post_id": newpost_post_id or result[0].get('id'),
-                    "message": "Notícia publicada com sucesso na NewPost-IA e no feed do PlugPost!"
-                })
-        
-        if posts_response and posts_response.status_code == 409:
-            return jsonify({
-                "success": True,
-                "post_id": newpost_post_id,
-                "message": "Notícia já estava publicada no PlugPost (URL duplicada), mas foi salva na NewPost-IA!"
-            })
-        
-        # Se publicarmos em newpost_posts mas falharmos em posts (ou não tivermos credenciais), ainda consideramos como publicado
-        if newpost_posts_response.status_code in (200, 201, 204):
-            message = "Notícia publicada com sucesso na NewPost-IA!"
-            if not plugpost_url or not plugpost_key:
-                message += " (Credenciais do PlugPost não configuradas)"
-            elif posts_response:
-                message += f" (Erro no PlugPost: {posts_response.status_code})"
-            return jsonify({
-                "success": True,
-                "post_id": newpost_post_id,
-                "message": message
-            })
-        
-        return jsonify({
-            "success": False,
-            "error": f"Erro ao publicar na NewPost-IA: {newpost_posts_response.status_code} - {newpost_posts_response.text}"
-        }), newpost_posts_response.status_code
-        
+        return jsonify(result)
     except Exception as e:
+        print(f"Erro publish to newpost: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/publications', methods=['GET', 'DELETE'])
@@ -4437,38 +4360,35 @@ def voxcraft_chat():
             return jsonify({"success": False, "error": "Dados inválidos: 'messages' é obrigatório"}), 400
         
         messages = data.get('messages', [])
+        print(f"[VOXCRAFT] Recebidas {len(messages)} mensagens")
         
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
         if not api_key:
+            print("[VOXCRAFT] ERRO: API Key não encontrada")
             return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
+        
+        print(f"[VOXCRAFT] API Key encontrada (primeiros 20 chars): {api_key[:20]}...")
         
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
-        # Listar modelos disponíveis para encontrar um que funcione
-        available_models = []
-        try:
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    available_models.append(m.name)
-            print(f"Modelos disponíveis: {available_models}")
-        except Exception as e:
-            print(f"Erro ao listar modelos: {e}")
+        # Tentar usar um modelo mais comum primeiro
+        model_name = 'gemini-2.0-flash'
+        print(f"[VOXCRAFT] Tentando usar modelo: {model_name}")
         
-        # Tentar usar o primeiro modelo disponível ou fallback
-        model_name = 'gemini-1.5-pro-latest'
-        if available_models:
-            model_name = available_models[0]
-        
-        print(f"Usando modelo: {model_name}")
         model = genai.GenerativeModel(model_name)
         
-        chat_messages = [{"role": "user", "parts": [VOXCRAFT_SYSTEM_PROMPT]}]
+        # Preparar mensagens
+        chat_messages = [
+            {"role": "user", "parts": [VOXCRAFT_SYSTEM_PROMPT]}
+        ]
         for msg in messages:
             role = "user" if msg.get("role") == "user" else "model"
             chat_messages.append({"role": role, "parts": [msg.get("content", "")]})
         
+        print(f"[VOXCRAFT] Enviando requisição para o Gemini...")
         response = model.generate_content(chat_messages)
+        print(f"[VOXCRAFT] Resposta recebida do Gemini com sucesso!")
         
         return jsonify({
             "success": True,
@@ -4476,9 +4396,9 @@ def voxcraft_chat():
         })
         
     except Exception as e:
-        print(f"Erro no VoxCraft Chat: {e}")
+        print(f"[VOXCRAFT] ERRO DETALHADO: {e}")
         import traceback
-        traceback.print_exc()
+        print(f"[VOXCRAFT] STACK TRACE: {traceback.format_exc()}")
         # Fallback: resposta manual se o Gemini não funcionar
         last_user_msg = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
         fallback_response = f"Olá! Eu sou o VoxCraft AI! 😊\n\nPercebi que houve um problema com a conexão do Gemini, mas posso te ajudar com dicas rápidas sobre:\n- Trilhas sonoras para comerciais (use a Biblioteca!)\n- Mixagem de voz e música (80% voz, 30% música)\n- Geração de locuções com IA\n\nComo posso te ajudar? 🎙️"
