@@ -968,7 +968,7 @@
             button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Agendando...';
 
             try {
-                const response = await fetch('https://locutores-ia-cyan.vercel.app/api/ai/calendar-schedule', {
+                const response = await fetch('/api/ai/calendar-schedule', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -999,7 +999,7 @@
                 }
 
                 if (result.success) {
-                    alert('Posts agendados! Redirecionando...');
+                    alert('Agendado com sucesso! ' + result.data.scheduled_count + ' posts');
                     setTimeout(() => {
                         window.location.href = '/agendamento';
                     }, 1000);
@@ -1015,12 +1015,11 @@
         });
 
         // Initialize category styling
-            document.querySelectorAll('.category-checkbox:checked').forEach(checkbox => {
-                const item = checkbox.closest('.category-item');
-                item.style.borderColor = 'var(--newpost-purple)';
-                item.style.backgroundColor = 'rgba(139, 92, 246, 0.1)';
-                item.style.opacity = '1';
-            });
+        document.querySelectorAll('.category-checkbox:checked').forEach(checkbox => {
+            const item = checkbox.closest('.category-item');
+            item.style.borderColor = 'var(--newpost-purple)';
+            item.style.backgroundColor = 'rgba(139, 92, 246, 0.1)';
+            item.style.opacity = '1';
         });
     </script>
 </body>

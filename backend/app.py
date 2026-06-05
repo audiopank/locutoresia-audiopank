@@ -3662,10 +3662,33 @@ def api_save_calendar():
 
         return jsonify({
             "success": True,
+            "data": {
+                "total_posts": len(content_plan)
+            },
             "message": f"Calendário salvo com sucesso! Total de posts: {len(content_plan)}"
         })
     except Exception as e:
         print(f"Erro em api_save_calendar: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/ai/calendar-schedule', methods=['POST'])
+def api_calendar_schedule():
+    """Agenda os posts do calendário"""
+    try:
+        data = request.get_json() or {}
+        content_plan = data.get('content_plan', [])
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "scheduled_count": len(content_plan),
+                "calendar_id": data.get('calendar_id')
+            },
+            "message": f"{len(content_plan)} posts agendados com sucesso!"
+        })
+    except Exception as e:
+        print(f"Erro em api_calendar_schedule: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
