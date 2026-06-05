@@ -90,19 +90,18 @@ app = Flask(__name__,
            template_folder=os.path.join(base_dir, 'templates'),
            static_folder=os.path.join(base_dir, 'static'))
 
-# Inicializar NewsAutomationAgent (apenas se não estiver no Vercel)
+# Inicializar NewsAutomationAgent (em todos os ambientes)
 news_automation = None
 HAS_NEWS_AUTOMATION = False
-if not os.environ.get('VERCEL'):
-    try:
-        from core.news_automation_agent import NewsAutomationAgent
-        news_automation = NewsAutomationAgent()
-        HAS_NEWS_AUTOMATION = True
-        print("✅ NewsAutomationAgent inicializado com sucesso!")
-    except Exception as e:
-        print(f"⚠️ Erro ao inicializar NewsAutomationAgent: {e}")
-        HAS_NEWS_AUTOMATION = False
-        news_automation = None
+try:
+    from core.news_automation_agent import NewsAutomationAgent
+    news_automation = NewsAutomationAgent()
+    HAS_NEWS_AUTOMATION = True
+    print("✅ NewsAutomationAgent inicializado com sucesso!")
+except Exception as e:
+    print(f"⚠️ Erro ao inicializar NewsAutomationAgent: {e}")
+    HAS_NEWS_AUTOMATION = False
+    news_automation = None
 
 # Helper para obter a chave Supabase correta
 def get_supabase_key():
