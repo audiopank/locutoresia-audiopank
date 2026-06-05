@@ -2207,7 +2207,8 @@ def api_calendar_schedule():
             "data": {
                 "message": f"{len(scheduled_posts)} posts agendados com sucesso",
                 "scheduled_posts": scheduled_posts,
-                "calendar_id": calendar_id
+                "calendar_id": calendar_id,
+                "scheduled_count": len(scheduled_posts)
             }
         })
         
@@ -3594,102 +3595,10 @@ def api_automation_status():
             'error': str(e)
         }), 500
 
-@app.route('/api/ai/generate-content', methods=['POST'])
-def api_generate_ai_content():
-    """Gera conteúdo automático para o Calendário Autônomo"""
-    try:
-        data = request.get_json() or {}
-        niche = data.get('niche', 'Conteúdo Geral')
-        goals = data.get('goals', 'Engajamento')
-
-        # Gerar plano de conteúdo simples e válido
-        content_plan = []
-        types = ['post', 'story', 'reel']
-        topics = [
-            f"{niche}: Como começar",
-            f"Dicas rápidas para {niche}",
-            f"O que esperar no futuro de {niche}",
-            f"Erros comuns em {niche} (e como evitar)",
-            f"Ferramentas essenciais para {niche}",
-            f"Cases de sucesso em {niche}",
-            f"Tendências em {niche} para 2024"
-        ]
-        best_times = ['09:00', '12:00', '18:00']
-        hashtags_list = [f"#{niche.replace(' ', '')}", "#ConteudoIA", "#Dicas"]
-
-        from datetime import datetime, timedelta
-        base_date = datetime.now(timezone.utc)
-
-        for i in range(7):  # 7 dias de conteúdo
-            topic = topics[i % len(topics)]
-            content_type = types[i % len(types)]
-            best_time = best_times[i % len(best_times)]
-            engagement_score = 70 + (i * 4)
-            predicted_reach = 100 + (i * 50)
-
-            content_plan.append({
-                "topic": topic,
-                "caption": f"📌 {topic}\n\nAqui vão algumas dicas valiosas para você que ama {niche}! Lembre-se de aplicar com consistência e adaptar ao seu estilo.\n\n{', '.join(hashtags_list)}",
-                "type": content_type,
-                "best_time": best_time,
-                "bestTime": best_time,
-                "date": (base_date + timedelta(days=i)).isoformat(),
-                "hashtags": hashtags_list,
-                "predicted_engagement": {"score": engagement_score},
-                "predictedEngagement": {"score": engagement_score, "reach": predicted_reach}
-            })
-
-        return jsonify({
-            "success": True,
-            "data": {
-                "content_plan": content_plan,
-                "strategy": f"Estratégia personalizada para {niche} com foco em {goals}"
-            }
-        })
-    except Exception as e:
-        print(f"Erro em api_generate_ai_content: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/ai/save-calendar', methods=['POST'])
-def api_save_calendar():
-    """Salva o calendário gerado"""
-    try:
-        data = request.get_json() or {}
-        content_plan = data.get('content_plan', [])
-
-        return jsonify({
-            "success": True,
-            "data": {
-                "total_posts": len(content_plan)
-            },
-            "message": f"Calendário salvo com sucesso! Total de posts: {len(content_plan)}"
-        })
-    except Exception as e:
-        print(f"Erro em api_save_calendar: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/ai/calendar-schedule', methods=['POST'])
-def api_calendar_schedule():
-    """Agenda os posts do calendário"""
-    try:
-        data = request.get_json() or {}
-        content_plan = data.get('content_plan', [])
-
-        return jsonify({
-            "success": True,
-            "data": {
-                "scheduled_count": len(content_plan),
-                "calendar_id": data.get('calendar_id')
-            },
-            "message": f"{len(content_plan)} posts agendados com sucesso!"
-        })
-    except Exception as e:
-        print(f"Erro em api_calendar_schedule: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/api/automation/<type>', methods=['POST'])
