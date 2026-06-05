@@ -3871,6 +3871,7 @@ def newpost_publish():
                 # Payload EXATO do usuário (sem campo privacy!)
                 plugpost_payload = {
                     "author_id": plugpost_author_id,
+                    "title": title,
                     "content": f"📰 {title}\n\n{content}",
                     "status": "published",
                     "is_ia_generated": True,
@@ -4544,6 +4545,7 @@ def api_publish_to_newpost():
                 # Payload EXATO do usuário (sem campo privacy!)
                 plugpost_payload = {
                     "author_id": plugpost_author_id,
+                    "title": title,
                     "content": f"📰 {title}\n\n{content}",
                     "status": "published",
                     "is_ia_generated": True,
