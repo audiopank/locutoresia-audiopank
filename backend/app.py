@@ -1985,14 +1985,18 @@ def voxcraft_logs():
 # ============================================================
 # SOCIAL POSTS — Integração NewPost-IA
 # ============================================================
-# Desativado temporariamente para evitar erros de sintaxe
-HAS_SOCIAL_PUBLISHER = False
-social_publisher = None
+try:
+    from social_post_publisher import social_publisher
+    HAS_SOCIAL_PUBLISHER = True
+    print("✅ Social Post Publisher ativado")
+except Exception as e:
+    HAS_SOCIAL_PUBLISHER = False
+    social_publisher = None
+    print(f"⚠️ Social Post Publisher não carregado: {e}")
 # Lista em memória para social posts (para /api/social/posts)
 social_posts_store = []
 # Lista em memória para publicações (fallback para o News Auto Post)
 publications_store = []
-print("⚠️ Social Post Publisher desativado temporariamente")
 
 @app.route('/social-posts')
 def social_posts_page():

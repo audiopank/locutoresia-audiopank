@@ -360,37 +360,37 @@ Responda APENAS com o JSON, sem markdown.
                                         publish_results["scheduled_posts"] = {"success": True, "scheduled_id": sched_id}
                                         logger.info(f"✅ [PASSO 2] Post agendado com sucesso: {sched_id}")
 
-                        # --- PASSO 3: Acionar Edge Function ---
-                        try:
-                            logger.info("🚀 [PASSO 3] Solicitando processamento imediato via Edge Function...")
-                            resp_fn = requests.post(
-                                f"{self.newpost_supabase_url}/functions/v1/auto-publish-posts",
-                                headers={
-                                    "apikey": self.newpost_supabase_key,
-                                    "Authorization": f"Bearer {self.newpost_supabase_key}",
-                                    "Content-Type": "application/json"
-                                },
-                                json={},
-                                timeout=10
-                            )
-                            if resp_fn.status_code in (200, 201):
-                                publish_results["edge_function"] = {"success": True, "response": resp_fn.text}
-                                logger.info(f"✅ [PASSO 3] Edge Function acionada com sucesso")
+                                        # --- PASSO 3: Acionar Edge Function ---
+                                        try:
+                                            logger.info("🚀 [PASSO 3] Solicitando processamento imediato via Edge Function...")
+                                            resp_fn = requests.post(
+                                                f"{self.newpost_supabase_url}/functions/v1/auto-publish-posts",
+                                                headers={
+                                                    "apikey": self.newpost_supabase_key,
+                                                    "Authorization": f"Bearer {self.newpost_supabase_key}",
+                                                    "Content-Type": "application/json"
+                                                },
+                                                json={},
+                                                timeout=10
+                                            )
+                                            if resp_fn.status_code in (200, 201):
+                                                publish_results["edge_function"] = {"success": True, "response": resp_fn.text}
+                                                logger.info(f"✅ [PASSO 3] Edge Function acionada com sucesso")
+                                            else:
+                                                logger.warning(f"⚠️ [PASSO 3] Edge Function retornou {resp_fn.status_code}")
+                                                publish_results["edge_function"] = {"success": False, "status_code": resp_fn.status_code}
+                                        except requests.exceptions.Timeout:
+                                            logger.info(f"⚠️ [PASSO 3] Edge Function demorou, mas o post está agendado")
+                                            publish_results["edge_function"] = {"success": False, "error": "Timeout", "note": "Post será processado via cron"}
+                                        except Exception as e_fn:
+                                            logger.warning(f"⚠️ [PASSO 3] Falha ao acionar Edge Function: {e_fn}")
+                                            publish_results["edge_function"] = {"success": False, "error": str(e_fn)}
                             else:
-                                logger.warning(f"⚠️ [PASSO 3] Edge Function retornou {resp_fn.status_code}")
-                                publish_results["edge_function"] = {"success": False, "status_code": resp_fn.status_code}
-                        except requests.exceptions.Timeout:
-                            logger.info(f"⚠️ [PASSO 3] Edge Function demorou, mas o post está agendado")
-                            publish_results["edge_function"] = {"success": False, "error": "Timeout", "note": "Post será processado via cron"}
-                        except Exception as e_fn:
-                            logger.warning(f"⚠️ [PASSO 3] Falha ao acionar Edge Function: {e_fn}")
-                            publish_results["edge_function"] = {"success": False, "error": str(e_fn)}
-                    else:
-                        logger.error(f"❌ [PASSO 2] Falha ao agendar: {resp_sched.status_code} - {resp_sched.text}")
-                        publish_results["scheduled_posts"] = {"success": False, "error": resp_sched.text}
-                except Exception as e_sched:
-                    logger.error(f"❌ [PASSO 2] Exceção ao agendar: {e_sched}")
-                    publish_results["scheduled_posts"] = {"success": False, "error": str(e_sched)}
+                                logger.error(f"❌ [PASSO 2] Falha ao agendar: {resp_sched.status_code} - {resp_sched.text}")
+                                publish_results["scheduled_posts"] = {"success": False, "error": resp_sched.text}
+                        except Exception as e_sched:
+                            logger.error(f"❌ [PASSO 2] Exceção ao agendar: {e_sched}")
+                            publish_results["scheduled_posts"] = {"success": False, "error": str(e_sched)}
             else:
                 logger.error(f"❌ [PASSO 1] Falha ao salvar em 'posts': {resp_posts.status_code} - {resp_posts.text}")
                 publish_results["posts_table"] = {"success": False, "error": resp_posts.text}
