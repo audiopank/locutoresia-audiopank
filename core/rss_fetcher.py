@@ -1,7 +1,12 @@
 import os
 import logging
+import time
+import uuid
+import re
+import requests
 from typing import List, Dict, Any
 from datetime import datetime
+from bs4 import BeautifulSoup
 
 try:
     import feedparser
@@ -15,56 +20,152 @@ logger = logging.getLogger(__name__)
 
 
 class RSSFetcher:
-    """Busca notícias reais via RSS de múltiplas fontes"""
+    """Busca notícias reais via RSS de múltiplas fontes brasileiras"""
 
-    RSS_FEEDS = {
-        "Tecnologia": [
-            "https://g1.globo.com/rss/g1/tecnologia/",
-            "https://techtudo.com.br/rss/feed/",
-            "https://olhardigital.com.br/feed/",
-            "https://exame.com/tecnologia/feed/"
-        ],
-        "Economia": [
-            "https://exame.com/mercados/feed/",
-            "https://g1.globo.com/rss/g1/economia/",
-            "https://forbes.com.br/feed/"
-        ],
-        "Esportes": [
-            "https://ge.globo.com/rss/ultimas-noticias/",
-            "https://www.lance.com.br/rss/ultimas-noticias/",
-            "https://globoesporte.globo.com/rss/feed/"
-        ],
-        "Política": [
-            "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml",
-            "https://noticias.uol.com.br/politica/ultimas-noticias/feed/",
-            "https://g1.globo.com/rss/g1/politica/"
-        ],
-        "Saúde": [
-            "https://g1.globo.com/rss/g1/saude/",
-            "https://noticias.uol.com.br/saude/ultimas-noticias/feed/"
-        ],
-        "Ciência": [
-            "https://g1.globo.com/rss/g1/ciencia-e-saude/",
-            "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml"
-        ],
-        "Entretenimento": [
-            "https://g1.globo.com/rss/g1/pop-arte/",
-            "https://entretenimento.uol.com.br/feed/ultimas-noticias/"
-        ],
-        "Turismo": [
-            "https://g1.globo.com/rss/g1/turismo-e-viagem/",
-            "https://veja.abril.com.br/feed/turismo/"
-        ],
-        "Cultura": [
-            "https://g1.globo.com/rss/g1/pop-arte/",
-            "https://veja.abril.com.br/feed/cultura/"
-        ],
-        "Notícias Gerais": [
-            "https://g1.globo.com/rss/g1/",
-            "https://oglobo.globo.com/rss/",
-            "https://gazetadopovo.com.br/feed/",
-            "https://diariodonordeste.verdesmares.com.br/feed/"
-        ]
+    # Fontes de notícias completas (do código que você compartilhou)
+    SOURCES = {
+        "g1": {
+            "url": "https://g1.globo.com",
+            "name": "G1",
+            "categories": {
+                "brasil": "/brasil/",
+                "economia": "/economia/",
+                "tecnologia": "/tecnologia/",
+                "politica": "/politica/"
+            },
+            "rss_feeds": {
+                "brasil": "https://g1.globo.com/rss/g1/brasil/",
+                "economia": "https://g1.globo.com/rss/g1/economia/",
+                "tecnologia": "https://g1.globo.com/rss/g1/tecnologia/",
+                "politica": "https://g1.globo.com/rss/g1/politica/"
+            }
+        },
+        "uol": {
+            "url": "https://noticias.uol.com.br",
+            "name": "UOL",
+            "categories": {
+                "brasil": "/cotidiano/",
+                "economia": "/economia/",
+                "tecnologia": "/tecnologia/",
+                "politica": "/politica/"
+            },
+            "rss_feeds": {
+                "brasil": "http://rss.uol.com.br/feed/noticias.xml",
+                "economia": "http://rss.uol.com.br/feed/economia.xml",
+                "tecnologia": "http://rss.uol.com.br/feed/tecnologia.xml",
+                "politica": "http://rss.uol.com.br/feed/noticias.xml"
+            }
+        },
+        "folha": {
+            "url": "https://www.folha.uol.com.br",
+            "name": "Folha de S.Paulo",
+            "categories": {
+                "brasil": "/poder/brasil/",
+                "economia": "/mercado/",
+                "tecnologia": "/tec/",
+                "politica": "/poder/"
+            },
+            "rss_feeds": {
+                "brasil": "https://www1.folha.uol.com.br/rss/folha/poder/",
+                "economia": "https://www1.folha.uol.com.br/rss/folha/mercado/",
+                "tecnologia": "https://www1.folha.uol.com.br/rss/folha/tec/",
+                "politica": "https://www1.folha.uol.com.br/rss/folha/poder/"
+            }
+        },
+        "exame": {
+            "url": "https://exame.com",
+            "name": "Exame",
+            "categories": {
+                "brasil": "/brasil/",
+                "economia": "/economia/",
+                "tecnologia": "/tecnologia/",
+                "politica": "/politica/"
+            },
+            "rss_feeds": {
+                "economia": "https://exame.com/feed/rss/economia/",
+                "tecnologia": "https://exame.com/feed/rss/tecnologia/"
+            }
+        },
+        "veja": {
+            "url": "https://veja.abril.com.br",
+            "name": "Veja",
+            "categories": {
+                "brasil": "/brasil/",
+                "economia": "/economia/",
+                "tecnologia": "/tecnologia/",
+                "politica": "/politica/"
+            },
+            "rss_feeds": {
+                "brasil": "https://veja.abril.com.br/rss/veja/brasil.xml",
+                "economia": "https://veja.abril.com.br/rss/veja/economia.xml",
+                "politica": "https://veja.abril.com.br/rss/veja/politica.xml"
+            }
+        },
+        "olhar_digital": {
+            "url": "https://olhardigital.com.br",
+            "name": "Olhar Digital",
+            "categories": {
+                "tecnologia": "/",
+                "economia": "/mercado/",
+                "brasil": "/brasil/"
+            },
+            "rss_feeds": {
+                "tecnologia": "https://olhardigital.com.br/rss/"
+            }
+        },
+        "forbes_brasil": {
+            "url": "https://forbes.com.br",
+            "name": "Forbes Brasil",
+            "categories": {
+                "economia": "/economia/",
+                "tecnologia": "/tecnologia/",
+                "brasil": "/brasil/"
+            },
+            "rss_feeds": {
+                "economia": "https://forbes.com.br/feed/",
+                "tecnologia": "https://forbes.com.br/feed/"
+            }
+        },
+        "diario_nordeste": {
+            "url": "https://diariodonordeste.verdesmares.com.br",
+            "name": "Diário do Nordeste",
+            "categories": {
+                "brasil": "/brasil/",
+                "economia": "/economia/",
+                "tecnologia": "/tecnologia/"
+            },
+            "rss_feeds": {
+                "brasil": "https://diariodonordeste.verdesmares.com.br/rss/brasil/",
+                "economia": "https://diariodonordeste.verdesmares.com.br/rss/economia/"
+            }
+        },
+        "gazeta_do_povo": {
+            "url": "https://gazetadopovo.com.br",
+            "name": "Gazeta do Povo",
+            "categories": {
+                "brasil": "/brasil/",
+                "economia": "/economia/",
+                "tecnologia": "/tecnologia/"
+            },
+            "rss_feeds": {
+                "brasil": "https://gazetadopovo.com.br/rss/brasil.xml",
+                "economia": "https://gazetadopovo.com.br/rss/economia.xml"
+            }
+        },
+        "oglobo": {
+            "url": "https://oglobo.globo.com",
+            "name": "O Globo",
+            "categories": {
+                "brasil": "/brasil/",
+                "economia": "/economia/",
+                "tecnologia": "/tecnologia/",
+                "politica": "/politica/"
+            },
+            "rss_feeds": {
+                "brasil": "https://oglobo.globo.com/rss.xml",
+                "economia": "https://oglobo.globo.com/economia/rss.xml"
+            }
+        }
     }
 
     MOCK_NEWS = {
@@ -115,6 +216,122 @@ class RSSFetcher:
         ]
     }
 
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        self.timeout = 10
+
+    def _extract_image(self, html_content: str) -> str:
+        """Extrai a primeira imagem do conteúdo HTML"""
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            img_tag = soup.find('img')
+            if img_tag and img_tag.get('src'):
+                return img_tag['src']
+        except Exception as e:
+            logger.warning(f"Erro ao extrair imagem: {e}")
+        return ""
+
+    def _parse_date(self, date_str: str) -> str:
+        """Parses a date string to ISO format"""
+        try:
+            if not date_str:
+                return datetime.now().isoformat()
+            
+            # Try to parse common date formats
+            from dateutil import parser
+            parsed_date = parser.parse(date_str, fuzzy=True)
+            return parsed_date.isoformat()
+        except Exception as e:
+            logger.warning(f"Erro ao parsear data: {e}")
+            return datetime.now().isoformat()
+
+    def _fetch_full_content(self, url: str, source: str) -> str:
+        """Busca o conteúdo completo da notícia (se implementado)"""
+        try:
+            logger.info(f"Buscando conteúdo completo de: {url}")
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Métodos genéricos para tentar extrair o conteúdo
+            content_selectors = [
+                'article',
+                '.article-content',
+                '.content',
+                '.entry-content',
+                '.post-content',
+                'main'
+            ]
+            
+            for selector in content_selectors:
+                content = soup.select_one(selector)
+                if content:
+                    text = content.get_text(separator='\n', strip=True)
+                    if len(text) > 100:
+                        return text
+                        
+        except Exception as e:
+            logger.warning(f"Erro ao buscar conteúdo completo: {e}")
+        
+        return ""
+
+    def _collect_from_source(self, source_key: str, category: str) -> List[Dict]:
+        """Coleta notícias de uma fonte específica"""
+        news_list = []
+        source = self.SOURCES.get(source_key)
+        
+        if not source:
+            return news_list
+            
+        rss_url = source['rss_feeds'].get(category)
+        if not rss_url:
+            return news_list
+            
+        try:
+            logger.info(f"🔍 Buscando notícias de {source['name']} - {category}")
+            feed = feedparser.parse(rss_url)
+            
+            for entry in feed.entries[:5]:  # Limita a 5 por fonte
+                url = entry.get('link', '')
+                title = entry.get('title', '')
+                
+                if not title or not url:
+                    continue
+                
+                # Tenta buscar o conteúdo completo
+                full_content = self._fetch_full_content(url, source_key)
+                rss_summary = entry.get('summary', '')
+                
+                # Usa o summary do RSS se não conseguir o conteúdo completo
+                if not full_content and rss_summary:
+                    soup = BeautifulSoup(rss_summary, 'html.parser')
+                    full_content = soup.get_text(strip=True)
+                
+                news_data = {
+                    'title': title,
+                    'url': url,
+                    'snippet': full_content[:200] if full_content else rss_summary[:200],
+                    'summary': full_content if full_content else rss_summary,
+                    'content': full_content if full_content else rss_summary,
+                    'source': source['name'],
+                    'source_key': source_key,
+                    'category': category,
+                    'published_at': self._parse_date(entry.get('published')),
+                    'image_url': self._extract_image(rss_summary)
+                }
+                
+                news_list.append(news_data)
+                time.sleep(0.5)  # Delay para não sobrecarregar
+                
+        except Exception as e:
+            logger.error(f"Erro ao coletar de {source_key} ({category}): {e}")
+        
+        return news_list
+
     def fetch_news(self, category: str = "Tecnologia", limit: int = 7) -> List[Dict[str, Any]]:
         """
         Busca notícias por categoria via RSS.
@@ -124,33 +341,31 @@ class RSSFetcher:
             logger.warning("⚠️ feedparser não disponível, usando notícias mockadas")
             return self._get_mock_news(category, limit)
 
-        feeds = self.RSS_FEEDS.get(category, self.RSS_FEEDS["Tecnologia"])
-        all_entries = []
-
-        for feed_url in feeds:
-            try:
-                logger.info(f"🔍 Buscando notícias de: {feed_url}")
-                feed = feedparser.parse(feed_url)
-                entries = feed.entries[:3]
-                all_entries.extend(entries)
-            except Exception as e:
-                logger.error(f"❌ Erro no feed {feed_url}: {e}")
-                continue
-
-        all_entries = all_entries[:limit]
-
-        if not all_entries:
+        all_news = []
+        
+        # Mapeia a categoria para as fontes disponíveis
+        for source_key, source in self.SOURCES.items():
+            if category in source['categories']:
+                source_news = self._collect_from_source(source_key, category)
+                all_news.extend(source_news)
+        
+        all_news = all_news[:limit]
+        
+        if not all_news:
             logger.warning("⚠️ Nenhuma notícia encontrada via RSS, usando mock")
             return self._get_mock_news(category, limit)
 
+        # Converte para o formato esperado pelo resto do sistema
         news_list = []
-        for entry in all_entries:
+        for news in all_news:
             news_list.append({
-                "titulo": getattr(entry, 'title', f'Notícia sobre {category}'),
-                "resumo": getattr(entry, 'summary', '')[:200] if hasattr(entry, 'summary') else '',
-                "fonte": getattr(getattr(entry, 'source', {}), 'title', 'Fonte') if hasattr(entry, 'source') else 'Fonte',
-                "link": getattr(entry, 'link', ''),
-                "data_publicacao": datetime.now().isoformat()
+                "titulo": news["title"],
+                "resumo": news["snippet"],
+                "conteudo_completo": news["content"],
+                "fonte": news["source"],
+                "link": news["url"],
+                "imagem_url": news.get("image_url", ""),
+                "data_publicacao": news["published_at"]
             })
 
         logger.info(f"✅ {len(news_list)} notícias encontradas para categoria: {category}")
@@ -164,12 +379,18 @@ class RSSFetcher:
             news_list.append({
                 "titulo": item["title"],
                 "resumo": item["summary"],
+                "conteudo_completo": item["summary"],
                 "fonte": "Fonte Mock",
                 "link": "",
+                "imagem_url": "",
                 "data_publicacao": datetime.now().isoformat()
             })
         return news_list
 
     def get_categories(self) -> List[str]:
         """Retorna lista de categorias disponíveis"""
-        return list(self.RSS_FEEDS.keys())
+        return list(self.MOCK_NEWS.keys())
+
+    def get_sources(self) -> List[str]:
+        """Retorna lista de fontes disponíveis"""
+        return list(self.SOURCES.keys())

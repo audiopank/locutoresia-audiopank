@@ -4,54 +4,105 @@ from typing import Dict, Any, List, Optional
 
 from .supabase_manager import SupabaseManager
 from .rss_fetcher import RSSFetcher
+from .news_database import DatabaseManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class NewsAutomationAgent:
-    """Orquestrador da integração Locutores IA ↔ NewPost-IA"""
+    """Orquestrador da integração Locutores IA ↔ NewPost-IA com cache local"""
 
     def __init__(self):
         self.supabase = SupabaseManager()
         self.rss = RSSFetcher()
+        self.db = DatabaseManager()
         self.newpost_author_id = os.getenv("NEWPOST_AUTHOR_ID")
 
     def get_status(self) -> Dict[str, Any]:
         """Retorna status completo da integração"""
         supabase_status = self.supabase.get_status()
+        source_status = self.db.get_source_status()
         return {
             "success": True,
             "data": {
                 "supabase": supabase_status,
                 "categories": self.rss.get_categories(),
-                "author_id": self.newpost_author_id
+                "sources": self.rss.get_sources(),
+                "author_id": self.newpost_author_id,
+                "source_status": source_status
             }
         }
 
-    def fetch_news(self, category: str = "Tecnologia", limit: int = 7) -> Dict[str, Any]:
-        """Busca notícias via RSS"""
+    def fetch_news(self, category: str = "Tecnologia", limit: int = 7, use_cache: bool = True) -> Dict[str, Any]:
+        """Busca notícias via RSS, com cache local"""
         try:
+            # Tenta usar o cache primeiro
+            if use_cache:
+                cached_news = self.db.get_cached_news(limit, category)
+                if cached_news:
+                    logger.info(f"📦 Usando cache: {len(cached_news)} notícias")
+                    # Converte para o formato esperado
+                    formatted_news = []
+                    for news in cached_news:
+                        formatted_news.append({
+                            "titulo": news["title"],
+                            "resumo": news["summary"],
+                            "conteudo_completo": news["summary"],
+                            "fonte": news["source"],
+                            "link": news["url"],
+                            "imagem_url": news.get("image_url", ""),
+                            "data_publicacao": news["published_at"]
+                        })
+                    return {
+                        "success": True,
+                        "data": {
+                            "noticias": formatted_news,
+                            "total": len(formatted_news),
+                            "categoria": category,
+                            "cache": True
+                        }
+                    }
+
+            # Se não tem cache ou não usou, busca do RSS
             news = self.rss.fetch_news(category, limit)
+            
+            # Salva no cache local
+            if news:
+                news_to_save = []
+                for item in news:
+                    news_to_save.append({
+                        "title": item["titulo"],
+                        "snippet": item["resumo"],
+                        "url": item["link"],
+                        "source": item["fonte"],
+                        "category": category,
+                        "published_at": item["data_publicacao"],
+                        "image_url": item.get("imagem_url", "")
+                    })
+                self.db.save_news(news_to_save)
+            
             return {
                 "success": True,
                 "data": {
                     "noticias": news,
                     "total": len(news),
-                    "categoria": category
+                    "categoria": category,
+                    "cache": False
                 }
             }
         except Exception as e:
             logger.error(f"❌ Erro ao buscar notícias: {e}")
             return {"success": False, "error": str(e)}
 
-    def publish_single(self, title: str, content: str) -> Dict[str, Any]:
+    def publish_single(self, title: str, content: str, author_id: str = None) -> Dict[str, Any]:
         """Publica uma única notícia na NewPost-IA"""
         try:
+            author = author_id or self.newpost_author_id
             result = self.supabase.publish_to_newpost(
                 title=title,
                 content=content,
-                author_id=self.newpost_author_id
+                author_id=author
             )
             return result
         except Exception as e:
@@ -74,7 +125,7 @@ class NewsAutomationAgent:
         for category in categories:
             try:
                 logger.info(f"🚀 Processando categoria: {category}")
-                news_result = self.fetch_news(category, limit_per_category)
+                news_result = self.fetch_news(category, limit_per_category, use_cache=False)
 
                 if not news_result.get("success"):
                     failed += 1
@@ -85,9 +136,10 @@ class NewsAutomationAgent:
 
                 if auto_publish:
                     for news_item in news_list:
+                        content = news_item.get("conteudo_completo", news_item.get("resumo", ""))
                         publish_result = self.publish_single(
                             title=news_item["titulo"],
-                            content=news_item["resumo"]
+                            content=content
                         )
                         if publish_result.get("success"):
                             total_published += 1
