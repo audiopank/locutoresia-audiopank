@@ -509,7 +509,13 @@
             : '';
         let isRunning = false;
         let logs = [];
-        let publishedTitles = new Set(); // Deduplicação: evita publicar a mesma notícia
+        // Carregar publishedTitles do localStorage para persistência
+        let publishedTitles = new Set(JSON.parse(localStorage.getItem('publishedTitles') || '[]')); // Deduplicação: evita publicar a mesma notícia
+        
+        // Função para salvar publishedTitles no localStorage
+        function savePublishedTitles() {
+            localStorage.setItem('publishedTitles', JSON.stringify(Array.from(publishedTitles)));
+        }
         let enabledSources = {
             exame: true,
             veja: true,
@@ -742,6 +748,7 @@
                             continue;
                         }
                         publishedTitles.add(newsTitle);
+                        savePublishedTitles();
                         // ─────────────────────────────────────────────────────
 
                         addLog(`📰 Notícia: "${newsTitle.substring(0, 60)}"`, 'info');
@@ -893,7 +900,7 @@
                                 ${pub.title || 'Sem título'}
                             </div>
                             <div id="content-${pub.id}" style="color: #cbd5e1; font-size: 12px; margin-bottom: 8px; line-height: 1.4; max-height: 100px; overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word;">
-                                ${pub.caption ? pub.caption.substring(0, 200) + '...' : pub.content ? pub.content.substring(0, 200) + '...' : 'Sem conteúdo'}
+                                ${pub.caption ? pub.caption : pub.content ? pub.content : 'Sem conteúdo'}
                             </div>
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;">
                                 <span style="background: #14532d; color: #4ade80; font-size: 10px; padding: 2px 6px; border-radius: 4px;">
@@ -939,9 +946,19 @@
 
             try {
                 addLog('🗑️ Limpando publicações...', 'info');
-                // A página Posts Sociais (/social-posts) é a responsável por gerenciar os posts
-                addLog('👉 Acesse /social-posts para gerenciar os posts', 'info');
-                loadPublications(); // Recarregar lista
+                const response = await fetch(`${API_BASE}/api/social/posts`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (result.success) {
+                    addLog(`✅ ${result.deleted_count || 0} post(s) deletado(s)`, 'success');
+                    // Limpar o cache de títulos também
+                    publishedTitles.clear();
+                    savePublishedTitles();
+                    loadPublications(); // Recarregar lista
+                } else {
+                    addLog(`❌ Erro ao limpar: ${result.error}`, 'error');
+                }
                 
             } catch (error) {
                 addLog(`❌ Erro ao limpar publicações: ${error.message}`, 'error');

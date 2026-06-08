@@ -1,5 +1,6 @@
 import os
 import logging
+import uuid
 import requests
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -53,6 +54,20 @@ class SupabaseManager:
             "newpost_manager_connected": self.newpost_manager_client is not None
         }
 
+    def get_all_authors(self):
+        """
+        Retorna todos os autores da tabela 'users'
+        """
+        if not self.newpost_manager_client:
+            return []
+        
+        try:
+            result = self.newpost_manager_client.table("users").select("*").execute()
+            return result.data
+        except Exception as e:
+            logger.error(f"❌ Erro ao buscar autores: {e}")
+            return []
+            
     def _ensure_profile_exists(self, author_id: str) -> bool:
         """
         Verifica se o usuário existe na tabela 'users' do NewPost-IA Manager.
@@ -100,18 +115,17 @@ class SupabaseManager:
             # Garante que o usuário existe no Manager antes de publicar
             self._ensure_profile_exists(author_id)
 
-            # Publicar na NewPost-IA
+            # Publicar na NewPost-IA usando o payload correto
             if self.newpost_manager_client:
-                now_iso = datetime.now(timezone.utc).isoformat()
                 manager_payload = {
                     "author_id": author_id,
-                    "content": content,
-                    "privacy": "public",
+                    "title": title,
+                    "content": f"📰 {title}\n\n{content}",
                     "status": "published",
                     "is_ia_generated": True,
+                    "source_url": str(uuid.uuid4()),
                     "category": category,
-                    "tags": tags,
-                    "published_at": now_iso
+                    "tags": tags
                 }
                 manager_response = self.newpost_manager_client.table("posts").insert(manager_payload).execute()
                 if manager_response.data:

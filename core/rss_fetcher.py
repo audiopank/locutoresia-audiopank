@@ -147,7 +147,7 @@ class RSSFetcher:
         for entry in all_entries:
             news_list.append({
                 "titulo": getattr(entry, 'title', f'Notícia sobre {category}'),
-                "resumo": getattr(entry, 'summary', '')[:150] if hasattr(entry, 'summary') else '',
+                "resumo": getattr(entry, 'summary', '')[:200] if hasattr(entry, 'summary') else '',
                 "fonte": getattr(getattr(entry, 'source', {}), 'title', 'Fonte') if hasattr(entry, 'source') else 'Fonte',
                 "link": getattr(entry, 'link', ''),
                 "data_publicacao": datetime.now().isoformat()

@@ -204,19 +204,15 @@
                             </h4>
                             <form id="create-author-form">
                                 <div class="row g-3">
-                                    <div class="col-md-4">
+                                    <div class="col-md-5">
                                         <label class="form-label text-white">Nome</label>
                                         <input type="text" class="form-control" id="author-name" placeholder="Nome do autor" required>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-5">
                                         <label class="form-label text-white">E-mail</label>
                                         <input type="email" class="form-control" id="author-email" placeholder="email@exemplo.com" required>
                                     </div>
-                                    <div class="col-md-3">
-                                        <label class="form-label text-white">Categoria</label>
-                                        <input type="text" class="form-control" id="author-categoria" placeholder="Geral" value="Geral">
-                                    </div>
-                                    <div class="col-md-1 d-flex align-items-end">
+                                    <div class="col-md-2 d-flex align-items-end">
                                         <button type="submit" class="btn btn-primary-custom w-100">
                                             <i class="fas fa-plus me-1"></i>Criar
                                         </button>
@@ -338,10 +334,6 @@
                             <label class="form-label text-white">E-mail</label>
                             <input type="email" class="form-control" id="edit-author-email" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label text-white">Categoria</label>
-                            <input type="text" class="form-control" id="edit-author-categoria" value="Geral">
-                        </div>
                     </form>
                 </div>
                 <div class="modal-footer" style="border-top: 1px solid rgba(124,58,237,0.3);">
@@ -417,11 +409,10 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="flex-1">
                             <h5 class="text-white font-semibold mb-1">
-                                <i class="fas fa-user-circle me-2 text-purple-400"></i>${author.nome || 'Nome não informado'}
+                                <i class="fas fa-user-circle me-2 text-purple-400"></i>${author.name || 'Nome não informado'}
                             </h5>
                             <p class="text-secondary small mb-2">
                                 <i class="fas fa-envelope me-1"></i>${author.email || 'E-mail não informado'}
-                                <br><i class="fas fa-tag me-1"></i><span class="badge bg-purple">${author.categoria || 'Geral'}</span>
                             </p>
                             <p class="text-purple-400 small mb-0">
                                 <i class="fas fa-key me-1"></i>ID: <code class="text-purple-300 bg-purple-900/30 px-2 py-1 rounded">${author.id}</code>
@@ -431,7 +422,7 @@
                             <button class="btn btn-secondary-custom btn-sm copy-id-btn" data-author-id="${author.id}">
                                 <i class="fas fa-copy me-1"></i>Copiar ID
                             </button>
-                            <button class="btn btn-info-custom btn-sm edit-author-btn" data-author-id="${author.id}" data-author-nome="${author.nome}" data-author-email="${author.email}" data-author-categoria="${author.categoria}">
+                            <button class="btn btn-info-custom btn-sm edit-author-btn" data-author-id="${author.id}" data-author-nome="${author.name}" data-author-email="${author.email}">
                                 <i class="fas fa-edit me-1"></i>Editar
                             </button>
                             <button class="btn btn-danger-custom btn-sm delete-author-btn" data-author-id="${author.id}">
@@ -469,12 +460,10 @@
                     const authorId = this.dataset.authorId;
                     const authorNome = this.dataset.authorNome;
                     const authorEmail = this.dataset.authorEmail;
-                    const authorCategoria = this.dataset.authorCategoria;
                     
                     document.getElementById('edit-author-id').value = authorId;
                     document.getElementById('edit-author-name').value = authorNome;
                     document.getElementById('edit-author-email').value = authorEmail;
-                    document.getElementById('edit-author-categoria').value = authorCategoria || 'Geral';
                     
                     const modal = new bootstrap.Modal(document.getElementById('edit-author-modal'));
                     modal.show();
@@ -518,7 +507,7 @@
             const select = document.getElementById('publish-author-select');
             let html = `<option value="b26b3b0d-009e-4b79-b9cc-6364c52978d7" selected>-- Autor Padrão (NewPost-IA) --</option>`;
             if (authors && authors.length > 0) {
-                html += authors.map(author => `<option value="${author.id}" ${author.id === selectedAuthorId ? 'selected' : ''}>${author.nome || author.id}</option>`).join('');
+                html += authors.map(author => `<option value="${author.id}" ${author.id === selectedAuthorId ? 'selected' : ''}>${author.name || author.id}</option>`).join('');
             }
             select.innerHTML = html;
         }
@@ -527,7 +516,6 @@
             e.preventDefault();
             const name = document.getElementById('author-name').value.trim();
             const email = document.getElementById('author-email').value.trim();
-            const categoria = document.getElementById('author-categoria').value.trim() || 'Geral';
             
             if (!name || !email) {
                 showToast('❌ Preencha todos os campos', 'error');
@@ -542,7 +530,7 @@
                 const response = await fetch('/api/newpost/authors', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nome: name, email: email, categoria: categoria })
+                    body: JSON.stringify({ nome: name, email: email })
                 });
                 
                 const data = await response.json();
@@ -609,7 +597,6 @@
             const authorId = document.getElementById('edit-author-id').value;
             const name = document.getElementById('edit-author-name').value.trim();
             const email = document.getElementById('edit-author-email').value.trim();
-            const categoria = document.getElementById('edit-author-categoria').value.trim() || 'Geral';
             
             if (!name || !email) {
                 showToast('❌ Preencha todos os campos', 'error');
@@ -624,7 +611,7 @@
                 const response = await fetch(`/api/newpost/authors/${authorId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nome: name, email: email, categoria: categoria })
+                    body: JSON.stringify({ nome: name, email: email })
                 });
                 
                 const data = await response.json();
