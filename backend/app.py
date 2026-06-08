@@ -3855,8 +3855,8 @@ def newpost_publish():
     
     print("[DEBUG] newpost_publish called!")
     
-    if not HAS_NEWS_AUTOMATION or not news_automation:
-        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
+    if not HAS_SUPABASE_MANAGER or not supabase_manager:
+        return jsonify({"success": False, "error": "SupabaseManager não inicializado"}), 503
     
     try:
         data = request.get_json()
@@ -3870,7 +3870,7 @@ def newpost_publish():
             author_id = os.getenv("NEWPOST_AUTHOR_ID")
         
         # 1. Publicar na NewPost-IA original (ykswhzqdjoshjoaruhqs)
-        result = news_automation.supabase.publish_to_newpost(title, content, author_id)
+        result = supabase_manager.publish_to_newpost(title, content, author_id)
         
         # 2. Publicar no PlugPost Feed (ykswhzqdjoshjoaruhqs - o PROJETO CORRETO!)
         try:
@@ -3883,12 +3883,12 @@ def newpost_publish():
                 
                 # Payload EXATO do usuário (sem campo privacy!)
                 plugpost_payload = {
-                    "author_id": plugpost_author_id,
+                    "author_id": author_id or plugpost_author_id,
                     "title": title,
                     "content": f"📰 {title}\n\n{content}",
                     "status": "published",
                     "is_ia_generated": True,
-                    "source_url": "",
+                    "source_url": str(uuid.uuid4()),
                     "category": "geral",
                     "tags": ["NewPostIA", "LocutoresIA"]
                 }
@@ -4557,12 +4557,12 @@ def api_publish_to_newpost():
                 
                 # Payload EXATO do usuário (sem campo privacy!)
                 plugpost_payload = {
-                    "author_id": plugpost_author_id,
+                    "author_id": author_id or plugpost_author_id,
                     "title": title,
                     "content": f"📰 {title}\n\n{content}",
                     "status": "published",
                     "is_ia_generated": True,
-                    "source_url": "",
+                    "source_url": str(uuid.uuid4()),
                     "category": "geral",
                     "tags": ["NewPostIA", "LocutoresIA"]
                 }
