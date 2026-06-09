@@ -3878,9 +3878,9 @@ def newpost_publish():
         
         # 2. Publicar no PlugPost Feed (ykswhzqdjoshjoaruhqs - o PROJETO CORRETO!)
         try:
-            plugpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-            plugpost_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY')
-            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3')
+            plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co')).rstrip('/')
+            plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
+            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', os.getenv('NEWPOST_AUTHOR_ID', '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3'))
             
             if plugpost_url and plugpost_key:
                 print(f"[DEBUG] Publishing to PlugPost: {plugpost_url}")
@@ -4432,18 +4432,19 @@ def api_fetch_news():
         data = request.get_json()
         category = data.get('category', 'Tecnologia')
         
+        # Usa a função fetch_news_from_rss já existente no app.py (que já lida com HAS_FEEDPARSER)
         news_entries = fetch_news_from_rss(category, limit=6)
         news_list = []
         
         for entry in news_entries:
             if isinstance(entry, dict):
                 titulo = entry.get('title', f'Notícia sobre {category}')
-                resumo = entry.get('summary', '')[:150] if entry.get('summary') else ''
+                resumo = entry.get('summary', '')
                 fonte = entry.get('fonte', 'Fonte')
                 link = entry.get('link', '')
             else:
                 titulo = getattr(entry, 'title', f'Notícia sobre {category}')
-                resumo = getattr(entry, 'summary', '')[:150] if hasattr(entry, 'summary') else ''
+                resumo = getattr(entry, 'summary', '')
                 fonte = getattr(getattr(entry, 'source', {}), 'title', 'Fonte') if hasattr(entry, 'source') else 'Fonte'
                 link = getattr(entry, 'link', '')
             
@@ -4468,7 +4469,7 @@ def api_fetch_news():
 
 @app.route('/api/news/generate-post', methods=['POST', 'OPTIONS'])
 def api_generate_post():
-    """Gera post de rede social com IA usando o Gemini"""
+    """Gera post de rede social com IA usando o Gemini ou fallback"""
     if request.method == 'OPTIONS':
         response = make_response()
         response.headers.add('Access-Control-Allow-Origin', '*')
@@ -4482,16 +4483,15 @@ def api_generate_post():
         resumo = data.get('resumo', '')
         categoria = data.get('categoria', 'Tecnologia')
         
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
-        
-        if not api_key:
-            return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
-        
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
-        
-        prompt = f"""Você é um redator de redes sociais especialista em notícias brasileiras. 
+        # Tenta usar o Gemini se tiver a chave e o módulo
+        try:
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+            if api_key:
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-pro')
+                
+                prompt = f"""Você é um redator de redes sociais especialista em notícias brasileiras. 
 Crie um post otimizado para Instagram/Twitter com base nesta notícia: 
  
 Título: {titulo} 
@@ -4506,20 +4506,45 @@ Regras:
 - Termine com uma hashtag da categoria 
  
 Responda apenas o texto do post, sem aspas ou explicações."""
+                
+                response = model.generate_content(prompt)
+                
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "post_gerado": response.text
+                    }
+                })
+        except Exception as gemini_err:
+            print(f"Erro no Gemini: {gemini_err}")
+            pass
         
-        response = model.generate_content(prompt)
-        
+        # Fallback: post simples com o título e resumo
+        hashtag = f"#{categoria.replace(' ', '')}" if categoria else "#Noticias"
+        fallback_post = f"{titulo}\n\n{resumo}\n\n{hashtag} #Noticias"
         return jsonify({
             "success": True,
             "data": {
-                "post_gerado": response.text
+                "post_gerado": fallback_post
             }
         })
     except Exception as e:
         print(f"Erro generate post: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+        # Fallback final
+        data = request.get_json()
+        titulo = data.get('titulo', '')
+        resumo = data.get('resumo', '')
+        categoria = data.get('categoria', 'Tecnologia')
+        hashtag = f"#{categoria.replace(' ', '')}" if categoria else "#Noticias"
+        fallback_post = f"{titulo}\n\n{resumo}\n\n{hashtag} #Noticias"
+        return jsonify({
+            "success": True,
+            "data": {
+                "post_gerado": fallback_post
+            }
+        })
 
 @app.route('/api/news/publish-to-newpost', methods=['POST', 'OPTIONS'])
 def api_publish_to_newpost():
@@ -4533,9 +4558,6 @@ def api_publish_to_newpost():
         response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         return response
     
-    if not HAS_NEWS_AUTOMATION or not news_automation:
-        return jsonify({"success": False, "error": "NewsAutomationAgent não inicializado"}), 503
-    
     try:
         print("[DEBUG] Getting JSON data!")
         data = request.get_json()
@@ -4548,13 +4570,15 @@ def api_publish_to_newpost():
             author_id = os.getenv("NEWPOST_AUTHOR_ID")
         
         # 1. Publicar na NewPost-IA Manager (ykswhzqdjoshjoaruhqs)
-        result = news_automation.supabase.publish_to_newpost(title, content, author_id)
+        from core.supabase_manager import SupabaseManager
+        supabase_mgr = SupabaseManager()
+        result = supabase_mgr.publish_to_newpost(title, content, author_id)
         
-        # 2. Publicar no PlugPost Feed (ykswhzqdjoshjoaruhqs - o PROJETO CORRETO!)
+        # 2. Publicar no PlugPost Feed (hzmtdfojctctvgqjdbex - PROJETO DA LOVABLE!)
         try:
-            plugpost_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-            plugpost_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY')
-            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3')
+            plugpost_url = 'https://hzmtdfojctctvgqjdbex.supabase.co'
+            plugpost_key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM'
+            plugpost_author_id = '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3'
             
             if plugpost_url and plugpost_key:
                 print(f"[DEBUG] Publishing to PlugPost (busca-noticias): {plugpost_url}")

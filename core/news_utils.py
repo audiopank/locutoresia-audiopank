@@ -111,34 +111,121 @@ class NewsUtils:
     
     def fetch_web_search(self, query: str, max_results: int = 5) -> List[Dict]:
         """
-        Busca notícias reais usando NewsAPI, RSS feeds e web scraping
+        Busca notícias reais usando RSS feeds
         """
         logger.info(f"Buscando notícias reais para: {query}")
         results = []
         
-        try:
-            # PRIMEIRO: Usar NewsAPI (melhor fonte!)
-            newsapi_results = self.fetch_from_newsapi(query, max_results)
-            results.extend(newsapi_results)
+        # RSS feeds das principais fontes brasileiras
+        rss_feeds = {
+            "g1": [
+                "https://g1.globo.com/rss/g1/brasil/",
+                "https://g1.globo.com/rss/g1/economia/",
+                "https://g1.globo.com/rss/g1/tecnologia/"
+            ],
+            "uol": [
+                "http://rss.uol.com.br/feed/noticias.xml",
+                "http://rss.uol.com.br/feed/economia.xml",
+                "http://rss.uol.com.br/feed/tecnologia.xml"
+            ],
+            "folha": [
+                "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml",
+                "https://www.folha.uol.com.br/rss/folha/mercado/",
+                "https://www.folha.uol.com.br/rss/folha/tec/"
+            ],
+            "exame": [
+                "https://exame.com/feed/",
+                "https://exame.com/tecnologia/feed/"
+            ],
+            "veja": [
+                "https://veja.abril.com.br/feed/",
+                "https://veja.abril.com.br/feed/economia.xml",
+                "https://veja.abril.com.br/feed/politica.xml"
+            ],
+            "olhar_digital": [
+                "https://olhardigital.com.br/rss/"
+            ],
+            "forbes_brasil": [
+                "https://forbes.com.br/feed/"
+            ],
+            "diario_nordeste": [
+                "https://diariodonordeste.verdesmares.com.br/rss/brasil/"
+            ],
+            "gazeta_do_povo": [
+                "https://gazetadopovo.com.br/rss/brasil.xml"
+            ],
+            "oglobo": [
+                "https://oglobo.globo.com/rss.xml"
+            ]
+        }
+        
+        # Extract category from query
+        category = None
+        if "brasil" in query.lower():
+            category = "brasil"
+        elif "economia" in query.lower():
+            category = "economia"
+        elif "tecnologia" in query.lower() or "tech" in query.lower():
+            category = "tecnologia"
+        elif "politica" in query.lower():
+            category = "politica"
+        elif "saude" in query.lower() or "saúde" in query.lower():
+            category = "saude"
+        
+        # Collect from all RSS feeds
+        for source_name, feeds in rss_feeds.items():
+            # If query mentions a specific source, use only that source
+            if source_name.lower() in query.lower():
+                selected_feeds = feeds
+            else:
+                # Otherwise use all feeds
+                selected_feeds = feeds[:2]  # Limit to first 2 feeds per source
             
-            # Se não encontrar suficiente, tentar RSS feeds
-            if len(results) < max_results:
-                results.extend(self._fetch_from_rss_feeds(query, max_results - len(results)))
-            
-            # Se ainda não encontrar suficiente, tentar web scraping direto
-            if len(results) < max_results:
-                results.extend(self._scrape_news_sites(query, max_results - len(results)))
-            
-            # Limitar resultados
-            results = results[:max_results]
-            
-            logger.info(f"Encontradas {len(results)} notícias para: {query}")
-            return results
-            
-        except Exception as e:
-            logger.error(f"Erro ao buscar notícias: {e}")
-            # Retornar resultados mock em caso de falha
-            return self._fallback_results(query, max_results)
+            for feed_url in selected_feeds:
+                try:
+                    import feedparser
+                    logger.info(f"Buscando RSS de {source_name}: {feed_url}")
+                    feed = feedparser.parse(feed_url)
+                    
+                    for entry in feed.entries[:3]:  # 3 entries per feed
+                        try:
+                            # Extract summary/content
+                            summary = ""
+                            if hasattr(entry, 'summary') and entry.summary:
+                                summary = entry.summary
+                            elif hasattr(entry, 'description') and entry.description:
+                                summary = entry.description
+                            
+                            # Clean HTML from summary
+                            from bs4 import BeautifulSoup
+                            soup = BeautifulSoup(summary, 'html.parser')
+                            clean_summary = soup.get_text(separator=' ', strip=True)
+                            
+                            results.append({
+                                "title": entry.title,
+                                "url": entry.link,
+                                "source": source_name.title(),
+                                "snippet": clean_summary,
+                                "published_at": getattr(entry, 'published', datetime.now().isoformat())
+                            })
+                        except Exception as e:
+                            logger.warning(f"Erro ao processar entrada do feed: {e}")
+                            continue
+                            
+                except Exception as e:
+                    logger.warning(f"Erro ao processar RSS de {source_name}: {e}")
+                    continue
+                
+                if len(results) >= max_results:
+                    break
+            if len(results) >= max_results:
+                break
+        
+        # Limitar resultados
+        results = results[:max_results]
+        
+        logger.info(f"Encontradas {len(results)} notícias para: {query}")
+        return results
     
     def _fetch_from_rss_feeds(self, query: str, max_results: int) -> List[Dict]:
         """Busca notícias de feeds RSS"""
