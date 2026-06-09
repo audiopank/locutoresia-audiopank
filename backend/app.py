@@ -296,6 +296,20 @@ if not os.environ.get('VERCEL'):
             HAS_NEWS_AGENT = False
             print(f"⚠️ NewsAgent não disponível: {e}")
 
+# Importar SupabaseManager para gerenciar conexões com o Supabase
+supabase_manager = None
+try:
+    from core.supabase_manager import SupabaseManager
+    supabase_manager = SupabaseManager()
+    print("✓ SupabaseManager carregado")
+except Exception as e:
+    print(f"⚠️ SupabaseManager não disponível: {e}")
+
+# Armazenamento em memória para trilhas carregadas localmente (fallback)
+local_uploaded_tracks = []
+# Lista de IDs de trilhas padrão que foram excluídas
+deleted_default_track_ids = []
+
 # DEBUG — verificar se execute_collection existe (apenas em desenvolvimento, não no Vercel)
 if not os.environ.get('VERCEL') and HAS_NEWS_AGENT:
     try:
@@ -347,102 +361,47 @@ def library():
 def get_tracks():
     """Obtém todas as trilhas da biblioteca"""
     try:
-        # Verifica se temos o cliente do Supabase configurado
-        if not hasattr(app, 'supabase'):
-            # Fallback para trilhas locais se não houver Supabase
-            local_tracks = [
-                {
-                    "id": 1,
-                    "name": "Energia Positiva",
-                    "artist": "Locutores IA",
-                    "genre": "pop",
-                    "mood": "energetic",
-                    "duration": 15,
-                    "bpm": 120,
-                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-                    "description": "Trilha animada e otimista para comerciais"
-                },
-                {
-                    "id": 2,
-                    "name": "Chill Vibes",
-                    "artist": "Locutores IA",
-                    "genre": "lofi",
-                    "mood": "chill",
-                    "duration": 30,
-                    "bpm": 90,
-                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-                    "description": "Lo-fi relaxante para fundo de vídeos"
-                },
-                {
-                    "id": 3,
-                    "name": "Epic Cinematic",
-                    "artist": "Locutores IA",
-                    "genre": "cinematic",
-                    "mood": "dramatic",
-                    "duration": 60,
-                    "bpm": 70,
-                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-                    "description": "Trilha cinematográfica épica para trailers"
-                },
-                {
-                    "id": 4,
-                    "name": "Inspiration Drive",
-                    "artist": "Locutores IA",
-                    "genre": "electronic",
-                    "mood": "inspirational",
-                    "duration": 45,
-                    "bpm": 110,
-                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
-                    "description": "Trilha motivacional e inspiradora"
-                },
-                {
-                    "id": 5,
-                    "name": "Happy Pop",
-                    "artist": "Locutores IA",
-                    "genre": "pop",
-                    "mood": "happy",
-                    "duration": 30,
-                    "bpm": 130,
-                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
-                    "description": "Pop alegre para conteúdos divertidos"
-                },
-                {
-                    "id": 6,
-                    "name": "Urban Beat",
-                    "artist": "Locutores IA",
-                    "genre": "hip-hop",
-                    "mood": "energetic",
-                    "duration": 40,
-                    "bpm": 95,
-                    "file_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
-                    "description": "Beat urbano moderno para conteúdos street"
-                }
-            ]
-            return jsonify({
-                "success": True,
-                "tracks": local_tracks
-            }), 200
+        # Fallback default tracks (vazia por padrão - sem trilhas mokcadas)
+        default_tracks = []
+
+        # Tentativa de usar o Supabase
+        try:
+            if supabase_manager and supabase_manager.locutores_client:
+                response = supabase_manager.locutores_client.table('music-tracks') \
+                    .select('*') \
+                    .eq('is_active', True) \
+                    .order('created_at', desc=True) \
+                    .execute()
+                return jsonify({
+                    "success": True,
+                    "tracks": response.data
+                }), 200
+        except Exception as sb_error:
+            print(f"⚠️ Supabase falhou, usando fallback: {sb_error}")
+            pass  # Se falhar, continua para o fallback
         
-        # Se temos o Supabase, busca as trilhas do banco
-        response = app.supabase.table('music_tracks') \
-            .select('*') \
-            .eq('is_active', True) \
-            .order('created_at', desc=True) \
-            .execute()
+        # Filtrar trilhas padrão que não foram excluídas
+        filtered_default_tracks = [track for track in default_tracks if track["id"] not in deleted_default_track_ids]
+        
+        # Fallback: trilhas padrão filtradas + trilhas carregadas localmente
+        all_tracks = filtered_default_tracks + local_uploaded_tracks
         
         return jsonify({
             "success": True,
-            "tracks": response.data
+            "tracks": all_tracks
         }), 200
         
     except Exception as e:
         print(f"Erro ao buscar trilhas: {e}")
         import traceback
         traceback.print_exc()
+        # Fallback final: sem trilhas padrão
+        default_tracks = []
+        filtered_default_tracks = [track for track in default_tracks if track["id"] not in deleted_default_track_ids]
         return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+            "success": True,
+            "tracks": filtered_default_tracks + local_uploaded_tracks
+        }), 200
 
 
 @app.route('/api/tracks/upload', methods=['POST', 'OPTIONS'])
@@ -494,7 +453,7 @@ def upload_track():
         file_url = ""
         
         # Primeiro tenta usar o Supabase Storage e banco de dados
-        if hasattr(app, 'supabase'):
+        if supabase_manager and supabase_manager.locutores_client:
             try:
                 # Upload para o Supabase Storage
                 # Primeiro, criamos um bucket se não existir (ou usamos o padrão)
@@ -505,14 +464,14 @@ def upload_track():
                 try:
                     storage_path = f"tracks/{unique_filename}"
                     
-                    upload_result = app.supabase.storage.from_(bucket_name).upload(
+                    upload_result = supabase_manager.locutores_client.storage.from_(bucket_name).upload(
                         path=storage_path,
                         file=file_bytes,
                         file_options={"content-type": file.mimetype}
                     )
                     
                     # Obtém a URL pública
-                    file_url = app.supabase.storage.from_(bucket_name).get_public_url(storage_path)
+                    file_url = supabase_manager.locutores_client.storage.from_(bucket_name).get_public_url(storage_path)
                     
                 except Exception as storage_error:
                     print(f"Erro no Supabase Storage: {storage_error}")
@@ -559,16 +518,22 @@ def upload_track():
         }
         
         # Salva os metadados no Supabase, se disponível
-        if hasattr(app, 'supabase'):
+        saved_to_supabase = False
+        if supabase_manager and supabase_manager.locutores_client:
             try:
-                response = app.supabase.table('music_tracks').insert(track_data).execute()
+                response = supabase_manager.locutores_client.table('music_tracks').insert(track_data).execute()
                 track_data['id'] = response.data[0]['id']
+                saved_to_supabase = True
             except Exception as e:
                 print(f"Não foi possível salvar no Supabase: {e}")
                 # Fallback para ID local
                 track_data['id'] = str(uuid.uuid4())
         else:
             track_data['id'] = str(uuid.uuid4())
+        
+        # Se não salvou no Supabase, adiciona à lista local
+        if not saved_to_supabase:
+            local_uploaded_tracks.append(track_data)
         
         return jsonify({
             "success": True,
@@ -597,14 +562,28 @@ def delete_track(track_id):
     
     try:
         # Tenta excluir do Supabase
-        if hasattr(app, 'supabase'):
+        if supabase_manager and supabase_manager.locutores_client:
             try:
-                app.supabase.table('music_tracks') \
+                supabase_manager.locutores_client.table('music_tracks') \
                     .delete() \
                     .eq('id', track_id) \
                     .execute()
             except Exception as e:
                 print(f"Não foi possível excluir do Supabase: {e}")
+        
+        # Verifica se é uma trilha padrão (id numérico de 1 a 6)
+        try:
+            numeric_id = int(track_id)
+            global deleted_default_track_ids
+            if 1 <= numeric_id <= 6:
+                if numeric_id not in deleted_default_track_ids:
+                    deleted_default_track_ids.append(numeric_id)
+        except ValueError:
+            pass  # Não é um id numérico, então não é trilha padrão
+        
+        # Tenta excluir da lista local
+        global local_uploaded_tracks
+        local_uploaded_tracks = [track for track in local_uploaded_tracks if str(track.get('id')) != str(track_id)]
         
         return jsonify({
             "success": True,

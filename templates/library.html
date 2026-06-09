@@ -681,15 +681,23 @@
         }
 
         async function deleteTrack(trackId) {
-            if (!confirm('Tem certeza que deseja excluir esta trilha?')) return;
+            console.log('Tentando excluir track com ID:', trackId);
+            if (!confirm('Tem certeza que deseja excluir esta trilha?')) {
+                console.log('Usuário cancelou exclusão');
+                return;
+            }
             
             try {
+                console.log('Enviando requisição DELETE para:', `/api/tracks/${trackId}`);
                 const response = await fetch(`/api/tracks/${trackId}`, {
                     method: 'DELETE'
                 });
+                console.log('Resposta recebida, status:', response.status);
                 const result = await response.json();
+                console.log('Resultado:', result);
                 
                 if (result.success) {
+                    console.log('Exclusão bem-sucedida! Recarregando trilhas...');
                     loadTracks();
                 } else {
                     throw new Error(result.error);
