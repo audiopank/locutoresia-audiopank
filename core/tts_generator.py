@@ -140,25 +140,32 @@ GOOGLE_VOICE_MAP = {
 # ============================================================================
 
 ELEVENLABS_VOICE_MAP = {
-    # Vozes ElevenLabs (IDs reais)
-    "Alex Professional": "adam",          # Masculino, profissional
-    "Charon": "onyx",                     # Masculino, profundo
-    "Puck": "arnold",                     # Masculino, jovem
-    "Leda": "bella",                      # Feminino, claro
-    "Zephyr": "adam",                     # Masculino, natural
-    
-    # Aliases adicionais
-    "Elena": "emma",                      # Feminino
-    "Mateus": "onyx",                     # Masculino
-    "Lucas": "arnold",                    # Masculino jovem
-    "Isabella": "bella",                  # Feminino
-    "Adam": "adam",                       # Masculino
-    "Liv": "liv",                         # Feminino
-    "Chris": "chris",                     # Masculino
-    "Patrick": "patrick",                 # Masculino
-    
+    # Vozes ElevenLabs (IDs reais da conta)
+    "Roger": "CwhRBWXzGAHq8TQ4Fs17",          # Roger - Laid-Back, Casual, Resonant
+    "Sarah": "EXAVITQu4vr4xnSDxMaL",          # Sarah - Mature, Reassuring, Confident
+    "Laura": "FGY2WhTYpPnrIDTdsKH5",          # Laura - Enthusiast, Quirky Attitude
+    "Charlie": "IKne3meq5aSn9XLyUdCD",           # Charlie - Deep, Confident, Energetic
+    "George": "JBFqnCBsd6RMkjVDRZzb",         # George - Warm, Captivating Storyteller
+    "Callum": "N2lVS1w4EtoT3dr4eOWO",          # Callum - Husky Trickster
+    "River": "SAz9YHcvj6GT2YYXdXww",           # River - Relaxed, Neutral, Informative
+    "Harry": "SOYHLrjzK2X1ezoPC6cr",           # Harry - Fierce Warrior
+    "Liam": "TX3LPaxmHKxFdv7VOQHJ",            # Liam - Energetic, Social Media Creator
+    "Alice": "Xb7hH8MSUJpSbSDYk0k2",           # Alice - Clear, Engaging Educator
+    "Matilda": "XrExE9yKIg1WjnnlVkGX",         # Matilda - Knowledgable, Professional
+    "Will": "bIHbv24MWmeRgasZH58o",              # Will - Relaxed Optimist
+    "Jessica": "cgSgspJ2msm6clMCkdW9",         # Jessica - Playful, Bright, Warm
+    "Eric": "cjVigY5qzO86Huf0OWal",            # Eric - Smooth, Trustworthy
+    "Bella": "hpp4J3VqNfWAUOO0d1Us",           # Bella - Professional, Bright, Warm
+    "Chris": "iP95p4xoKVk53GoZ742B",           # Chris - Charming, Down-to-Earth
+    "Brian": "nPczCjzI2devNBz1zQrb",           # Brian - Deep, Resonant and Comforting
+    "Daniel": "onwK4e9ZLuTAKqWW03F9",          # Daniel - Steady Broadcaster
+    "Lily": "pFZP5JQG7iQjIQuC4Bku",            # Lily - Velvety Actress
+    "Adam": "pNInz6obpgDQGcFmaJgB",              # Adam - Dominant, Firm
+    "Bill": "pqHfZKP75CvOlQylNhV4",              # Bill - Wise, Mature, Balanced
+    "Lendário": "4za2kOXGgUd57HRSQ1fn",       # Lendário - Cheerful, Vibrant and Fun
+    "Andrea Lot": "HOfBIVLhom4mc9WvXfyH",     # Andrea Lot - Brazilian Portuguese
     # Fallback
-    "default": "adam",
+    "default": "pNInz6obpgDQGcFmaJgB",  # Adam como padrão
 }
 
 # ============================================================================
