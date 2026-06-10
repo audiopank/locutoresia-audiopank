@@ -61,7 +61,12 @@ async function loadAllVoices() {
             const elevenResponse = await fetch('/api/list-elevenlabs-voices');
             const elevenResult = await elevenResponse.json();
             if (elevenResponse.ok && elevenResult.success && elevenResult.voices) {
-                currentVoices = [...currentVoices, ...elevenResult.voices];
+                // Adicionar style padrão para vozes ElevenLabs
+                const elevenWithStyle = elevenResult.voices.map(v => ({
+                    ...v,
+                    style: v.style || 'professional'
+                }));
+                currentVoices = [...currentVoices, ...elevenWithStyle];
             }
         } catch (elevenError) {
             console.log('ÔÜá´©Å Vozes ElevenLabs n├úo carregadas:', elevenError);
@@ -241,12 +246,18 @@ function applyFilters() {
     const gender = document.getElementById('genderFilter').value;
     const language = document.getElementById('languageFilter').value;
     const style = document.getElementById('styleFilter').value;
-    currentVoices = allVoices.filter(v =>
-        (!gender || v.gender === gender) &&
-        (!language || v.language === language) &&
-        (!style || v.style === style)
-    );
+    console.log('Applying filters:', { gender, language, style });
+    console.log('All voices:', allVoices);
+    
+    currentVoices = allVoices.filter(v => {
+        const matchGender = !gender || v.gender === gender || (gender === 'male' && v.gender === 'masculine') || (gender === 'female' && v.gender === 'feminine');
+        const matchLanguage = !language || v.language === language;
+        const matchStyle = !style || v.style === style;
+        console.log('Checking voice:', v.id, { matchGender, matchLanguage, matchStyle });
+        return matchGender && matchLanguage && matchStyle;
+    });
     renderVoices(currentVoices);
+    console.log('Filtered voices:', currentVoices);
 }
 
 function resetFilters() {
