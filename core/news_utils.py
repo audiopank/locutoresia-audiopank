@@ -353,6 +353,89 @@ class NewsUtils:
             })
         return results
 
+    def get_category_emoji(self, category: str) -> str:
+        """
+        Retorna o emoji correto por categoria (Regra Oficial NewPost-IA)
+        """
+        category = category.lower().strip()
+        emoji_map = {
+            "esportes": "📢",
+            "tecnologia": "💻",
+            "ia": "💻",
+            "música": "🎵",
+            "entretenimento": "🎵",
+            "geral": "📰",
+            "notícias": "📰",
+            "nordeste": "🌵",
+            "regional": "🌵",
+            "finanças": "💰",
+            "economia": "💰",
+            "turbo idiomas": "🌍"
+        }
+        # Encontra o emoji mais próximo
+        for key, emoji in emoji_map.items():
+            if key in category:
+                return emoji
+        return "📰"  # Emoji padrão
+    
+    def apply_newpost_rules(self, title: str, content: str, category: str, source: str = None) -> Dict:
+        """
+        Aplica TODAS as Regras Oficiais do NewPost-IA a uma notícia!
+        """
+        from datetime import datetime
+        
+        # 1. Formatar data (DD/MM/AAAA)
+        date_str = datetime.now().strftime("%d/%m/%Y")
+        
+        # 2. Obter emoji da categoria
+        emoji = self.get_category_emoji(category)
+        
+        # 3. Processar título: max 60 chars, emoji no início, sem clickbait
+        forbidden_words = ["incrível", "chocante", "imperdível", "você não vai acreditar", "surpreendente"]
+        clean_title = title.strip()
+        for word in forbidden_words:
+            clean_title = clean_title.replace(word, "")
+        # Limitar a 60 chars (incluindo emoji e espaço)
+        max_title_len = 60 - len(emoji) - 1  # -1 para o espaço
+        final_title = f"{emoji} {clean_title[:max_title_len].strip()}"
+        
+        # 4. Processar legenda/caption: 140-180 chars, não repetir título
+        # Limpar conteúdo
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(content, 'html.parser')
+        clean_content = soup.get_text(separator=' ', strip=True)
+        
+        # Remover repetição do título na legenda
+        for word in clean_title.split()[:3]:  # Usar 3 primeiras palavras para detectar repetição
+            clean_content = clean_content.replace(word, "")
+        
+        # Limitar entre 140-180 chars
+        if len(clean_content) < 140:
+            # Expandir se for curto
+            clean_content = f"{clean_content}. Confira mais detalhes sobre essa notícia."
+        if len(clean_content) > 180:
+            # Truncar em 175 chars e adicionar "..."
+            clean_content = clean_content[:175].rsplit(' ', 1)[0] + "..."
+        
+        # 5. CTA fixo e imutável
+        cta = "💬 O que você acha dessa notícia? Deixe seu comentário."
+        
+        # 6. Fonte (apenas nome, sem URL)
+        source_name = source or "Fonte Desconhecida"
+        
+        # Montar o post completo
+        full_post = f"{final_title}\n\n{clean_content}\n\n{cta}"
+        
+        return {
+            "titulo": final_title,
+            "legenda": clean_content,
+            "cta": cta,
+            "fonte": source_name,
+            "data": date_str,
+            "post_completo": full_post,
+            "emoji": emoji
+        }
+    
     def normalize_news(self, raw_data: Dict) -> Dict:
         """
         Padroniza os dados da notícia para o formato do banco.

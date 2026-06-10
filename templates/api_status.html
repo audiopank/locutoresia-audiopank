@@ -184,34 +184,34 @@
         <div class="row mb-4">
             <div class="col-md-3 mb-3">
                 <div class="metric-card">
-                    <i class="fas fa-server fa-2x status-online mb-3"></i>
+                    <i class="fas fa-server fa-2x" id="api-icon"></i>
                     <h4 class="text-white">API Principal</h4>
-                    <span class="badge bg-success">Online</span>
-                    <p class="text-secondary small mt-2">Tempo de resposta: 45ms</p>
+                    <span class="badge" id="api-status-badge"></span>
+                    <p class="text-secondary small mt-2" id="api-response-time"></p>
                 </div>
             </div>
             <div class="col-md-3 mb-3">
                 <div class="metric-card">
-                    <i class="fas fa-database fa-2x status-online mb-3"></i>
+                    <i class="fas fa-database fa-2x" id="supabase-icon"></i>
                     <h4 class="text-white">Supabase</h4>
-                    <span class="badge bg-success">Conectado</span>
-                    <p class="text-secondary small mt-2">Latência: 120ms</p>
+                    <span class="badge" id="supabase-status-badge"></span>
+                    <p class="text-secondary small mt-2" id="supabase-latency"></p>
                 </div>
             </div>
             <div class="col-md-3 mb-3">
                 <div class="metric-card">
-                    <i class="fas fa-brain fa-2x status-online mb-3"></i>
+                    <i class="fas fa-brain fa-2x" id="gemini-icon"></i>
                     <h4 class="text-white">Gemini IA</h4>
-                    <span class="badge bg-success">Operacional</span>
-                    <p class="text-secondary small mt-2">Tokens: 1.2M/mês</p>
+                    <span class="badge" id="gemini-status-badge"></span>
+                    <p class="text-secondary small mt-2" id="gemini-tokens"></p>
                 </div>
             </div>
             <div class="col-md-3 mb-3">
                 <div class="metric-card">
-                    <i class="fas fa-microphone fa-2x status-warning mb-3"></i>
+                    <i class="fas fa-microphone fa-2x" id="tts-icon"></i>
                     <h4 class="text-white">TTS Engine</h4>
-                    <span class="badge bg-warning">Limitado</span>
-                    <p class="text-secondary small mt-2">Uso: 85%</p>
+                    <span class="badge" id="tts-status-badge"></span>
+                    <p class="text-secondary small mt-2" id="tts-usage"></p>
                 </div>
             </div>
         </div>
@@ -235,42 +235,7 @@
                                         <th>Tempo Resposta</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    <tr>
-                                        <td><code>/api/health</code></td>
-                                        <td><span class="badge bg-success">GET</span></td>
-                                        <td><span class="badge bg-success">Online</span></td>
-                                        <td>Agora</td>
-                                        <td>23ms</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>/api/status</code></td>
-                                        <td><span class="badge bg-success">GET</span></td>
-                                        <td><span class="badge bg-success">Online</span></td>
-                                        <td>Agora</td>
-                                        <td>31ms</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>/api/social/posts</code></td>
-                                        <td><span class="badge bg-primary">GET/POST</span></td>
-                                        <td><span class="badge bg-success">Online</span></td>
-                                        <td>Agora</td>
-                                        <td>45ms</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>/api/news/execute</code></td>
-                                        <td><span class="badge bg-warning">POST</span></td>
-                                        <td><span class="badge bg-warning">Limitado</span></td>
-                                        <td>2 min atrás</td>
-                                        <td>1.2s</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>/api/automation/config</code></td>
-                                        <td><span class="badge bg-primary">GET/POST</span></td>
-                                        <td><span class="badge bg-success">Online</span></td>
-                                        <td>Agora</td>
-                                        <td>67ms</td>
-                                    </tr>
+                                <tbody id="endpoints-table">
                                 </tbody>
                             </table>
                         </div>
@@ -290,28 +255,28 @@
                         <div class="mb-3">
                             <div class="d-flex justify-content-between mb-1">
                                 <span>CPU Usage</span>
-                                <span>45%</span>
+                                <span id="cpu-value">45%</span>
                             </div>
                             <div class="progress" style="height: 8px;">
-                                <div class="progress-bar bg-success" style="width: 45%"></div>
+                                <div class="progress-bar bg-success" id="cpu-bar" style="width: 45%"></div>
                             </div>
                         </div>
                         <div class="mb-3">
                             <div class="d-flex justify-content-between mb-1">
                                 <span>Memory</span>
-                                <span>62%</span>
+                                <span id="memory-value">62%</span>
                             </div>
                             <div class="progress" style="height: 8px;">
-                                <div class="progress-bar bg-warning" style="width: 62%"></div>
+                                <div class="progress-bar bg-warning" id="memory-bar" style="width: 62%"></div>
                             </div>
                         </div>
                         <div class="mb-3">
                             <div class="d-flex justify-content-between mb-1">
                                 <span>Storage</span>
-                                <span>28%</span>
+                                <span id="storage-value">28%</span>
                             </div>
                             <div class="progress" style="height: 8px;">
-                                <div class="progress-bar bg-info" style="width: 28%"></div>
+                                <div class="progress-bar bg-info" id="storage-bar" style="width: 28%"></div>
                             </div>
                         </div>
                     </div>
@@ -323,31 +288,7 @@
                         <h5 class="text-white mb-4">
                             <i class="fas fa-history me-2"></i>Atividade Recente
                         </h5>
-                        <div class="list-group list-group-flush">
-                            <div class="list-group-item bg-transparent border-secondary">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span><i class="fas fa-check-circle text-success me-2"></i>API Health Check</span>
-                                    <small class="text-secondary">Agora</small>
-                                </div>
-                            </div>
-                            <div class="list-group-item bg-transparent border-secondary">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span><i class="fas fa-share-alt text-info me-2"></i>Post Social Criado</span>
-                                    <small class="text-secondary">5 min atrás</small>
-                                </div>
-                            </div>
-                            <div class="list-group-item bg-transparent border-secondary">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span><i class="fas fa-newspaper text-warning me-2"></i>Notícias Coletadas</span>
-                                    <small class="text-secondary">15 min atrás</small>
-                                </div>
-                            </div>
-                            <div class="list-group-item bg-transparent border-secondary">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span><i class="fas fa-robot text-primary me-2"></i>Agendamento Executado</span>
-                                    <small class="text-secondary">1 hora atrás</small>
-                                </div>
-                            </div>
+                        <div class="list-group list-group-flush" id="recent-activity">
                         </div>
                     </div>
                 </div>
@@ -357,12 +298,97 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function refreshStatus() {
-            location.reload();
+        function getStatusColor(status) {
+            if (status === 'online' || status === 'operational' || status === 'healthy') {
+                return { icon: 'status-online', badge: 'bg-success', text: 'Online' };
+            } else if (status === 'warning' || status === 'limited') {
+                return { icon: 'status-warning', badge: 'bg-warning', text: 'Limitado' };
+            } else {
+                return { icon: 'status-offline', badge: 'bg-danger', text: 'Offline' };
+            }
         }
 
+        function loadStatus() {
+            fetch('/api/health')
+                .then(response => response.json())
+                .then(data => {
+                    // Atualizar API Principal
+                    const apiColors = getStatusColor(data.services.api.status);
+                    document.getElementById('api-icon').className = 'fas fa-server fa-2x mb-3 ' + apiColors.icon;
+                    document.getElementById('api-status-badge').className = 'badge ' + apiColors.badge;
+                    document.getElementById('api-status-badge').textContent = apiColors.text;
+                    document.getElementById('api-response-time').textContent = 'Tempo de resposta: ' + data.services.api.response_time_ms + 'ms';
+
+                    // Atualizar Supabase
+                    const sbColors = getStatusColor(data.services.supabase.status);
+                    document.getElementById('supabase-icon').className = 'fas fa-database fa-2x mb-3 ' + sbColors.icon;
+                    document.getElementById('supabase-status-badge').className = 'badge ' + sbColors.badge;
+                    document.getElementById('supabase-status-badge').textContent = sbColors.text === 'Online' ? 'Conectado' : sbColors.text;
+                    document.getElementById('supabase-latency').textContent = 'Latência: ' + data.services.supabase.latency_ms + 'ms';
+
+                    // Atualizar Gemini
+                    const gemColors = getStatusColor(data.services.gemini.status);
+                    document.getElementById('gemini-icon').className = 'fas fa-brain fa-2x mb-3 ' + gemColors.icon;
+                    document.getElementById('gemini-status-badge').className = 'badge ' + gemColors.badge;
+                    document.getElementById('gemini-status-badge').textContent = gemColors.text === 'Online' ? 'Operacional' : gemColors.text;
+                    document.getElementById('gemini-tokens').textContent = 'Tokens: ' + data.services.gemini.tokens;
+
+                    // Atualizar TTS
+                    const ttsColors = getStatusColor(data.services.tts.status);
+                    document.getElementById('tts-icon').className = 'fas fa-microphone fa-2x mb-3 ' + ttsColors.icon;
+                    document.getElementById('tts-status-badge').className = 'badge ' + ttsColors.badge;
+                    document.getElementById('tts-status-badge').textContent = ttsColors.text;
+                    document.getElementById('tts-usage').textContent = 'Uso: ' + data.services.tts.usage;
+
+                    // Atualizar métricas do sistema
+                    document.getElementById('cpu-value').textContent = data.system_metrics.cpu + '%';
+                    document.getElementById('cpu-bar').style.width = data.system_metrics.cpu + '%';
+                    document.getElementById('memory-value').textContent = data.system_metrics.memory + '%';
+                    document.getElementById('memory-bar').style.width = data.system_metrics.memory + '%';
+                    document.getElementById('storage-value').textContent = data.system_metrics.storage + '%';
+                    document.getElementById('storage-bar').style.width = data.system_metrics.storage + '%';
+
+                    // Atualizar endpoints
+                    const endpointsTable = document.getElementById('endpoints-table');
+                    endpointsTable.innerHTML = '';
+                    Object.entries(data.endpoints).forEach(([key, endpoint]) => {
+                        const epColors = getStatusColor(endpoint.status);
+                        endpointsTable.innerHTML += `
+                            <tr>
+                                <td><code>${endpoint.url}</code></td>
+                                <td><span class="badge bg-primary">${endpoint.method}</span></td>
+                                <td><span class="badge ${epColors.badge}">${epColors.text}</span></td>
+                                <td>Agora</td>
+                                <td>${endpoint.response_time}ms</td>
+                            </tr>
+                        `;
+                    });
+
+                    // Atualizar atividade recente
+                    const recentActivity = document.getElementById('recent-activity');
+                    recentActivity.innerHTML = `
+                        <div class="list-group-item bg-transparent border-secondary">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-check-circle text-success me-2"></i>API Health Check</span>
+                                <small class="text-secondary">Agora</small>
+                            </div>
+                        </div>
+                    `;
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar status:', error);
+                });
+        }
+
+        function refreshStatus() {
+            loadStatus();
+        }
+
+        // Carregar status na página
+        document.addEventListener('DOMContentLoaded', loadStatus);
+
         // Auto-refresh a cada 30 segundos
-        setInterval(refreshStatus, 30000);
+        setInterval(loadStatus, 30000);
     </script>
 </body>
 </html>
