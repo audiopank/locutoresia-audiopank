@@ -139,6 +139,20 @@ else:
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+
+def detect_audio_format(audio_data):
+    """Detecta o formato real do áudio a partir dos bytes (mágica de cabeçalho).
+    Retorna (extensao, mimetype). EdgeTTS devolve MP3; Google/ElevenLabs WAV.
+    """
+    if audio_data[:4] == b'RIFF' and audio_data[8:12] == b'WAVE':
+        return 'wav', 'audio/wav'
+    if audio_data[:3] == b'ID3' or (len(audio_data) >= 2 and audio_data[0] == 0xFF and (audio_data[1] & 0xE0) == 0xE0):
+        return 'mp3', 'audio/mpeg'
+    if audio_data[:4] == b'OggS':
+        return 'ogg', 'audio/ogg'
+    return 'wav', 'audio/wav'
+
+
 # Importar feedparser para RSS
 try:
     import feedparser
@@ -1473,7 +1487,8 @@ def generate_audio():
             traceback.print_exc()
             return jsonify({'error': f'Erro ao gerar áudio: {str(e)}'}), 500
         
-        filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        ext, _ = detect_audio_format(audio_data)
+        filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         with open(filepath, 'wb') as f:
             f.write(audio_data)
@@ -1490,7 +1505,9 @@ def download_file(filename):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         if not os.path.exists(filepath):
             return jsonify({'error': 'Arquivo não encontrado'}), 404
-        mimetype = 'audio/mpeg' if filename.endswith('.mp3') else 'audio/wav'
+        with open(filepath, 'rb') as f:
+            header = f.read(16)
+        _, mimetype = detect_audio_format(header)
         return send_file(filepath, as_attachment=False, download_name=filename, mimetype=mimetype)
     except Exception as e:
         return jsonify({'error': f'Erro ao baixar arquivo: {str(e)}'}), 500
