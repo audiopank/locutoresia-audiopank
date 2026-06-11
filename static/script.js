@@ -273,7 +273,20 @@ async function generateAudio() {
     if (!text) { alert('Por favor, digite o texto para gerar o ├íudio.'); return; }
     if (!voiceId) { alert('Por favor, selecione uma voz IA.'); return; }
 
-    const voice = currentVoices.find(v => String(v.id) === String(voiceId));
+    console.log('Looking for voiceId:', voiceId);
+    console.log('Current voices:', currentVoices);
+    
+    let voice = currentVoices.find(v => String(v.id) === String(voiceId));
+    if (!voice) {
+        // Fallback: try allVoices
+        voice = allVoices.find(v => String(v.id) === String(voiceId));
+        if (!voice) {
+            alert('Voz não encontrada. Por favor, recarregue a página.');
+            return;
+        }
+    }
+    
+    console.log('Found voice:', voice);
     document.getElementById('loadingSpinner').style.display = 'block';
     document.getElementById('audioPlayer').style.display = 'none';
 
@@ -281,7 +294,13 @@ async function generateAudio() {
         const response = await fetch('/api/generate-audio', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, voice: voice.model, style: speechStyle, language: voice.language, provider: voice.provider })
+            body: JSON.stringify({ 
+                text, 
+                voice: voice.model || voiceId, 
+                style: speechStyle, 
+                language: voice.language || 'pt-BR', 
+                provider: voice.provider || 'auto' 
+            })
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Erro ao gerar ├íudio');

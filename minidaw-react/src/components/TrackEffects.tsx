@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Wand2, Volume2, Clock, Zap } from "lucide-react";
+import { Wand2, Volume2, Clock, Zap, Sparkles } from "lucide-react";
 
 export interface TrackEffectsSettings {
   reverb: boolean;
@@ -15,6 +15,7 @@ export interface TrackEffectsSettings {
   distortionAmount: number;
   pitch: boolean;
   pitchAmount: number;
+  nectar: boolean;
 }
 
 export const defaultEffects: TrackEffectsSettings = {
@@ -26,6 +27,7 @@ export const defaultEffects: TrackEffectsSettings = {
   distortionAmount: 20,
   pitch: false,
   pitchAmount: 0,
+  nectar: false,
 };
 
 interface TrackEffectsProps {
@@ -156,6 +158,18 @@ export const TrackEffects: React.FC<TrackEffectsProps> = ({ effects, onChange, t
               />
             </div>
           )}
+          
+          {/* Nectar */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              <Label>Nectar (iZotope)</Label>
+            </div>
+            <Switch
+              checked={effects.nectar}
+              onCheckedChange={(checked) => updateEffect('nectar', checked)}
+            />
+          </div>
         </div>
       )}
     </Card>

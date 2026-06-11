@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Mic, Volume2, Zap, Radio, Waves } from "lucide-react";
+import { Mic, Volume2, Zap, Radio, Waves, Sparkles } from "lucide-react";
 
 export interface VoiceProcessorSettings {
   noiseReduction: boolean;
@@ -16,6 +16,7 @@ export interface VoiceProcessorSettings {
   compressorRatio: number;
   gate: boolean;
   gateThreshold: number;
+  nectar: boolean;
 }
 
 export const defaultVoiceProcessors: VoiceProcessorSettings = {
@@ -24,10 +25,11 @@ export const defaultVoiceProcessors: VoiceProcessorSettings = {
   deEss: false,
   deEssAmount: 30,
   compressor: false,
-  compressorThreshold: -20,
-  compressorRatio: 4,
+  compressorThreshold: -24,
+  compressorRatio: 12,
   gate: false,
   gateThreshold: -40,
+  nectar: false,
 };
 
 interface VoiceProcessorsProps {
@@ -174,6 +176,18 @@ export const VoiceProcessors: React.FC<VoiceProcessorsProps> = ({ settings, onCh
               />
             </div>
           )}
+          
+          {/* Nectar */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              <Label>Nectar (iZotope)</Label>
+            </div>
+            <Switch
+              checked={settings.nectar}
+              onCheckedChange={(checked) => updateProcessor('nectar', checked)}
+            />
+          </div>
 
           {/* Presets */}
           <div className="flex justify-center gap-2 pt-2 border-t">

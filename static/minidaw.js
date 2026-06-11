@@ -130,7 +130,10 @@ class MiniDAW {
                 reverb: false,
                 delay: false,
                 compressor: false,
-                eq: false
+                eq: false,
+                hpf: true,
+                presence: false,
+                limiter: true
             },
             color: type === 'voice' ? '#3b82f6' : '#a855f7'
         };
@@ -229,23 +232,53 @@ class MiniDAW {
                     </div>
                 </div>
                 <div class="track-effects">
-                    <button class="effect-btn ${track.effects.reverb ? 'active' : ''}" 
-                            onclick="minidaw.toggleEffect('${track.id}', 'reverb')">
-                        <i class="fas fa-water"></i> Reverb
-                    </button>
-                    <button class="effect-btn ${track.effects.delay ? 'active' : ''}" 
-                            onclick="minidaw.toggleEffect('${track.id}', 'delay')">
-                        <i class="fas fa-clock"></i> Delay
-                    </button>
-                    <button class="effect-btn ${track.effects.compressor ? 'active' : ''}" 
-                            onclick="minidaw.toggleEffect('${track.id}', 'compressor')">
-                        <i class="fas fa-compress"></i> Compressor
-                    </button>
-                    <button class="effect-btn ${track.effects.eq ? 'active' : ''}" 
-                            onclick="minidaw.toggleEffect('${track.id}', 'eq')">
-                        <i class="fas fa-sliders-h"></i> EQ
-                    </button>
-                </div>
+                            <button class="effect-btn" onclick="window.location.href='/library'" title="Biblioteca de Trilhas">
+                                <i class="fas fa-book-open"></i> Biblioteca
+                            </button>
+                            <button class="effect-btn" onclick="window.open('https://app.lmnt.com/', '_blank')" title="LMNT Studio">
+                                <i class="fas fa-external-link-alt"></i> LMNT
+                            </button>
+                            <button class="effect-btn" onclick="minidaw.toggleScissorMode()" title="Tesoura">
+                                <i class="fas fa-cut"></i> Tesoura
+                            </button>
+                            <button class="effect-btn" onclick="minidaw.normalizeVolumes()" title="Normalizar">
+                                <i class="fas fa-sliders-h"></i> Normalizar
+                            </button>
+                            <button class="effect-btn" onclick="minidaw.applyAutoFade()" title="Auto Fade">
+                                <i class="fas fa-wave-square"></i> Auto Fade
+                            </button>
+                            <div class="ms-2 border-start border-secondary px-2"></div>
+                            <button class="effect-btn ${track.effects.reverb ? 'active' : ''}" 
+                                    onclick="minidaw.toggleEffect('${track.id}', 'reverb')">
+                                <i class="fas fa-water"></i> Reverb
+                            </button>
+                            <button class="effect-btn ${track.effects.delay ? 'active' : ''}" 
+                                    onclick="minidaw.toggleEffect('${track.id}', 'delay')">
+                                <i class="fas fa-clock"></i> Delay
+                            </button>
+                            <button class="effect-btn ${track.effects.compressor ? 'active' : ''}" 
+                                    onclick="minidaw.toggleEffect('${track.id}', 'compressor')">
+                                <i class="fas fa-compress"></i> Compressor
+                            </button>
+                            <button class="effect-btn ${track.effects.eq ? 'active' : ''}" 
+                                    onclick="minidaw.toggleEffect('${track.id}', 'eq')">
+                                <i class="fas fa-sliders-h"></i> EQ
+                            </button>
+                            ${track.type === 'voice' ? `
+                                <button class="effect-btn ${track.effects.hpf ? 'active' : ''}" 
+                                        onclick="minidaw.toggleEffect('${track.id}', 'hpf')">
+                                    <i class="fas fa-filter"></i> HPF
+                                </button>
+                                <button class="effect-btn ${track.effects.presence ? 'active' : ''}" 
+                                        onclick="minidaw.toggleEffect('${track.id}', 'presence')">
+                                    <i class="fas fa-volume-up"></i> Presença
+                                </button>
+                                <button class="effect-btn ${track.effects.limiter ? 'active' : ''}" 
+                                        onclick="minidaw.toggleEffect('${track.id}', 'limiter')">
+                                    <i class="fas fa-stop-circle"></i> Limit
+                                </button>
+                            ` : ''}
+                        </div>
                 <div class="effects-panel ${track.effects.eq ? 'active' : ''}" id="effects_${track.id}">
                     <div class="effect-control">
                         <div class="effect-label">Equalizador</div>
@@ -346,19 +379,41 @@ class MiniDAW {
 
     createTrackNodes(track) {
         // Create effect nodes
+        // 1. High-pass filter (removes low-frequency rumble)
+        const hpfNode = this.audioContext.createBiquadFilter();
+        hpfNode.type = 'highpass';
+        hpfNode.frequency.value = 80; // 80Hz
+        
+        // 2. EQ
         const eqNode = this.audioContext.createBiquadFilter();
         eqNode.type = 'peaking';
         eqNode.frequency.value = 1000;
         eqNode.gain.value = 0;
         eqNode.Q.value = 1;
+        
+        // 3. Presence boost (clarity)
+        const presenceNode = this.audioContext.createBiquadFilter();
+        presenceNode.type = 'highshelf';
+        presenceNode.frequency.value = 4000;
+        presenceNode.gain.value = 0;
 
+        // 4. Compressor
         const compressorNode = this.audioContext.createDynamicsCompressor();
         compressorNode.threshold.value = -24;
         compressorNode.knee.value = 30;
         compressorNode.ratio.value = 12;
         compressorNode.attack.value = 0.003;
         compressorNode.release.value = 0.25;
+        
+        // 5. Limiter
+        const limiterNode = this.audioContext.createDynamicsCompressor();
+        limiterNode.threshold.value = -6;
+        limiterNode.knee.value = 0;
+        limiterNode.ratio.value = 20;
+        limiterNode.attack.value = 0.001;
+        limiterNode.release.value = 0.1;
 
+        // Reverb
         const reverbNode = this.audioContext.createConvolver();
         this.createReverbImpulse(reverbNode);
         reverbNode.normalize = true;
@@ -378,12 +433,15 @@ class MiniDAW {
         const panNode = this.audioContext.createStereoPanner();
         panNode.pan.value = track.pan;
         
-        // Connect nodes: input -> EQ -> Compressor -> Analyser -> Gain -> Pan -> Master
-        // Reverb is parallel: Compressor -> Reverb -> ReverbGain -> Pan
-        eqNode.connect(compressorNode);
-        compressorNode.connect(analyser);
+        // Connect nodes: HPF -> EQ -> Presence -> Compressor -> Limiter -> Analyser -> Gain -> Pan -> Master
+        // Reverb is parallel: Limiter -> Reverb -> ReverbGain -> Pan
+        hpfNode.connect(eqNode);
+        eqNode.connect(presenceNode);
+        presenceNode.connect(compressorNode);
+        compressorNode.connect(limiterNode);
+        limiterNode.connect(analyser);
         analyser.connect(gainNode);
-        compressorNode.connect(reverbNode);
+        limiterNode.connect(reverbNode);
         reverbNode.connect(reverbGain);
         reverbGain.connect(panNode);
         gainNode.connect(panNode);
@@ -391,9 +449,12 @@ class MiniDAW {
         
         // Store nodes
         this.trackNodes.set(track.id, {
-            inputNode: eqNode,
+            inputNode: hpfNode,
+            hpfNode,
             eqNode,
+            presenceNode,
             compressorNode,
+            limiterNode,
             analyser,
             reverbNode,
             reverbGain,
@@ -427,11 +488,30 @@ class MiniDAW {
         const nodes = this.trackNodes.get(track.id);
         if (!nodes) return;
 
+        // High-pass filter
+        if (track.effects.hpf) {
+            nodes.hpfNode.frequency.value = 80;
+        } else {
+            nodes.hpfNode.frequency.value = 10; // Bypass (frequência muito baixa)
+        }
+
         // EQ
-        nodes.eqNode.gain.value = track.effects.eq ? track.eqSettings?.mid || 0 : 0;
+        nodes.eqNode.gain.value = track.effects.eq ? (track.eqSettings?.mid || 0) : 0;
+
+        // Presence boost
+        nodes.presenceNode.gain.value = track.effects.presence ? 4 : 0; // +4dB de presença
 
         // Compressor
         nodes.compressorNode.threshold.value = track.effects.compressor ? -24 : 0;
+
+        // Limiter
+        if (track.effects.limiter) {
+            nodes.limiterNode.threshold.value = -6;
+            nodes.limiterNode.ratio.value = 20;
+        } else {
+            nodes.limiterNode.threshold.value = 0;
+            nodes.limiterNode.ratio.value = 1; // Bypass
+        }
 
         // Reverb
         nodes.reverbGain.gain.value = track.effects.reverb ? 0.3 : 0;
@@ -705,7 +785,21 @@ class MiniDAW {
     }
 
     calculateDuration() {
-        this.duration = Math.max(...this.tracks.filter(t => t.audioBuffer).map(t => t.duration), 0);
+        const voiceTracks = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
+        const musicTracks = this.tracks.filter(t => t.type === 'music' && t.audioBuffer);
+        
+        let maxDuration = 0;
+        
+        if (voiceTracks.length > 0) {
+            // If there are voice tracks: max voice duration + 1.05s
+            const maxVoiceDuration = Math.max(...voiceTracks.map(t => t.duration), 0);
+            maxDuration = maxVoiceDuration + 1.05;
+        } else {
+            // Otherwise, just the max of all tracks
+            maxDuration = Math.max(...this.tracks.filter(t => t.audioBuffer).map(t => t.duration), 0);
+        }
+        
+        this.duration = maxDuration;
         this.updateDuration();
     }
 
@@ -761,17 +855,33 @@ class MiniDAW {
             nodes.gainNode.gain.setValueAtTime(track.volume / 100, this.audioContext.currentTime);
         }
 
-        // Apply fade out
-        if (track.fadeOut > 0) {
-            const fadeOutStart = track.duration - track.fadeOut;
+        // Apply fade out (manual) or auto fade out for music tracks
+        const voiceTracks = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
+        if (track.type === 'music' && voiceTracks.length > 0) {
+            // Auto fade-out for music tracks
+            const maxVoiceDuration = Math.max(...voiceTracks.map(t => t.duration), 0);
+            const autoFadeStart = maxVoiceDuration;
             nodes.gainNode.gain.linearRampToValueAtTime(
                 track.volume / 100,
-                this.audioContext.currentTime + fadeOutStart
+                this.audioContext.currentTime + autoFadeStart
             );
             nodes.gainNode.gain.linearRampToValueAtTime(
                 0,
-                this.audioContext.currentTime + track.duration
+                this.audioContext.currentTime + maxVoiceDuration + 1.05
             );
+        } else {
+            // Manual fade out
+            if (track.fadeOut > 0) {
+                const fadeOutStart = track.duration - track.fadeOut;
+                nodes.gainNode.gain.linearRampToValueAtTime(
+                    track.volume / 100,
+                    this.audioContext.currentTime + fadeOutStart
+                );
+                nodes.gainNode.gain.linearRampToValueAtTime(
+                    0,
+                    this.audioContext.currentTime + track.duration
+                );
+            }
         }
 
         // Connect to effect chain: source -> EQ -> Compressor -> ...
@@ -962,10 +1072,20 @@ class MiniDAW {
         this.updateMixingProgress(0, 'Preparando mixagem...');
 
         try {
+            // Encontra a track de voz mais longa
+            const voiceTracks = tracksWithAudio.filter(t => t.type === 'voice');
+            let maxVoiceDuration = 0;
+            let finalDuration = this.duration;
+            
+            if (voiceTracks.length > 0) {
+                maxVoiceDuration = voiceTracks.reduce((max, track) => Math.max(max, track.duration), 0);
+                finalDuration = maxVoiceDuration + 1.05;
+            }
+
             // Create offline audio context for rendering
             const offlineContext = new OfflineAudioContext(
                 2, // stereo
-                this.duration * this.audioContext.sampleRate,
+                finalDuration * this.audioContext.sampleRate,
                 this.audioContext.sampleRate
             );
 
@@ -982,30 +1102,119 @@ class MiniDAW {
                 const source = offlineContext.createBufferSource();
                 source.buffer = track.audioBuffer;
 
-                // Create track gain
+                // Build effect chain
+                // 1. High-pass filter
+                const hpfNode = offlineContext.createBiquadFilter();
+                hpfNode.type = 'highpass';
+                if (track.effects.hpf) {
+                    hpfNode.frequency.value = 80;
+                } else {
+                    hpfNode.frequency.value = 10; // Bypass
+                }
+                
+                // 2. EQ
+                const eqNode = offlineContext.createBiquadFilter();
+                eqNode.type = 'peaking';
+                eqNode.frequency.value = 1000;
+                eqNode.gain.value = track.effects.eq ? (track.eqSettings?.mid || 0) : 0;
+                eqNode.Q.value = 1;
+                
+                // 3. Presence
+                const presenceNode = offlineContext.createBiquadFilter();
+                presenceNode.type = 'highshelf';
+                presenceNode.frequency.value = 4000;
+                presenceNode.gain.value = track.effects.presence ? 4 : 0;
+
+                // 4. Compressor
+                const compressorNode = offlineContext.createDynamicsCompressor();
+                compressorNode.threshold.value = track.effects.compressor ? -24 : 0;
+                compressorNode.knee.value = 30;
+                compressorNode.ratio.value = 12;
+                compressorNode.attack.value = 0.003;
+                compressorNode.release.value = 0.25;
+                
+                // 5. Limiter
+                const limiterNode = offlineContext.createDynamicsCompressor();
+                if (track.effects.limiter) {
+                    limiterNode.threshold.value = -6;
+                    limiterNode.knee.value = 0;
+                    limiterNode.ratio.value = 20;
+                    limiterNode.attack.value = 0.001;
+                    limiterNode.release.value = 0.1;
+                } else {
+                    limiterNode.threshold.value = 0;
+                    limiterNode.ratio.value = 1; // Bypass
+                }
+
+                // 6. Reverb
+                const reverbNode = offlineContext.createConvolver();
+                const sampleRate = offlineContext.sampleRate;
+                const length = sampleRate * 2;
+                const impulse = offlineContext.createBuffer(2, length, sampleRate);
+                for (let channel = 0; channel < 2; channel++) {
+                    const channelData = impulse.getChannelData(channel);
+                    for (let j = 0; j < length; j++) {
+                        channelData[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, 2);
+                    }
+                }
+                reverbNode.buffer = impulse;
+                reverbNode.normalize = true;
+
+                const reverbGain = offlineContext.createGain();
+                reverbGain.gain.value = track.effects.reverb ? 0.3 : 0;
+
                 const trackGain = offlineContext.createGain();
                 trackGain.gain.value = track.volume / 100;
 
-                // Create pan
                 const pan = offlineContext.createStereoPanner();
                 pan.pan.value = track.pan;
 
                 // Apply fades
+                let currentTime = 0;
                 if (track.fadeIn > 0) {
-                    trackGain.gain.setValueAtTime(0, 0);
+                    trackGain.gain.setValueAtTime(0, currentTime);
                     trackGain.gain.linearRampToValueAtTime(track.volume / 100, track.fadeIn);
                 } else {
-                    trackGain.gain.setValueAtTime(track.volume / 100, 0);
+                    trackGain.gain.setValueAtTime(track.volume / 100, currentTime);
                 }
 
-                if (track.fadeOut > 0) {
-                    const fadeOutStart = track.duration - track.fadeOut;
-                    trackGain.gain.linearRampToValueAtTime(track.volume / 100, fadeOutStart);
-                    trackGain.gain.linearRampToValueAtTime(0, track.duration);
+                // Apply fade out (manual or auto)
+                if (track.type === 'music' && voiceTracks.length > 0) {
+                    // Auto fade-out for music tracks
+                    const autoFadeStart = maxVoiceDuration;
+                    trackGain.gain.linearRampToValueAtTime(
+                        track.volume / 100,
+                        autoFadeStart
+                    );
+                    trackGain.gain.linearRampToValueAtTime(
+                        0,
+                        maxVoiceDuration + 1.05
+                    );
+                } else {
+                    // Manual fade out
+                    if (track.fadeOut > 0) {
+                        const fadeOutStart = track.duration - track.fadeOut;
+                        trackGain.gain.linearRampToValueAtTime(
+                            track.volume / 100,
+                            fadeOutStart
+                        );
+                        trackGain.gain.linearRampToValueAtTime(
+                            0,
+                            track.duration
+                        );
+                    }
                 }
 
-                // Connect nodes
-                source.connect(trackGain);
+                // Connect the entire chain
+                source.connect(hpfNode);
+                hpfNode.connect(eqNode);
+                eqNode.connect(presenceNode);
+                presenceNode.connect(compressorNode);
+                compressorNode.connect(limiterNode);
+                limiterNode.connect(trackGain);
+                limiterNode.connect(reverbNode);
+                reverbNode.connect(reverbGain);
+                reverbGain.connect(trackGain);
                 trackGain.connect(pan);
                 pan.connect(masterGain);
 

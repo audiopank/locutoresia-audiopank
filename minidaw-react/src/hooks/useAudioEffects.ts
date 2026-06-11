@@ -5,13 +5,15 @@ export interface AudioEffectsSettings {
   delay: number;
   compressor: number;
   eq: number[];
+  nectar: boolean;
 }
 
 export const defaultEffects: AudioEffectsSettings = {
   reverb: 0,
   delay: 0,
   compressor: 0,
-  eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  nectar: false,
 };
 
 export const useAudioEffects = (audioContext?: AudioContext | null) => {
