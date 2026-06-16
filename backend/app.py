@@ -649,6 +649,11 @@ def voice_cloning():
     """Clonagem de Voz - Crie clones de voz personalizados"""
     return render_template('voice-cloning.html')
 
+@app.route('/cloned-voices')
+def cloned_voices():
+    """Biblioteca de Vozes Clonadas"""
+    return render_template('cloned-voices.html')
+
 # =========================================================
 # APIs para Autores NewPost-IA
 # =========================================================

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca de Vozes Clonadas - Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --accent-color: #ec4899;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .main-header {
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .card {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-outline-light {
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .btn-outline-light:hover {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+        }
+
+        .form-control {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .form-control:focus {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+        }
+
+        .back-btn {
+            background: var(--secondary-color);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: var(--primary-color);
+            transform: translateY(-2px);
+            color: white;
+        }
+
+        .voice-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .gender-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--primary-color);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem;
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            color: rgba(148, 163, 184, 0.3);
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="main-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-archive me-2"></i>
+                        Vozes Clonadas
+                    </h1>
+                    <p class="mb-0 text-muted">Gerencie suas vozes clonadas personalizadas</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <a href="/voice-cloning" class="back-btn me-2">
+                        <i class="fas fa-plus"></i>
+                        Clonar Nova Voz
+                    </a>
+                    <a href="/" class="back-btn">
+                        <i class="fas fa-home"></i>
+                        Início
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container-fluid py-4">
+        <div id="searchSection" class="mb-4" style="display: none;">
+            <div class="input-group">
+                <span class="input-group-text bg-transparent border-end-0">
+                    <i class="fas fa-search text-muted"></i>
+                </span>
+                <input type="text" class="form-control border-start-0" id="searchInput" placeholder="Buscar vozes clonadas..." oninput="filterVoices()">
+            </div>
+        </div>
+
+        <div id="emptyState" class="empty-state">
+            <i class="fas fa-microphone-alt"></i>
+            <h3 class="h4 mb-2">Nenhuma voz clonada ainda</h3>
+            <p class="text-muted mb-4">Clone sua primeira voz ou importe de outro dispositivo</p>
+            <div class="d-flex gap-2 justify-content-center">
+                <a href="/voice-cloning" class="btn btn-primary">
+                    <i class="fas fa-microphone me-2"></i>
+                    Clonar Primeira Voz
+                </a>
+                <button class="btn btn-outline-light" onclick="document.getElementById('importInput').click()">
+                    <i class="fas fa-upload me-2"></i>
+                    Importar
+                </button>
+                <input type="file" id="importInput" accept=".json" class="d-none" onchange="handleImport(event)">
+            </div>
+        </div>
+
+        <div id="voicesContainer" class="row g-4" style="display: none;"></div>
+
+        <div class="mt-4 d-flex gap-2" id="actionButtons" style="display: none;">
+            <button class="btn btn-outline-light" onclick="handleExportAll()">
+                <i class="fas fa-download me-2"></i>
+                Exportar Todas
+            </button>
+            <button class="btn btn-outline-light" onclick="document.getElementById('importInput').click()">
+                <i class="fas fa-upload me-2"></i>
+                Importar
+            </button>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const CLONED_VOICES_KEY = "cloned_voices_library";
+        let voices = [];
+        let audioElement = null;
+        let playingVoiceId = null;
+
+        function showToast(title, description = '', variant = 'success') {
+            const toast = document.createElement('div');
+            toast.className = 'position-fixed bottom-0 end-0 p-3 z-toast';
+            const bgClass = variant === 'destructive' ? 'bg-danger' : 'bg-success';
+            toast.innerHTML = `
+                <div class="toast align-items-center border-0 ${bgClass} text-white" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <strong>${title}</strong>
+                            ${description ? `<br><small>${description}</small>` : ''}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            const bootstrapToast = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3500 });
+            bootstrapToast.show();
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        function loadVoices() {
+            try {
+                const stored = localStorage.getItem(CLONED_VOICES_KEY);
+                if (stored) {
+                    voices = JSON.parse(stored);
+                }
+            } catch (e) {
+                console.error('Error loading voices:', e);
+                voices = [];
+            }
+            renderVoices();
+        }
+
+        function saveVoices() {
+            try {
+                localStorage.setItem(CLONED_VOICES_KEY, JSON.stringify(voices));
+            } catch (e) {
+                console.error('Error saving voices:', e);
+            }
+        }
+
+        function renderVoices() {
+            const container = document.getElementById('voicesContainer');
+            const emptyState = document.getElementById('emptyState');
+            const searchSection = document.getElementById('searchSection');
+            const actionButtons = document.getElementById('actionButtons');
+
+            if (voices.length === 0) {
+                emptyState.style.display = 'block';
+                container.style.display = 'none';
+                searchSection.style.display = 'none';
+                actionButtons.style.display = 'none';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            container.style.display = 'flex';
+            searchSection.style.display = 'block';
+            actionButtons.style.display = 'flex';
+
+            const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+            const filteredVoices = voices.filter(voice => 
+                voice.name.toLowerCase().includes(searchQuery) ||
+                (voice.description && voice.description.toLowerCase().includes(searchQuery))
+            );
+
+            container.innerHTML = filteredVoices.map(voice => `
+                <div class="col-lg-4 col-md-6">
+                    <div class="card p-4 h-100">
+                        <div class="d-flex align-items-start gap-3 mb-4">
+                            <div class="voice-icon">
+                                <i class="fas fa-user text-white"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h5 class="mb-1 text-truncate">${escapeHtml(voice.name)}</h5>
+                                ${voice.description ? `<p class="text-muted small mb-2 text-truncate">${escapeHtml(voice.description)}</p>` : ''}
+                                <div class="d-flex gap-2 align-items-center">
+                                    ${voice.gender ? `<span class="gender-badge">${voice.gender.charAt(0).toUpperCase() + voice.gender.slice(1)}</span>` : ''}
+                                    <span class="text-muted small">
+                                        <i class="fas fa-clock me-1"></i>
+                                        ${new Date(voice.createdAt).toLocaleDateString('pt-BR')}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-outline-light btn-sm flex-1" onclick="togglePlay('${voice.id}')" id="playBtn-${voice.id}">
+                                <i class="fas fa-play me-1"></i>
+                                Preview
+                            </button>
+                            <button class="btn btn-primary btn-sm flex-1" onclick="useVoice('${voice.id}')">
+                                <i class="fas fa-microphone me-1"></i>
+                                Usar
+                            </button>
+                            <button class="btn btn-outline-light btn-sm flex-1" onclick="sendToMiniDAW('${voice.id}')">
+                                <i class="fas fa-paper-plane me-1"></i>
+                                MiniDAW
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteVoice('${voice.id}', '${escapeHtml(voice.name)}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function filterVoices() {
+            renderVoices();
+        }
+
+        async function togglePlay(voiceId) {
+            const voice = voices.find(v => v.id === voiceId);
+            if (!voice) return;
+
+            if (playingVoiceId === voiceId) {
+                if (audioElement) {
+                    audioElement.pause();
+                    audioElement.currentTime = 0;
+                }
+                stopPlaying();
+                return;
+            }
+
+            stopPlaying();
+            playingVoiceId = voiceId;
+            const btn = document.getElementById(`playBtn-${voiceId}`);
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Gerando...';
+                btn.classList.remove('btn-outline-light');
+                btn.classList.add('btn-primary');
+            }
+
+            try {
+                // Call the API to generate preview audio
+                const text = 'Olá! Esta é uma prévia da minha voz clonada. Espero que você goste!';
+                const response = await fetch('/api/generate-audio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        text, 
+                        voice: voice.lmntVoiceId || voiceId, 
+                        style: 'professional', 
+                        language: 'pt-BR', 
+                        provider: 'auto' 
+                    })
+                });
+                
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Erro ao gerar áudio');
+                
+                const audioUrl = result.download_url + '?t=' + Date.now();
+                
+                // Create audio element and play
+                audioElement = new Audio(audioUrl);
+                audioElement.onended = () => stopPlaying();
+                audioElement.onerror = () => {
+                    showToast('Erro', 'Erro ao reproduzir preview', 'destructive');
+                    stopPlaying();
+                };
+                
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-pause me-1"></i>Pausar';
+                }
+                
+                await audioElement.play();
+            } catch (e) {
+                console.error('Error playing preview:', e);
+                showToast('Erro', 'Erro ao reproduzir preview', 'destructive');
+                stopPlaying();
+            }
+        }
+
+        function stopPlaying() {
+            if (playingVoiceId) {
+                const btn = document.getElementById(`playBtn-${playingVoiceId}`);
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-play me-1"></i>Preview';
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-outline-light');
+                }
+            }
+            playingVoiceId = null;
+        }
+
+        function useVoice(voiceId) {
+            const voice = voices.find(v => v.id === voiceId);
+            if (!voice) return;
+            
+            // Store selected voice in localStorage for the main app
+            localStorage.setItem('selectedVoiceId', voice.lmntVoiceId || voiceId);
+            localStorage.setItem('selectedVoiceName', voice.name);
+            
+            showToast('Voz selecionada', `${voice.name} selecionada para Text to Speech`);
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1000);
+        }
+
+        function sendToMiniDAW(voiceId) {
+            const voice = voices.find(v => v.id === voiceId);
+            if (!voice) return;
+            
+            showToast('Enviando para MiniDAW', `Enviando ${voice.name} para MiniDAW`);
+            setTimeout(() => {
+                window.location.href = '/minidaw';
+            }, 1000);
+        }
+
+        function deleteVoice(voiceId, voiceName) {
+            if (!confirm(`Tem certeza que deseja excluir a voz "${voiceName}"?`)) return;
+            
+            voices = voices.filter(v => v.id !== voiceId);
+            saveVoices();
+            renderVoices();
+            showToast('Voz removida', voiceName);
+        }
+
+        function handleExportAll() {
+            if (voices.length === 0) {
+                showToast('Nada para exportar', 'Adicione vozes clonadas primeiro', 'destructive');
+                return;
+            }
+            
+            const data = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), voices }, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `vozes-clonadas-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Exportação concluída', `${voices.length} voz(es) exportada(s)`);
+        }
+
+        function handleImport(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    const importedVoices = parsed.voices || parsed;
+                    
+                    if (!Array.isArray(importedVoices) || importedVoices.length === 0) {
+                        showToast('Arquivo inválido', 'Nenhuma voz encontrada no arquivo', 'destructive');
+                        return;
+                    }
+                    
+                    const existingIds = new Set(voices.map(v => v.id));
+                    const newVoices = importedVoices.filter(v => v.name && !existingIds.has(v.id));
+                    
+                    if (newVoices.length === 0) {
+                        showToast('Nenhuma voz nova', 'Todas as vozes já existem na biblioteca');
+                        return;
+                    }
+                    
+                    voices = [...newVoices, ...voices];
+                    saveVoices();
+                    renderVoices();
+                    showToast('Importação concluída', `${newVoices.length} voz(es) importada(s)`);
+                } catch (err) {
+                    console.error('Error importing:', err);
+                    showToast('Erro ao importar', 'Arquivo JSON inválido', 'destructive');
+                }
+            };
+            reader.readAsText(file);
+            
+            // Reset input
+            event.target.value = '';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadVoices();
+        });
+    </script>
+</body>
+</html>

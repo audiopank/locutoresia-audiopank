@@ -4,6 +4,27 @@ let currentVoices = [];
 let selectedVoice = null;
 let lastGeneratedAudioBlob = null;
 
+function showToast(title, description = '', variant = 'success') {
+    const toast = document.createElement('div');
+    toast.className = 'position-fixed bottom-0 end-0 p-3 z-toast';
+    const bgClass = variant === 'destructive' ? 'bg-danger' : 'bg-success';
+    toast.innerHTML = `
+        <div class="toast align-items-center border-0 ${bgClass} text-white" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <strong>${title}</strong>
+                    ${description ? `<br><small>${description}</small>` : ''}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    const bootstrapToast = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3500 });
+    bootstrapToast.show();
+    setTimeout(() => toast.remove(), 4000);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🎙️ Locutores IA - Inicializando...');
     
@@ -69,10 +90,53 @@ async function loadAllVoices() {
                 currentVoices = [...currentVoices, ...elevenWithStyle];
             }
         } catch (elevenError) {
-            console.log('ÔÜá´©Å Vozes ElevenLabs n├úo carregadas:', elevenError);
+            console.log('⚠️ Vozes ElevenLabs não carregadas:', elevenError);
         }
         
-        console.log(`Ô£à ${currentVoices.length} vozes carregadas (incluindo Gemini e ElevenLabs)!`);
+        // Carregar vozes clonadas do localStorage
+        try {
+            const storedCloned = localStorage.getItem('cloned_voices_library');
+            if (storedCloned) {
+                const clonedVoices = JSON.parse(storedCloned);
+                const clonedWithFormat = clonedVoices.map(v => ({
+                    id: v.lmntVoiceId || v.id,
+                    name: `${v.name} (Clonada)`,
+                    description: v.description || 'Voz clonada personalizada',
+                    gender: v.gender || 'neutral',
+                    language: 'pt-BR',
+                    style: 'professional',
+                    avatar: `https://picsum.photos/seed/cloned-${v.id}/80/80`,
+                    model: v.lmntVoiceId || v.id,
+                    provider: 'cloned',
+                    sampleText: 'Olá! Esta é uma amostra da minha voz clonada.'
+                }));
+                currentVoices = [...currentVoices, ...clonedWithFormat];
+            }
+        } catch (clonedError) {
+            console.log('⚠️ Vozes clonadas não carregadas:', clonedError);
+        }
+        
+        // Check if there's a selected voice from localStorage (from cloned voices page)
+        const selectedVoiceId = localStorage.getItem('selectedVoiceId');
+        const selectedVoiceName = localStorage.getItem('selectedVoiceName');
+        if (selectedVoiceId && selectedVoiceName) {
+            setTimeout(() => {
+                const select = document.getElementById('voiceSelect');
+                if (select) {
+                    // Try to find the voice in the currentVoices
+                    const voiceExists = currentVoices.find(v => String(v.id) === String(selectedVoiceId));
+                    if (voiceExists) {
+                        select.value = selectedVoiceId;
+                        selectVoice(selectedVoiceId);
+                    }
+                    // Clear the selection from localStorage so it doesn't persist
+                    localStorage.removeItem('selectedVoiceId');
+                    localStorage.removeItem('selectedVoiceName');
+                }
+            }, 500);
+        }
+        
+        console.log(`✅ ${currentVoices.length} vozes carregadas (incluindo Gemini e ElevenLabs)!`);
         allVoices = [...currentVoices];
         renderVoices(currentVoices);
         populateVoiceSelect();
@@ -219,7 +283,7 @@ function populateVoiceSelect() {
     const elevenlabsVoices = currentVoices.filter(v => v.provider === 'elevenlabs');
     if (elevenlabsVoices.length > 0) {
         const elevenlabsGroup = document.createElement('optgroup');
-        elevenlabsGroup.label = '­ƒÜÇ ElevenLabs';
+        elevenlabsGroup.label = '🎭 ElevenLabs';
         elevenlabsVoices.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.id;
@@ -228,6 +292,21 @@ function populateVoiceSelect() {
         });
         select.appendChild(elevenlabsGroup);
         console.log('Grupo ElevenLabs adicionado com', elevenlabsVoices.length, 'vozes');
+    }
+
+    // Grupo Vozes Clonadas
+    const clonedVoices = currentVoices.filter(v => v.provider === 'cloned');
+    if (clonedVoices.length > 0) {
+        const clonedGroup = document.createElement('optgroup');
+        clonedGroup.label = '🎤 Vozes Clonadas';
+        clonedVoices.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.id;
+            opt.textContent = v.name;
+            clonedGroup.appendChild(opt);
+        });
+        select.appendChild(clonedGroup);
+        console.log('Grupo Vozes Clonadas adicionado com', clonedVoices.length, 'vozes');
     }
 
     console.log('VoiceSelect populado com sucesso!');
@@ -299,7 +378,7 @@ async function generateAudio() {
                 voice: voice.model || voiceId, 
                 style: speechStyle, 
                 language: voice.language || 'pt-BR', 
-                provider: voice.provider || 'auto' 
+                provider: (voice.provider && voice.provider !== 'cloned') ? voice.provider : 'auto' 
             })
         });
         const result = await response.json();

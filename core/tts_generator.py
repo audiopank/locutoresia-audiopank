@@ -308,12 +308,12 @@ class TTSGenerator:
         if not text or not text.strip():
             raise ValueError("ÔØî Texto n├úo pode estar vazio")
 
-        # Determinar qual API usar (priorizar Google e ElevenLabs)
+        # Determinar qual API usar (priorizar Google primeiro, pois ElevenLabs tem limites)
         if api == "auto":
-            if self.elevenlabs_available:
-                api = "elevenlabs"
-            elif self.google_available:
+            if self.google_available:
                 api = "google"
+            elif self.elevenlabs_available:
+                api = "elevenlabs"
             else:
                 api = "edge"
         
@@ -457,7 +457,11 @@ class TTSGenerator:
         style: str
     ) -> bytes:
         """Gera ├íudio com ElevenLabs."""
-        voice_id = ELEVENLABS_VOICE_MAP.get(voice_model, ELEVENLABS_VOICE_MAP["default"])
+        # Check if voice_model is already a real voice ID (not a name)
+        if voice_model in ELEVENLABS_VOICE_MAP.values():
+            voice_id = voice_model
+        else:
+            voice_id = ELEVENLABS_VOICE_MAP.get(voice_model, ELEVENLABS_VOICE_MAP["default"])
         style_params = STYLE_MAP.get(style, STYLE_MAP["normal"])
 
         try:
@@ -465,7 +469,7 @@ class TTSGenerator:
             audio_stream = self.elevenlabs_client.text_to_speech.convert(
                 voice_id=voice_id,
                 text=text,
-                model_id="eleven_monolingual_v1",
+                model_id="eleven_turbo_v2",
                 voice_settings={
                     "stability": style_params["stability"],
                     "similarity_boost": 0.75,
