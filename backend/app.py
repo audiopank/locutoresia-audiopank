@@ -142,7 +142,6 @@ else:
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Importar feedparser para RSS
 MAX_OPERATION_LOGS = 200
 OPERATIONS_STORAGE_PATH = os.path.join(
     '/tmp' if os.environ.get('VERCEL') else base_dir,
@@ -192,7 +191,7 @@ class OperationTracker:
             else:
                 self.jobs = []
         except Exception as exc:
-            print(f"Falha ao carregar histórico operacional: {exc}")
+            print(f"⚠️ Falha ao carregar histórico operacional: {exc}")
             self.jobs = []
 
     def _persist(self):
@@ -201,7 +200,7 @@ class OperationTracker:
             with open(self.storage_path, 'w', encoding='utf-8') as fh:
                 json.dump(self.jobs[-self.max_jobs:], fh, ensure_ascii=False, indent=2)
         except Exception as exc:
-            print(f"Falha ao persistir histórico operacional: {exc}")
+            print(f"⚠️ Falha ao persistir histórico operacional: {exc}")
 
     def start_job(self, job_type, request_summary=None, dedupe_key=None):
         with self.lock:
@@ -335,6 +334,8 @@ class OperationTracker:
 
 
 operation_tracker = OperationTracker(OPERATIONS_STORAGE_PATH, max_jobs=MAX_OPERATION_LOGS)
+
+# Importar feedparser para RSS
 try:
     import feedparser
     HAS_FEEDPARSER = True
@@ -844,11 +845,6 @@ def voice_cloning():
     """Clonagem de Voz - Crie clones de voz personalizados"""
     return render_template('voice-cloning.html')
 
-@app.route('/cloned-voices')
-def cloned_voices():
-    """Biblioteca de Vozes Clonadas"""
-    return render_template('cloned-voices.html')
-
 # =========================================================
 # APIs para Autores NewPost-IA
 # =========================================================
@@ -1139,6 +1135,7 @@ def collect_news():
 @app.route('/api/news/execute', methods=['POST'])
 def execute_news():
     """Endpoint para executar busca de notícias (compatível com frontend)"""
+    job = None
     try:
         data = request.get_json() or {}
         enabled_sources = data.get('enabled_sources', {
@@ -1147,6 +1144,14 @@ def execute_news():
         })
         categories = data.get('categories', ['brasil', 'economia', 'tecnologia'])
         limit = data.get('limit', 50)
+        job = operation_tracker.start_job(
+            'news_execute',
+            {
+                "categories": categories,
+                "limit": limit,
+                "enabled_sources_count": len([key for key, enabled in enabled_sources.items() if enabled]),
+            }
+        )
 
         # Fallback p/ Vercel: NewsAgent usa SQLite/logs em disco e fica desativado em prod.
         # Quando ele não estiver disponível, usamos fetch_news_from_rss (RSS puro, stateless).
@@ -1182,6 +1187,26 @@ def execute_news():
                 if len(news_list) >= limit:
                     break
             news_list = news_list[:limit]
+            if news_list:
+                operation_tracker.complete_job(
+                    job['id'],
+                    {
+                        "total": len(news_list),
+                        "mode": "rss",
+                        "categories": wanted,
+                    }
+                )
+            else:
+                operation_tracker.fail_job(
+                    job['id'],
+                    "Nenhuma notícia encontrada no fallback RSS",
+                    {
+                        "total": 0,
+                        "mode": "rss",
+                        "categories": wanted,
+                    },
+                    http_status=200
+                )
             return jsonify({
                 "success": bool(news_list),
                 "news": news_list,
@@ -1210,19 +1235,38 @@ def execute_news():
                     "category": news_item.get('category', ''),
                     "published_at": news_item.get('published_at', '')
                 })
-            
+            operation_tracker.complete_job(
+                job['id'],
+                {
+                    "total": len(news_list),
+                    "mode": "agent",
+                    "categories": categories,
+                }
+            )
             return jsonify({
                 "success": True,
                 "news": news_list,
                 "total": len(news_list)
             })
         else:
+            operation_tracker.fail_job(
+                job['id'],
+                "Nenhuma notícia encontrada pelo agente",
+                {
+                    "total": 0,
+                    "mode": "agent",
+                    "categories": categories,
+                },
+                http_status=200
+            )
             return jsonify({
                 "success": False,
                 "error": "Nenhuma notícia encontrada"
             })
             
     except Exception as e:
+        if job:
+            operation_tracker.fail_job(job['id'], str(e), http_status=500)
         return jsonify({
             "success": False,
             "error": str(e)
@@ -1250,23 +1294,130 @@ def news_sources():
 @app.route('/api/news/status', methods=['GET'])
 def news_status():
     """Endpoint para verificar status do agente"""
+    ops_summary = operation_tracker.get_summary()
+    recent_news_jobs = operation_tracker.list_jobs(job_type='news_execute', limit=5)
     if not HAS_NEWS_AGENT:
         # No Vercel, retornar status ok
         return jsonify({
             "success": True,
             "status": "running",
             "mode": "rss",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "operations": {
+                "total_news_jobs": ops_summary.get("by_type", {}).get("news_execute", {}).get("total", 0),
+                "recent_jobs": recent_news_jobs,
+            }
         })
     
     try:
         status = news_agent.get_status()
+        status["operations"] = {
+            "total_news_jobs": ops_summary.get("by_type", {}).get("news_execute", {}).get("total", 0),
+            "recent_jobs": recent_news_jobs,
+        }
         return jsonify(status)
     except Exception as e:
         return jsonify({
             "success": False,
             "error": f"Erro ao verificar status: {str(e)}"
         }), 500
+
+
+def run_audio_generation(payload, trigger_source='api'):
+    job = None
+    try:
+        data = payload or {}
+        if 'text' not in data:
+            return {'error': 'Texto não fornecido'}, 400
+        text = str(data.get('text', ''))
+        voice_model = str(data.get('voice', 'Zephyr') or 'Zephyr')
+        style = str(data.get('style', 'normal') or 'normal')
+        language = str(data.get('language', 'pt-BR') or 'pt-BR')
+        api = str(data.get('api', data.get('provider', 'auto')) or 'auto')
+
+        if api == 'gemini':
+            api = 'google'
+        if len(text.strip()) == 0:
+            return {'error': 'Texto não pode estar vazio'}, 400
+        if len(text) > 5000:
+            return {'error': 'Texto muito longo (máximo 5000 caracteres)'}, 400
+
+        request_summary = {
+            "text_length": len(text),
+            "voice": voice_model,
+            "style": style,
+            "language": language,
+            "provider": api,
+            "text_preview": preview_text(text, 90),
+            "trigger_source": trigger_source,
+            "retry_payload": {
+                "text": text,
+                "voice": voice_model,
+                "style": style,
+                "language": language,
+                "api": api,
+            }
+        }
+        job = operation_tracker.start_job('audio_generate', request_summary)
+
+        try:
+            core_dir = os.path.join(os.path.dirname(__file__), '..', 'core')
+            if core_dir not in sys.path:
+                sys.path.insert(0, core_dir)
+
+            from tts_generator import TTSGenerator
+            tts = TTSGenerator()
+            print("✅ TTSGenerator carregado com sucesso!")
+        except Exception as e:
+            print(f"❌ Erro ao importar TTS: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            operation_tracker.fail_job(job['id'], f'Módulo TTS não disponível: {str(e)}', http_status=500)
+            return {'error': f'Módulo TTS não disponível: {str(e)}'}, 500
+
+        try:
+            audio_data = tts.generate_speech(
+                text=text,
+                voice_model=voice_model,
+                style=style,
+                language=language,
+                api=api
+            )
+        except Exception as e:
+            print(f"❌ Erro ao gerar áudio: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            operation_tracker.fail_job(job['id'], f'Erro ao gerar áudio: {str(e)}', http_status=500)
+            return {'error': f'Erro ao gerar áudio: {str(e)}'}, 500
+
+        filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        with open(filepath, 'wb') as f:
+            f.write(audio_data)
+
+        response_payload = {
+            'success': True,
+            'filename': filename,
+            'download_url': f'/api/download/{filename}',
+            'message': 'Áudio gerado com sucesso!'
+        }
+        operation_tracker.complete_job(
+            job['id'],
+            {
+                "filename": filename,
+                "provider": api,
+                "voice": voice_model,
+                "bytes": len(audio_data),
+            }
+        )
+        return response_payload, 200
+    except Exception as e:
+        print(f"❌ Erro interno: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        if job:
+            operation_tracker.fail_job(job['id'], f'Erro interno: {str(e)}', http_status=500)
+        return {'error': f'Erro interno: {str(e)}'}, 500
 
 
 @app.route('/api/news/cache', methods=['GET'])
@@ -1626,63 +1777,8 @@ def voice_agent_analysis():
 
 @app.route('/api/generate-audio', methods=['POST'])
 def generate_audio():
-    try:
-        data = request.get_json()
-        if not data or 'text' not in data:
-            return jsonify({'error': 'Texto não fornecido'}), 400
-        text = data['text']
-        voice_model = data.get('voice', 'Zephyr')
-        style = data.get('style', 'normal')
-        language = data.get('language', 'pt-BR')
-        api = data.get('api', data.get('provider', 'auto'))
-        
-        # Mapear 'gemini' para 'google'
-        if api == 'gemini':
-            api = 'google'
-        if len(text.strip()) == 0:
-            return jsonify({'error': 'Texto não pode estar vazio'}), 400
-        if len(text) > 5000:
-            return jsonify({'error': 'Texto muito longo (máximo 5000 caracteres)'}), 400
-        
-        # Importar TTSGenerator diretamente do diretório pai
-        try:
-            core_dir = os.path.join(os.path.dirname(__file__), '..', 'core')
-            if core_dir not in sys.path:
-                sys.path.insert(0, core_dir)
-            
-            from tts_generator import TTSGenerator
-            tts = TTSGenerator()
-            print(f"✅ TTSGenerator carregado com sucesso!")
-        except Exception as e:
-            print(f"❌ Erro ao importar TTS: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': f'Módulo TTS não disponível: {str(e)}'}), 500
-        
-        try:
-            audio_data = tts.generate_speech(
-                text=text, 
-                voice_model=voice_model, 
-                style=style, 
-                language=language,
-                api=api
-            )
-        except Exception as e:
-            print(f"❌ Erro ao gerar áudio: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': f'Erro ao gerar áudio: {str(e)}'}), 500
-        
-        filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        with open(filepath, 'wb') as f:
-            f.write(audio_data)
-        return jsonify({'success': True, 'filename': filename, 'download_url': f'/api/download/{filename}', 'message': 'Áudio gerado com sucesso!'})
-    except Exception as e:
-        print(f"❌ Erro interno: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Erro interno: {str(e)}'}), 500
+    response_payload, status_code = run_audio_generation(request.get_json() or {}, trigger_source='api')
+    return jsonify(response_payload), status_code
 
 @app.route('/api/download/<filename>')
 def download_file(filename):
@@ -2228,7 +2324,6 @@ def dashboard_page():
 @app.route('/api/health')
 def api_health_check():
     """Health check da API com dados REAIS"""
-    import time
     import requests
     from datetime import datetime
     start_time = time.time()
@@ -2313,10 +2408,69 @@ def api_health_check():
             "cpu": 45,
             "memory": 62,
             "storage": 28
-        }
+        },
+        "operations": operation_tracker.get_summary()
     }
     
     return jsonify(health_status)
+
+
+@app.route('/api/ops/jobs', methods=['GET'])
+def operations_jobs():
+    """Retorna o histórico dos fluxos críticos mais recentes."""
+    job_type = request.args.get('type')
+    status = request.args.get('status')
+    limit = request.args.get('limit', 20, type=int)
+    jobs = operation_tracker.list_jobs(job_type=job_type, status=status, limit=limit)
+    return jsonify({
+        "success": True,
+        "total": len(jobs),
+        "jobs": jobs
+    })
+
+
+@app.route('/api/ops/summary', methods=['GET'])
+def operations_summary():
+    """Retorna um resumo operacional do backend."""
+    return jsonify({
+        "success": True,
+        "summary": operation_tracker.get_summary()
+    })
+
+
+@app.route('/api/ops/jobs/<job_id>/retry', methods=['POST'])
+def retry_operation_job(job_id):
+    """Reprocessa jobs suportados usando o payload salvo no histórico."""
+    job = operation_tracker.get_job(job_id)
+    if not job:
+        return jsonify({
+            "success": False,
+            "error": "Job não encontrado"
+        }), 404
+
+    retry_payload = (job.get("request_summary") or {}).get("retry_payload")
+    if not retry_payload:
+        return jsonify({
+            "success": False,
+            "error": "Job sem payload disponível para reprocessamento"
+        }), 400
+
+    if job.get("type") == "audio_generate":
+        response_payload, status_code = run_audio_generation(retry_payload, trigger_source=f"retry:{job_id}")
+        if isinstance(response_payload, dict):
+            response_payload["retried_from_job_id"] = job_id
+        return jsonify(response_payload), status_code
+
+    if job.get("type") == "newpost_publish":
+        response_payload, status_code = run_newpost_publish(retry_payload, trigger_source=f"retry:{job_id}")
+        if isinstance(response_payload, dict):
+            response_payload["retried_from_job_id"] = job_id
+        return jsonify(response_payload), status_code
+
+    return jsonify({
+        "success": False,
+        "error": f"Retry não suportado para o tipo de job '{job.get('type')}'"
+    }), 400
 
 @app.route('/api/ai/generate-content', methods=['POST', 'OPTIONS'])
 def api_generate_content():
@@ -4104,45 +4258,72 @@ def api_get_scheduled_posts():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/newpost/publish', methods=['POST', 'OPTIONS'])
-def newpost_publish():
-    """Publica notícia na NewPost-IA e no PlugPost Feed"""
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response
-    
+def run_newpost_publish(payload, trigger_source='api'):
     print("[DEBUG] newpost_publish called!")
-    
-    if not HAS_SUPABASE_MANAGER or not supabase_manager:
-        return jsonify({"success": False, "error": "SupabaseManager não inicializado"}), 503
-    
+    job = None
     try:
-        data = request.get_json()
+        data = payload or {}
         print(f"[DEBUG] Data received: {data}")
-        
-        title = data.get('title', data.get('titulo', '')).strip()
-        content = data.get('content', data.get('conteudo', '')).strip()
+
+        title = str(data.get('title', data.get('titulo', '')) or '').strip()
+        content = str(data.get('content', data.get('conteudo', '')) or '').strip()
         author_id = data.get('authorId', data.get('author_id'))
-        
+
+        if not title and content:
+            title = preview_text(content.splitlines()[0], 80)
+        if not title:
+            return {"success": False, "error": "Título não informado"}, 400
+        if not content:
+            return {"success": False, "error": "Conteúdo não informado"}, 400
+
         if not author_id:
             author_id = os.getenv("NEWPOST_AUTHOR_ID")
-        
-        # 1. Publicar na NewPost-IA original (ykswhzqdjoshjoaruhqs)
+
+        dedupe_key = build_publish_dedupe_key(title, content)
+        duplicate_job = operation_tracker.find_recent_duplicate(
+            'newpost_publish',
+            dedupe_key,
+            within_minutes=120
+        )
+        if duplicate_job:
+            return {
+                "success": False,
+                "error": "Publicação semelhante já foi processada recentemente",
+                "duplicate_of": duplicate_job.get("id"),
+                "duplicate_status": duplicate_job.get("status")
+            }, 409
+
+        job = operation_tracker.start_job(
+            'newpost_publish',
+            {
+                "title": preview_text(title, 90),
+                "content_length": len(content),
+                "author_id": author_id,
+                "trigger_source": trigger_source,
+                "retry_payload": {
+                    "title": title,
+                    "content": content,
+                    "author_id": author_id,
+                }
+            },
+            dedupe_key=dedupe_key
+        )
+
+        if not HAS_SUPABASE_MANAGER or not supabase_manager:
+            operation_tracker.fail_job(job['id'], "SupabaseManager não inicializado", http_status=503)
+            return {"success": False, "error": "SupabaseManager não inicializado"}, 503
+
         result = supabase_manager.publish_to_newpost(title, content, author_id)
-        
-        # 2. Publicar no PlugPost Feed (ykswhzqdjoshjoaruhqs - o PROJETO CORRETO!)
+        plugpost_status = "skipped"
+
         try:
             plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co')).rstrip('/')
             plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
             plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', os.getenv('NEWPOST_AUTHOR_ID', '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3'))
-            
+
             if plugpost_url and plugpost_key:
                 print(f"[DEBUG] Publishing to PlugPost: {plugpost_url}")
-                
-                # Payload EXATO do usuário (sem campo privacy!)
+
                 plugpost_payload = {
                     "author_id": author_id or plugpost_author_id,
                     "title": title,
@@ -4153,40 +4334,81 @@ def newpost_publish():
                     "category": "geral",
                     "tags": ["NewPostIA", "LocutoresIA"]
                 }
-                
+
                 headers = {
                     "apikey": plugpost_key,
                     "Authorization": f"Bearer {plugpost_key}",
                     "Content-Type": "application/json",
                     "Prefer": "return=representation"
                 }
-                
+
                 plugpost_response = requests.post(
                     f"{plugpost_url}/rest/v1/posts",
                     json=plugpost_payload,
                     headers=headers,
                     timeout=30
                 )
-                
+
                 if plugpost_response.status_code in (200, 201):
                     plugpost_data = plugpost_response.json()
                     print(f"[DEBUG] PlugPost publish SUCCESS! Post ID: {plugpost_data[0]['id'] if plugpost_data else 'N/A'}")
+                    plugpost_status = "published"
                 else:
                     print(f"[DEBUG] PlugPost publish failed: {plugpost_response.status_code} - {plugpost_response.text}")
+                    plugpost_status = f"failed:{plugpost_response.status_code}"
             else:
-                print(f"[DEBUG] Skipping PlugPost: missing credentials")
-                
+                print("[DEBUG] Skipping PlugPost: missing credentials")
+
         except Exception as plugpost_err:
             print(f"[DEBUG] PlugPost error: {plugpost_err}")
             import traceback
             traceback.print_exc()
-        
-        return jsonify(result)
+            plugpost_status = "error"
+
+        if result.get("success", True):
+            operation_tracker.complete_job(
+                job['id'],
+                {
+                    "title": preview_text(title, 90),
+                    "plugpost_status": plugpost_status,
+                    "author_id": author_id,
+                    "post_id": result.get("post_id"),
+                }
+            )
+            return result, 200
+
+        operation_tracker.fail_job(
+            job['id'],
+            result.get("error", "Falha ao publicar na NewPost"),
+            {
+                "title": preview_text(title, 90),
+                "plugpost_status": plugpost_status,
+                "author_id": author_id,
+            },
+            http_status=200
+        )
+        return result, 200
     except Exception as e:
         print(f"Erro publish to newpost: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+        if job:
+            operation_tracker.fail_job(job['id'], str(e), http_status=500)
+        return {"success": False, "error": str(e)}, 500
+
+
+@app.route('/api/newpost/publish', methods=['POST', 'OPTIONS'])
+def newpost_publish():
+    """Publica notícia na NewPost-IA e no PlugPost Feed"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    response_payload, status_code = run_newpost_publish(request.get_json() or {}, trigger_source='api')
+    return jsonify(response_payload), status_code
 
 @app.route('/api/publications', methods=['GET', 'DELETE'])
 def handle_publications():
