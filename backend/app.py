@@ -1,6 +1,9 @@
 from flask import Flask, render_template, request, jsonify, send_file, make_response
+import hashlib
 import os
 import sys
+import threading
+import time
 import uuid
 import re
 import html as html_lib
@@ -140,6 +143,198 @@ else:
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Importar feedparser para RSS
+MAX_OPERATION_LOGS = 200
+OPERATIONS_STORAGE_PATH = os.path.join(
+    '/tmp' if os.environ.get('VERCEL') else base_dir,
+    'locutoresia_operations.json'
+)
+
+
+def utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def preview_text(text, limit=120):
+    clean = re.sub(r'\s+', ' ', str(text or '')).strip()
+    if len(clean) <= limit:
+        return clean
+    return clean[:limit - 3] + '...'
+
+
+def normalize_content(value):
+    return re.sub(r'\s+', ' ', str(value or '').strip().lower())
+
+
+def build_publish_dedupe_key(title, content):
+    normalized = f"{normalize_content(title)}|{normalize_content(content)}"
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+
+class OperationTracker:
+    """Mantém histórico recente dos fluxos críticos para auditoria e diagnóstico."""
+
+    def __init__(self, storage_path, max_jobs=200):
+        self.storage_path = storage_path
+        self.max_jobs = max_jobs
+        self.lock = threading.Lock()
+        self.jobs = []
+        self._load()
+
+    def _load(self):
+        try:
+            if not os.path.exists(self.storage_path):
+                self.jobs = []
+                return
+            with open(self.storage_path, 'r', encoding='utf-8') as fh:
+                data = json.load(fh)
+            if isinstance(data, list):
+                self.jobs = data[-self.max_jobs:]
+            else:
+                self.jobs = []
+        except Exception as exc:
+            print(f"Falha ao carregar histórico operacional: {exc}")
+            self.jobs = []
+
+    def _persist(self):
+        try:
+            os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
+            with open(self.storage_path, 'w', encoding='utf-8') as fh:
+                json.dump(self.jobs[-self.max_jobs:], fh, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            print(f"Falha ao persistir histórico operacional: {exc}")
+
+    def start_job(self, job_type, request_summary=None, dedupe_key=None):
+        with self.lock:
+            job = {
+                "id": uuid.uuid4().hex,
+                "type": job_type,
+                "status": "running",
+                "request_summary": request_summary or {},
+                "result_summary": {},
+                "dedupe_key": dedupe_key,
+                "started_at": utc_now_iso(),
+                "updated_at": utc_now_iso(),
+                "finished_at": None,
+                "duration_ms": None,
+                "error": None,
+                "http_status": None,
+            }
+            self.jobs.append(job)
+            self.jobs = self.jobs[-self.max_jobs:]
+            self._persist()
+            return dict(job)
+
+    def get_job(self, job_id):
+        with self.lock:
+            for job in reversed(self.jobs):
+                if job["id"] == job_id:
+                    return dict(job)
+        return None
+
+    def finish_job(self, job_id, status, result_summary=None, error=None, http_status=None):
+        with self.lock:
+            for job in reversed(self.jobs):
+                if job["id"] != job_id:
+                    continue
+                finished_at = utc_now_iso()
+                started_at = datetime.fromisoformat(job["started_at"])
+                ended_at = datetime.fromisoformat(finished_at)
+                job["status"] = status
+                job["result_summary"] = result_summary or {}
+                job["error"] = preview_text(error, 240) if error else None
+                job["http_status"] = http_status
+                job["finished_at"] = finished_at
+                job["updated_at"] = finished_at
+                job["duration_ms"] = int((ended_at - started_at).total_seconds() * 1000)
+                self._persist()
+                return dict(job)
+        return None
+
+    def complete_job(self, job_id, result_summary=None, http_status=200):
+        return self.finish_job(job_id, "completed", result_summary=result_summary, http_status=http_status)
+
+    def fail_job(self, job_id, error, result_summary=None, http_status=500):
+        return self.finish_job(
+            job_id,
+            "failed",
+            result_summary=result_summary,
+            error=error,
+            http_status=http_status
+        )
+
+    def list_jobs(self, job_type=None, status=None, limit=20):
+        with self.lock:
+            jobs = list(reversed(self.jobs))
+        if job_type:
+            jobs = [job for job in jobs if job.get("type") == job_type]
+        if status:
+            jobs = [job for job in jobs if job.get("status") == status]
+        return jobs[:max(1, min(limit, 100))]
+
+    def find_recent_duplicate(self, job_type, dedupe_key, within_minutes=120):
+        if not dedupe_key:
+            return None
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=within_minutes)
+        for job in self.list_jobs(job_type=job_type, limit=self.max_jobs):
+            if job.get("dedupe_key") != dedupe_key:
+                continue
+            if job.get("status") not in ("running", "completed"):
+                continue
+            started_at_raw = job.get("started_at")
+            try:
+                started_at = datetime.fromisoformat(started_at_raw)
+            except Exception:
+                continue
+            if started_at >= cutoff:
+                return job
+        return None
+
+    def get_summary(self):
+        with self.lock:
+            jobs = list(self.jobs)
+
+        total = len(jobs)
+        completed = sum(1 for job in jobs if job.get("status") == "completed")
+        failed = sum(1 for job in jobs if job.get("status") == "failed")
+        running = sum(1 for job in jobs if job.get("status") == "running")
+        avg_duration = round(
+            sum(job.get("duration_ms", 0) for job in jobs if job.get("duration_ms")) /
+            max(1, sum(1 for job in jobs if job.get("duration_ms"))),
+            2
+        )
+
+        by_type = {}
+        for job in jobs:
+            job_type = job.get("type", "unknown")
+            bucket = by_type.setdefault(job_type, {"total": 0, "completed": 0, "failed": 0, "running": 0})
+            bucket["total"] += 1
+            bucket[job.get("status", "running")] = bucket.get(job.get("status", "running"), 0) + 1
+
+        recent_failures = [
+            {
+                "id": job["id"],
+                "type": job["type"],
+                "error": job.get("error"),
+                "finished_at": job.get("finished_at") or job.get("updated_at")
+            }
+            for job in reversed(jobs)
+            if job.get("status") == "failed"
+        ][:5]
+
+        return {
+            "storage_path": self.storage_path,
+            "total_jobs": total,
+            "completed_jobs": completed,
+            "failed_jobs": failed,
+            "running_jobs": running,
+            "success_rate": round((completed / total) * 100, 2) if total else 100.0,
+            "average_duration_ms": avg_duration,
+            "by_type": by_type,
+            "recent_failures": recent_failures,
+        }
+
+
+operation_tracker = OperationTracker(OPERATIONS_STORAGE_PATH, max_jobs=MAX_OPERATION_LOGS)
 try:
     import feedparser
     HAS_FEEDPARSER = True
