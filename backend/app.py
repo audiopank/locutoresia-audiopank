@@ -10,6 +10,7 @@ import html as html_lib
 import glob
 import json
 import requests
+import base64
 from datetime import datetime, timezone, timedelta
 
 print("[DEBUG] === INÍCIO DO app.py ===")
@@ -3771,33 +3772,73 @@ def lmnt_generate():
 
 @app.route('/api/lmnt/clone', methods=['POST'])
 def lmnt_clone():
-    """Clona uma nova voz no LMNT"""
+    """Clona uma nova voz no LMNT - aceita form-data ou JSON base64"""
     try:
-        if 'audio' not in request.files:
-            return jsonify({'error': 'Arquivo de áudio não fornecido'}), 400
-        
-        audio_file = request.files['audio']
-        name = request.form.get('name', '').strip()
-        description = request.form.get('description', '').strip()
-        enhance = request.form.get('enhance', 'true').lower() == 'true'
-        
+        audio_data = None
+        name = None
+        description = None
+        enhance = True
+
+        print("[DEBUG] Iniciando lmnt_clone")
+        print(f"[DEBUG] request.files: {request.files}")
+        print(f"[DEBUG] request.is_json: {request.is_json}")
+        print(f"[DEBUG] request.content_type: {request.content_type}")
+
+        # Verificar se é form-data
+        if request.files and 'audio' in request.files:
+            print("[DEBUG] Usando form-data")
+            audio_file = request.files['audio']
+            name = request.form.get('name', '').strip()
+            description = request.form.get('description', '').strip()
+            enhance = request.form.get('enhance', 'true').lower() == 'true'
+            if not audio_file.filename:
+                return jsonify({'error': 'Arquivo de áudio inválido'}), 400
+            audio_data = audio_file.read()
+            print(f"[DEBUG] audio_data len: {len(audio_data)}")
+        else:
+            # Caso contrário, tentar JSON com base64
+            print("[DEBUG] Usando JSON")
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'Dados não fornecidos'}), 400
+
+            name = data.get('name', '').strip()
+            audio_base64 = data.get('audio_data')
+            description = data.get('description', '').strip()
+            enhance = data.get('enhance', True)
+
+            print(f"[DEBUG] name: {name}")
+            print(f"[DEBUG] audio_base64 len: {len(audio_base64) if audio_base64 else 0}")
+
+            if not audio_base64:
+                return jsonify({'error': 'audio_data não fornecido'}), 400
+
+            # Converter base64 para bytes diretamente (sem depender de lmnt_integration)
+            try:
+                if ',' in audio_base64:
+                    audio_base64 = audio_base64.split(',')[1]
+                audio_data = base64.b64decode(audio_base64)
+                print(f"[DEBUG] audio_data len after decode: {len(audio_data)}")
+            except Exception as e:
+                return jsonify({'error': f'Erro ao decodificar base64: {str(e)}'}), 400
+
         if not name:
             return jsonify({'error': 'Nome da voz não fornecido'}), 400
-        
-        if not audio_file.filename:
-            return jsonify({'error': 'Arquivo de áudio inválido'}), 400
-        
-        # Ler arquivo de áudio
-        audio_data = audio_file.read()
-        
+
+        if not audio_data:
+            return jsonify({'error': 'Dados de áudio não fornecidos'}), 400
+
         result = lmnt_integration.clone_voice(name, audio_data, description, enhance)
-        
+
         if 'error' in result:
             return jsonify(result), 500
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
+        print(f'Erro no endpoint lmnt/clone: {e}')
+        import traceback
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/lmnt/voice/<voice_id>', methods=['GET'])

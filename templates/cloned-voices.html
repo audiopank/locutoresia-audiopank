@@ -347,7 +347,7 @@
             }
 
             try {
-                // Call the API to generate preview audio
+                // Call the API to generate preview audio, force LMNT provider for cloned voices
                 const text = 'Olá! Esta é uma prévia da minha voz clonada. Espero que você goste!';
                 const response = await fetch('/api/generate-audio', {
                     method: 'POST',
@@ -357,7 +357,7 @@
                         voice: voice.lmntVoiceId || voiceId, 
                         style: 'professional', 
                         language: 'pt-BR', 
-                        provider: 'auto' 
+                        provider: 'lmnt' 
                     })
                 });
                 
@@ -381,7 +381,7 @@
                 await audioElement.play();
             } catch (e) {
                 console.error('Error playing preview:', e);
-                showToast('Erro', 'Erro ao reproduzir preview', 'destructive');
+                showToast('Erro', 'Erro ao reproduzir preview: ' + (e.message || ''), 'destructive');
                 stopPlaying();
             }
         }

@@ -19,17 +19,31 @@ export const useLMNT = () => {
     async (text: string, voiceId: string, language: string = 'pt'): Promise<SynthesizeResult> => {
       setIsLoading(true)
       try {
-        // This is a mock implementation - replace with actual LMNT API call
-        // For now, we'll simulate a delay and return a mock audio URL
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        // Mock response - replace with actual LMNT API implementation
-        const mockAudioUrl = `data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjiS2Oy9diMFl2+z5N17GwU7k9n1unEiBC13yO/eizEIHWq+8+OZURE`
-        
-        return {
-          audioUrl: mockAudioUrl,
-          id: voiceId
+        // Use backend API endpoint
+        const response = await fetch('/api/generate-audio', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text,
+            voice: voiceId,
+            language: language === 'pt' ? 'pt-BR' : language,
+            style: 'professional',
+            provider: 'auto'
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao gerar áudio');
         }
+
+        const result = await response.json();
+        return {
+          audioUrl: result.download_url,
+          id: result.voice_id || voiceId
+        };
       } catch (error: any) {
         console.error("Error synthesizing speech:", error)
         toast({
@@ -49,17 +63,30 @@ export const useLMNT = () => {
     async (name: string, audioBase64: string, description?: string): Promise<CloneResult | null> => {
       setIsLoading(true)
       try {
-        // This is a mock implementation - replace with actual LMNT API call
-        // For now, we'll simulate a delay and return a mock voice ID
-        await new Promise(resolve => setTimeout(resolve, 3000))
-        
-        // Mock response - replace with actual LMNT API implementation
-        const mockVoiceId = `voice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        
-        return {
-          id: mockVoiceId,
-          name: name
+        // Use backend API endpoint for LMNT voice cloning
+        const response = await fetch('/api/lmnt/clone', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name,
+            audio_data: audioBase64,
+            description,
+            enhance: true
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao clonar voz');
         }
+
+        const result = await response.json();
+        return {
+          id: result.voice_id,
+          name: result.name
+        };
       } catch (error: any) {
         console.error("Error cloning voice:", error)
         toast({

@@ -378,7 +378,7 @@ async function generateAudio() {
                 voice: voice.model || voiceId, 
                 style: speechStyle, 
                 language: voice.language || 'pt-BR', 
-                provider: (voice.provider && voice.provider !== 'cloned') ? voice.provider : 'auto' 
+                provider: voice.provider === 'cloned' ? 'lmnt' : ((voice.provider && voice.provider !== 'cloned') ? voice.provider : 'auto') 
             })
         });
         const result = await response.json();
