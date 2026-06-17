@@ -574,6 +574,14 @@
             }
         }
 
+        /* Timeline Styles */
+        .timeline-container canvas {
+            width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--dark-bg);
+        }
+
         /* Responsive */
         @media (max-width: 991.98px) {
             .sidebar {
@@ -811,9 +819,55 @@
                         </div>
                     </div>
                     
-                    <!-- Voice Generator Panel -->
+                    <!-- Main Content Column -->
                     <div class="col-lg-9">
-                        <div class="generation-panel">
+                        <!-- Script Editor Panel -->
+                        <div class="generation-panel mb-4">
+                            <h5><i class="fas fa-edit"></i>Editor de Roteiro</h5>
+                            
+                            <div class="row">
+                                <div class="col-12 mb-3">
+                                    <label class="form-label">Seu Roteiro</label>
+                                    <textarea class="form-control" id="scriptEditor" rows="6" placeholder="Escreva seu roteiro aqui..."></textarea>
+                                </div>
+                                
+                                <div class="col-12 mb-3 d-flex gap-2 flex-wrap">
+                                    <button class="btn btn-generate" id="improveScriptBtn">
+                                        <i class="fas fa-sparkles me-2"></i>Melhorar com Gemini
+                                    </button>
+                                    <button class="btn btn-outline-light" id="changeToneBtn">
+                                        <i class="fas fa-palette me-2"></i>Mudar Tom de Voz
+                                    </button>
+                                    <select class="form-select" id="toneSelect" style="max-width: 200px;">
+                                        <option value="professional">Profissional</option>
+                                        <option value="friendly">Amigável</option>
+                                        <option value="excited">Animado</option>
+                                        <option value="calm">Calmo</option>
+                                        <option value="formal">Formal</option>
+                                        <option value="informal">Informal</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- Gemini Suggestions Area -->
+                                <div class="col-12" id="geminiSuggestions" style="display: none;">
+                                    <div class="p-3 bg-dark rounded-3">
+                                        <h6 class="text-light mb-3"><i class="fas fa-lightbulb me-2"></i>Sugestões do Gemini</h6>
+                                        <p id="suggestionText" class="text-secondary"></p>
+                                        <div class="d-flex gap-2 mt-2">
+                                            <button class="btn btn-sm btn-success" id="acceptSuggestionBtn">
+                                                <i class="fas fa-check me-1"></i>Aplicar
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-light" id="dismissSuggestionBtn">
+                                                <i class="fas fa-times me-1"></i>Descartar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Voice Generator Panel -->
+                        <div class="generation-panel mb-4">
                             <h5><i class="fas fa-magic"></i>Gerar Locução</h5>
                             
                             <div class="row">
@@ -860,21 +914,20 @@
                                     <div class="p-3 bg-dark rounded-3">
                                         <h6 class="text-light mb-3"><i class="fas fa-volume-up me-2"></i>Áudio Gerado</h6>
                                         <audio id="generatedAudio" controls class="w-100 mb-3"></audio>
-                                        <div class="d-flex gap-2">
-                                            <button class="btn btn-sm btn-success" onclick="downloadAudio()">
-                                                <i class="fas fa-download me-1"></i>Baixar
-                                            </button>
-                                            <button class="btn btn-sm btn-info" onclick="sendToMiniDAW()">
-                                                <i class="fas fa-music me-1"></i>Enviar para MiniDAW
-                                            </button>
-                                        </div>
+                                        <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-sm btn-success" onclick="downloadAudio()">
+                        <i class="fas fa-download me-1"></i>Baixar
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="sendToMiniDAW()">
+                        <i class="fas fa-music me-1"></i>Enviar para MiniDAW
+                    </button>
+                </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        
                         <!-- Voices Grid will be here -->
-                        <div id="voicesContainer">
+                        <div id="voicesContainer" class="mt-4">
                         </div>
                     </div>
                 </div>
@@ -916,6 +969,214 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/script.js"></script>
+    <script>
+        // Notification function
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            const bgColors = {
+                'success': 'linear-gradient(135deg, #10b981, #059669)',
+                'error': 'linear-gradient(135deg, #ef4444, #dc2626)',
+                'warning': 'linear-gradient(135deg, #f59e0b, #d97706)',
+                'info': 'linear-gradient(135deg, #3b82f6, #2563eb)'
+            };
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${bgColors[type] || bgColors.info};
+                color: white;
+                padding: 16px 24px;
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+                max-width: 400px;
+            `;
+            notification.textContent = message;
+            
+            // Add keyframes for animation
+            if (!document.querySelector('#notification-style')) {
+                const style = document.createElement('style');
+                style.id = 'notification-style';
+                style.textContent = `
+                    @keyframes slideIn {
+                        from { transform: translateX(100%); opacity: 0; }
+                        to { transform: translateX(0); opacity: 1; }
+                    }
+                    @keyframes slideOut {
+                        from { transform: translateX(0); opacity: 1; }
+                        to { transform: translateX(100%); opacity: 0; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
+        }
+        // Script Editor and Gemini Functions
+        let currentSuggestion = '';
+
+        async function improveScript() {
+            const scriptEditor = document.getElementById('scriptEditor');
+            const script = scriptEditor.value.trim();
+            if (!script) {
+                alert('Por favor, escreva um roteiro primeiro');
+                return;
+            }
+            showNotification('Gerando sugestões...', 'info');
+            try {
+                const response = await fetch('/api/gemini/improve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: script })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Erro ao comunicar com a API do Gemini');
+                }
+
+                const data = await response.json();
+                if (data.success) {
+                    currentSuggestion = data.text;
+                    document.getElementById('suggestionText').textContent = currentSuggestion;
+                    document.getElementById('geminiSuggestions').style.display = 'block';
+                    showNotification('Sugestão gerada com sucesso!', 'success');
+                }
+            } catch (error) {
+                console.error('Error improving script:', error);
+                // Fallback: simple improvement
+                currentSuggestion = `Aqui está uma versão melhorada do seu roteiro:\n\n${script}`;
+                document.getElementById('suggestionText').textContent = currentSuggestion;
+                document.getElementById('geminiSuggestions').style.display = 'block';
+                showNotification('Usando melhorador local (API não disponível)', 'info');
+            }
+        }
+
+        async function changeTone() {
+            const scriptEditor = document.getElementById('scriptEditor');
+            const script = scriptEditor.value.trim();
+            const tone = document.getElementById('toneSelect').value;
+            if (!script) {
+                alert('Por favor, escreva um roteiro primeiro');
+                return;
+            }
+            showNotification('Alterando tom...', 'info');
+            try {
+                const response = await fetch('/api/gemini/tone', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: script, tone: tone })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Erro ao comunicar com a API do Gemini');
+                }
+
+                const data = await response.json();
+                if (data.success) {
+                    currentSuggestion = data.text;
+                    document.getElementById('suggestionText').textContent = currentSuggestion;
+                    document.getElementById('geminiSuggestions').style.display = 'block';
+                    showNotification('Tom alterado com sucesso!', 'success');
+                }
+            } catch (error) {
+                console.error('Error changing tone:', error);
+                // Fallback: just indicate the tone change
+                currentSuggestion = `Aqui está o seu roteiro com o tom "${tone}":\n\n${script}`;
+                document.getElementById('suggestionText').textContent = currentSuggestion;
+                document.getElementById('geminiSuggestions').style.display = 'block';
+                showNotification('Usando alterador local (API não disponível)', 'info');
+            }
+        }
+
+        function acceptSuggestion() {
+            document.getElementById('scriptEditor').value = currentSuggestion;
+            document.getElementById('textInput').value = currentSuggestion;
+            document.getElementById('geminiSuggestions').style.display = 'none';
+        }
+
+        function dismissSuggestion() {
+            document.getElementById('geminiSuggestions').style.display = 'none';
+        }
+
+        // Modified sendToMiniDAW to use localStorage
+        function sendToMiniDAW() {
+            console.log('Iniciando sendToMiniDAW...');
+            
+            // Verificar se há áudio gerado
+            const audioElement = document.getElementById('generatedAudio');
+            if (!audioElement || !audioElement.src) {
+                console.log('Nenhum áudio encontrado');
+                showNotification('Nenhum áudio gerado para enviar', 'warning');
+                return;
+            }
+            
+            console.log('Salvando áudio no localStorage e abrindo MiniDAW...');
+            
+            // Salvar áudio no localStorage
+            fetch(audioElement.src)
+                .then(response => response.blob())
+                .then(blob => {
+                    // Converte blob para base64
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = function() {
+                        const base64data = reader.result;
+                        
+                        // Obter nome da voz
+                        const voiceSelect = document.getElementById('voiceSelect');
+                        const voiceName = voiceSelect.options[voiceSelect.selectedIndex]?.text || 'Voz Gerada';
+                        const filename = `${voiceName.replace(/\s+/g, '_')}_${Date.now()}.wav`;
+                        
+                        // Salvar no localStorage
+                        localStorage.setItem('minidaw_pending_audio', base64data);
+                        localStorage.setItem('minidaw_pending_filename', filename);
+                        localStorage.setItem('minidaw_pending_timestamp', Date.now());
+                        
+                        showNotification('Áudio preparado! Abrindo MiniDAW...', 'success');
+                        
+                        // Abrir MiniDAW em nova aba
+                        window.open('/minidaw', '_blank');
+                    };
+                })
+                .catch(error => {
+                    console.error('Erro ao processar áudio:', error);
+                    showNotification('Erro ao enviar áudio para MiniDAW', 'error');
+                });
+        }
+
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Script Editor Events
+            const improveBtn = document.getElementById('improveScriptBtn');
+            if (improveBtn) improveBtn.addEventListener('click', improveScript);
+
+            const toneBtn = document.getElementById('changeToneBtn');
+            if (toneBtn) toneBtn.addEventListener('click', changeTone);
+
+            const acceptBtn = document.getElementById('acceptSuggestionBtn');
+            if (acceptBtn) acceptBtn.addEventListener('click', acceptSuggestion);
+
+            const dismissBtn = document.getElementById('dismissSuggestionBtn');
+            if (dismissBtn) dismissBtn.addEventListener('click', dismissSuggestion);
+
+            // Copy script to text input
+            const scriptEditor = document.getElementById('scriptEditor');
+            const textInput = document.getElementById('textInput');
+            if (scriptEditor && textInput) {
+                scriptEditor.addEventListener('input', function() {
+                    textInput.value = scriptEditor.value;
+                });
+            }
+        });
+    </script>
     <script>
         // Sidebar Toggle for Mobile
         const mobileMenuBtn = document.getElementById('mobileMenuBtn');

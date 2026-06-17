@@ -389,7 +389,7 @@ const VoiceCloning = () => {
           <Card className="p-6 bg-card border-border">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-foreground">Voice input</h2>
-              <span className="text-xs text-muted-foreground">? Tips for best quality</span>
+              <span className="text-xs text-muted-foreground">💡 Tips for best quality</span>
             </div>
 
             <div className="flex gap-2 mb-6">
@@ -421,9 +421,9 @@ const VoiceCloning = () => {
                 </p>
                 <p className="text-xs text-muted-foreground mb-4">
                   {uploadedFile 
-                    ? `${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB` 
+                    ? `${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB`
                     : recordedBlob 
-                      ? `${(recordedBlob.size / 1024).toFixed(1)} KB` 
+                      ? `${(recordedBlob.size / 1024).toFixed(1)} KB`
                       : ""
                   }
                 </p>

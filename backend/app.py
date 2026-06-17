@@ -845,6 +845,11 @@ def voice_cloning():
     """Clonagem de Voz - Crie clones de voz personalizados"""
     return render_template('voice-cloning.html')
 
+@app.route('/cloned-voices')
+def cloned_voices():
+    """Biblioteca de Vozes Clonadas"""
+    return render_template('cloned-voices.html')
+
 # =========================================================
 # APIs para Autores NewPost-IA
 # =========================================================
@@ -4896,6 +4901,103 @@ def voxcraft_chat():
         last_user_msg = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
         fallback_response = f"Olá! Eu sou o VoxCraft AI! 😊\n\nPercebi que houve um problema com a conexão do Gemini, mas posso te ajudar com dicas rápidas sobre:\n- Trilhas sonoras para comerciais (use a Biblioteca!)\n- Mixagem de voz e música (80% voz, 30% música)\n- Geração de locuções com IA\n\nComo posso te ajudar? 🎙️"
         return jsonify({"success": True, "message": fallback_response})
+
+# Gemini API Routes for Script Editor
+@app.route('/api/gemini/improve', methods=['POST', 'OPTIONS'])
+def gemini_improve_script():
+    """Melhora um roteiro usando o Gemini"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        data = request.get_json()
+        if not data or 'text' not in data:
+            return jsonify({"success": False, "error": "Dados inválidos: 'text' é obrigatório"}), 400
+        
+        text = data.get('text', '')
+        
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            print("[GEMINI] ERRO: API Key não encontrada")
+            return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
+        
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        model_name = 'gemini-2.0-flash'
+        model = genai.GenerativeModel(model_name)
+        
+        prompt = f"Melhore o seguinte roteiro para uma locução profissional, mantendo o significado original, mas tornando-o mais fluido e envolvente:\n\n{text}"
+        
+        response = model.generate_content(prompt)
+        
+        return jsonify({
+            "success": True,
+            "text": response.text
+        })
+        
+    except Exception as e:
+        print(f"[GEMINI] ERRO: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/gemini/tone', methods=['POST', 'OPTIONS'])
+def gemini_change_tone():
+    """Altera o tom de um roteiro usando o Gemini"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        data = request.get_json()
+        if not data or 'text' not in data or 'tone' not in data:
+            return jsonify({"success": False, "error": "Dados inválidos: 'text' e 'tone' são obrigatórios"}), 400
+        
+        text = data.get('text', '')
+        tone = data.get('tone', 'professional')
+        
+        tone_descriptions = {
+            'professional': 'profissional e formal',
+            'friendly': 'amigável e casual',
+            'excited': 'animado e energético',
+            'calm': 'calmo e relaxante',
+            'formal': 'muito formal',
+            'informal': 'muito informal e conversacional'
+        }
+        
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            print("[GEMINI] ERRO: API Key não encontrada")
+            return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
+        
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        model_name = 'gemini-2.0-flash'
+        model = genai.GenerativeModel(model_name)
+        
+        prompt = f"Reescreva o seguinte roteiro com um tom {tone_descriptions.get(tone, tone)}, mantendo todo o conteúdo e informação original:\n\n{text}"
+        
+        response = model.generate_content(prompt)
+        
+        return jsonify({
+            "success": True,
+            "text": response.text
+        })
+        
+    except Exception as e:
+        print(f"[GEMINI] ERRO: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/news/fetch', methods=['POST', 'OPTIONS'])
 def api_fetch_news():

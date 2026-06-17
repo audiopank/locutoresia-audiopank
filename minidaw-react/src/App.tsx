@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import MiniDAWIntegrated from './components/MiniDAWIntegrated'
-import ClonedVoicesLibrary from './components/ClonedVoicesLibrary'
+import VoiceLibrary from './components/VoiceLibrary'
 import VoiceCloning from './components/VoiceCloning'
 import NewsAutoPostUltraSimple from './components/NewsAutoPostUltraSimple'
 import NewPostIAManager from './components/NewPostIAManager'
@@ -15,7 +15,7 @@ function App() {
         <Routes>
           <Route path="/" element={<MiniDAWIntegrated />} />
           <Route path="/minidaw" element={<MiniDAWIntegrated />} />
-          <Route path="/cloned-voices" element={<ClonedVoicesLibrary />} />
+          <Route path="/cloned-voices" element={<VoiceLibrary />} />
           <Route path="/voice-cloning" element={<VoiceCloning />} />
           <Route path="/news" element={<NewsAutoPostUltraSimple />} />
           <Route path="/newpost-manager" element={<NewPostIAManager />} />
