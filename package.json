@@ -7,10 +7,12 @@
     "start": "python api/index.py"
   },
   "dependencies": {
+    "@capacitor/core": "^8.4.0",
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-switch": "^1.2.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.0",
     "@vercel/python": "^3.0.0"
   }
 }
