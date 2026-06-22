@@ -17,7 +17,7 @@ class MiniDAWIntegrated {
         this.scissorMode = false;
         this.globalZoom = 1;
         this.autoFadeEnabled = false;
-        this.autoFadeDuration = 1.05;
+        this.autoFadeDuration = 1.10;
         this.voiceEndDetected = new Map();
         this.miniDAWVisible = true;
         
@@ -95,7 +95,7 @@ class MiniDAWIntegrated {
             volume: 100,
             pan: 0,
             fadeIn: 0,
-            fadeOut: type === 'voice' ? 1.05 : 0,
+            fadeOut: type === 'voice' ? 1.10 : 0,
             muted: false,
             solo: false,
             effects: {
@@ -182,7 +182,7 @@ class MiniDAWIntegrated {
                 ` : `
                     <div class="waveform-area">
                         <div class="auto-fade-indicator" id="autoFade_${track.id}">
-                            <i class="fas fa-magic"></i> OUT 1.05s
+                            <i class="fas fa-magic"></i> OUT 1.10s
                         </div>
                         <canvas id="waveform_${track.id}" class="waveform" 
                                 onclick="cutMiniDAWTrackAtClick(event, '${track.id}')" 
@@ -204,7 +204,7 @@ class MiniDAWIntegrated {
                 `}
                     <div class="waveform-area">
                         <div class="auto-fade-indicator" id="autoFade_${track.id}">
-                            <i class="fas fa-magic"></i> OUT 1.05s
+                            <i class="fas fa-magic"></i> OUT 1.10s
                         </div>
                         <canvas id="waveform_${track.id}" class="waveform" 
                                 onclick="cutMiniDAWTrackAtClick(event, '${track.id}')" 
@@ -662,6 +662,16 @@ class MiniDAWIntegrated {
         }
     }
 
+    toggleTrackEffects(trackId) {
+        const trackCard = document.getElementById(`miniDAWTrack_${trackId}`);
+        if (trackCard) {
+            const effectsPanel = trackCard.querySelector('.effects-details');
+            if (effectsPanel) {
+                effectsPanel.classList.toggle('show');
+            }
+        }
+    }
+
     toggleEffect(trackId, effect) {
         const track = this.tracks.find(t => t.id === trackId);
         if (track) {
@@ -684,16 +694,16 @@ class MiniDAWIntegrated {
         
         // Update effect buttons
         Object.keys(track.effects).forEach(effect => {
-            const btn = trackCard.querySelector(`.effect-btn[onclick*="${effect}"]`);
+            const btn = trackCard.querySelector(`.fx-btn[onclick*="${effect}"]`);
             if (btn) {
                 btn.classList.toggle('active', track.effects[effect]);
             }
         });
         
         // Update effects panel
-        const effectsPanel = trackCard.querySelector('.effects-panel');
+        const effectsPanel = trackCard.querySelector('.effects-details');
         if (effectsPanel) {
-            effectsPanel.classList.toggle('active', track.effects.eq);
+            effectsPanel.classList.toggle('show', track.effects.eq || track.effects.reverb || track.effects.compressor);
         }
     }
 
@@ -747,9 +757,9 @@ class MiniDAWIntegrated {
         let maxDuration = 0;
         
         if (voiceTracks.length > 0) {
-            // If there are voice tracks: max voice duration + 1.05s
+            // If there are voice tracks: max voice duration + 1.10s
             const maxVoiceDuration = Math.max(...voiceTracks.map(t => t.duration), 0);
-            maxDuration = maxVoiceDuration + 1.05;
+            maxDuration = maxVoiceDuration + 1.10;
         } else {
             // Otherwise, just the max of all tracks
             maxDuration = Math.max(...this.tracks.filter(t => t.audioBuffer).map(t => t.duration), 0);
@@ -823,7 +833,7 @@ class MiniDAWIntegrated {
             );
             nodes.gainNode.gain.linearRampToValueAtTime(
                 0,
-                this.audioContext.currentTime + maxVoiceDuration + 1.05
+                this.audioContext.currentTime + maxVoiceDuration + 1.10
             );
         } else {
             // Manual fade out
@@ -1161,9 +1171,9 @@ class MiniDAWIntegrated {
 
         this.autoFadeEnabled = true;
         
-        // Aplica fade out de 1.05s nas trilhas musicais
+        // Aplica fade out de 1.10s nas trilhas musicais
         musicTracks.forEach(track => {
-            this.updateTrackFadeOut(track.id, 1.05);
+            this.updateTrackFadeOut(track.id, 1.10);
             
             // Mostra indicador
             const indicator = document.getElementById(`autoFade_${track.id}`);
@@ -1172,7 +1182,7 @@ class MiniDAWIntegrated {
             }
         });
 
-        this.showNotification('Auto Fade ativado (1.05s)', 'success');
+        this.showNotification('Auto Fade ativado (1.10s)', 'success');
     }
 
     normalizeVolumes() {
@@ -1191,6 +1201,84 @@ class MiniDAWIntegrated {
         });
 
         this.showNotification('Volumes normalizados', 'success');
+    }
+
+    async loadAudioFromUrl(url, trackId, name = 'Trilha') {
+        try {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+            
+            const track = this.tracks.find(t => t.id === trackId);
+            if (track) {
+                track.audioUrl = url;
+                track.audioBuffer = audioBuffer;
+                track.duration = audioBuffer.duration;
+                track.zoom = track.zoom || 1;
+                track.eqSettings = track.eqSettings || { low: 0, mid: 0, high: 0 };
+                track.name = name;
+                
+                if (audioBuffer.duration > this.duration) {
+                    this.duration = audioBuffer.duration;
+                    this.updateDuration();
+                }
+                
+                this.createTrackNodes(track);
+                this.updateTrackUI(track);
+                this.drawWaveform(track);
+                this.saveToLocalStorage();
+                
+                this.showNotification(`Trilha "${name}" carregada com sucesso!`, 'success');
+            }
+        } catch (error) {
+            console.error('Error loading audio from URL:', error);
+            this.showNotification('Erro ao carregar áudio', 'error');
+        }
+    }
+
+    exportProject() {
+        // Implementação similar à minidaw.js
+        if (this.tracks.length === 0) {
+            this.showNotification('Nenhuma faixa para exportar', 'warning');
+            return;
+        }
+
+        const projectData = JSON.stringify({
+            tracks: this.tracks.map(t => ({
+                id: t.id,
+                name: t.name,
+                type: t.type,
+                audioUrl: t.audioUrl,
+                volume: t.volume,
+                pan: t.pan,
+                mute: t.mute,
+                solo: t.solo,
+                effects: t.effects,
+                eqSettings: t.eqSettings,
+                fadeIn: t.fadeIn,
+                fadeOut: t.fadeOut,
+                zoom: t.zoom,
+                start: t.start,
+                end: t.end
+            })),
+            exportFormat: this.exportFormat,
+            mp3Bitrate: this.mp3Bitrate,
+            globalZoom: this.globalZoom,
+            autoFadeEnabled: this.autoFadeEnabled,
+            autoFadeDuration: this.autoFadeDuration
+        });
+
+        const blob = new Blob([projectData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `minidaw-project-${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        this.showNotification('Projeto exportado com sucesso!', 'success');
     }
 
     clearAllTracks() {
@@ -1252,7 +1340,7 @@ class MiniDAWIntegrated {
             
             if (voiceTracks.length > 0) {
                 maxVoiceDuration = voiceTracks.reduce((max, track) => Math.max(max, track.duration), 0);
-                finalDuration = maxVoiceDuration + 1.05;
+                finalDuration = maxVoiceDuration + 1.10;
             }
 
             // Create offline audio context for rendering
@@ -1361,7 +1449,7 @@ class MiniDAWIntegrated {
                     );
                     trackGain.gain.linearRampToValueAtTime(
                         0,
-                        maxVoiceDuration + 1.05
+                        maxVoiceDuration + 1.10
                     );
                 } else {
                     // Manual fade out
@@ -1719,11 +1807,11 @@ class MiniDAWIntegrated {
             track.duration > longest.duration ? track : longest
         );
 
-        // Aplica fade out de 1.05s nas trilhas musicais
+        // Aplica fade out de 1.10s nas trilhas musicais
         musicTracks.forEach(track => {
             // Configura o fade out para começar quando a voz terminar
-            track.fadeOutStartTime = longestVoiceTrack.duration - 1.05;
-            track.fadeOutDuration = 1.05;
+            track.fadeOutStartTime = longestVoiceTrack.duration - 1.10;
+            track.fadeOutDuration = 1.10;
             
             // Se a trilha musical for mais longa que a voz, aplica o fade
             if (track.duration > longestVoiceTrack.duration) {
@@ -2590,6 +2678,38 @@ window.toggleMiniDAWPlayback = () => miniDAW.togglePlayback();
 window.stopMiniDAWPlayback = () => miniDAW.stopPlayback();
 window.setMiniDAWFormat = (format) => miniDAW.setFormat(format);
 window.exportMiniDAWMix = () => miniDAW.exportMix();
+window.exportMiniDAWProject = () => miniDAW.exportProject();
+window.importFromTTS = () => {
+    if (window.miniDAW) {
+        const pendingAudio = localStorage.getItem('minidaw_pending_audio');
+        const pendingFilename = localStorage.getItem('minidaw_pending_filename');
+        if (pendingAudio) {
+            fetch(pendingAudio)
+                .then(res => res.blob())
+                .then(blob => {
+                    const file = new File([blob], pendingFilename || 'audio_gerado.wav', { type: 'audio/wav' });
+                    window.miniDAW.addTrack('voice');
+                    const trackId = window.miniDAW.tracks[window.miniDAW.tracks.length - 1].id;
+                    return window.miniDAW.loadAudioFile(file, trackId).then(() => {
+                        const track = window.miniDAW.tracks.find(t => t.id === trackId);
+                        if (track) {
+                            track.name = (pendingFilename || 'audio_gerado').replace('.wav', '');
+                            window.miniDAW.updateTrackUI(track);
+                        }
+                        window.miniDAW.showNotification('Áudio importado do TTS!', 'success');
+                        localStorage.removeItem('minidaw_pending_audio');
+                        localStorage.removeItem('minidaw_pending_filename');
+                    });
+                })
+                .catch(error => {
+                    console.error('Erro ao importar:', error);
+                    window.miniDAW.showNotification('Erro ao importar áudio do TTS', 'error');
+                });
+        } else {
+            window.miniDAW.showNotification('Nenhum áudio pendente no TTS', 'warning');
+        }
+    }
+};
 window.normalizeMiniDAWVolumes = () => miniDAW.normalizeVolumes();
 window.applyMiniDAWAutoFade = () => miniDAW.applyAutoFade();
 window.clearMiniDAWTracks = () => miniDAW.clearAllTracks();

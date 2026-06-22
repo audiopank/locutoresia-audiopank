@@ -463,6 +463,482 @@
             font-weight: 600;
         }
 
+        /* Estilos adicionais da MiniDAW Clássica */
+        .daw-container {
+            padding: 2rem;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .track-type.voice {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+            border: 1px solid #3b82f6;
+        }
+
+        .track-type.music {
+            background: rgba(168, 85, 247, 0.2);
+            color: #a855f7;
+            border: 1px solid #a855f7;
+        }
+
+        .waveform-container {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            height: 80px;
+            position: relative;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .controls-panel {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .control-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            min-width: 60px;
+        }
+
+        .btn-daw {
+            background: var(--primary-color);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-daw:hover {
+            background: var(--secondary-color);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+        }
+
+        .btn-daw.btn-success {
+            background: #10b981;
+        }
+
+        .btn-daw.btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-daw.btn-danger {
+            background: #ef4444;
+        }
+
+        .btn-daw.btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .timeline-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .timeline-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .playback-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .timeline-ruler {
+            height: 40px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .timeline-tracks {
+            min-height: 200px;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            position: relative;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            margin: 2rem 0;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: var(--primary-color);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .drop-zone i {
+            font-size: 3rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
+        .export-panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .export-options {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .format-selector {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .format-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .format-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .volume-slider {
+            width: 120px;
+        }
+
+        .fade-slider {
+            width: 100px;
+        }
+
+        .pan-slider {
+            width: 80px;
+        }
+
+        .mixing-status {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid #10b981;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            display: none;
+        }
+
+        .mixing-status.active {
+            display: block;
+        }
+
+        .progress-bar-container {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+
+        .progress-bar-fill {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .track-effects {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .effect-btn {
+            padding: 0.25rem 0.75rem;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .effect-btn.active {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .effects-panel {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .effects-panel.active {
+            display: block;
+        }
+
+        .effect-control {
+            margin-bottom: 1rem;
+        }
+
+        .effect-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .recording {
+            animation: pulse 1.5s infinite;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--text-secondary);
+            border-top: 2px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .quick-action-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .quick-action-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+
+        .quick-action-btn.active {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .playback-controls-enhanced {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            background: rgba(30, 41, 59, 0.8);
+            padding: 0.75rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+            transform: scale(1.1);
+        }
+
+        .control-btn.active {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .control-btn.scissor-mode {
+            background: #ef4444;
+            color: white;
+            border-color: #ef4444;
+            animation: pulse 1.5s infinite;
+        }
+
+        .zoom-controls {
+            display: flex;
+            gap: 0.25rem;
+            align-items: center;
+            background: rgba(30, 41, 59, 0.6);
+            padding: 0.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .zoom-indicator {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 40px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .track-zoom-controls {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            display: flex;
+            gap: 0.25rem;
+            background: rgba(30, 41, 59, 0.9);
+            padding: 0.25rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            z-index: 10;
+        }
+
+        .track-zoom-btn {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            transition: all 0.2s ease;
+        }
+
+        .track-zoom-btn:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .project-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            background: rgba(30, 41, 59, 0.8);
+            padding: 0.75rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .vip-save-btn {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .vip-save-btn:hover {
+            background: linear-gradient(135deg, #d97706, #b45309);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+        }
+
+        .auto-fade-indicator {
+            position: absolute;
+            top: 0.5rem;
+            left: 0.5rem;
+            background: rgba(16, 185, 129, 0.9);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: none;
+            z-index: 10;
+        }
+
+        .auto-fade-indicator.active {
+            display: block;
+        }
+
         @media (max-width: 768px) {
             .nav-tabs .nav-link {
                 padding: 0.5rem 1rem;
@@ -471,6 +947,24 @@
             
             .tab-content {
                 padding: 1rem;
+            }
+
+            .daw-container {
+                padding: 1rem;
+            }
+
+            .controls-panel {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .export-options {
+                flex-direction: column;
+            }
+
+            .timeline-header {
+                flex-direction: column;
+                gap: 1rem;
             }
         }
     </style>
@@ -491,23 +985,23 @@
                         <i class="fas fa-book-open me-1"></i>
                         Biblioteca de Trilhas
                     </button>
-                    <button class="btn btn-secondary me-2" onclick="window.minidawReact.newProject()">
+                    <button class="btn btn-secondary me-2" onclick="window.miniDAW.clearAllTracks()">
                         <i class="fas fa-plus me-1"></i>
                         Novo Projeto
                     </button>
-                    <button class="btn btn-primary me-2" onclick="window.generateVoiceFromHeader()">
+                    <button class="btn btn-primary me-2" onclick="window.location.href='/tts'">
                         <i class="fas fa-magic me-1"></i>
                         Gerar Voz
                     </button>
-                    <button class="btn btn-warning me-2" onclick="window.minidawReact.mixAll()">
+                    <button class="btn btn-warning me-2" onclick="window.miniDAW.exportMix()">
                         <i class="fas fa-sliders-h me-1"></i>
                         Mixar Tudo
                     </button>
-                    <button class="btn btn-success me-2" onclick="window.minidawReact.saveProject()">
+                    <button class="btn btn-success me-2" onclick="window.miniDAW.saveVipProject()">
                         <i class="fas fa-save me-1"></i>
                         Salvar Projeto
                     </button>
-                    <button class="btn btn-info me-2" onclick="window.minidawReact.loadProject()">
+                    <button class="btn btn-info me-2" onclick="window.miniDAW.loadVipProject()">
                         <i class="fas fa-folder-open me-1"></i>
                         Carregar Projeto
                     </button>
@@ -515,7 +1009,7 @@
                         <i class="fas fa-arrow-left"></i>
                         Voltar ao Locutores IA
                     </a>
-                    <button class="btn btn-success" onclick="window.minidawReact.exportMix()">
+                    <button class="btn btn-success" onclick="window.miniDAW.exportMix()">
                         <i class="fas fa-file-export me-1"></i>
                         Exportar Mix
                     </button>
@@ -525,23 +1019,7 @@
     </header>
 
     <main class="container-fluid py-4">
-        <!-- Integration Info -->
-        <div class="integration-info">
-            <h5><i class="fas fa-info-circle me-2"></i>MiniDAW com Geração de Voz IA</h5>
-            <p>Esta é a nova MiniDAW Integrada com recursos avançados de geração de voz IA. Use as abas abaixo para acessar diferentes funcionalidades.</p>
-        </div>
 
-        <!-- Feature Highlights -->
-        <div class="feature-highlight">
-            <h6><i class="fas fa-star me-2"></i>Novidades desta Versão:</h6>
-            <ul>
-                <li>Gerador de Voz IA integrado com vozes clonadas</li>
-                <li>Biblioteca de vozes clonadas persistentes</li>
-                <li>Interface React moderna e responsiva</li>
-                <li>Histórico de gerações recentes</li>
-                <li>Preview de áudio antes de adicionar às tracks</li>
-            </ul>
-        </div>
 
         <!-- Tabs Navigation -->
         <ul class="nav nav-tabs" id="minidawTabs" role="tablist">
@@ -551,57 +1029,180 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="voices-tab" data-bs-toggle="tab" data-bs-target="#voices" type="button" role="tab">
+                <a class="nav-link" href="/cloned-voices" role="tab">
                     <i class="fas fa-microphone me-2"></i>Vozes Clonadas
-                </button>
+                </a>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="cloning-tab" data-bs-toggle="tab" data-bs-target="#cloning" type="button" role="tab">
+                <a class="nav-link" href="/voice-cloning" role="tab">
                     <i class="fas fa-clone me-2"></i>Clonagem
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="classic-tab" data-bs-toggle="tab" data-bs-target="#classic" type="button" role="tab">
-                    <i class="fas fa-history me-2"></i>MiniDAW Clássica
-                </button>
+                </a>
             </li>
         </ul>
 
         <!-- Tab Content -->
         <div class="tab-content" id="minidawTabContent">
-            <!-- MiniDAW React Tab -->
+            <!-- MiniDAW Clássica Tab - agora é o principal! -->
             <div class="tab-pane fade show active" id="daw" role="tabpanel">
-                <div class="react-container" id="react-daw-container">
-                    <div class="loading-indicator">
-                        <i class="fas fa-spinner fa-spin me-2"></i>
-                        Carregando MiniDAW Integrada...
+                <div style="padding: 0;">
+                    <!-- Quick Actions -->
+                    <div class="quick-actions" style="margin-top: 1rem;">
+                        <button class="quick-action-btn" onclick="addMiniDAWTrack('voice')">
+                            <i class="fas fa-microphone me-1"></i>
+                            Adicionar Voz
+                        </button>
+                        <button class="quick-action-btn" onclick="window.location.href='/library'" style="background: var(--accent-color); border-color: var(--accent-color); color: white;">
+                            <i class="fas fa-book-open me-1"></i>
+                            Biblioteca de Trilhas
+                        </button>
+                        <button class="quick-action-btn" onclick="addMiniDAWTrack('music')">
+                            <i class="fas fa-music me-1"></i>
+                            Adicionar Música
+                        </button>
+                        <button class="quick-action-btn" onclick="addMiniDAWTrack('effect')">
+                            <i class="fas fa-magic me-1"></i>
+                            Adicionar Efeito
+                        </button>
+                        <button class="quick-action-btn" onclick="window.open('https://app.lmnt.com/', '_blank')" title="Gerar vozes externamente no LMNT Studio" style="background: #007bff; color: white; font-weight: bold; border: 2px solid #fff; padding: 8px 16px;">
+                            <i class="fas fa-external-link-alt me-1"></i>
+                            LMNT Studio
+                        </button>
+                        <button class="quick-action-btn" onclick="importFromTTS()">
+                            <i class="fas fa-download me-1"></i>
+                            Importar do TTS
+                        </button>
+                        <button class="quick-action-btn" onclick="exportMiniDAWProject()">
+                            <i class="fas fa-download me-1"></i>
+                            Exportar
+                        </button>
+                        <button class="quick-action-btn" onclick="toggleMiniDAWScissor()" id="scissorBtn">
+                            <i class="fas fa-cut me-1"></i>
+                            Tesoura
+                        </button>
+                        <button class="quick-action-btn" onclick="normalizeMiniDAWVolumes()">
+                            <i class="fas fa-sliders-h me-1"></i>
+                            Normalizar
+                        </button>
+                        <button class="quick-action-btn" onclick="applyMiniDAWAutoFade()">
+                            <i class="fas fa-wave-square me-1"></i>
+                            Auto Fade
+                        </button>
+                        <button class="quick-action-btn" onclick="clearMiniDAWTracks()">
+                            <i class="fas fa-trash me-1"></i>
+                            Limpar
+                        </button>
+                    </div>
+
+                    <!-- Timeline -->
+                    <div class="timeline-container">
+                        <div class="timeline-header">
+                            <div class="playback-controls-enhanced">
+                                <button class="control-btn" onclick="toggleMiniDAWPlayback()" title="Play/Pause (Espaço)">
+                                    <i class="fas fa-play" id="miniDAWPlayIcon"></i>
+                                </button>
+                                <button class="control-btn" onclick="stopMiniDAWPlayback()" title="Stop (S)">
+                                    <i class="fas fa-stop"></i>
+                                </button>
+                                <div class="control-group">
+                                    <span class="control-label">Tempo:</span>
+                                    <span id="miniDAWCurrentTime">0:00</span>
+                                </div>
+                                <div class="control-group">
+                                    <span class="control-label">Duração:</span>
+                                    <span id="miniDAWTotalDuration">0:00</span>
+                                </div>
+                            </div>
+                            <div class="zoom-controls">
+                                <button class="control-btn" onclick="zoomMiniDAWIn()" title="Zoom In (+)">
+                                    <i class="fas fa-search-plus"></i>
+                                </button>
+                                <span class="zoom-indicator" id="miniDAWZoomIndicator">100%</span>
+                                <button class="control-btn" onclick="zoomMiniDAWOut()" title="Zoom Out (-)">
+                                    <i class="fas fa-search-minus"></i>
+                                </button>
+                            </div>
+                            <div class="project-controls">
+                                <button class="vip-save-btn" onclick="saveMiniDAWProject()" title="Salvar Projeto VIP">
+                                    <i class="fas fa-star"></i>
+                                    Salvar VIP
+                                </button>
+                                <button class="control-btn" onclick="loadMiniDAWProject()" title="Carregar Projeto VIP">
+                                    <i class="fas fa-folder-open"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="timeline-ruler"></div>
+                        <div class="timeline-tracks" id="miniDAWTimelineTracks">
+                            <!-- Tracks will be added here -->
+                        </div>
+                    </div>
+
+                    <!-- Drop Zone -->
+                    <div class="drop-zone" id="miniDAWDropZone" ondrop="handleMiniDAWDrop(event)" ondragover="handleMiniDAWDragOver(event)" ondragleave="handleMiniDAWDragLeave(event)">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <h4>Arraste arquivos de áudio aqui</h4>
+                        <p class="text-muted">MP3, WAV, OGG, M4A suportados</p>
+                        <button class="btn btn-daw mt-3" onclick="document.getElementById('miniDAWFileInput').click()">
+                            <i class="fas fa-folder-open me-1"></i>
+                            Escolher Arquivos
+                        </button>
+                        <input type="file" id="miniDAWFileInput" multiple accept="audio/*" style="display: none;" onchange="handleMiniDAWFileSelect(event)">
+                    </div>
+
+                    <!-- Tracks Container -->
+                    <div id="miniDAWTracksContainer">
+                        <!-- Tracks will be added here -->
+                    </div>
+
+                    <!-- Empty State -->
+                    <div class="empty-state" id="miniDAWEmptyState">
+                        <i class="fas fa-music"></i>
+                        <h3>Nenhuma faixa adicionada</h3>
+                        <p>Adicione vozes e trilhas para começar a mixagem</p>
+                        <button class="btn btn-daw mt-3" onclick="addMiniDAWTrack('voice')">
+                            <i class="fas fa-plus me-1"></i>
+                            Adicionar Primeira Faixa
+                        </button>
+                    </div>
+
+                    <!-- Export Panel -->
+                    <div class="export-panel">
+                        <h4 class="mb-3">
+                            <i class="fas fa-file-export me-2"></i>
+                            Exportar Mix Final
+                        </h4>
+                        <div class="export-options">
+                            <div class="format-selector">
+                                <button class="format-btn active" onclick="setMiniDAWFormat('wav')">WAV</button>
+                                <button class="format-btn" onclick="setMiniDAWFormat('mp3')">MP3</button>
+                            </div>
+                            <div class="control-group" id="miniDAWMP3BitrateGroup" style="display: none;">
+                                <span class="control-label">Bitrate:</span>
+                                <select class="form-select form-select-sm" id="miniDAWMP3Bitrate">
+                                    <option value="128">128 kbps</option>
+                                    <option value="192" selected>192 kbps</option>
+                                    <option value="320">320 kbps</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-daw btn-success" onclick="exportMiniDAWMix()">
+                                <i class="fas fa-download me-1"></i>
+                                Exportar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mixing Status -->
+                    <div class="mixing-status" id="miniDAWMixingStatus">
+                        <h5 class="mb-2">
+                            <i class="fas fa-cog fa-spin me-2"></i>
+                            Processando Mix...
+                        </h5>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="miniDAWProgressFill"></div>
+                        </div>
+                        <p class="mb-0 text-muted" id="miniDAWMixingStatusText">Preparando faixas...</p>
                     </div>
                 </div>
-            </div>
-
-            <!-- Cloned Voices Tab -->
-            <div class="tab-pane fade" id="voices" role="tabpanel">
-                <div class="react-container" id="react-voices-container">
-                    <div class="loading-indicator">
-                        <i class="fas fa-spinner fa-spin me-2"></i>
-                        Carregando Biblioteca de Vozes...
-                    </div>
-                </div>
-            </div>
-
-            <!-- Voice Cloning Tab -->
-            <div class="tab-pane fade" id="cloning" role="tabpanel">
-                <div class="react-container" id="react-cloning-container">
-                    <div class="loading-indicator">
-                        <i class="fas fa-spinner fa-spin me-2"></i>
-                        Carregando Clonagem de Voz...
-                    </div>
-                </div>
-            </div>
-
-            <!-- Classic MiniDAW Tab -->
-            <div class="tab-pane fade" id="classic" role="tabpanel">
-                <iframe src="/minidaw" style="width: 100%; height: 600px; border: none; border-radius: 8px;"></iframe>
             </div>
         </div>
     </main>
@@ -609,76 +1210,135 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
-    <script src="/static/minidaw-react-app.js"></script>
-    <script src="/static/js/cloned-voices-library.js"></script>
+    <script src="/static/minidaw-integrated.js?v=6"></script>
     
-    <!-- Load Components -->
+    <!-- Script para o MiniDAWIntegrated -->
     <script>
-        // Funções para carregar componentes
-        function loadVoicesLibrary() {
-            if (window.clonedVoicesLibrary) {
-                window.clonedVoicesLibrary.render('react-voices-container');
+        // Funções globais para o MiniDAWIntegrated
+        function toggleMiniDAWPlayback() {
+            if (window.miniDAW) window.miniDAW.togglePlayback();
+        }
+        
+        function stopMiniDAWPlayback() {
+            if (window.miniDAW) window.miniDAW.stopPlayback();
+        }
+        
+        function zoomMiniDAWIn() {
+            if (window.miniDAW) window.miniDAW.zoomIn();
+        }
+        
+        function zoomMiniDAWOut() {
+            if (window.miniDAW) window.miniDAW.zoomOut();
+        }
+        
+        function saveMiniDAWProject() {
+            if (window.miniDAW) window.miniDAW.saveVipProject();
+        }
+        
+        function loadMiniDAWProject() {
+            if (window.miniDAW) window.miniDAW.loadVipProject();
+        }
+        
+        function exportMiniDAWProject() {
+            if (window.miniDAW) window.miniDAW.exportProject();
+        }
+        
+        function setMiniDAWFormat(format) {
+            if (window.miniDAW) window.miniDAW.setFormat(format);
+        }
+        
+        // Função para importar do TTS
+        function importFromTTS() {
+            if (window.miniDAW) {
+                const pendingAudio = localStorage.getItem('minidaw_pending_audio');
+                const pendingFilename = localStorage.getItem('minidaw_pending_filename');
+                if (pendingAudio) {
+                    fetch(pendingAudio)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            const file = new File([blob], pendingFilename || 'audio_gerado.wav', { type: 'audio/wav' });
+                            window.miniDAW.addTrack('voice');
+                            const trackId = window.miniDAW.tracks[window.miniDAW.tracks.length - 1].id;
+                            return window.miniDAW.loadAudioFile(file, trackId).then(() => {
+                                const track = window.miniDAW.tracks.find(t => t.id === trackId);
+                                if (track) {
+                                    track.name = (pendingFilename || 'audio_gerado').replace('.wav', '');
+                                    window.miniDAW.updateTrackUI(track);
+                                }
+                                window.miniDAW.showNotification('Áudio importado do TTS!', 'success');
+                                localStorage.removeItem('minidaw_pending_audio');
+                                localStorage.removeItem('minidaw_pending_filename');
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Erro ao importar:', error);
+                            window.miniDAW.showNotification('Erro ao importar áudio do TTS', 'error');
+                        });
+                } else {
+                    window.miniDAW.showNotification('Nenhum áudio pendente no TTS', 'warning');
+                }
             }
         }
-
-        function loadVoiceCloning() {
-            const container = document.getElementById('react-cloning-container');
-            if (!container) return;
-
-            container.innerHTML = `
-                <div style="padding: 2rem;">
-                    <h3 style="color: #6366f1; margin-bottom: 1.5rem;">
-                        <i class="fas fa-clone me-2"></i>Clonagem de Voz
-                    </h3>
-                    <div style="background: rgba(30, 41, 59, 0.8); border-radius: 8px; padding: 1.5rem;">
-                        <p style="color: #94a3b8;">Clone sua voz para criar áudios personalizados.</p>
-                        <div style="margin-top: 1rem;">
-                            <a href="/voice-cloning" class="btn btn-primary">
-                                <i class="fas fa-microphone me-2"></i>Ir para Clonagem de Voz
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Carrega componentes quando as abas são ativadas
+        
         document.addEventListener('DOMContentLoaded', function() {
-            // Inicializa a biblioteca de vozes
-            if (window.clonedVoicesLibrary) {
-                window.clonedVoicesLibrary.render('react-voices-container');
-            }
-
-            // Event listeners para abas
-            document.getElementById('voices-tab')?.addEventListener('shown.bs.tab', loadVoicesLibrary);
-            document.getElementById('cloning-tab')?.addEventListener('shown.bs.tab', loadVoiceCloning);
+            // Inicialização
         });
-
-        // Carrega trilha selecionada da biblioteca
+        
+        // Carrega áudio pendente ou trilha da biblioteca
         window.addEventListener('load', function() {
             setTimeout(function() {
+                if (!window.miniDAW) return;
+                
+                // Primeiro verifica trilha da biblioteca
                 const selectedTrackUrl = localStorage.getItem('selectedTrackUrl');
                 const selectedTrackName = localStorage.getItem('selectedTrackName');
                 
-                if (selectedTrackUrl && window.minidawReact && window.minidawReact.addMusicTrack) {
-                    console.log('Carregando trilha da biblioteca na MiniDAW React:', selectedTrackName);
-                    window.minidawReact.addMusicTrack(selectedTrackUrl, selectedTrackName || 'Trilha da Biblioteca');
+                if (selectedTrackUrl) {
+                    console.log('Carregando trilha da biblioteca...');
+                    window.miniDAW.addTrack('music');
+                    const trackId = window.miniDAW.tracks[window.miniDAW.tracks.length - 1].id;
                     
-                    // Limpa o localStorage para não carregar a mesma trilha novamente
-                    localStorage.removeItem('selectedTrackUrl');
-                    localStorage.removeItem('selectedTrackName');
+                    window.miniDAW.loadAudioFromUrl(selectedTrackUrl, trackId, selectedTrackName || 'Trilha').then(() => {
+                        localStorage.removeItem('selectedTrackUrl');
+                        localStorage.removeItem('selectedTrackName');
+                    }).catch(error => {
+                        console.error('Erro ao carregar trilha:', error);
+                        window.miniDAW.showNotification('Erro ao carregar trilha da biblioteca', 'error');
+                    });
+                    return;
                 }
-            }, 1500); // Espera um pouco mais para o MiniDAW React inicializar
+                
+                // Depois verifica áudio pendente do TTS
+                const pendingAudio = localStorage.getItem('minidaw_pending_audio');
+                const pendingFilename = localStorage.getItem('minidaw_pending_filename');
+                
+                if (pendingAudio) {
+                    console.log('Carregando áudio pendente...');
+                    fetch(pendingAudio)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            const file = new File([blob], pendingFilename || 'audio_gerado.wav', { type: 'audio/wav' });
+                            window.miniDAW.addTrack('voice');
+                            const trackId = window.miniDAW.tracks[window.miniDAW.tracks.length - 1].id;
+                            
+                            return window.miniDAW.loadAudioFile(file, trackId).then(() => {
+                                const track = window.miniDAW.tracks.find(t => t.id === trackId);
+                                if (track) {
+                                    track.name = (pendingFilename || 'audio_gerado').replace('.wav', '');
+                                    window.miniDAW.updateTrackUI(track);
+                                }
+                                window.miniDAW.showNotification('Áudio recebido do TTS!', 'success');
+                                localStorage.removeItem('minidaw_pending_audio');
+                                localStorage.removeItem('minidaw_pending_filename');
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Erro ao carregar áudio:', error);
+                            window.miniDAW.showNotification('Erro ao carregar áudio', 'error');
+                        });
+                }
+            }, 1000);
         });
-
-        // Função de exportação
-        function exportMix() {
-            if (window.minidawReact) {
-                window.minidawReact.exportMix();
-            } else {
-                alert('MiniDAW não está carregada');
-            }
-        }
     </script>
 </body>
 </html>
