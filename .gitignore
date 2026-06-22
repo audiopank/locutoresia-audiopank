@@ -88,3 +88,7 @@ locutoresia2026/
 .vercel
 .env*.local
 locutoresia_operations.json
+test_*.py
+append_*.py
+cleanup_*.py
+capacitor.config.json

@@ -37,6 +37,7 @@ try:
         print(f"[DEBUG] SUPABASE_URL após load_dotenv: {repr(os.getenv('SUPABASE_URL'))}")
         print(f"[DEBUG] NEWPOST_SUPABASE_URL: {repr(os.getenv('NEWPOST_SUPABASE_URL'))}")
         print(f"[DEBUG] NEWPOST_SUPABASE_SERVICE_KEY (primeiros 30): {repr(os.getenv('NEWPOST_SUPABASE_SERVICE_KEY')[:30])}")
+        print(f"[DEBUG] LMNT_API_KEY (primeiros 10): {repr(os.getenv('LMNT_API_KEY')[:10] if os.getenv('LMNT_API_KEY') else None)}")
     else:
         print(f"⚠️ Arquivo .env não encontrado em: {env_path}")
 except ImportError:
@@ -106,6 +107,19 @@ except Exception as e:
     print(f"⚠️ Erro ao inicializar NewsAutomationAgent: {e}")
     HAS_NEWS_AUTOMATION = False
     news_automation = None
+
+# Inicializar OrchestratorAgent (Exército de Agentes de IA)
+orchestrator = None
+HAS_ORCHESTRATOR = False
+try:
+    from core.orchestrator import get_orchestrator
+    orchestrator = get_orchestrator()
+    HAS_ORCHESTRATOR = True
+    print("✅ OrchestratorAgent (Exército de Agentes) inicializado com sucesso!")
+except Exception as e:
+    print(f"⚠️ Erro ao inicializar OrchestratorAgent: {e}")
+    HAS_ORCHESTRATOR = False
+    orchestrator = None
 
 # Helper para obter a chave Supabase correta
 def get_supabase_key():
@@ -533,6 +547,11 @@ except ImportError as e:
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/agent-army')
+def agent_army():
+    """Exército de Agentes de IA - Página Dedicada"""
+    return render_template('agent-army.html')
 
 @app.route('/minidaw')
 def minidaw():
@@ -3716,19 +3735,27 @@ except ImportError:
     from upload_handler import handle_upload, handle_voice_upload
 
 # Importar integração LMNT (usar versão segura para Vercel)
+print("[DEBUG] Iniciando importação do lmnt_integration")
 lmnt_integration = None
 if os.environ.get('VERCEL'):
     try:
+        print("[DEBUG] Vercel detectado, tentando importar core.lmnt_voice_cloner_vercel")
         from core.lmnt_voice_cloner_vercel import lmnt_integration
-    except ImportError:
+    except ImportError as e:
+        print(f"[DEBUG] Erro ao importar core.lmnt_voice_cloner_vercel: {e}")
         lmnt_integration = None
 else:
     try:
+        print("[DEBUG] Não Vercel, tentando importar backend.lmnt_integration")
         from backend.lmnt_integration import lmnt_integration
-    except ImportError:
+        print(f"[DEBUG] lmnt_integration importado com sucesso, available: {lmnt_integration.available}")
+    except ImportError as e:
+        print(f"[DEBUG] Erro ao importar backend.lmnt_integration: {e}")
         try:
+            print("[DEBUG] Tentando importar lmnt_integration diretamente")
             from lmnt_integration import lmnt_integration
-        except ImportError:
+        except ImportError as e:
+            print(f"[DEBUG] Erro ao importar lmnt_integration diretamente: {e}")
             lmnt_integration = None
 
 # Endpoints LMNT Integration
@@ -3746,6 +3773,7 @@ def lmnt_voices():
 def lmnt_generate():
     """Gera áudio usando LMNT"""
     try:
+        print("[DEBUG] Iniciando /api/lmnt/generate")
         data = request.get_json()
         if not data or 'text' not in data:
             return jsonify({'error': 'Texto não fornecido'}), 400
@@ -3760,15 +3788,35 @@ def lmnt_generate():
         if len(text) > 1000:  # Limite do LMNT
             return jsonify({'error': 'Texto muito longo (máximo 1000 caracteres)'}), 400
         
-        result = lmnt_integration.generate_speech(text, voice_id, format_type)
+        # Usar diretamente o LMNTVoiceCloner em vez de lmnt_integration
+        print("[DEBUG] Importando LMNTVoiceCloner diretamente")
+        from core.lmnt_voice_cloner import LMNTVoiceCloner
+        cloner = LMNTVoiceCloner()
+        print(f"[DEBUG] LMNTVoiceCloner inicializado, gerando áudio para voz: {voice_id}")
         
-        if 'error' in result:
-            return jsonify(result), 500
+        audio_bytes = cloner.synthesize_with_cloned_voice(voice_id, text)
+        print(f"[DEBUG] Áudio gerado com sucesso, tamanho: {len(audio_bytes)} bytes")
         
+        # Converter para base64
+        import base64
+        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+        
+        result = {
+            "success": True,
+            "audioContent": audio_base64,
+            "voice": voice_id,
+            "language": "pt",
+            "text": text
+        }
+        
+        print(f"[DEBUG] Retornando resultado com base64")
         return jsonify(result)
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"[DEBUG] Erro em /api/lmnt/generate: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Erro na geração: {str(e)}'}), 500
 
 @app.route('/api/lmnt/clone', methods=['POST'])
 def lmnt_clone():
@@ -3828,12 +3876,34 @@ def lmnt_clone():
         if not audio_data:
             return jsonify({'error': 'Dados de áudio não fornecidos'}), 400
 
-        result = lmnt_integration.clone_voice(name, audio_data, description, enhance)
-
-        if 'error' in result:
-            return jsonify(result), 500
-
-        return jsonify(result)
+        # ============================================
+        # USAR DIRETAMENTE O CÓDIGO ORIGINAL FUNCIONAL
+        # ============================================
+        try:
+            # Importar diretamente o LMNTVoiceCloner original
+            import sys
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from core.lmnt_voice_cloner import LMNTVoiceCloner
+            
+            print("[DEBUG] Usando LMNTVoiceCloner diretamente!")
+            
+            cloner = LMNTVoiceCloner()
+            result = cloner.clone_voice(name, audio_data, description, enhance)
+            
+            print(f"[DEBUG] Resultado do clone_voice: {result}")
+            
+            # Garantir que temos o voice_id na resposta
+            if 'voice' in result and 'id' in result['voice']:
+                result['voice_id'] = result['voice']['id']
+            elif 'id' in result:
+                result['voice_id'] = result['id']
+            
+            return jsonify(result)
+        except Exception as e:
+            print(f"[DEBUG] Erro no LMNTVoiceCloner diretamente: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Erro na clonagem: {str(e)}'}), 500
 
     except Exception as e:
         print(f'Erro no endpoint lmnt/clone: {e}')
@@ -5381,6 +5451,159 @@ def api_news_automation_published():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ============================================================
+# ENDPOINTS DO EXÉRCITO DE AGENTES DE IA
+# ============================================================
+
+@app.route('/api/agents/health', methods=['GET'])
+def agents_health():
+    """Health check para o Exército de Agentes de IA"""
+    return jsonify({
+        'success': True,
+        'status': 'running' if HAS_ORCHESTRATOR else 'error',
+        'message': 'Exército de Agentes de IA' if HAS_ORCHESTRATOR else 'Orchestrator não inicializado',
+        'agents': ['PlannerAgent', 'BuilderAgent', 'CodeReviewerAgent', 'TesterAgent', 'DeployerAgent'],
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    })
+
+@app.route('/api/agents/pipeline', methods=['POST'])
+def agents_pipeline():
+    """Inicia um pipeline completo do Exército de Agentes"""
+    if not HAS_ORCHESTRATOR or not orchestrator:
+        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
+    
+    try:
+        data = request.get_json() or {}
+        brief = data.get('brief', 'Projeto padrão')
+        project_name = data.get('project_name') or data.get('projectName') or f'projeto_{uuid.uuid4().hex[:8]}'
+        
+        # Executa pipeline completo
+        pipeline_result = orchestrator.execute({
+            'brief': brief,
+            'project_name': project_name
+        })
+        
+        return jsonify({
+            'success': True,
+            'pipeline': pipeline_result
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/agents/pipelines', methods=['GET'])
+def agents_list_pipelines():
+    """Lista todos os pipelines executados"""
+    if not HAS_ORCHESTRATOR or not orchestrator:
+        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
+    
+    try:
+        pipelines = orchestrator.list_pipelines()
+        return jsonify({
+            'success': True,
+            'pipelines': pipelines
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/agents/pipelines/<pipeline_id>', methods=['GET'])
+def agents_get_pipeline(pipeline_id):
+    """Obtém detalhes de um pipeline específico"""
+    if not HAS_ORCHESTRATOR or not orchestrator:
+        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
+    
+    try:
+        pipeline = orchestrator.get_pipeline(pipeline_id)
+        if pipeline:
+            return jsonify({'success': True, 'pipeline': pipeline})
+        else:
+            return jsonify({'success': False, 'error': 'Pipeline não encontrado'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/agents/planner', methods=['POST'])
+def agents_planner():
+    """Executa apenas o PlannerAgent"""
+    if not HAS_ORCHESTRATOR or not orchestrator:
+        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
+    
+    try:
+        data = request.get_json() or {}
+        brief = data.get('brief', 'Projeto padrão')
+        project_name = data.get('project_name') or data.get('projectName') or f'projeto_{uuid.uuid4().hex[:8]}'
+        
+        plan = orchestrator.agents['PlannerAgent'].execute({
+            'brief': brief,
+            'project_name': project_name
+        })
+        
+        return jsonify({'success': True, 'plan': plan})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/agents/builder', methods=['POST'])
+def agents_builder():
+    """Executa apenas o BuilderAgent"""
+    if not HAS_ORCHESTRATOR or not orchestrator:
+        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
+    
+    try:
+        data = request.get_json() or {}
+        plan = data.get('plan', {})
+        
+        artifacts = orchestrator.agents['BuilderAgent'].execute({'plan': plan})
+        return jsonify({'success': True, 'artifacts': artifacts})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/agents/reviewer', methods=['POST'])
+def agents_reviewer():
+    """Executa apenas o CodeReviewerAgent"""
+    if not HAS_ORCHESTRATOR or not orchestrator:
+        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
+    
+    try:
+        data = request.get_json() or {}
+        artifacts = data.get('artifacts', {})
+        
+        review = orchestrator.agents['CodeReviewerAgent'].execute({'artifacts': artifacts})
+        return jsonify({'success': True, 'review': review})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/agents/tester', methods=['POST'])
+def agents_tester():
+    """Executa apenas o TesterAgent"""
+    if not HAS_ORCHESTRATOR or not orchestrator:
+        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
+    
+    try:
+        data = request.get_json() or {}
+        plan = data.get('plan', {})
+        
+        test_results = orchestrator.agents['TesterAgent'].execute({'plan': plan})
+        return jsonify({'success': True, 'tests': test_results})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/agents/deployer', methods=['POST'])
+def agents_deployer():
+    """Executa apenas o DeployerAgent"""
+    if not HAS_ORCHESTRATOR or not orchestrator:
+        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
+    
+    try:
+        data = request.get_json() or {}
+        artifacts = data.get('artifacts', {})
+        project_name = data.get('project_name') or data.get('projectName') or f'projeto_{uuid.uuid4().hex[:8]}'
+        
+        deployment = orchestrator.agents['DeployerAgent'].execute({
+            'artifacts': artifacts,
+            'project_name': project_name
+        })
+        return jsonify({'success': True, 'deployment': deployment})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # Para desenvolvimento local
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
@@ -5388,6 +5611,3 @@ if __name__ == '__main__':
     print("Acesse: http://localhost:5000")
     print("Dashboard: http://localhost:5000/dashboard")
     app.run(host='0.0.0.0', port=port, debug=True)
-
-# Fim do arquivo app.py - Atualizado 2026-05-22 - Busca de Notícias + Publicar na NewPost-IA!!
-# Usando NEWPOST_SUPABASE_URL e NEWPOST_SUPABASE_SERVICE_KEY!
