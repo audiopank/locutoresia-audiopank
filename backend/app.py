@@ -5039,7 +5039,7 @@ def gemini_improve_script():
         from google import genai
         
         client = genai.Client(api_key=api_key)
-        model_name = 'gemini-2.0-flash'
+        model_name = 'gemini-2.5-flash'
         
         prompt = f"Melhore o seguinte roteiro para uma locução profissional, mantendo o significado original, mas tornando-o mais fluido e envolvente:\n\n{text}"
         
@@ -5094,7 +5094,7 @@ def gemini_change_tone():
         from google import genai
         
         client = genai.Client(api_key=api_key)
-        model_name = 'gemini-2.0-flash'
+        model_name = 'gemini-2.5-flash'
         
         prompt = f"Reescreva o seguinte roteiro com um tom {tone_descriptions.get(tone, tone)}, mantendo todo o conteúdo e informação original:\n\n{text}"
         
