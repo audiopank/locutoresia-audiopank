@@ -46,6 +46,10 @@ ENV/
 generated_audio/*.wav
 generated_audio/*.mp3
 !generated_audio/.gitkeep
+backend/generated_audio/*.wav
+backend/generated_audio/*.mp3
+!backend/generated_audio/.gitkeep
+*.tmp
 
 # Logs
 *.log
