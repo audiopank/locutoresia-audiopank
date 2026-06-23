@@ -5036,15 +5036,17 @@ def gemini_improve_script():
             print("[GEMINI] ERRO: API Key não encontrada")
             return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
         
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
+        from google import genai
         
+        client = genai.Client(api_key=api_key)
         model_name = 'gemini-2.0-flash'
-        model = genai.GenerativeModel(model_name)
         
         prompt = f"Melhore o seguinte roteiro para uma locução profissional, mantendo o significado original, mas tornando-o mais fluido e envolvente:\n\n{text}"
         
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt
+        )
         
         return jsonify({
             "success": True,
@@ -5089,15 +5091,17 @@ def gemini_change_tone():
             print("[GEMINI] ERRO: API Key não encontrada")
             return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
         
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
+        from google import genai
         
+        client = genai.Client(api_key=api_key)
         model_name = 'gemini-2.0-flash'
-        model = genai.GenerativeModel(model_name)
         
         prompt = f"Reescreva o seguinte roteiro com um tom {tone_descriptions.get(tone, tone)}, mantendo todo o conteúdo e informação original:\n\n{text}"
         
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt
+        )
         
         return jsonify({
             "success": True,
