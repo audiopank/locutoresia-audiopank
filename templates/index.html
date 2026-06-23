@@ -850,6 +850,9 @@
                                         <option value="formal">Formal</option>
                                         <option value="informal">Informal</option>
                                     </select>
+                                    <button class="btn btn-success" id="saveScriptBtn">
+                                        <i class="fas fa-save me-2"></i>Salvar Roteiro
+                                    </button>
                                 </div>
                                 
                                 <!-- Gemini Suggestions Area -->
@@ -867,6 +870,19 @@
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Script Library Section -->
+                        <div class="generation-panel mb-4">
+                            <h5><i class="fas fa-book"></i>Biblioteca de Roteiros</h5>
+                            
+                            <div id="scriptsContainer" class="mt-3">
+                                <div class="text-center py-4 text-secondary" id="noScriptsMsg">
+                                    <i class="fas fa-file-alt fa-3x mb-2"></i>
+                                    <p>Nenhum roteiro salvo ainda. Salve seu primeiro roteiro acima!</p>
+                                </div>
+                                <div id="scriptsList" class="row g-3"></div>
                             </div>
                         </div>
 
@@ -1110,6 +1126,158 @@
             document.getElementById('geminiSuggestions').style.display = 'none';
         }
 
+        // Biblioteca de Roteiros
+        let currentScripts = [];
+
+
+
+        async function loadScripts() {
+            try {
+                const response = await fetch('/api/scripts');
+                const data = await response.json();
+                if (data.success) {
+                    currentScripts = data.scripts;
+                    renderScripts();
+                }
+            } catch (error) {
+                console.error('Erro ao carregar roteiros:', error);
+            }
+        }
+
+        function renderScripts() {
+            const container = document.getElementById('scriptsList');
+            const noScriptsMsg = document.getElementById('noScriptsMsg');
+
+            if (!container) return;
+
+            if (currentScripts.length === 0) {
+                noScriptsMsg.style.display = 'block';
+                container.innerHTML = '';
+                return;
+            }
+
+            noScriptsMsg.style.display = 'none';
+            container.innerHTML = currentScripts.map(script => `
+                <div class="col-12" id="script-${script.id}">
+                    <div class="p-3 bg-dark rounded-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div class="flex-grow-1">
+                                <input type="text" class="form-control form-control-sm bg-transparent text-light border-0 fw-bold" 
+                                       id="title-${script.id}" value="${script.title.replace(/"/g, '&quot;')}" 
+                                       onchange="updateScriptTitle('${script.id}')">
+                                <small class="text-secondary">${new Date(script.created_at).toLocaleString('pt-BR')}</small>
+                            </div>
+                            <div class="d-flex gap-2 ms-2">
+                                <button class="btn btn-sm btn-outline-light" title="Usar no Editor" onclick="useScript('${script.id}')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" title="Gerar Locução" onclick="generateVoiceFromScript('${script.id}')">
+                                    <i class="fas fa-microphone"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteScript('${script.id}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <textarea class="form-control form-control-sm bg-dark text-light border-secondary" 
+                                  id="content-${script.id}" rows="3" 
+                                  onchange="updateScriptContent('${script.id}')">${script.content}</textarea>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function saveScript() {
+            const content = document.getElementById('scriptEditor').value.trim();
+            if (!content) {
+                showNotification('Por favor, escreva um roteiro primeiro!', 'warning');
+                return;
+            }
+
+            const title = prompt('Digite um título para o roteiro:', 'Roteiro ' + new Date().toLocaleDateString('pt-BR'));
+            if (!title) return;
+
+            try {
+                const response = await fetch('/api/scripts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, content })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Roteiro salvo com sucesso!', 'success');
+                    loadScripts();
+                }
+            } catch (error) {
+                console.error('Erro ao salvar roteiro:', error);
+                showNotification('Erro ao salvar roteiro!', 'error');
+            }
+        }
+
+        async function updateScriptTitle(scriptId) {
+            const title = document.getElementById(`title-${scriptId}`).value;
+            try {
+                await fetch(`/api/scripts/${scriptId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+                showNotification('Título atualizado!', 'success');
+                loadScripts();
+            } catch (error) {
+                console.error('Erro:', error);
+            }
+        }
+
+        async function updateScriptContent(scriptId) {
+            const content = document.getElementById(`content-${scriptId}`).value;
+            try {
+                await fetch(`/api/scripts/${scriptId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                showNotification('Conteúdo atualizado!', 'success');
+            } catch (error) {
+                console.error('Erro:', error);
+            }
+        }
+
+        function useScript(scriptId) {
+            const script = currentScripts.find(s =&gt; s.id === scriptId);
+            if (script) {
+                document.getElementById('scriptEditor').value = script.content;
+                document.getElementById('textInput').value = script.content;
+                showNotification('Roteiro carregado no editor!', 'info');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        function generateVoiceFromScript(scriptId) {
+            const script = currentScripts.find(s =&gt; s.id === scriptId);
+            if (script) {
+                document.getElementById('textInput').value = script.content;
+                showNotification('Roteiro carregado para gerar locução!', 'info');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        async function deleteScript(scriptId) {
+            if (!confirm('Tem certeza que deseja excluir este roteiro?')) return;
+
+            try {
+                const response = await fetch(`/api/scripts/${scriptId}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Roteiro excluído com sucesso!', 'success');
+                    loadScripts();
+                }
+            } catch (error) {
+                console.error('Erro ao excluir roteiro:', error);
+                showNotification('Erro ao excluir roteiro!', 'error');
+            }
+        }
+
         // Modified sendToMiniDAW to use localStorage
         function sendToMiniDAW() {
             console.log('Iniciando sendToMiniDAW...');
@@ -1171,6 +1339,9 @@
             const dismissBtn = document.getElementById('dismissSuggestionBtn');
             if (dismissBtn) dismissBtn.addEventListener('click', dismissSuggestion);
 
+            const saveBtn = document.getElementById('saveScriptBtn');
+            if (saveBtn) saveBtn.addEventListener('click', saveScript);
+
             // Copy script to text input
             const scriptEditor = document.getElementById('scriptEditor');
             const textInput = document.getElementById('textInput');
@@ -1179,6 +1350,9 @@
                     textInput.value = scriptEditor.value;
                 });
             }
+
+            // Load scripts from library
+            loadScripts();
         });
     </script>
     <script>

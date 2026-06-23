@@ -5608,6 +5608,131 @@ def agents_deployer():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# Biblioteca de Roteiros
+SCRIPTS_FILE = os.path.join(os.path.dirname(__file__), '..', 'scripts_library.json')
+
+def load_scripts():
+    if os.path.exists(SCRIPTS_FILE):
+        try:
+            with open(SCRIPTS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_scripts(scripts):
+    with open(SCRIPTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(scripts, f, ensure_ascii=False, indent=2)
+
+@app.route('/api/scripts', methods=['GET', 'OPTIONS'])
+def get_scripts():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        return response
+    try:
+        scripts = load_scripts()
+        return jsonify({'success': True, 'scripts': scripts})
+    except Exception as e:
+        print(f'[SCRIPTS] ERRO: {e}')
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/scripts', methods=['POST', 'OPTIONS'])
+def create_script():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        return response
+    try:
+        data = request.get_json()
+        title = data.get('title', 'Roteiro sem título')
+        content = data.get('content', '')
+        
+        if not content:
+            return jsonify({'success': False, 'error': 'Conteúdo do roteiro é obrigatório'}), 400
+        
+        scripts = load_scripts()
+        new_script = {
+            'id': str(uuid.uuid4()),
+            'title': title,
+            'content': content,
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        scripts.insert(0, new_script)
+        save_scripts(scripts)
+        
+        return jsonify({'success': True, 'script': new_script})
+    except Exception as e:
+        print(f'[SCRIPTS] ERRO: {e}')
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/scripts/<script_id>', methods=['PUT', 'OPTIONS'])
+def update_script(script_id):
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        return response
+    try:
+        data = request.get_json()
+        title = data.get('title')
+        content = data.get('content')
+        
+        scripts = load_scripts()
+        script_index = next((i for i, s in enumerate(scripts) if s['id'] == script_id), None)
+        
+        if script_index is None:
+            return jsonify({'success': False, 'error': 'Roteiro não encontrado'}), 404
+        
+        if title is not None:
+            scripts[script_index]['title'] = title
+        if content is not None:
+            scripts[script_index]['content'] = content
+        scripts[script_index]['updated_at'] = datetime.now().isoformat()
+        
+        save_scripts(scripts)
+        return jsonify({'success': True, 'script': scripts[script_index]})
+    except Exception as e:
+        print(f'[SCRIPTS] ERRO: {e}')
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/scripts/<script_id>', methods=['DELETE', 'OPTIONS'])
+def delete_script(script_id):
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        return response
+    try:
+        scripts = load_scripts()
+        script_index = next((i for i, s in enumerate(scripts) if s['id'] == script_id), None)
+        
+        if script_index is None:
+            return jsonify({'success': False, 'error': 'Roteiro não encontrado'}), 404
+        
+        del scripts[script_index]
+        save_scripts(scripts)
+        
+        return jsonify({'success': True, 'message': 'Roteiro excluído com sucesso'})
+    except Exception as e:
+        print(f'[SCRIPTS] ERRO: {e}')
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # Para desenvolvimento local
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
