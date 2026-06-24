@@ -1157,34 +1157,37 @@
             }
 
             noScriptsMsg.style.display = 'none';
-            container.innerHTML = currentScripts.map(script => `
-                <div class="col-12" id="script-${script.id}">
+            container.innerHTML = currentScripts.map(function(script) {
+                const escapedTitle = script.title.replace(/"/g, '\\"');
+                const safeId = script.id.replace(/'/g, "\\'");
+                return `
+                <div class="col-12" id="script-${safeId}">
                     <div class="p-3 bg-dark rounded-3">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div class="flex-grow-1">
                                 <input type="text" class="form-control form-control-sm bg-transparent text-light border-0 fw-bold" 
-                                       id="title-${script.id}" value="${script.title.replace(/"/g, '&quot;')}" 
-                                       onchange="updateScriptTitle('${script.id}')">
+                                       id="title-${safeId}" value="${escapedTitle}" 
+                                       onchange="updateScriptTitle('${safeId}')">
                                 <small class="text-secondary">${new Date(script.created_at).toLocaleString('pt-BR')}</small>
                             </div>
                             <div class="d-flex gap-2 ms-2">
-                                <button class="btn btn-sm btn-outline-light" title="Usar no Editor" onclick="useScript('${script.id}')">
+                                <button class="btn btn-sm btn-outline-light" title="Usar no Editor" onclick="useScript('${safeId}')">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn btn-sm btn-outline-primary" title="Gerar Locução" onclick="generateVoiceFromScript('${script.id}')">
+                                <button class="btn btn-sm btn-outline-primary" title="Gerar Locução" onclick="generateVoiceFromScript('${safeId}')">
                                     <i class="fas fa-microphone"></i>
                                 </button>
-                                <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteScript('${script.id}')">
+                                <button class="btn btn-sm btn-danger" title="Excluir" onclick="deleteScript('${safeId}')">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
                         </div>
                         <textarea class="form-control form-control-sm bg-dark text-light border-secondary" 
-                                  id="content-${script.id}" rows="3" 
-                                  onchange="updateScriptContent('${script.id}')">${script.content}</textarea>
+                                  id="content-${safeId}" rows="3" 
+                                  onchange="updateScriptContent('${safeId}')">${script.content}</textarea>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         async function saveScript() {
@@ -1244,7 +1247,7 @@
         }
 
         function useScript(scriptId) {
-            const script = currentScripts.find(s =&gt; s.id === scriptId);
+            const script = currentScripts.find(function(s) { return s.id === scriptId; });
             if (script) {
                 document.getElementById('scriptEditor').value = script.content;
                 document.getElementById('textInput').value = script.content;
@@ -1254,7 +1257,7 @@
         }
 
         function generateVoiceFromScript(scriptId) {
-            const script = currentScripts.find(s =&gt; s.id === scriptId);
+            const script = currentScripts.find(function(s) { return s.id === scriptId; });
             if (script) {
                 document.getElementById('textInput').value = script.content;
                 showNotification('Roteiro carregado para gerar locução!', 'info');
