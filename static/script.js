@@ -26,12 +26,12 @@ function showToast(title, description = '', variant = 'success') {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🎙️ Locutores IA - Inicializando...');
+    console.log('??? Locutores IA - Inicializando...');
     
     loadAllVoices();
     updateStats();
 
-    // Botão Gerar Áudio
+    // Botão Gerar áudio
     const generateBtn = document.getElementById('generateBtn');
     if (generateBtn) {
         generateBtn.addEventListener('click', generateAudio);
@@ -53,10 +53,10 @@ document.addEventListener('DOMContentLoaded', function() {
         audioInput.addEventListener('change', handleAudioFileSelect);
     }
 
-    console.log('✅ Locutores IA - Inicialização completa!');
+    console.log('? Locutores IA - Inicialização completa!');
 });
 
-// ÔöÇÔöÇ Carregar TODAS as vozes (Gemini + Edge TTS + ElevenLabs) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ── Carregar TODAS as vozes (Gemini + Edge TTS + ElevenLabs) ───────────────────
 async function loadAllVoices() {
     try {
         const response = await fetch('/api/voices');
@@ -77,7 +77,7 @@ async function loadAllVoices() {
             }));
         }
         
-        // Carregar vozes da ElevenLabs tamb├®m
+        // Carregar vozes da ElevenLabs também
         try {
             const elevenResponse = await fetch('/api/list-elevenlabs-voices');
             const elevenResult = await elevenResponse.json();
@@ -90,7 +90,7 @@ async function loadAllVoices() {
                 currentVoices = [...currentVoices, ...elevenWithStyle];
             }
         } catch (elevenError) {
-            console.log('⚠️ Vozes ElevenLabs não carregadas:', elevenError);
+            console.log('?? Vozes ElevenLabs não carregadas:', elevenError);
         }
         
         // Carregar vozes clonadas do localStorage
@@ -113,7 +113,7 @@ async function loadAllVoices() {
                 currentVoices = [...currentVoices, ...clonedWithFormat];
             }
         } catch (clonedError) {
-            console.log('⚠️ Vozes clonadas não carregadas:', clonedError);
+            console.log('?? Vozes clonadas não carregadas:', clonedError);
         }
         
         // Check if there's a selected voice from localStorage (from cloned voices page)
@@ -136,15 +136,15 @@ async function loadAllVoices() {
             }, 500);
         }
         
-        console.log(`✅ ${currentVoices.length} vozes carregadas (incluindo Gemini e ElevenLabs)!`);
+        console.log(`? ${currentVoices.length} vozes carregadas (incluindo Gemini e ElevenLabs)!`);
         allVoices = [...currentVoices];
         renderVoices(currentVoices);
         populateVoiceSelect();
     } catch (error) {
         console.error('Erro ao carregar vozes:', error);
-        // Fallback para voz padr├úo
+        // Fallback para voz padrão
         currentVoices = [
-            { id: 'Sadachbia', name: 'Sadachbia - Gemini', description: 'Voz masculina clara e profissional', gender: 'male', language: 'pt-BR', style: 'professional', avatar: 'https://picsum.photos/seed/Sadachbia/80/80', model: 'Sadachbia', provider: 'gemini', sampleText: 'Bem-vindo ├á nossa plataforma. Estamos aqui para oferecer o melhor servi├ºo poss├¡vel.' }
+            { id: 'Sadachbia', name: 'Sadachbia - Gemini', description: 'Voz masculina clara e profissional', gender: 'male', language: 'pt-BR', style: 'professional', avatar: 'https://picsum.photos/seed/Sadachbia/80/80', model: 'Sadachbia', provider: 'gemini', sampleText: 'Bem-vindo à nossa plataforma. Estamos aqui para oferecer o melhor serviço possível.' }
         ];
         renderVoices(currentVoices);
         populateVoiceSelect();
@@ -188,10 +188,10 @@ function getVoiceProvider(voiceId) {
 }
 
 function getSampleText(voice) {
-    return `Ol├í! Esta ├® uma amostra da voz ${voice.id} gerada com intelig├¬ncia artificial.`;
+    return `Olá! Esta é uma amostra da voz ${voice.id} gerada com inteligência artificial.`;
 }
 
-// ÔöÇÔöÇ Renderizar vozes ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ── Renderizar vozes ───────────────────────────────────────────────────────
 function renderVoices(voices) {
     const container = document.getElementById('voicesContainer');
     container.innerHTML = '';
@@ -237,11 +237,11 @@ function getProviderBadge(provider) {
     return '<span class="badge bg-success ms-1">Free</span>';
 }
 
-// ÔöÇÔöÇ Populate select agrupado ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ── Populate select agrupado ───────────────────────────────────────────────
 function populateVoiceSelect() {
     const select = document.getElementById('voiceSelect');
     if (!select) {
-        console.error('ERRO: Elemento voiceSelect n├úo encontrado!');
+        console.error('ERRO: Elemento voiceSelect não encontrado!');
         return;
     }
 
@@ -253,7 +253,7 @@ function populateVoiceSelect() {
     const geminiVoices = currentVoices.filter(v => v.provider === 'gemini');
     if (geminiVoices.length > 0) {
         const geminiGroup = document.createElement('optgroup');
-        geminiGroup.label = '­ƒîƒ Gemini 3.1 Flash TTS (Recomendado)';
+        geminiGroup.label = '🌟 Gemini 3.1 Flash TTS (Recomendado)';
         geminiVoices.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.id;
@@ -268,7 +268,7 @@ function populateVoiceSelect() {
     const edgeVoices = currentVoices.filter(v => v.provider === 'edge');
     if (edgeVoices.length > 0) {
         const edgeGroup = document.createElement('optgroup');
-        edgeGroup.label = '­ƒÄÖ´©Å Edge TTS (Gratuito)';
+        edgeGroup.label = '🎙️ Edge TTS (Gratuito)';
         edgeVoices.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.id;
@@ -283,7 +283,7 @@ function populateVoiceSelect() {
     const elevenlabsVoices = currentVoices.filter(v => v.provider === 'elevenlabs');
     if (elevenlabsVoices.length > 0) {
         const elevenlabsGroup = document.createElement('optgroup');
-        elevenlabsGroup.label = '🎭 ElevenLabs';
+        elevenlabsGroup.label = '?? ElevenLabs';
         elevenlabsVoices.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.id;
@@ -298,7 +298,7 @@ function populateVoiceSelect() {
     const clonedVoices = currentVoices.filter(v => v.provider === 'cloned');
     if (clonedVoices.length > 0) {
         const clonedGroup = document.createElement('optgroup');
-        clonedGroup.label = '🎤 Vozes Clonadas';
+        clonedGroup.label = '?? Vozes Clonadas';
         clonedVoices.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.id;
@@ -312,7 +312,7 @@ function populateVoiceSelect() {
     console.log('VoiceSelect populado com sucesso!');
 }
 
-// ÔöÇÔöÇ Selecionar voz ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ── Selecionar voz ─────────────────────────────────────────────────────────
 function selectVoice(voiceId) {
     selectedVoice = currentVoices.find(v => String(v.id) === String(voiceId));
     document.getElementById('voiceSelect').value = voiceId;
@@ -320,7 +320,7 @@ function selectVoice(voiceId) {
     document.querySelector('.generation-panel').scrollIntoView({ behavior: 'smooth' });
 }
 
-// ÔöÇÔöÇ Filtros ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ── Filtros ────────────────────────────────────────────────────────────────
 function applyFilters() {
     const gender = document.getElementById('genderFilter').value;
     const language = document.getElementById('languageFilter').value;
@@ -343,13 +343,13 @@ function resetFilters() {
     loadAllVoices();
 }
 
-// ÔöÇÔöÇ Gerar ├íudio ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ── Gerar áudio ───────────────────────────────────────────────────────────
 async function generateAudio() {
     const text = document.getElementById('textInput').value.trim();
     const voiceId = document.getElementById('voiceSelect').value;
     const speechStyle = document.getElementById('styleSelect').value;
 
-    if (!text) { alert('Por favor, digite o texto para gerar o ├íudio.'); return; }
+    if (!text) { alert('Por favor, digite o texto para gerar o áudio.'); return; }
     if (!voiceId) { alert('Por favor, selecione uma voz IA.'); return; }
 
     console.log('Looking for voiceId:', voiceId);
@@ -382,12 +382,12 @@ async function generateAudio() {
             })
         });
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Erro ao gerar ├íudio');
+        if (!response.ok) throw new Error(result.error || 'Erro ao gerar áudio');
         
         const audioUrl = result.download_url + '?t=' + Date.now();
         const audioPlayer = document.getElementById('generatedAudio');
         
-        // Fetch do ├íudio e salvar como blob
+        // Fetch do áudio e salvar como blob
         try {
             const audioResponse = await fetch(audioUrl);
             lastGeneratedAudioBlob = await audioResponse.blob();
@@ -402,12 +402,12 @@ async function generateAudio() {
         const playerDiv = document.getElementById('audioPlayer');
         playerDiv.style.display = 'block';
         playerDiv.classList.add('active');
-        console.log('Ô£à Player de ├íudio exibido');
+        console.log('✅ Player de áudio exibido');
         updateStats();
     } catch (error) {
-        console.error('Erro ao gerar ├íudio:', error);
+        console.error('Erro ao gerar áudio:', error);
         document.getElementById('loadingSpinner').style.display = 'none';
-        alert('Erro ao gerar ├íudio: ' + error.message + '\n\nPor favor, tente novamente.');
+        alert('Erro ao gerar áudio: ' + error.message + '\n\nPor favor, tente novamente.');
     }
 }
 
@@ -439,18 +439,18 @@ function downloadAudio() {
 
 function shareAudio() {
     if (navigator.share) {
-        navigator.share({ title: 'Locu├º├úo IA', text: 'Confira esta locu├º├úo!', url: window.location.href });
+        navigator.share({ title: 'Locução IA', text: 'Confira esta locução!', url: window.location.href });
     } else {
         navigator.clipboard.writeText(window.location.href);
         alert('Link copiado!');
     }
 }
 
-// ÔöÇÔöÇ Enviar ├íudio para MiniDAW externa ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ── Enviar áudio para MiniDAW externa ─────────────────────────────────────
 function sendToMiniDAW() {
     const audioPlayer = document.getElementById('generatedAudio');
     if (!audioPlayer || !audioPlayer.src || audioPlayer.src === window.location.href) {
-        alert('Gere um ├íudio primeiro!');
+        alert('Gere um áudio primeiro!');
         return;
     }
     localStorage.setItem('minidaw_pending_audio', audioPlayer.src);
@@ -469,20 +469,20 @@ function getGenderLabel(g) {
 }
 
 function getLanguageLabel(l) {
-    return { 'pt-BR': 'Portugu├¬s BR', 'pt-PT': 'Portugu├¬s PT', 'en-US': 'Ingl├¬s US', 'en-GB': 'Ingl├¬s UK', 'es-ES': 'Espanhol', 'fr-FR': 'Franc├¬s', 'de-DE': 'Alem├úo', 'it-IT': 'Italiano', 'ja-JP': 'Japon├¬s', 'zh-CN': 'Chin├¬s' }[l] || l;
+    return { 'pt-BR': 'Português BR', 'pt-PT': 'Português PT', 'en-US': 'Inglês US', 'en-GB': 'Inglês UK', 'es-ES': 'Espanhol', 'fr-FR': 'Francês', 'de-DE': 'Alemão', 'it-IT': 'Italiano', 'ja-JP': 'Japonês', 'zh-CN': 'Chinês' }[l] || l;
 }
 
 function getStyleLabel(s) {
-    return { professional: 'Profissional', friendly: 'Amig├ível', energetic: 'Energ├®tico', calm: 'Calmo' }[s] || s;
+    return { professional: 'Profissional', friendly: 'Amigável', energetic: 'Energético', calm: 'Calmo' }[s] || s;
 }
 
-// ÔöÇÔöÇ Clonagem (desabilitada) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ── Clonagem (desabilitada) ────────────────────────────────────────────────
 let audioFileBase64 = null;
 
 function handleAudioFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { alert('Arquivo muito grande. M├íximo: 10MB'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('Arquivo muito grande. Máximo: 10MB'); return; }
     const reader = new FileReader();
     reader.onload = e => {
         audioFileBase64 = e.target.result;
