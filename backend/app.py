@@ -5059,6 +5059,52 @@ def gemini_improve_script():
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/gemini/script', methods=['POST', 'OPTIONS'])
+def gemini_generate_script():
+    """Gera um roteiro de locução a partir de um briefing usando o Gemini"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        brief = (data.get('prompt') or data.get('brief') or '').strip()
+        if not brief:
+            return jsonify({"success": False, "error": "Dados inválidos: 'prompt' é obrigatório"}), 400
+
+        tone = data.get('tone', 'profissional')
+        duration = data.get('duration')  # segundos (opcional)
+
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
+
+        from google import genai
+
+        client = genai.Client(api_key=api_key)
+        model_name = 'gemini-2.5-flash'
+
+        dur_txt = f" com duração aproximada de {duration} segundos quando narrado" if duration else ""
+        prompt = (
+            "Você é um redator publicitário especializado em roteiros de locução em português do Brasil. "
+            f"Escreva um roteiro de locução{dur_txt} em tom {tone}, pronto para ser narrado por uma voz de IA. "
+            "Retorne APENAS o texto do roteiro (sem marcações de cena, sem aspas, sem títulos), fluido e natural para fala.\n\n"
+            f"Briefing/tema: {brief}"
+        )
+
+        response = client.models.generate_content(model=model_name, contents=prompt)
+
+        return jsonify({"success": True, "text": (response.text or '').strip()})
+
+    except Exception as e:
+        print(f"[GEMINI script] ERRO: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/gemini/tone', methods=['POST', 'OPTIONS'])
 def gemini_change_tone():
     """Altera o tom de um roteiro usando o Gemini"""
@@ -5605,6 +5651,119 @@ def agents_deployer():
             'project_name': project_name
         })
         return jsonify({'success': True, 'deployment': deployment})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# =====================================================================
+# Projetos VIP — Audio Pank Studio (salvar/abrir projetos da MiniDAW)
+# =====================================================================
+def _vip_file():
+    # Vercel: filesystem read-only exceto /tmp (persistência efêmera por instância)
+    if os.environ.get('VERCEL'):
+        return os.path.join('/tmp', 'vip_projects.json')
+    return os.path.join(os.path.dirname(__file__), '..', 'vip_projects.json')
+
+def load_vip_projects():
+    f = _vip_file()
+    if os.path.exists(f):
+        try:
+            with open(f, 'r', encoding='utf-8') as fp:
+                return json.load(fp)
+        except Exception:
+            return []
+    return []
+
+def save_vip_projects(projects):
+    with open(_vip_file(), 'w', encoding='utf-8') as fp:
+        json.dump(projects, fp, ensure_ascii=False, indent=2)
+
+def _vip_cors_preflight():
+    response = make_response()
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    return response
+
+@app.route('/api/projects', methods=['GET', 'OPTIONS'])
+def list_vip_projects():
+    if request.method == 'OPTIONS':
+        return _vip_cors_preflight()
+    try:
+        projects = load_vip_projects()
+        # Resumo leve para a listagem (sem o payload completo das faixas)
+        summary = [{
+            'id': p.get('id'),
+            'name': p.get('name'),
+            'description': p.get('description', ''),
+            'tracks_count': len(p.get('tracks', [])),
+            'updated_at': p.get('updated_at'),
+            'created_at': p.get('created_at'),
+        } for p in projects]
+        return jsonify({'success': True, 'projects': summary})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/projects', methods=['POST', 'OPTIONS'])
+def save_vip_project():
+    if request.method == 'OPTIONS':
+        return _vip_cors_preflight()
+    try:
+        data = request.get_json() or {}
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'success': False, 'error': 'Nome do projeto é obrigatório'}), 400
+
+        projects = load_vip_projects()
+        now = datetime.now().isoformat()
+        pid = data.get('id') or str(uuid.uuid4())
+
+        project = {
+            'id': pid,
+            'name': name,
+            'description': data.get('description', ''),
+            'projectId': data.get('projectId', ''),
+            'roteiro': data.get('roteiro', ''),
+            'tracks': data.get('tracks', []),
+            'updated_at': now,
+            'created_at': data.get('created_at') or now,
+        }
+
+        idx = next((i for i, p in enumerate(projects) if p.get('id') == pid), None)
+        if idx is not None:
+            projects[idx] = project
+        else:
+            projects.insert(0, project)
+        save_vip_projects(projects)
+
+        return jsonify({'success': True, 'project': project})
+    except Exception as e:
+        print(f'[VIP] ERRO ao salvar: {e}')
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/projects/<project_id>', methods=['GET', 'OPTIONS'])
+def get_vip_project(project_id):
+    if request.method == 'OPTIONS':
+        return _vip_cors_preflight()
+    try:
+        projects = load_vip_projects()
+        project = next((p for p in projects if p.get('id') == project_id), None)
+        if not project:
+            return jsonify({'success': False, 'error': 'Projeto não encontrado'}), 404
+        return jsonify({'success': True, 'project': project})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/projects/<project_id>', methods=['DELETE', 'OPTIONS'])
+def delete_vip_project(project_id):
+    if request.method == 'OPTIONS':
+        return _vip_cors_preflight()
+    try:
+        projects = load_vip_projects()
+        new_list = [p for p in projects if p.get('id') != project_id]
+        save_vip_projects(new_list)
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

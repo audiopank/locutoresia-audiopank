@@ -122,18 +122,21 @@ class LMNTVoiceCloner:
             raise ValueError("LMNT_API_KEY não configurada")
         
         try:
+            # Endpoint atual da API LMNT (o antigo /v1/ai/synthesize retorna 404)
             response = requests.post(
-                'https://api.lmnt.com/v1/ai/synthesize',
+                'https://api.lmnt.com/v1/ai/speech/bytes',
                 headers={
                     'X-API-Key': self.api_key,
                     'Content-Type': 'application/json'
                 },
                 json={
                     'voice': voice_id,
-                    'text': text
-                }
+                    'text': text,
+                    'format': 'mp3'
+                },
+                timeout=30
             )
-            
+
             response.raise_for_status()
             return response.content
             

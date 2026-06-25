@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mic, Wand2, Play, Pause, Loader2, Plus, History, User, Volume2 } from "lucide-react";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Mic, Wand2, Play, Pause, Loader2, Plus, History, User, Volume2, X } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 import { useLMNT } from "@/hooks/useLMNT";
 import { Progress } from "@/components/ui/progress";
@@ -20,6 +21,19 @@ interface ClonedVoiceEntry {
   lmntVoiceId?: string;
 }
 
+// Locutor padrão vindo do backend /api/voices (Gemini / ElevenLabs)
+interface ApiVoice {
+  id: string;
+  name: string;
+  provider: string;
+  gender?: string;
+  language?: string;
+}
+
+// Chaves compostas para o Select distinguir voz clonada x locutor padrão
+const clonedKey = (id: string) => `cloned::${id}`;
+const apiKey = (provider: string, id: string) => `api::${provider}::${id}`;
+
 interface GenerationHistory {
   id: string;
   text: string;
@@ -29,46 +43,116 @@ interface GenerationHistory {
   createdAt: string;
 }
 
-export const VoiceGenerator = ({ onAudioGenerated }: { onAudioGenerated: (audioUrl: string, name: string) => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [text, setText] = useState("");
-  const [selectedVoiceId, setSelectedVoiceId] = useState("");
-  const [voices, setVoices] = useState<ClonedVoiceEntry[]>([]);
+interface VoiceGeneratorProps {
+  open: boolean;
+  onClose: () => void;
+  onAudioGenerated: (audioUrl: string, name: string) => void;
+  initialText?: string;
+  initialVoiceKey?: string;
+}
+
+export const VoiceGenerator = ({ open, onClose, onAudioGenerated, initialText, initialVoiceKey }: VoiceGeneratorProps) => {
+  const [text, setText] = useState(initialText || "");
+  const [selectedKey, setSelectedKey] = useState("");
+  const [clonedVoices, setClonedVoices] = useState<ClonedVoiceEntry[]>([]);
+  const [apiVoices, setApiVoices] = useState<ApiVoice[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
-  const [history, setHistory] = useState<GenerationHistory[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const { synthesizeSpeech, isLoading } = useLMNT();
+  const { synthesizeSpeech, synthesizeClonedVoice, isLoading } = useLMNT();
 
+  // Carrega vozes ao abrir o painel (clonadas do localStorage + locutores do backend)
   useEffect(() => {
-    loadVoices();
-    loadHistory();
-  }, []);
+    if (open) {
+      loadClonedVoices();
+      loadApiVoices();
+    }
+  }, [open]);
 
-  const loadVoices = () => {
+  // Pré-preenche texto e locutor quando aberto a partir do roteiro/galeria
+  useEffect(() => {
+    if (open) {
+      if (initialText !== undefined) setText(initialText);
+      if (initialVoiceKey) setSelectedKey(initialVoiceKey);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialText, initialVoiceKey]);
+
+  // Ao concluir a geração, rola até o player para o produtor ver/ouvir
+  useEffect(() => {
+    if (audioUrl && previewRef.current) {
+      previewRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [audioUrl]);
+
+  // Trava o scroll do body enquanto o modal está aberto (evita "vazamento" da página atrás)
+  useEffect(() => {
+    if (open) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [open]);
+
+  const loadClonedVoices = () => {
     try {
       const stored = localStorage.getItem(CLONED_VOICES_KEY);
-      if (stored) {
-        setVoices(JSON.parse(stored));
-      }
+      const parsed: ClonedVoiceEntry[] = stored ? JSON.parse(stored) : [];
+      setClonedVoices(parsed);
+      // Seleciona a primeira voz clonada por padrão, se houver
+      setSelectedKey((prev) => prev || (parsed.length > 0 ? clonedKey(parsed[0].id) : ""));
     } catch (e) {
-      console.error("Error loading voices:", e);
+      console.error("Error loading cloned voices:", e);
     }
   };
 
-  const loadHistory = () => {
+  const loadApiVoices = async () => {
     try {
-      const stored = localStorage.getItem(GENERATION_HISTORY_KEY);
-      if (stored) {
-        setHistory(JSON.parse(stored));
-      }
+      const res = await fetch("/api/voices");
+      if (!res.ok) return;
+      const data = await res.json();
+      const list: ApiVoice[] = data.voices || [];
+      setApiVoices(list);
+      // Se não há voz clonada selecionada, usa o primeiro locutor padrão
+      setSelectedKey((prev) => prev || (list.length > 0 ? apiKey(list[0].provider, list[0].id) : ""));
     } catch (e) {
-      console.error("Error loading history:", e);
+      console.error("Error loading locutores:", e);
     }
+  };
+
+  // Resolve a chave selecionada para os dados necessários à geração
+  const resolveSelected = () => {
+    if (selectedKey.startsWith("cloned::")) {
+      const id = selectedKey.slice("cloned::".length);
+      const entry = clonedVoices.find((v) => v.id === id);
+      if (!entry) return null;
+      return {
+        kind: "cloned" as const,
+        generationId: entry.lmntVoiceId || entry.id,
+        name: entry.name,
+      };
+    }
+    if (selectedKey.startsWith("api::")) {
+      const rest = selectedKey.slice("api::".length);
+      const sep = rest.indexOf("::");
+      const provider = rest.slice(0, sep);
+      const id = rest.slice(sep + 2);
+      const entry = apiVoices.find((v) => v.id === id && v.provider === provider);
+      if (!entry) return null;
+      return {
+        kind: "api" as const,
+        generationId: entry.id,
+        provider: entry.provider,
+        name: entry.name,
+      };
+    }
+    return null;
   };
 
   const handleGenerate = async () => {
@@ -81,10 +165,11 @@ export const VoiceGenerator = ({ onAudioGenerated }: { onAudioGenerated: (audioU
       return;
     }
 
-    if (!selectedVoiceId) {
+    const selected = resolveSelected();
+    if (!selected) {
       toast({
         title: "Voz obrigatória",
-        description: "Selecione uma voz clonada",
+        description: "Selecione um locutor ou voz clonada",
         variant: "destructive",
       });
       return;
@@ -93,38 +178,24 @@ export const VoiceGenerator = ({ onAudioGenerated }: { onAudioGenerated: (audioU
     setIsGenerating(true);
     setGenerationProgress(0);
 
-    // Simulação de progresso
+    // Progresso com ease-out até ~95% (a geração com IA pode levar ~20s; não pode parecer travado)
     const progressInterval = setInterval(() => {
       setGenerationProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(progressInterval);
-          return 90;
-        }
-        return prev + 10;
+        if (prev >= 95) return 95;
+        return Math.min(95, prev + Math.max(1, Math.round((95 - prev) * 0.06)));
       });
-    }, 200);
+    }, 400);
 
     try {
-      const result = await synthesizeSpeech(text, selectedVoiceId, 'pt');
-      
+      // Vozes clonadas → LMNT; locutores padrão → /api/generate-audio com provider
+      const result =
+        selected.kind === "cloned"
+          ? await synthesizeClonedVoice(text, selected.generationId)
+          : await synthesizeSpeech(text, selected.generationId, 'pt', selected.provider);
+
       clearInterval(progressInterval);
       setGenerationProgress(100);
-      
       setAudioUrl(result.audioUrl);
-      
-      // Salva no histórico
-      const newHistory: GenerationHistory = {
-        id: Date.now().toString(),
-        text,
-        voiceName: voices.find(v => v.id === selectedVoiceId)?.name || "Voz Desconhecida",
-        voiceId: selectedVoiceId,
-        audioUrl: result.audioUrl,
-        createdAt: new Date().toISOString(),
-      };
-      
-      const updatedHistory = [newHistory, ...history].slice(0, 20); // Mantém 20 mais recentes
-      setHistory(updatedHistory);
-      localStorage.setItem(GENERATION_HISTORY_KEY, JSON.stringify(updatedHistory));
       
       toast({
         title: "Voz gerada com sucesso!",
@@ -161,9 +232,9 @@ export const VoiceGenerator = ({ onAudioGenerated }: { onAudioGenerated: (audioU
 
   const handleAddToTrack = () => {
     if (audioUrl) {
-      const voiceName = voices.find(v => v.id === selectedVoiceId)?.name || "Voz AI";
+      const voiceName = resolveSelected()?.name || "Voz AI";
       onAudioGenerated(audioUrl, `${voiceName} - ${text.substring(0, 30)}${text.length > 30 ? "..." : ""}`);
-      setIsOpen(false);
+      onClose();
       setText("");
       setAudioUrl(null);
       toast({
@@ -173,214 +244,215 @@ export const VoiceGenerator = ({ onAudioGenerated }: { onAudioGenerated: (audioU
     }
   };
 
-  const handleUseHistory = (item: GenerationHistory) => {
-    setText(item.text);
-    setSelectedVoiceId(item.voiceId);
-    setAudioUrl(item.audioUrl);
-  };
+  const selectedInfo = resolveSelected();
 
-  const selectedVoice = voices.find(v => v.id === selectedVoiceId);
+  if (!open) return null;
 
-  if (!isOpen) {
-    return (
-      <Button
-        onClick={() => setIsOpen(true)}
-        className="gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-      >
-        <Wand2 className="w-4 h-4" />
-        Gerar Voz AI
-      </Button>
-    );
-  }
-
-  return (
-    <Card className="p-6 bg-card border-border max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <Mic className="w-6 h-6 text-purple-500" />
-          Gerador de Voz IA
-        </h2>
-        <Button variant="outline" size="sm" onClick={() => setIsOpen(false)}>
-          Fechar
-        </Button>
-      </div>
-
-      <div className="space-y-4">
-        {/* Seleção de Voz */}
-        <div>
-          <label className="text-sm font-medium text-foreground mb-2 block">
-            Voz Clonada
-          </label>
-          <Select value={selectedVoiceId} onValueChange={setSelectedVoiceId} disabled={isGenerating}>
-            <SelectTrigger className="bg-input border-border">
-              <SelectValue placeholder="Selecione uma voz clonada" />
-            </SelectTrigger>
-            <SelectContent>
-              {voices.length === 0 ? (
-                <SelectItem disabled value="">
-                  Nenhuma voz clonada encontrada
-                </SelectItem>
-              ) : (
-                voices.map((voice) => (
-                  <SelectItem key={voice.id} value={voice.id}>
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4" />
-                      <div>
-                        <div className="font-medium">{voice.name}</div>
-                        {voice.description && (
-                          <div className="text-xs text-muted-foreground">{voice.description}</div>
-                        )}
-                      </div>
-                    </div>
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-          
-          {voices.length === 0 && (
-            <p className="text-xs text-muted-foreground mt-2">
-              Clone vozes primeiro para poder gerar áudio
-            </p>
-          )}
-        </div>
-
-        {/* Texto para Gerar */}
-        <div>
-          <label className="text-sm font-medium text-foreground mb-2 block">
-            Texto para Gerar
-          </label>
-          <Textarea
-            placeholder="Digite o texto que será falado pela voz IA..."
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            className="bg-input border-border resize-none"
-            rows={4}
-            disabled={isGenerating}
-            maxLength={500}
-          />
-          <div className="text-xs text-muted-foreground mt-1">
-            {text.length}/500 caracteres
+  // Renderizado via Portal no document.body para escapar de ancestrais com
+  // backdrop-filter/transform (que prendem elementos `position: fixed` e faziam
+  // o modal sobrepor as tracks em vez de cobrir a tela).
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <Card className="w-full max-w-2xl my-auto bg-slate-900 border border-white/10 shadow-2xl">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Mic className="w-6 h-6 text-purple-400" />
+              Gerador de Voz IA
+            </h2>
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-white/60 hover:text-white hover:bg-white/10">
+              <X className="w-5 h-5" />
+            </Button>
           </div>
-        </div>
 
-        {/* Botão de Gerar */}
-        <Button
-          onClick={handleGenerate}
-          disabled={!text.trim() || !selectedVoiceId || isGenerating || isLoading}
-          className="w-full gap-2"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Gerando Voz...
-            </>
-          ) : (
-            <>
-              <Wand2 className="w-4 h-4" />
-              Gerar Voz
-            </>
-          )}
-        </Button>
-
-        {/* Progresso */}
-        {isGenerating && generationProgress > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span>Gerando áudio...</span>
-              <span>{generationProgress}%</span>
-            </div>
-            <Progress value={generationProgress} className="h-2" />
-          </div>
-        )}
-
-        {/* Preview do Áudio Gerado */}
-        {audioUrl && (
-          <div className="border-2 border-green-500/50 rounded-lg p-4 bg-green-500/5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium text-green-700 flex items-center gap-2">
-                <Volume2 className="w-4 h-4" />
-                Áudio Gerado
-              </h3>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePlayPreview}
-                  className="gap-1"
-                >
-                  {isPlaying ? (
-                    <>
-                      <Pause className="w-3 h-3" />
-                      Pausar
-                    </>
+          <div className="space-y-5">
+            {/* Seleção de Voz */}
+            <div>
+              <label className="text-sm font-medium text-white/80 mb-2 block">
+                Locutor / Voz
+              </label>
+              <Select value={selectedKey} onValueChange={setSelectedKey} disabled={isGenerating}>
+                <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                  <SelectValue placeholder="Selecione um locutor ou voz clonada" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-white/10 text-white max-h-72">
+                  {clonedVoices.length === 0 && apiVoices.length === 0 ? (
+                    <SelectItem disabled value="none" className="text-white/40">
+                      Nenhuma voz disponível
+                    </SelectItem>
                   ) : (
                     <>
-                      <Play className="w-3 h-3" />
-                      Ouvir
+                      {clonedVoices.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-purple-300">Vozes Clonadas</SelectLabel>
+                          {clonedVoices.map((voice) => (
+                            <SelectItem
+                              key={clonedKey(voice.id)}
+                              value={clonedKey(voice.id)}
+                              className="text-white hover:bg-white/10 focus:bg-white/10"
+                            >
+                              <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-purple-400" />
+                                <div>
+                                  <div className="font-medium">{voice.name}</div>
+                                  {voice.description && (
+                                    <div className="text-xs text-white/60">{voice.description}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {apiVoices.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-purple-300">Locutores Disponíveis</SelectLabel>
+                          {apiVoices.map((voice) => (
+                            <SelectItem
+                              key={apiKey(voice.provider, voice.id)}
+                              value={apiKey(voice.provider, voice.id)}
+                              className="text-white hover:bg-white/10 focus:bg-white/10"
+                            >
+                              <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-white/50" />
+                                <div>
+                                  <div className="font-medium">{voice.name}</div>
+                                  <div className="text-xs text-white/60 capitalize">{voice.provider}</div>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
                     </>
                   )}
-                </Button>
-                <Button
-                  onClick={handleAddToTrack}
-                  size="sm"
-                  className="gap-1 bg-green-600 hover:bg-green-700"
-                >
-                  <Plus className="w-3 h-3" />
-                  Adicionar à Track
-                </Button>
+                </SelectContent>
+              </Select>
+
+              {clonedVoices.length === 0 && (
+                <p className="text-xs text-white/60 mt-2">
+                  Sem vozes clonadas — usando locutores padrão. Clone vozes na página de clonagem para vê-las aqui.
+                </p>
+              )}
+            </div>
+
+            {/* Texto para Gerar */}
+            <div>
+              <label className="text-sm font-medium text-white/80 mb-2 block">
+                Texto para Gerar
+              </label>
+              <Textarea
+                placeholder="Digite o texto que será falado pela voz IA..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                className="bg-white/10 border-white/20 text-white placeholder-white/40 resize-y"
+                rows={4}
+                disabled={isGenerating}
+                maxLength={1500}
+              />
+              <div className="text-xs text-white/60 mt-1 text-right">
+                {text.length}/1500 caracteres
               </div>
             </div>
-            
-            <audio
-              ref={audioRef}
-              src={audioUrl}
-              onEnded={() => setIsPlaying(false)}
-              onError={() => {
-                toast({
-                  title: "Erro ao reproduzir áudio",
-                  variant: "destructive",
-                });
-                setIsPlaying(false);
-              }}
-            />
-            
-            <div className="text-sm text-muted-foreground">
-              <p><strong>Voz:</strong> {selectedVoice?.name}</p>
-              <p><strong>Texto:</strong> {text}</p>
-            </div>
-          </div>
-        )}
 
-        {/* Histórico de Gerações */}
-        {history.length > 0 && (
-          <div>
-            <h3 className="font-medium text-foreground mb-3 flex items-center gap-2">
-              <History className="w-4 h-4" />
-              Gerações Recentes
-            </h3>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {history.slice(0, 5).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-2 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => handleUseHistory(item)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.voiceName}</p>
-                      <p className="text-xs text-muted-foreground truncate">{item.text}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" className="gap-1">
-                      <Plus className="w-3 h-3" />
+            {/* Botão de Gerar */}
+            <Button
+              onClick={handleGenerate}
+              disabled={!text.trim() || !selectedKey || isGenerating || isLoading}
+              className="w-full gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Gerando Voz...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4" />
+                  Gerar Voz
+                </>
+              )}
+            </Button>
+
+            {/* Progresso */}
+            {isGenerating && generationProgress > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm text-white/80">
+                  <span>Gerando áudio com IA...</span>
+                  <span>{generationProgress}%</span>
+                </div>
+                <Progress value={generationProgress} className="h-2 bg-white/10" />
+                <p className="text-xs text-white/50">Textos longos podem levar até ~20 segundos. Aguarde…</p>
+              </div>
+            )}
+
+            {/* Preview do Áudio Gerado */}
+            {audioUrl && (
+              <div ref={previewRef} className="border-2 border-green-500/50 rounded-lg p-5 bg-green-500/10">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-medium text-green-400 flex items-center gap-2">
+                    <Volume2 className="w-5 h-5" />
+                    Áudio Gerado
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePlayPreview}
+                      className="gap-1 border-white/20 hover:bg-white/10 text-white"
+                    >
+                      {isPlaying ? (
+                        <>
+                          <Pause className="w-4 h-4" />
+                          Pausar
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4" />
+                          Ouvir
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleAddToTrack}
+                      size="sm"
+                      className="gap-1 bg-green-600 hover:bg-green-700"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Adicionar à Track
                     </Button>
                   </div>
                 </div>
-              ))}
-            </div>
+                
+                <audio
+                  ref={audioRef}
+                  src={audioUrl}
+                  onEnded={() => setIsPlaying(false)}
+                  onError={() => {
+                    toast({
+                      title: "Erro ao reproduzir áudio",
+                      variant: "destructive",
+                    });
+                    setIsPlaying(false);
+                  }}
+                  className="w-full"
+                />
+                
+                {selectedInfo && (
+                  <div className="text-sm text-white/70 mt-3">
+                    <p><strong>Voz:</strong> {selectedInfo.name}</p>
+                    <p className="mt-1"><strong>Texto:</strong> {text}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-    </Card>
+        </div>
+      </Card>
+    </div>,
+    document.body
   );
 };

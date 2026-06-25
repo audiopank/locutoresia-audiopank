@@ -96,3 +96,13 @@ test_*.py
 append_*.py
 cleanup_*.py
 capacitor.config.json
+
+# Config local do Claude Code (allowlist + contém chave Supabase — não versionar)
+.claude/settings.local.json
+
+# Pastas-fonte/backup das squads — duplicatas do que já vive em .claude/agents e .claude/skills
+/c-level-squad/
+/SquadDev/
+/claude-squads/
+vip_projects.json
+static/minidaw-react/assets/*.map
