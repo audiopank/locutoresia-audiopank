@@ -78,5 +78,7 @@ README*.md
 .cache/
 .pytest_cache/
 
-# Minidaw React (se for projeto separado)
-minidaw-react/
+# Minidaw React: ignora APENAS o projeto-fonte Vite na raiz.
+# A barra inicial ancora o padrao na raiz; sem ela, o padrao casaria
+# tambem static/minidaw-react/ (o build deployavel) e quebraria o deploy.
+/minidaw-react/
