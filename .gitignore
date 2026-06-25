@@ -20,6 +20,11 @@ wheels/
 .installed.cfg
 *.egg
 
+# Exceção: a regra "lib/" (Python) acima ignora minidaw-react/src/lib/ por engano.
+# Esse diretório é código-fonte TypeScript do MiniDAW React e DEVE ser versionado.
+!minidaw-react/src/lib/
+!minidaw-react/src/lib/**
+
 # Ambiente Virtual
 venv/
 .venv/

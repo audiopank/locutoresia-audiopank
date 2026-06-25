@@ -47,6 +47,8 @@ const MiniDAWIntegrated = () => {
   const [currentTime] = useState(0);
   const [isMixing, setIsMixing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [projectId, setProjectId] = useState("audio-pank-" + Date.now());
   const [activeTab, setActiveTab] = useState<TabKey>("roteiro");
   const [roteiro, setRoteiro] = useState("");
@@ -179,9 +181,35 @@ const MiniDAWIntegrated = () => {
     }
   }, [tracks, projectId, toast]);
 
+  // Gera uma prévia do mix REAL (com efeitos + fade-out) para o usuário ouvir antes de
+  // exportar. Reutiliza o mesmo motor da exportação, então o que se ouve = o que se baixa.
+  const previewMix = useCallback(async () => {
+    const playable = tracks.filter((t) => t.audioUrl);
+    if (playable.length === 0) {
+      toast({ title: "Nada para ouvir", description: "Adicione ao menos uma faixa com áudio.", variant: "destructive" });
+      return;
+    }
+    setIsPreviewing(true);
+    toast({ title: "Gerando prévia...", description: "Aplicando os efeitos e o fade-out para você ouvir o resultado real." });
+    try {
+      const blob = await mixToMp3(
+        playable.map((t) => ({ audioUrl: t.audioUrl, type: t.type, volume: t.volume, effects: t.effects })),
+        { musicFadeAfterVoice: 1.1, format: "wav" }
+      );
+      setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
+      toast({ title: "Prévia pronta! 🎧", description: "Toque o player abaixo para ouvir o mix com os efeitos." });
+    } catch (e: any) {
+      console.error("Erro na prévia:", e);
+      toast({ title: "Erro ao gerar prévia", description: e?.message || "Falha ao gerar a prévia", variant: "destructive" });
+    } finally {
+      setIsPreviewing(false);
+    }
+  }, [tracks, toast]);
+
   const createNewProject = useCallback(() => {
     setTracks([]);
     audioRefs.current = {};
+    setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setProjectId("audio-pank-" + Date.now());
     setActiveTab("roteiro");
     toast({ title: "🎵 Novo projeto criado" });
@@ -335,6 +363,14 @@ const MiniDAWIntegrated = () => {
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar
               </Button>
               <Button
+                onClick={previewMix}
+                disabled={isPreviewing || tracks.length === 0}
+                variant="outline"
+                className="gap-2 border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/10"
+              >
+                {isPreviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} Ouvir Prévia
+              </Button>
+              <Button
                 onClick={mixAndDownload}
                 disabled={isMixing || tracks.length === 0}
                 className="gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
@@ -344,6 +380,18 @@ const MiniDAWIntegrated = () => {
             </div>
           </div>
         </Card>
+
+        {/* Player da prévia do mix (com efeitos + fade-out aplicados) */}
+        {previewUrl && (
+          <Card className="bg-cyan-500/5 border-cyan-400/20 backdrop-blur-sm">
+            <div className="p-4 flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-cyan-200 flex items-center gap-2 whitespace-nowrap">
+                <Sliders className="w-4 h-4" /> Prévia do mix (efeitos + fade):
+              </span>
+              <audio src={previewUrl} controls autoPlay className="flex-1 min-w-[240px]" />
+            </div>
+          </Card>
+        )}
 
         {/* Conteúdo por aba */}
         {activeTab === "roteiro" && (
