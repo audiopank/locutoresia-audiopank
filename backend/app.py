@@ -5341,6 +5341,59 @@ def gemini_generate_script():
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/gemini/variations', methods=['POST', 'OPTIONS'])
+def gemini_generate_variations():
+    """Gera 3 variações de um roteiro com ângulos diferentes (emocional,
+    racional, urgência, curiosidade) usando o Gemini."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        text = (data.get('text') or '').strip()
+        if not text:
+            return jsonify({"success": False, "error": "Dados inválidos: 'text' é obrigatório"}), 400
+
+        count = 3  # fixo: 3 variações para não sobrecarregar o usuário
+
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
+
+        from google import genai
+
+        client = genai.Client(api_key=api_key)
+        model_name = 'gemini-2.5-flash'
+
+        prompt = (
+            "Você é um redator publicitário especializado em roteiros de locução em português do Brasil.\n"
+            f"Crie {count} variações diferentes do texto abaixo. Cada variação deve:\n"
+            "- Manter a mensagem e as informações principais (telefones, nomes, ofertas)\n"
+            "- Usar uma abordagem diferente entre si (emocional, racional, urgência, curiosidade)\n"
+            "- Ter tamanho similar ao original e soar natural para ser narrada\n\n"
+            "Responda APENAS com um array JSON de strings, sem comentários, no formato:\n"
+            '["variação 1", "variação 2", "variação 3"]\n\n'
+            f'Texto original:\n"{text}"'
+        )
+
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        variations = _parse_variations(response.text or '', count)
+
+        if not variations:
+            return jsonify({"success": False, "error": "Não foi possível gerar variações"}), 502
+
+        return jsonify({"success": True, "variations": variations})
+
+    except Exception as e:
+        print(f"[GEMINI variations] ERRO: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/gemini/tone', methods=['POST', 'OPTIONS'])
 def gemini_change_tone():
     """Altera o tom de um roteiro usando o Gemini"""
