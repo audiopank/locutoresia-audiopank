@@ -4017,12 +4017,12 @@ def _scheduled_publish_job():
     global _scheduler_log
     config = automation_config_memory
     if not config.get('enabled', True):
-        return
+        return {'success': False, 'error': 'automação desabilitada', 'skipped': True}
     categories = config.get('active_categories', [])
     posts_per = int(config.get('posts_per_category', 1))
     if not categories or not news_automation:
         print("⚠️ [SCHEDULER] Sem categorias ou NewsAutomationAgent indisponível — pulando")
-        return
+        return {'success': False, 'error': 'sem categorias ou agente indisponível', 'skipped': True}
 
     run_time = datetime.now(timezone.utc).isoformat()
     print(f"⏰ [SCHEDULER] Disparando publicação — {run_time} — categorias: {categories}")
@@ -4046,6 +4046,8 @@ def _scheduled_publish_job():
     _scheduler_log.insert(0, entry)
     if len(_scheduler_log) > 20:
         _scheduler_log.pop()
+
+    return entry
 
 
 def _update_scheduler_jobs():
@@ -4326,6 +4328,38 @@ def api_automation_run_now():
             'success': True,
             'message': 'Publicação iniciada em background',
             'categories': automation_config_memory.get('active_categories', [])
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/cron/publish-news', methods=['GET', 'POST'])
+def api_cron_publish_news():
+    """
+    Endpoint disparado pelo Vercel Cron nos horários configurados em vercel.json.
+
+    Diferente do scheduler com thread (que não sobrevive no serverless da Vercel),
+    aqui o trabalho roda SÍNCRONO dentro do request — a publicação acontece antes
+    de responder, então funciona mesmo com a função hibernando logo depois.
+
+    Segurança: se a env CRON_SECRET estiver definida, exige o header
+    `Authorization: Bearer <CRON_SECRET>` (a Vercel injeta isso automaticamente
+    quando CRON_SECRET existe nas variáveis do projeto).
+    """
+    try:
+        cron_secret = os.environ.get('CRON_SECRET')
+        if cron_secret:
+            auth = request.headers.get('Authorization', '')
+            if auth != f'Bearer {cron_secret}':
+                return jsonify({'success': False, 'error': 'não autorizado'}), 401
+
+        if not news_automation:
+            return jsonify({'success': False, 'error': 'NewsAutomationAgent não disponível'}), 503
+
+        result = _scheduled_publish_job()  # roda síncrono e retorna o entry
+        return jsonify({
+            'success': bool(result and result.get('success')),
+            'result': result
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

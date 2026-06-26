@@ -14,6 +14,11 @@
   "routes": [
     { "src": "/(.*)", "dest": "api/index.py" }
   ],
+  "crons": [
+    { "path": "/api/cron/publish-news", "schedule": "0 12 * * *" },
+    { "path": "/api/cron/publish-news", "schedule": "0 15 * * *" },
+    { "path": "/api/cron/publish-news", "schedule": "0 21 * * *" }
+  ],
   "env": {
     "FLASK_ENV": "production",
     "VERCEL": "1",
