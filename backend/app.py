@@ -5214,6 +5214,41 @@ def voxcraft_chat():
         fallback_response = f"Olá! Eu sou o VoxCraft AI! 😊\n\nPercebi que houve um problema com a conexão do Gemini, mas posso te ajudar com dicas rápidas sobre:\n- Trilhas sonoras para comerciais (use a Biblioteca!)\n- Mixagem de voz e música (80% voz, 30% música)\n- Geração de locuções com IA\n\nComo posso te ajudar? 🎙️"
         return jsonify({"success": True, "message": fallback_response})
 
+def _parse_variations(content: str, count: int) -> list:
+    """Extrai uma lista de variações de texto da resposta do Gemini.
+
+    Tenta primeiro um array JSON em qualquer ponto do texto; se não houver,
+    cai num fallback que quebra por linhas (lista numerada/marcadores).
+    Sempre devolve no máximo `count` itens não vazios.
+    """
+    import json, re
+
+    content = content or ""
+    variations = []
+
+    match = re.search(r"\[[\s\S]*\]", content)
+    if match:
+        try:
+            parsed = json.loads(match.group(0))
+            variations = [str(v).strip() for v in parsed if str(v).strip()]
+        except (ValueError, TypeError):
+            variations = []
+
+    if not variations:
+        for line in content.split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("`"):
+                continue
+            # remove prefixos tipo "1.", "1)", "- ", "* " e aspas externas
+            line = re.sub(r'^[\d]+[\.\)]\s*', "", line)
+            line = re.sub(r'^[\-\*]\s*', "", line)
+            line = line.strip().strip('"').strip("'").strip()
+            if len(line) > 10:
+                variations.append(line)
+
+    return variations[:count]
+
+
 # Gemini API Routes for Script Editor
 @app.route('/api/gemini/improve', methods=['POST', 'OPTIONS'])
 def gemini_improve_script():
