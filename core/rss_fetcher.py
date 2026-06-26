@@ -22,6 +22,28 @@ logger = logging.getLogger(__name__)
 class RSSFetcher:
     """Busca notícias reais via RSS de múltiplas fontes brasileiras"""
 
+    # Mapeia a categoria recebida (que vem capitalizada/acentuada do config,
+    # ex.: "Tecnologia", "Economia", "Esportes") para a CHAVE canônica usada
+    # nos rss_feeds das fontes. Era essa a causa de cair sempre no mock:
+    # "Tecnologia" não casava com a chave "tecnologia".
+    CATEGORY_ALIASES = {
+        "tecnologia": "tecnologia", "tech": "tecnologia", "technology": "tecnologia",
+        "economia": "economia", "economy": "economia", "financas": "economia",
+        "negocios": "economia", "mercado": "economia", "dinheiro": "economia",
+        "esporte": "esporte", "esportes": "esporte", "sports": "esporte", "futebol": "esporte",
+        "politica": "politica", "poder": "politica",
+        "brasil": "brasil", "geral": "brasil", "noticias": "brasil",
+        "saude": "saude", "ciencia": "ciencia", "tecnologia e ciencia": "tecnologia",
+    }
+
+    @staticmethod
+    def _canonical_category(category: str) -> str:
+        """Normaliza (sem acento/minúsculo) e mapeia para a chave de feed."""
+        import unicodedata
+        raw = unicodedata.normalize("NFKD", category or "")
+        raw = "".join(c for c in raw if not unicodedata.combining(c)).lower().strip()
+        return RSSFetcher.CATEGORY_ALIASES.get(raw, raw or "brasil")
+
     # Fontes de notícias completas (do código que você compartilhou)
     SOURCES = {
         "g1": {
@@ -37,7 +59,8 @@ class RSSFetcher:
                 "brasil": "https://g1.globo.com/rss/g1/brasil/",
                 "economia": "https://g1.globo.com/rss/g1/economia/",
                 "tecnologia": "https://g1.globo.com/rss/g1/tecnologia/",
-                "politica": "https://g1.globo.com/rss/g1/politica/"
+                "politica": "https://g1.globo.com/rss/g1/politica/",
+                "esporte": "https://ge.globo.com/rss/ge/"
             }
         },
         "uol": {
@@ -53,7 +76,8 @@ class RSSFetcher:
                 "brasil": "http://rss.uol.com.br/feed/noticias.xml",
                 "economia": "http://rss.uol.com.br/feed/economia.xml",
                 "tecnologia": "http://rss.uol.com.br/feed/tecnologia.xml",
-                "politica": "http://rss.uol.com.br/feed/noticias.xml"
+                "politica": "http://rss.uol.com.br/feed/noticias.xml",
+                "esporte": "http://rss.uol.com.br/feed/esporte.xml"
             }
         },
         "folha": {
@@ -279,80 +303,117 @@ class RSSFetcher:
         
         return ""
 
-    def _collect_from_source(self, source_key: str, category: str) -> List[Dict]:
-        """Coleta notícias de uma fonte específica"""
+    def _parse_feed(self, rss_url: str):
+        """Baixa o RSS com timeout próprio (feedparser sozinho não tem) e parseia."""
+        try:
+            resp = self.session.get(rss_url, timeout=self.timeout)
+            resp.raise_for_status()
+            return feedparser.parse(resp.content)
+        except Exception as e:
+            logger.warning(f"Falha ao baixar feed {rss_url}: {e}")
+            # Última tentativa: deixa o feedparser resolver a URL sozinho
+            try:
+                return feedparser.parse(rss_url)
+            except Exception:
+                return None
+
+    def _entry_to_news(self, entry, source_name: str, source_key: str, category: str) -> Dict:
+        """Converte uma entrada de RSS no formato interno, usando só o resumo
+        do RSS (sem scrape pesado da página — rápido e seguro no serverless)."""
+        rss_summary = entry.get('summary', '') or entry.get('description', '')
+        clean = rss_summary
+        if rss_summary:
+            try:
+                clean = BeautifulSoup(rss_summary, 'html.parser').get_text(strip=True)
+            except Exception:
+                clean = rss_summary
+        return {
+            'title': entry.get('title', ''),
+            'url': entry.get('link', ''),
+            'snippet': clean[:200],
+            'summary': clean,
+            'content': clean,
+            'source': source_name,
+            'source_key': source_key,
+            'category': category,
+            'published_at': self._parse_date(entry.get('published') or entry.get('updated')),
+            'image_url': self._extract_image(rss_summary)
+        }
+
+    def _collect_from_source(self, source_key: str, category: str, limit: int = 5) -> List[Dict]:
+        """Coleta notícias de uma fonte específica (category já canônica)."""
         news_list = []
         source = self.SOURCES.get(source_key)
-        
         if not source:
             return news_list
-            
+
         rss_url = source['rss_feeds'].get(category)
         if not rss_url:
             return news_list
-            
-        try:
-            logger.info(f"🔍 Buscando notícias de {source['name']} - {category}")
-            feed = feedparser.parse(rss_url)
-            
-            for entry in feed.entries[:5]:  # Limita a 5 por fonte
-                url = entry.get('link', '')
-                title = entry.get('title', '')
-                
-                if not title or not url:
-                    continue
-                
-                # Tenta buscar o conteúdo completo
-                full_content = self._fetch_full_content(url, source_key)
-                rss_summary = entry.get('summary', '')
-                
-                # Usa o summary do RSS se não conseguir o conteúdo completo
-                if not full_content and rss_summary:
-                    soup = BeautifulSoup(rss_summary, 'html.parser')
-                    full_content = soup.get_text(strip=True)
-                
-                news_data = {
-                    'title': title,
-                    'url': url,
-                    'snippet': full_content[:200] if full_content else rss_summary[:200],
-                    'summary': full_content if full_content else rss_summary,
-                    'content': full_content if full_content else rss_summary,
-                    'source': source['name'],
-                    'source_key': source_key,
-                    'category': category,
-                    'published_at': self._parse_date(entry.get('published')),
-                    'image_url': self._extract_image(rss_summary)
-                }
-                
-                news_list.append(news_data)
-                time.sleep(0.5)  # Delay para não sobrecarregar
-                
-        except Exception as e:
-            logger.error(f"Erro ao coletar de {source_key} ({category}): {e}")
-        
+
+        logger.info(f"🔍 Buscando notícias de {source['name']} - {category}")
+        feed = self._parse_feed(rss_url)
+        if not feed or not getattr(feed, 'entries', None):
+            return news_list
+
+        for entry in feed.entries[:limit]:
+            if not entry.get('title') or not entry.get('link'):
+                continue
+            news_list.append(self._entry_to_news(entry, source['name'], source_key, category))
+        return news_list
+
+    def _collect_from_google_news(self, category: str, limit: int = 5) -> List[Dict]:
+        """Fonte de segurança: Google Notícias (RSS de busca) garante notícia
+        REAL para qualquer categoria — inclusive as sem feed nativo."""
+        query_map = {
+            "tecnologia": "tecnologia", "economia": "economia",
+            "esporte": "esporte brasil", "politica": "política brasil",
+            "brasil": "brasil", "saude": "saúde", "ciencia": "ciência",
+        }
+        termo = query_map.get(category, category)
+        url = ("https://news.google.com/rss/search?q="
+               + requests.utils.quote(f"{termo} when:1d")
+               + "&hl=pt-BR&gl=BR&ceid=BR:pt-419")
+        feed = self._parse_feed(url)
+        if not feed or not getattr(feed, 'entries', None):
+            return []
+        news_list = []
+        for entry in feed.entries[:limit]:
+            if not entry.get('title'):
+                continue
+            news_list.append(self._entry_to_news(entry, "Google Notícias", "google_news", category))
         return news_list
 
     def fetch_news(self, category: str = "Tecnologia", limit: int = 7) -> List[Dict[str, Any]]:
         """
-        Busca notícias por categoria via RSS.
-        Fallback para notícias mockadas se RSS falhar.
+        Busca notícias por categoria via RSS real.
+        Estratégia: fontes nativas → Google Notícias (fallback real) → mock.
         """
         if not HAS_FEEDPARSER:
             logger.warning("⚠️ feedparser não disponível, usando notícias mockadas")
             return self._get_mock_news(category, limit)
 
+        canonical = self._canonical_category(category)
         all_news = []
-        
-        # Mapeia a categoria para as fontes disponíveis
+
+        # 1) Fontes nativas que tenham feed para a categoria canônica.
+        #    Para no momento em que já temos o suficiente (evita timeout).
         for source_key, source in self.SOURCES.items():
-            if category in source['categories']:
-                source_news = self._collect_from_source(source_key, category)
-                all_news.extend(source_news)
-        
-        all_news = all_news[:limit]
-        
+            if canonical in source.get('rss_feeds', {}):
+                all_news.extend(self._collect_from_source(source_key, canonical, limit))
+                if len(all_news) >= limit:
+                    break
+
+        # 2) Se nada veio das nativas, tenta o Google Notícias (real).
         if not all_news:
-            logger.warning("⚠️ Nenhuma notícia encontrada via RSS, usando mock")
+            logger.info(f"ℹ️ Sem resultado nas fontes nativas para '{category}', tentando Google Notícias")
+            all_news = self._collect_from_google_news(canonical, limit)
+
+        all_news = all_news[:limit]
+
+        # 3) Último recurso: mock (mantém o sistema funcionando se tudo falhar).
+        if not all_news:
+            logger.warning("⚠️ Nenhuma notícia real encontrada, usando mock")
             return self._get_mock_news(category, limit)
 
         # Converte para o formato esperado pelo resto do sistema
