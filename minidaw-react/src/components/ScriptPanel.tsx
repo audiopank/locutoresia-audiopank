@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, Wand2, Loader2, Mic } from "lucide-react";
+import { FileText, Wand2, Loader2, Mic, Copy } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 
 interface ScriptPanelProps {
@@ -21,6 +21,37 @@ export const ScriptPanel = ({ value, onChange, onSendToVoice }: ScriptPanelProps
   const [brief, setBrief] = useState("");
   const [tone, setTone] = useState("profissional");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [variations, setVariations] = useState<string[]>([]);
+  const [isVarying, setIsVarying] = useState(false);
+
+  const generateVariations = async () => {
+    if (!value.trim()) {
+      toast({ title: "Escreva o roteiro primeiro", description: "Preciso de um texto base para gerar variações.", variant: "destructive" });
+      return;
+    }
+    setIsVarying(true);
+    try {
+      const res = await fetch("/api/gemini/variations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: value }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Falha ao gerar variações");
+      setVariations(data.variations || []);
+      toast({ title: "Variações geradas!", description: "Clique na que você preferir para usá-la." });
+    } catch (e: any) {
+      toast({ title: "Erro ao gerar variações", description: e.message || "Tente novamente", variant: "destructive" });
+    } finally {
+      setIsVarying(false);
+    }
+  };
+
+  const pickVariation = (v: string) => {
+    onChange(v);
+    setVariations([]);
+    toast({ title: "Variação aplicada", description: "Texto atualizado no editor." });
+  };
 
   const generate = async () => {
     if (!brief.trim()) {
@@ -93,6 +124,36 @@ export const ScriptPanel = ({ value, onChange, onSendToVoice }: ScriptPanelProps
             className="bg-white/10 border-white/20 text-white placeholder-white/40 resize-y"
           />
           <div className="text-xs text-white/50 mt-1 text-right">{value.length} caracteres</div>
+        </div>
+
+        {/* Variações de roteiro */}
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={generateVariations}
+            disabled={isVarying || !value.trim()}
+            className="gap-2 border-white/20 bg-white/5 text-white hover:bg-white/10"
+          >
+            {isVarying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+            Gerar Variações
+          </Button>
+
+          {variations.length > 0 && (
+            <div className="grid gap-2">
+              {variations.map((v, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => pickVariation(v)}
+                  className="text-left rounded-md border border-white/15 bg-white/5 p-3 text-sm text-white/90 hover:border-purple-400 hover:bg-white/10 transition-colors"
+                >
+                  <span className="block text-xs font-semibold text-purple-300 mb-1">Variação {i + 1}</span>
+                  {v}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end">
