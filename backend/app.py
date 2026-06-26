@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import schedule as _schedule
 import uuid
 import re
 import html as html_lib
@@ -3992,12 +3993,118 @@ def handler(request, response):
 # Configuração de automação padrão em memória
 automation_config_memory = {
     "id": "default-config",
-    "active_categories": ["tecnologia", "economia", "esportes"],
-    "schedule_time_1": "09:00:00",
+    "active_categories": ["Tecnologia", "Economia", "Esportes"],
+    "schedule_time_1": "09:00",
+    "schedule_time_2": "12:00",
+    "schedule_time_3": "18:00",
+    "posts_per_category": 1,
     "enabled": True,
     "created_at": datetime.now(timezone.utc).isoformat(),
     "updated_at": datetime.now(timezone.utc).isoformat()
 }
+
+# ============================================================
+# SCHEDULER REAL — background thread com a biblioteca 'schedule'
+# ============================================================
+
+_scheduler_thread = None
+_scheduler_running = False
+_scheduler_log = []   # histórico de execuções: [{time, success, published, categories}]
+
+
+def _scheduled_publish_job():
+    """Executado pelo scheduler nos horários configurados."""
+    global _scheduler_log
+    config = automation_config_memory
+    if not config.get('enabled', True):
+        return
+    categories = config.get('active_categories', [])
+    posts_per = int(config.get('posts_per_category', 1))
+    if not categories or not news_automation:
+        print("⚠️ [SCHEDULER] Sem categorias ou NewsAutomationAgent indisponível — pulando")
+        return
+
+    run_time = datetime.now(timezone.utc).isoformat()
+    print(f"⏰ [SCHEDULER] Disparando publicação — {run_time} — categorias: {categories}")
+    try:
+        result = news_automation.fetch_and_publish(
+            categories=categories,
+            limit_per_category=posts_per
+        )
+        entry = {
+            'time': run_time,
+            'success': result.get('success', False),
+            'published': result.get('total_published', 0),
+            'fetched': result.get('total_fetched', 0),
+            'categories': categories,
+        }
+        print(f"✅ [SCHEDULER] Publicados: {entry['published']} posts de {entry['fetched']} buscados")
+    except Exception as e:
+        entry = {'time': run_time, 'success': False, 'error': str(e), 'categories': categories}
+        print(f"❌ [SCHEDULER] Erro: {e}")
+
+    _scheduler_log.insert(0, entry)
+    if len(_scheduler_log) > 20:
+        _scheduler_log.pop()
+
+
+def _update_scheduler_jobs():
+    """Limpa e reagenda todos os jobs com base na configuração atual."""
+    _schedule.clear('news_auto')
+    config = automation_config_memory
+    if not config.get('enabled', True):
+        print("⏸️ [SCHEDULER] Desabilitado — nenhum job agendado")
+        return
+
+    agendados = []
+    for key in ['schedule_time_1', 'schedule_time_2', 'schedule_time_3']:
+        time_str = str(config.get(key, '')).strip()
+        if not time_str:
+            continue
+        hhmm = time_str[:5]   # "09:00:00" ou "09:00" → "09:00"
+        try:
+            _schedule.every().day.at(hhmm).do(_scheduled_publish_job).tag('news_auto')
+            agendados.append(hhmm)
+        except Exception as e:
+            print(f"⚠️ [SCHEDULER] Erro ao agendar {hhmm}: {e}")
+
+    if agendados:
+        print(f"⏰ [SCHEDULER] Jobs ativos: {', '.join(agendados)}")
+    else:
+        print("⚠️ [SCHEDULER] Nenhum horário válido configurado")
+
+
+def _run_schedule_loop():
+    """Loop que roda em background e dispara os jobs no horário."""
+    global _scheduler_running
+    _scheduler_running = True
+    print("🚀 [SCHEDULER] Thread iniciada — verificando a cada 30 segundos")
+    while _scheduler_running:
+        try:
+            _schedule.run_pending()
+        except Exception as e:
+            print(f"❌ [SCHEDULER] Erro no loop: {e}")
+        time.sleep(30)
+    print("🛑 [SCHEDULER] Thread encerrada")
+
+
+def start_news_scheduler():
+    """Inicia o scheduler em background (desabilitado no Vercel)."""
+    global _scheduler_thread
+    if os.environ.get('VERCEL'):
+        print("ℹ️ [SCHEDULER] Vercel — scheduler desabilitado (serverless não suporta threads)")
+        return
+    if _scheduler_thread and _scheduler_thread.is_alive():
+        return
+    _update_scheduler_jobs()
+    _scheduler_thread = threading.Thread(
+        target=_run_schedule_loop, daemon=True, name='NewsScheduler'
+    )
+    _scheduler_thread.start()
+
+
+# Inicia o scheduler ao carregar o módulo
+start_news_scheduler()
 
 @app.route('/api/automation/config', methods=['GET'])
 def api_get_automation_config():
@@ -4053,20 +4160,30 @@ def api_save_automation_config():
                 'error': 'Selecione pelo menos uma categoria'
             }), 400
         
-        # Atualizar configuração em memória
-        automation_config_memory = {
+        def norm_time(val, default):
+            """Normaliza HH:MM:SS ou HH:MM para HH:MM"""
+            s = str(val or default).strip()
+            return s[:5] if len(s) >= 5 else default
+
+        # Atualizar configuração em memória (todos os campos)
+        automation_config_memory.update({
             "id": data.get('id', automation_config_memory['id']),
             "active_categories": data['active_categories'],
-            "schedule_time_1": data['schedule_time_1'],
+            "schedule_time_1": norm_time(data.get('schedule_time_1'), '09:00'),
+            "schedule_time_2": norm_time(data.get('schedule_time_2'), '12:00'),
+            "schedule_time_3": norm_time(data.get('schedule_time_3'), '18:00'),
+            "posts_per_category": int(data.get('posts_per_category', 1)),
             "enabled": data.get('enabled', True),
-            "created_at": automation_config_memory['created_at'],
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }
-        
+        })
+
+        # Reagenda jobs com novos horários
+        _update_scheduler_jobs()
+
         return jsonify({
             'success': True,
             'config': automation_config_memory,
-            'message': 'Configuração salva com sucesso!'
+            'message': 'Configuração salva e scheduler atualizado!'
         })
         
     except Exception as e:
@@ -4110,6 +4227,7 @@ def api_automation_status():
             })
         
         # Status ativo
+        next_runs = [str(j.next_run) for j in _schedule.jobs if 'news_auto' in j.tags]
         return jsonify({
             'success': True,
             'status': 'active',
@@ -4117,11 +4235,17 @@ def api_automation_status():
             'config': {
                 'active_categories': config['active_categories'],
                 'schedule_times': [
-                    config['schedule_time_1'],
-                    config['schedule_time_2'],
-                    config['schedule_time_3']
+                    config.get('schedule_time_1', '09:00'),
+                    config.get('schedule_time_2', '12:00'),
+                    config.get('schedule_time_3', '18:00'),
                 ],
-                'posts_per_category': config['posts_per_category']
+                'posts_per_category': config.get('posts_per_category', 1)
+            },
+            'scheduler': {
+                'running': _scheduler_running,
+                'jobs_count': len([j for j in _schedule.jobs if 'news_auto' in j.tags]),
+                'next_runs': next_runs,
+                'last_runs': _scheduler_log[:3]
             }
         })
         
@@ -4189,6 +4313,49 @@ def api_toggle_automation(type):
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/automation/run-now', methods=['POST'])
+def api_automation_run_now():
+    """Dispara o job de publicação imediatamente (para testes)."""
+    try:
+        if not news_automation:
+            return jsonify({'success': False, 'error': 'NewsAutomationAgent não disponível'}), 503
+
+        threading.Thread(target=_scheduled_publish_job, daemon=True, name='RunNow').start()
+        return jsonify({
+            'success': True,
+            'message': 'Publicação iniciada em background',
+            'categories': automation_config_memory.get('active_categories', [])
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/scheduler/status', methods=['GET'])
+def api_scheduler_status():
+    """Retorna estado completo do scheduler."""
+    try:
+        jobs = [j for j in _schedule.jobs if 'news_auto' in j.tags]
+        return jsonify({
+            'success': True,
+            'running': _scheduler_running,
+            'jobs_count': len(jobs),
+            'next_runs': [str(j.next_run) for j in jobs],
+            'last_runs': _scheduler_log[:10],
+            'config': {
+                'enabled': automation_config_memory.get('enabled', True),
+                'categories': automation_config_memory.get('active_categories', []),
+                'times': [
+                    automation_config_memory.get('schedule_time_1', '09:00'),
+                    automation_config_memory.get('schedule_time_2', '12:00'),
+                    automation_config_memory.get('schedule_time_3', '18:00'),
+                ],
+                'posts_per_category': automation_config_memory.get('posts_per_category', 1)
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/automation/state', methods=['GET'])
 def api_automation_state():

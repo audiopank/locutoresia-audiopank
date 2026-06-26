@@ -300,6 +300,14 @@
                 </p>
             </div>
 
+            <!-- Scheduler Status -->
+            <div class="card-dark p-4 mb-4" id="schedulerStatusBox">
+                <h5 class="mb-3 text-white"><i class="fas fa-satellite-dish me-2" style="color: var(--newpost-purple);"></i>Status do Scheduler</h5>
+                <div id="schedulerStatusContent">
+                    <div class="text-center text-muted py-2"><i class="fas fa-spinner fa-spin me-2"></i>Carregando...</div>
+                </div>
+            </div>
+
             <!-- Status -->
             <div class="status-box mb-4">
                 <div class="d-flex align-items-center gap-3">
@@ -307,18 +315,21 @@
                     <div>
                         <h5 class="text-white mb-1">Status das Automações</h5>
                         <p class="text-gray-300 mb-0 text-secondary" id="statusText">
-                            ✅ 7h Brasília — Aguardando configuração<br>
-                            ✅ 12h Brasília — Aguardando configuração<br>
-                            ✅ 18h Brasília — Aguardando configuração
+                            Carregando...
                         </p>
                     </div>
                 </div>
             </div>
 
-            <!-- Save Button -->
-            <button id="saveBtn" class="btn-purple w-100" onclick="saveConfig()">
-                <i class="fas fa-save me-2"></i>Salvar Configuração
-            </button>
+            <!-- Buttons -->
+            <div class="d-flex gap-3 mb-3">
+                <button id="saveBtn" class="btn-purple flex-fill" onclick="saveConfig()">
+                    <i class="fas fa-save me-2"></i>Salvar Configuração
+                </button>
+                <button id="runNowBtn" class="btn btn-outline-light" onclick="runNow()" style="border-color: var(--newpost-purple); color: var(--newpost-purple);">
+                    <i class="fas fa-bolt me-2"></i>Executar Agora
+                </button>
+            </div>
         </div>
     </main>
 
@@ -354,6 +365,9 @@
         document.addEventListener('DOMContentLoaded', async function() {
             renderCategories();
             await loadConfig();
+            await loadSchedulerStatus();
+            // Atualiza status a cada 30s
+            setInterval(loadSchedulerStatus, 30000);
         });
 
         // Render categories grid
@@ -443,17 +457,20 @@
             try {
                 // Get values from inputs
                 const time1 = document.getElementById('time1').value;
-                
-                // Converter HH:MM para HH:MM:SS
-                const time1WithSeconds = time1 + ':00';
-                
-                // Build payload apenas com campos permitidos
+                const time2 = document.getElementById('time2').value;
+                const time3 = document.getElementById('time3').value;
+                const postsPerCat = parseInt(document.getElementById('postsPerCategory').value) || 1;
+
+                // Build payload com todos os campos
                 const payload = {
                     active_categories: config.active_categories,
-                    schedule_time_1: time1WithSeconds,
+                    schedule_time_1: time1,
+                    schedule_time_2: time2,
+                    schedule_time_3: time3,
+                    posts_per_category: postsPerCat,
                     enabled: true
                 };
-                
+
                 // Incluir ID se existir (para UPDATE)
                 if (config.id) {
                     payload.id = config.id;
@@ -468,10 +485,11 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showToast('✅ Configuração salva com sucesso!', 'success');
+                    showToast('✅ Configuração salva e scheduler atualizado!', 'success');
                     if (data.config && data.config.id) {
                         config.id = data.config.id;
                     }
+                    await loadSchedulerStatus();
                 } else {
                     throw new Error(data.error || 'Erro ao salvar');
                 }
@@ -481,6 +499,76 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-save me-2"></i>Salvar Configuração';
+            }
+        }
+
+        // Executar agora
+        async function runNow() {
+            const btn = document.getElementById('runNowBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Executando...';
+            try {
+                const resp = await fetch('/api/automation/run-now', { method: 'POST' });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('🚀 Publicação iniciada em background! Aguarde alguns segundos.', 'success');
+                    setTimeout(loadSchedulerStatus, 5000);
+                } else {
+                    throw new Error(data.error || 'Erro ao executar');
+                }
+            } catch (err) {
+                showToast('❌ ' + err.message, 'danger');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-bolt me-2"></i>Executar Agora';
+            }
+        }
+
+        // Carregar status real do scheduler
+        async function loadSchedulerStatus() {
+            try {
+                const resp = await fetch('/api/scheduler/status');
+                const data = await resp.json();
+                if (!data.success) return;
+
+                const box = document.getElementById('schedulerStatusContent');
+                const running = data.running;
+                const jobs = data.jobs_count;
+                const nextRuns = data.next_runs || [];
+                const lastRuns = data.last_runs || [];
+
+                const nextRunHtml = nextRuns.length
+                    ? nextRuns.map(r => `<span class="badge bg-success me-1">${r.substring(11, 16)}</span>`).join('')
+                    : '<span class="badge bg-secondary">Nenhum agendado</span>';
+
+                const lastRunHtml = lastRuns.length
+                    ? lastRuns.slice(0,3).map(r => `
+                        <div class="d-flex align-items-center gap-2 small mt-1">
+                            <i class="fas fa-${r.success ? 'check-circle text-success' : 'times-circle text-danger'}"></i>
+                            <span>${(r.time||'').substring(0,19).replace('T',' ')}</span>
+                            ${r.success ? `<span class="text-success">${r.published||0} publicados</span>` : `<span class="text-danger">${r.error||'Erro'}</span>`}
+                        </div>`).join('')
+                    : '<div class="small text-muted mt-1">Nenhuma execução ainda</div>';
+
+                box.innerHTML = `
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="badge ${running ? 'bg-success' : 'bg-danger'}">${running ? '● Rodando' : '○ Parado'}</span>
+                        <span class="small text-muted">${jobs} job(s) agendado(s)</span>
+                    </div>
+                    <div class="small mb-1"><strong>Próximas execuções:</strong> ${nextRunHtml}</div>
+                    <div><strong class="small">Últimas execuções:</strong>${lastRunHtml}</div>
+                `;
+
+                // Atualiza status text
+                const times = data.config.times || [];
+                const cats = (data.config.categories || []).length;
+                document.getElementById('statusText').innerHTML = times.map(t =>
+                    `✅ ${t} (hora do servidor) — ${cats} categorias ativas`
+                ).join('<br>');
+
+            } catch(e) {
+                document.getElementById('schedulerStatusContent').innerHTML =
+                    '<div class="small text-danger">Erro ao carregar status do scheduler</div>';
             }
         }
 

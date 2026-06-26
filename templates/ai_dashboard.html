@@ -629,10 +629,22 @@
             { name: 'Analisador', status: 'idle', tasksCompleted: 0 }
         ];
 
+        async function animateAgents() {
+            const agentNames = ['Pesquisador', 'Estrategista', 'Escritor', 'Revisor', 'Analisador'];
+            for (let i = 0; i < agents.length; i++) {
+                agents[i].status = 'running';
+                updateAgentsList();
+                await new Promise(r => setTimeout(r, 600));
+                agents[i].status = 'completed';
+                agents[i].tasksCompleted++;
+                updateAgentsList();
+            }
+        }
+
         document.getElementById('generate-btn').addEventListener('click', async function() {
             const niche = document.getElementById('niche-input').value;
             const goals = document.getElementById('goals-input').value;
-            
+
             if (!niche.trim()) {
                 alert('Digite seu nicho');
                 return;
@@ -642,16 +654,16 @@
             button.disabled = true;
             button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Gerando...';
 
+            // Reset e anima agentes em paralelo
+            agents.forEach(a => { a.status = 'idle'; a.tasksCompleted = 0; });
+            updateAgentsList();
+            const agentAnimation = animateAgents();
+
             try {
                 const response = await fetch('/api/ai/generate-content', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        niche: niche,
-                        goals: goals
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ niche, goals })
                 });
 
                 if (!response.ok) {
@@ -659,8 +671,6 @@
                 }
 
                 const responseText = await response.text();
-                
-                // Verificar se a resposta está vazia
                 if (!responseText || responseText.trim() === '') {
                     throw new Error('Resposta vazia do servidor');
                 }
@@ -669,15 +679,16 @@
                 try {
                     result = JSON.parse(responseText);
                 } catch (jsonError) {
-                    console.error('Erro no parsing JSON:', jsonError);
-                    console.error('Resposta recebida:', responseText);
+                    console.error('Erro no parsing JSON:', jsonError, responseText);
                     throw new Error('Resposta inválida do servidor.');
                 }
 
                 if (result.success) {
-                    // Mostrar resultados
+                    contentPlan = result.data.content_plan;
+                    window.generatedContent = contentPlan;
+
                     const contentList = document.getElementById('content-list');
-                    contentList.innerHTML = result.data.content_plan.map((post, index) => `
+                    contentList.innerHTML = contentPlan.map((post) => `
                         <div class="mb-2 p-2 rounded" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(139, 92, 246, 0.3);">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
@@ -689,20 +700,20 @@
                             </div>
                         </div>
                     `).join('');
-                    
-                    document.getElementById('results-box').style.display = 'block';
-                    
-                    // Guardar conteúdo global
-                    window.generatedContent = result.data.content_plan;
 
+                    document.getElementById('results-box').style.display = 'block';
+                    updateCalendar();
                 } else {
                     throw new Error(result.error || 'Erro ao gerar conteúdo');
                 }
             } catch (error) {
                 console.error('Erro:', error);
                 alert('Erro: ' + error.message);
+                agents.forEach(a => { if (a.status === 'running') a.status = 'error'; });
+                updateAgentsList();
             }
 
+            await agentAnimation;
             button.disabled = false;
             button.innerHTML = '<i class="fas fa-robot me-2"></i>Gerar Conteúdo com IA';
         });
@@ -790,7 +801,7 @@
                             </div>
                         </div>
                     `).join('')}
-                    <button class="btn btn-outline w-100 mt-3">
+                    <button class="btn btn-outline w-100 mt-3 js-save-schedule-btn">
                         <i class="fas fa-save me-2"></i>Salvar e Agendar (${contentPlan.length} posts)
                     </button>
                 </div>
@@ -815,13 +826,44 @@
             }
         }
 
-        // VoxCraft Engine
+        // Event delegation para botão dinâmico no Calendar tab
+        document.getElementById('calendar-content').addEventListener('click', async function(e) {
+            if (!e.target.closest('.js-save-schedule-btn')) return;
+            if (!contentPlan.length) { alert('Gere conteúdo primeiro'); return; }
+            const btn = e.target.closest('.js-save-schedule-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Salvando e agendando...';
+            try {
+                const niche = document.getElementById('niche-input').value;
+                const saveRes = await fetch('/api/ai/save-calendar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content_plan: contentPlan, strategy: 'Conteúdo gerado por IA', niche })
+                });
+                const saveData = await saveRes.json();
+                if (!saveData.success) throw new Error(saveData.error || 'Erro ao salvar');
+                const schedRes = await fetch('/api/ai/calendar-schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content_plan: contentPlan, calendar_id: saveData.data.calendar_id })
+                });
+                const schedData = await schedRes.json();
+                if (!schedData.success) throw new Error(schedData.error || 'Erro ao agendar');
+                alert(`✅ ${schedData.data.scheduled_count} posts salvos e agendados!`);
+                setTimeout(() => window.location.href = '/agendamento', 800);
+            } catch (err) {
+                alert('Erro: ' + err.message);
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fas fa-save me-2"></i>Salvar e Agendar (${contentPlan.length} posts)`;
+            }
+        });
+
+        // VoxCraft Engine — chama API real para cada categoria selecionada
         document.getElementById('voxcraft-btn').addEventListener('click', async function() {
             const selectedCategories = [];
             document.querySelectorAll('.category-checkbox:checked').forEach(checkbox => {
                 const categoryItem = checkbox.closest('.category-item');
-                const categoryName = categoryItem.querySelector('span').textContent;
-                selectedCategories.push(categoryName);
+                selectedCategories.push(categoryItem.querySelector('span').textContent.trim());
             });
 
             if (selectedCategories.length === 0) {
@@ -835,48 +877,50 @@
             const resultsDiv = document.getElementById('voxcraft-results');
 
             button.disabled = true;
-            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Gerando posts...';
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Buscando notícias...';
             progressDiv.style.display = 'block';
             resultsDiv.style.display = 'none';
 
-            // Simulate process
-            progressText.textContent = 'Buscando notícias reais via RSS...';
-            await new Promise(r => setTimeout(r, 2000));
-            
-            progressText.textContent = 'Processando notícias com IA...';
-            await new Promise(r => setTimeout(r, 1500));
-            
-            progressText.textContent = 'Gerando conteúdo viral...';
-            await new Promise(r => setTimeout(r, 1000));
+            const allResults = [];
+            for (const category of selectedCategories) {
+                progressText.textContent = `Buscando notícias reais: ${category}...`;
+                try {
+                    const resp = await fetch('/api/ai/generate-content', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ niche: category, goals: 'Engajamento viral' })
+                    });
+                    const data = await resp.json();
+                    if (data.success && data.data.content_plan.length > 0) {
+                        const topPost = data.data.content_plan[0];
+                        allResults.push({ category, success: true, topic: topPost.topic, caption: topPost.caption });
+                    } else {
+                        allResults.push({ category, success: false, topic: '—', caption: 'Nenhuma notícia encontrada' });
+                    }
+                } catch (err) {
+                    allResults.push({ category, success: false, topic: '—', caption: 'Erro ao buscar: ' + err.message });
+                }
+            }
 
-            // Generate results
-            const results = selectedCategories.map(category => ({
-                category: category,
-                success: true,
-                headlines: [`Última hora: ${category} revoluciona o mercado`]
-            }));
-
-            // Show results
+            progressDiv.style.display = 'none';
             resultsDiv.innerHTML = `
-                <div class="space-y-2 pt-2 border-top">
-                    <p class="small fw-medium">Resultados do Pipeline</p>
-                    ${results.map((r, i) => `
-                        <div class="d-flex gap-2 p-2 rounded bg-muted/20 border">
-                            <i class="fas fa-check-circle text-success"></i>
+                <div class="pt-2 border-top mt-2">
+                    <p class="small fw-medium mb-2"><i class="fas fa-rss me-1 text-primary"></i>Resultados do Pipeline RSS + IA</p>
+                    ${allResults.map(r => `
+                        <div class="d-flex gap-2 p-2 rounded mb-2" style="background: rgba(30,41,59,0.8); border: 1px solid rgba(139,92,246,0.3);">
+                            <i class="fas ${r.success ? 'fa-check-circle text-success' : 'fa-exclamation-circle text-warning'} mt-1"></i>
                             <div class="flex-1">
-                                <p class="small fw-medium">${r.category}</p>
-                                <p class="text-secondary small">${r.headlines[0]}</p>
+                                <p class="small fw-medium mb-0">${r.category} — ${r.topic}</p>
+                                <p class="text-secondary small mb-0">${r.caption}</p>
                             </div>
-                            <span class="badge bg-secondary small">Publicado</span>
                         </div>
                     `).join('')}
                     <p class="text-secondary small text-center pt-1">
-                        Posts publicados aparecem no Feed e em Conexões
+                        <i class="fas fa-info-circle me-1"></i>Use "Calendário Autônomo IA" acima para gerar e publicar o calendário completo
                     </p>
                 </div>
             `;
             resultsDiv.style.display = 'block';
-            progressDiv.style.display = 'none';
 
             button.disabled = false;
             button.innerHTML = '<i class="fas fa-globe me-2"></i>Gerar Posts com Notícias Reais';
@@ -1021,6 +1065,8 @@
             item.style.backgroundColor = 'rgba(139, 92, 246, 0.1)';
             item.style.opacity = '1';
         });
+
+        }); // fecha DOMContentLoaded
     </script>
 </body>
 </html>
