@@ -368,6 +368,13 @@ class RSSFetcher:
                 "data_publicacao": news["published_at"]
             })
 
+        # Remove notícias com conteúdo sensível (crimes/violência) antes de devolver
+        try:
+            from .content_filter import filter_news
+            news_list, _blocked = filter_news(news_list)
+        except Exception as e:
+            logger.warning(f"Filtro de conteúdo indisponível: {e}")
+
         logger.info(f"✅ {len(news_list)} notícias encontradas para categoria: {category}")
         return news_list
 

@@ -132,6 +132,17 @@ class NewsAutomationAgent:
                     continue
 
                 news_list = news_result["data"]["noticias"]
+
+                # Portão final: barra conteúdo sensível (crimes/violência) antes
+                # de publicar no Feed — independe da origem (RSS novo ou cache).
+                try:
+                    from .content_filter import filter_news
+                    news_list, blocked = filter_news(news_list)
+                    if blocked:
+                        logger.info(f"🚫 {len(blocked)} notícia(s) bloqueada(s) na categoria {category}")
+                except Exception as e:
+                    logger.warning(f"Filtro de conteúdo indisponível: {e}")
+
                 total_fetched += len(news_list)
 
                 if auto_publish:
