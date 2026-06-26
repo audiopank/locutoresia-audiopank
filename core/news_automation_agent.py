@@ -95,14 +95,23 @@ class NewsAutomationAgent:
             logger.error(f"❌ Erro ao buscar notícias: {e}")
             return {"success": False, "error": str(e)}
 
-    def publish_single(self, title: str, content: str, author_id: str = None) -> Dict[str, Any]:
+    def publish_single(self, title: str, content: str, author_id: str = None, category: str = None) -> Dict[str, Any]:
         """Publica uma única notícia na NewPost-IA"""
         try:
             author = author_id or self.newpost_author_id
+            # Tags refletem a categoria real do post (ex.: #Esporte, #Economia)
+            # em vez do #Brasil fixo de antes.
+            tags = ["#NewsAgent", "#LocutoresIA"]
+            if category:
+                cat_tag = "#" + str(category).strip().replace(" ", "")
+                if cat_tag not in tags:
+                    tags.append(cat_tag)
             result = self.supabase.publish_to_newpost(
                 title=title,
                 content=content,
-                author_id=author
+                author_id=author,
+                category=category or "Geral",
+                tags=tags
             )
             return result
         except Exception as e:
@@ -150,7 +159,8 @@ class NewsAutomationAgent:
                         content = news_item.get("conteudo_completo", news_item.get("resumo", ""))
                         publish_result = self.publish_single(
                             title=news_item["titulo"],
-                            content=content
+                            content=content,
+                            category=category
                         )
                         if publish_result.get("success"):
                             total_published += 1
