@@ -1,6 +1,7 @@
 import sqlite3
 import logging
 import os
+import tempfile
 from datetime import datetime
 from typing import List, Dict, Tuple
 
@@ -17,9 +18,14 @@ class DatabaseManager:
     
     def __init__(self, db_path: str = None):
         if db_path is None:
-            # Usar o diretório backend para o banco
-            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            self.db_path = os.path.join(backend_dir, "backend", "news_cache.db")
+            if os.environ.get('VERCEL'):
+                # Vercel (serverless): filesystem read-only, exceto /tmp.
+                # O cache é efêmero, mas suficiente — fetch_and_publish usa use_cache=False.
+                self.db_path = os.path.join(tempfile.gettempdir(), "news_cache.db")
+            else:
+                # Local: usar o diretório backend para o banco
+                backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                self.db_path = os.path.join(backend_dir, "backend", "news_cache.db")
         else:
             self.db_path = db_path
         
