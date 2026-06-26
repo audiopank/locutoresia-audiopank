@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, Wand2, Loader2, Mic, Copy } from "lucide-react";
+import { FileText, Wand2, Loader2, Mic, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 
 interface ScriptPanelProps {
@@ -119,7 +119,7 @@ export const ScriptPanel = ({ value, onChange, onSendToVoice }: ScriptPanelProps
           <Textarea
             placeholder="O roteiro gerado aparecerá aqui. Você também pode digitar/colar o seu."
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => { onChange(e.target.value); if (variations.length) setVariations([]); }}
             rows={6}
             className="bg-white/10 border-white/20 text-white placeholder-white/40 resize-y"
           />
@@ -135,7 +135,7 @@ export const ScriptPanel = ({ value, onChange, onSendToVoice }: ScriptPanelProps
             disabled={isVarying || !value.trim()}
             className="gap-2 border-white/20 bg-white/5 text-white hover:bg-white/10"
           >
-            {isVarying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+            {isVarying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             Gerar Variações
           </Button>
 
