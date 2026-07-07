@@ -5178,26 +5178,32 @@ def voxcraft_chat():
             return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
         
         print(f"[VOXCRAFT] API Key encontrada (primeiros 20 chars): {api_key[:20]}...")
-        
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        
-        # Tentar usar um modelo mais comum primeiro
-        model_name = 'gemini-2.0-flash'
+
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=api_key)
+
+        model_name = 'gemini-2.5-flash'
         print(f"[VOXCRAFT] Tentando usar modelo: {model_name}")
-        
-        model = genai.GenerativeModel(model_name)
-        
-        # Preparar mensagens
-        chat_messages = [
-            {"role": "user", "parts": [VOXCRAFT_SYSTEM_PROMPT]}
+
+        # Preparar histórico da conversa (system prompt vai via config, não como turno)
+        chat_contents = [
+            types.Content(role=("user" if msg.get("role") == "user" else "model"),
+                          parts=[types.Part.from_text(text=msg.get("content", ""))])
+            for msg in messages
         ]
-        for msg in messages:
-            role = "user" if msg.get("role") == "user" else "model"
-            chat_messages.append({"role": role, "parts": [msg.get("content", "")]})
-        
+
+        generate_content_config = types.GenerateContentConfig(
+            system_instruction=VOXCRAFT_SYSTEM_PROMPT
+        )
+
         print(f"[VOXCRAFT] Enviando requisição para o Gemini...")
-        response = model.generate_content(chat_messages)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=chat_contents,
+            config=generate_content_config
+        )
         print(f"[VOXCRAFT] Resposta recebida do Gemini com sucesso!")
         
         return jsonify({
