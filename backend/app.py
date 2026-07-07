@@ -1436,6 +1436,8 @@ def run_audio_generation(payload, trigger_source='api'):
                 "bytes": len(audio_data),
             }
         )
+        if supabase_manager:
+            supabase_manager.log_usage_event('audio_generated')
         return response_payload, 200
     except Exception as e:
         print(f"❌ Erro interno: {type(e).__name__}: {e}")
@@ -1879,7 +1881,14 @@ def get_voices():
 
 @app.route('/api/stats')
 def get_stats():
-    return jsonify({'voices_count': 50, 'audios_generated': 1247, 'active_projects': 89, 'users_count': 342})
+    """Estatísticas reais da home (vozes disponíveis + eventos de uso reais)."""
+    voices_count = len(get_voices().json['voices'])
+    usage_counts = supabase_manager.get_usage_counts() if supabase_manager else {'audio_generated': 0, 'project_saved': 0}
+    return jsonify({
+        'voices_count': voices_count,
+        'audios_generated': usage_counts['audio_generated'],
+        'projects_saved': usage_counts['project_saved'],
+    })
 
 @app.route('/api/debug/env')
 def debug_env():
@@ -6112,7 +6121,10 @@ def create_script():
         }
         scripts.insert(0, new_script)
         save_scripts(scripts)
-        
+
+        if supabase_manager:
+            supabase_manager.log_usage_event('project_saved')
+
         return jsonify({'success': True, 'script': new_script})
     except Exception as e:
         print(f'[SCRIPTS] ERRO: {e}')

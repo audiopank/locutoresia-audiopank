@@ -770,6 +770,25 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/sidebar.js"></script>
     <script>
+        // Estatísticas reais da home (vozes disponíveis + eventos de uso reais no Supabase)
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(stats => {
+                const voicesEl = document.getElementById('voicesCount');
+                const audiosEl = document.getElementById('audiosCount');
+                const projectsEl = document.getElementById('projectsCount');
+                if (voicesEl && typeof stats.voices_count === 'number') {
+                    voicesEl.textContent = stats.voices_count + '+';
+                }
+                if (audiosEl && typeof stats.audios_generated === 'number') {
+                    audiosEl.textContent = stats.audios_generated + '+';
+                }
+                if (projectsEl && typeof stats.projects_saved === 'number') {
+                    projectsEl.textContent = stats.projects_saved + '+';
+                }
+            })
+            .catch(err => console.error('Erro ao carregar estatísticas:', err));
+
         // VoxCraft Chat Logic
         let voxcraftMessages = [
             { role: "assistant", content: "Bem-vindo ao Locutores IA! 🎙️✨ Sou seu especialista em produções audiovisuais. Como posso te ajudar hoje?" }

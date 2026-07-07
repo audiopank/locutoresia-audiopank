@@ -54,6 +54,49 @@ class SupabaseManager:
             "newpost_manager_connected": self.newpost_manager_client is not None
         }
 
+    def log_usage_event(self, event_type: str) -> bool:
+        """
+        Registra um evento real de uso (geração de áudio ou salvamento de
+        roteiro) na tabela usage_events, pra alimentar as estatísticas
+        reais da home. Falha silenciosamente (nunca deve quebrar o fluxo
+        principal por causa de uma estatística).
+        """
+        if not self.locutores_client:
+            return False
+
+        try:
+            self.locutores_client.table("usage_events").insert(
+                {"event_type": event_type}
+            ).execute()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Erro ao registrar usage_event ({event_type}): {e}")
+            return False
+
+    def get_usage_counts(self) -> Dict[str, int]:
+        """
+        Retorna as contagens reais de eventos de uso, agrupadas por tipo.
+        Se o Supabase não estiver disponível, retorna zeros (nunca inventa
+        número).
+        """
+        counts = {"audio_generated": 0, "project_saved": 0}
+        if not self.locutores_client:
+            return counts
+
+        for event_type in counts:
+            try:
+                result = (
+                    self.locutores_client.table("usage_events")
+                    .select("id", count="exact")
+                    .eq("event_type", event_type)
+                    .execute()
+                )
+                counts[event_type] = result.count or 0
+            except Exception as e:
+                logger.error(f"❌ Erro ao contar usage_events ({event_type}): {e}")
+
+        return counts
+
     def get_all_authors(self):
         """
         Retorna todos os autores da tabela 'users'
