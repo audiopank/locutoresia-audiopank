@@ -1778,25 +1778,24 @@ def voice_agent_analysis():
             return jsonify({"success": False, "error": "Conteúdo não fornecido"}), 400
         
         # Usar Gemini para análise
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
         if not api_key:
             return jsonify({"success": False, "error": "Gemini API Key não configurada"}), 500
-            
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
-        
+
+        from google import genai
+        client = genai.Client(api_key=api_key)
+
         prompt = f"""
         Analise o seguinte conteúdo de notícia e retorne um JSON estruturado com:
         1. 'summary': Um resumo viral de 2 frases.
         2. 'insights': 3 pontos chaves ou curiosidades.
         3. 'emotional_tone': O tom ideal para o locutor (ex: entusiasmado, sério, sarcástico).
         4. 'hashtags': 5 hashtags relevantes.
-        
+
         Conteúdo: {content}
         """
-        
-        response = model.generate_content(prompt)
+
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         # Extrair JSON da resposta do Gemini
         text_response = response.text
         # Limpar possíveis markdown blocks
