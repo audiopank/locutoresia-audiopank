@@ -1,3 +1,6 @@
+# Superpowers brainstorming (mockups temporários, não versionar)
+.superpowers/
+
 # Python
 __pycache__/
 *.py[cod]
