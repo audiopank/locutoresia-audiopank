@@ -1703,7 +1703,14 @@ def update_curated_news(post_id):
     if not supabase_url.endswith("/rest/v1/posts"):
         supabase_url = f"{supabase_url}/rest/v1/posts"
     supabase_key = os.getenv("SUPABASE_ANON_KEY", "")
-    
+
+    # A tabela 'posts' não tem coluna 'image_url' — usa 'media_urls'/'media_types' (arrays)
+    if 'image_url' in data:
+        image_url = data.pop('image_url')
+        if image_url:
+            data['media_urls'] = [image_url]
+            data['media_types'] = ['image']
+
     headers = {"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}", "Content-Type": "application/json"}
     try:
         response = requests.patch(f"{supabase_url}?id=eq.{post_id}", headers=headers, json=data)
@@ -3709,17 +3716,20 @@ def api_create_social_from_news():
             'Content-Type': 'application/json'
         }
         
+        image_url = data.get('image_url', '')
         post_data = {
             'title': data.get('title', ''),
             'content': data.get('content', ''),
             'source_url': data.get('source_url', ''),
-            'image_url': data.get('image_url', ''),
             'audio_url': data.get('audio_url', ''),
             'status': 'rascunho',
-            'hashtags': ['noticia', 'brasil'],
+            'tags': ['noticia', 'brasil'],
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
+        if image_url:
+            post_data['media_urls'] = [image_url]
+            post_data['media_types'] = ['image']
         
         response = requests.post(
             f"{supabase_url}/rest/v1/posts",
