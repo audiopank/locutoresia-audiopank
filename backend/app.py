@@ -6050,11 +6050,15 @@ def save_vip_project():
         }
 
         idx = next((i for i, p in enumerate(projects) if p.get('id') == pid), None)
+        is_new_project = idx is None
         if idx is not None:
             projects[idx] = project
         else:
             projects.insert(0, project)
         save_vip_projects(projects)
+
+        if is_new_project and supabase_manager:
+            supabase_manager.log_usage_event('project_saved')
 
         return jsonify({'success': True, 'project': project})
     except Exception as e:
