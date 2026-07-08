@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Headphones, Newspaper, Search, Mic, Music, Save, Download, Play, Pause, Trash2,
@@ -137,6 +137,40 @@ const MiniDAWIntegrated = () => {
     audio.load();
     toast({ title: "Voz adicionada!", description: name });
   }, [toast]);
+
+  // Trilha vinda da Biblioteca de Trilhas Sonoras (/library -> "Usar no MiniDAW React"),
+  // entregue via localStorage por não haver navegação com estado entre as duas páginas.
+  const handleMusicTrackFromLibrary = useCallback((audioUrl: string, name: string) => {
+    const newTrack: Track = {
+      id: Date.now().toString(),
+      name,
+      type: "music",
+      audioUrl,
+      volume: 100,
+      color: "border-purple-500 bg-purple-500/10",
+      duration: 0,
+      effects: defaultEffects(),
+    };
+    setTracks(prev => [...prev, newTrack]);
+    const audio = new Audio(audioUrl);
+    audio.addEventListener('loadedmetadata', () => {
+      setTracks(prev => prev.map(t => t.id === newTrack.id ? { ...t, duration: audio.duration } : t));
+      audioRefs.current[newTrack.id] = audio;
+    });
+    audio.load();
+    toast({ title: "Trilha adicionada!", description: name });
+  }, [toast]);
+
+  useEffect(() => {
+    const pendingUrl = localStorage.getItem('selectedTrackUrl');
+    if (!pendingUrl) return;
+    const pendingName = localStorage.getItem('selectedTrackName') || 'Trilha da Biblioteca';
+    localStorage.removeItem('selectedTrackUrl');
+    localStorage.removeItem('selectedTrackName');
+    handleMusicTrackFromLibrary(pendingUrl, pendingName);
+    setActiveTab('multitrack');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const playPause = useCallback(() => {
     if (isPlaying) {
