@@ -472,8 +472,7 @@
             try {
                 for (let i = 0; i < selectedFiles.length; i++) {
                     const file = selectedFiles[i];
-                    const formData = new FormData();
-                    
+
                     // Obtém a duração do arquivo de áudio
                     let duration = 0;
                     try {
@@ -481,25 +480,54 @@
                     } catch (e) {
                         console.error('Erro ao obter duração:', e);
                     }
-                    
-                    formData.append('file', file);
-                    formData.append('name', selectedFiles.length === 1 
-                        ? document.getElementById('trackName').value || file.name 
-                        : file.name.replace(/\.[^/.]+$/, ''));
-                    formData.append('artist', document.getElementById('trackArtist').value);
-                    formData.append('genre', document.getElementById('trackGenre').value);
-                    formData.append('mood', document.getElementById('trackMood').value);
-                    formData.append('duration', duration);
-                    formData.append('bpm', document.getElementById('trackBpm').value);
-                    formData.append('description', document.getElementById('trackDescription').value);
 
-                    const response = await fetch('/api/tracks/upload', {
+                    // 1. Pede uma signed upload URL (payload pequeno, sem o arquivo)
+                    const urlResponse = await fetch('/api/tracks/upload-url', {
                         method: 'POST',
-                        body: formData
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: file.name })
                     });
+                    const urlResult = await urlResponse.json();
+                    if (!urlResult.success) {
+                        throw new Error(urlResult.error);
+                    }
 
-                    const result = await response.json();
-                    
+                    // 2. Envia o arquivo DIRETO pro Supabase Storage (não passa pela função do Vercel)
+                    const uploadFormData = new FormData();
+                    uploadFormData.append('file', file);
+                    const storageResponse = await fetch(urlResult.upload_url, {
+                        method: 'PUT',
+                        headers: {
+                            'apikey': urlResult.apikey,
+                            'Authorization': `Bearer ${urlResult.apikey}`
+                        },
+                        body: uploadFormData
+                    });
+                    if (!storageResponse.ok) {
+                        throw new Error('Falha ao enviar o arquivo para o armazenamento');
+                    }
+
+                    // 3. Salva os metadados (payload pequeno, sem o arquivo)
+                    const metadataResponse = await fetch('/api/tracks/upload-metadata', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: selectedFiles.length === 1
+                                ? document.getElementById('trackName').value || file.name
+                                : file.name.replace(/\.[^/.]+$/, ''),
+                            artist: document.getElementById('trackArtist').value,
+                            genre: document.getElementById('trackGenre').value,
+                            mood: document.getElementById('trackMood').value,
+                            duration: duration,
+                            bpm: document.getElementById('trackBpm').value,
+                            description: document.getElementById('trackDescription').value,
+                            file_url: urlResult.public_url,
+                            file_size: file.size,
+                            mime_type: file.type
+                        })
+                    });
+                    const result = await metadataResponse.json();
+
                     if (!result.success) {
                         throw new Error(result.error);
                     }

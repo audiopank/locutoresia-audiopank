@@ -626,120 +626,87 @@ def get_tracks():
         }), 200
 
 
-@app.route('/api/tracks/upload', methods=['POST', 'OPTIONS'])
-def upload_track():
-    """Faz upload de uma nova trilha"""
+TRACKS_BUCKET = 'music-tracks'
+
+@app.route('/api/tracks/upload-url', methods=['POST', 'OPTIONS'])
+def get_track_upload_url():
+    """Gera uma signed upload URL do Supabase Storage para o navegador enviar o
+    arquivo de áudio DIRETO pro Storage, sem passar pela função serverless do
+    Vercel (que tem limite de ~4.5MB no corpo da requisição e rejeita trilhas
+    maiores com um erro de texto puro, não JSON)."""
     if request.method == 'OPTIONS':
         response = make_response()
         response.headers.add('Access-Control-Allow-Origin', '*')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
         response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         return response
-    
+
     try:
-        # Verifica se temos arquivo na requisição
-        if 'file' not in request.files:
-            return jsonify({
-                "success": False,
-                "error": "Nenhum arquivo enviado"
-            }), 400
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            return jsonify({
-                "success": False,
-                "error": "Nome do arquivo vazio"
-            }), 400
-        
-        # Obtém os dados do formulário
-        name = request.form.get('name', file.filename)
-        artist = request.form.get('artist', 'Locutores IA')
-        genre = request.form.get('genre', 'other')
-        mood = request.form.get('mood', 'neutral')
-        duration = int(request.form.get('duration', 0))
-        bpm = int(request.form.get('bpm', 120))
-        description = request.form.get('description', '')
-        
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase Storage não configurado"}), 500
+
+        data = request.get_json() or {}
+        filename = data.get('filename', '')
+        if not filename:
+            return jsonify({"success": False, "error": "Nome do arquivo é obrigatório"}), 400
+
         import uuid
-        import os
-        
-        # Lê o arquivo uma única vez e armazena os bytes
-        file_bytes = file.read()
-        file_size = len(file_bytes)
-        
-        # Primeiro, gera um nome único para o arquivo
-        file_extension = os.path.splitext(file.filename)[1]
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        
-        file_url = ""
-        
-        # Primeiro tenta usar o Supabase Storage e banco de dados
-        if supabase_manager and supabase_manager.newpost_manager_client:
-            try:
-                # Upload para o Supabase Storage
-                # Primeiro, criamos um bucket se não existir (ou usamos o padrão)
-                # Vamos usar um bucket chamado 'music-tracks'
-                bucket_name = 'music-tracks'
+        file_extension = os.path.splitext(filename)[1]
+        storage_path = f"tracks/{uuid.uuid4()}{file_extension}"
 
-                # Tenta fazer o upload
-                try:
-                    storage_path = f"tracks/{unique_filename}"
+        signed = supabase_manager.newpost_manager_client.storage.from_(TRACKS_BUCKET) \
+            .create_signed_upload_url(storage_path)
 
-                    upload_result = supabase_manager.newpost_manager_client.storage.from_(bucket_name).upload(
-                        path=storage_path,
-                        file=file_bytes,
-                        file_options={"content-type": file.mimetype}
-                    )
+        supabase_url = os.getenv("NEWPOST_SUPABASE_URL", "").rstrip('/')
+        anon_key = os.getenv("NEWPOST_SUPABASE_ANON_KEY", "")
+        public_url = f"{supabase_url}/storage/v1/object/public/{TRACKS_BUCKET}/{storage_path}"
 
-                    # Obtém a URL pública
-                    file_url = supabase_manager.newpost_manager_client.storage.from_(bucket_name).get_public_url(storage_path)
-                    
-                except Exception as storage_error:
-                    print(f"Erro no Supabase Storage: {storage_error}")
-                    # Se o bucket não existir, tenta salvar localmente (apenas para desenvolvimento)
-                    # Na Vercel, isso falhará, mas é um fallback para local
-                    pass
-            
-            except Exception as e:
-                print(f"Erro no Supabase: {e}")
-        
-        # Se não conseguiu usar o Supabase Storage, tenta salvar localmente (apenas para dev)
+        return jsonify({
+            "success": True,
+            "upload_url": signed["signed_url"],
+            "path": storage_path,
+            "public_url": public_url,
+            "apikey": anon_key
+        })
+    except Exception as e:
+        print(f"Erro ao gerar signed upload URL: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/tracks/upload-metadata', methods=['POST', 'OPTIONS'])
+def save_track_metadata():
+    """Salva os metadados da trilha depois que o arquivo já foi enviado direto
+    pro Supabase Storage via signed upload URL (ver /api/tracks/upload-url).
+    Este endpoint só recebe JSON pequeno, nunca o arquivo em si."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        file_url = data.get('file_url', '')
         if not file_url:
-            try:
-                upload_dir = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads', 'tracks')
-                os.makedirs(upload_dir, exist_ok=True)
-                file_path = os.path.join(upload_dir, unique_filename)
-                
-                # Salva usando os bytes que já temos
-                with open(file_path, 'wb') as f:
-                    f.write(file_bytes)
-                
-                file_url = f"/static/uploads/tracks/{unique_filename}"
-            except Exception as local_error:
-                print(f"Erro no fallback local: {local_error}")
-                # Na Vercel, aqui falhará, mas vamos retornar um erro claro
-                return jsonify({
-                    "success": False,
-                    "error": "Para usar na Vercel, é necessário configurar o Supabase Storage com o bucket 'music-tracks'"
-                }), 500
-        
-        # Prepara os dados da trilha
+            return jsonify({"success": False, "error": "file_url é obrigatório"}), 400
+
+        import uuid
         track_data = {
-            "name": name,
-            "artist": artist,
-            "genre": genre,
-            "mood": mood,
-            "duration": duration,
-            "bpm": bpm,
-            "description": description,
+            "name": data.get('name', 'Sem título'),
+            "artist": data.get('artist', 'Locutores IA'),
+            "genre": data.get('genre', 'other'),
+            "mood": data.get('mood', 'neutral'),
+            "duration": int(data.get('duration', 0) or 0),
+            "bpm": int(data.get('bpm', 120) or 120),
+            "description": data.get('description', ''),
             "file_url": file_url,
-            "file_size": file_size,
-            "mime_type": file.mimetype,
+            "file_size": int(data.get('file_size', 0) or 0),
+            "mime_type": data.get('mime_type', 'audio/mpeg'),
             "is_active": True
         }
-        
-        # Salva os metadados no Supabase, se disponível
+
         saved_to_supabase = False
         if supabase_manager and supabase_manager.newpost_manager_client:
             try:
@@ -748,22 +715,20 @@ def upload_track():
                 saved_to_supabase = True
             except Exception as e:
                 print(f"Não foi possível salvar no Supabase: {e}")
-                # Fallback para ID local
                 track_data['id'] = str(uuid.uuid4())
         else:
             track_data['id'] = str(uuid.uuid4())
-        
-        # Se não salvou no Supabase, adiciona à lista local
+
         if not saved_to_supabase:
             local_uploaded_tracks.append(track_data)
-        
+
         return jsonify({
             "success": True,
             "track": track_data
         }), 201
-        
+
     except Exception as e:
-        print(f"Erro ao fazer upload da trilha: {e}")
+        print(f"Erro ao salvar metadados da trilha: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
