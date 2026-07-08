@@ -1293,6 +1293,23 @@
 
             // Load scripts from library
             loadScripts();
+
+            // Handoff vindo de /roteiros (Usar no Editor / Gerar Locução)
+            const pendingScriptContent = localStorage.getItem('pendingScriptContent');
+            if (pendingScriptContent !== null) {
+                document.getElementById('scriptEditor').value = pendingScriptContent;
+                if (textInput) textInput.value = pendingScriptContent;
+                localStorage.removeItem('pendingScriptContent');
+                showNotification('Roteiro carregado no editor!', 'info');
+            }
+
+            const pendingVoiceText = localStorage.getItem('pendingVoiceText');
+            if (pendingVoiceText !== null) {
+                const voiceTextInput = document.getElementById('textInput');
+                if (voiceTextInput) voiceTextInput.value = pendingVoiceText;
+                localStorage.removeItem('pendingVoiceText');
+                showNotification('Roteiro carregado para gerar locução!', 'info');
+            }
         });
     </script>
     <script>
