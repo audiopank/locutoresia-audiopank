@@ -160,12 +160,12 @@
 
             const filtered = SCRIPTS.filter(function(script) {
                 const matchesSearch = !search ||
-                    script.title.toLowerCase().includes(search) ||
-                    script.content.toLowerCase().includes(search);
+                    (script.title || '').toLowerCase().includes(search) ||
+                    (script.content || '').toLowerCase().includes(search);
 
                 let matchesOrigin = true;
                 if (origin === 'newpost') {
-                    matchesOrigin = script.title.startsWith('Roteiro NewPost-IA');
+                    matchesOrigin = (script.title || '').startsWith('Roteiro NewPost-IA');
                 } else if (origin === 'mes') {
                     const created = new Date(script.created_at);
                     matchesOrigin = created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
@@ -190,13 +190,12 @@
             emptyState.style.display = 'none';
             container.innerHTML = scripts.map(function(script) {
                 const safeId = script.id.replace(/'/g, "\\'");
-                const escapedTitle = escapeHtml(script.title);
                 return `
                 <div class="script-card" id="script-${safeId}">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div class="flex-grow-1">
                             <input type="text" class="form-control form-control-sm bg-transparent text-light border-0 fw-bold"
-                                   id="title-${safeId}" value="${escapedTitle}"
+                                   id="title-${safeId}"
                                    onchange="updateScriptTitle('${safeId}')">
                             <small class="text-secondary">${new Date(script.created_at).toLocaleString('pt-BR')}</small>
                         </div>
@@ -218,32 +217,47 @@
                 </div>
             `;
             }).join('');
+
+            scripts.forEach(function(script) {
+                const input = document.getElementById(`title-${script.id}`);
+                if (input) input.value = script.title;
+            });
         }
 
         async function updateScriptTitle(scriptId) {
             const title = document.getElementById(`title-${scriptId}`).value;
             try {
-                await fetch(`/api/scripts/${scriptId}`, {
+                const response = await fetch(`/api/scripts/${scriptId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ title })
                 });
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Erro ao atualizar título');
+                }
                 loadScripts();
             } catch (error) {
                 console.error('Erro ao atualizar título:', error);
+                alert(`Erro ao atualizar título: ${error.message}`);
             }
         }
 
         async function updateScriptContent(scriptId) {
             const content = document.getElementById(`content-${scriptId}`).value;
             try {
-                await fetch(`/api/scripts/${scriptId}`, {
+                const response = await fetch(`/api/scripts/${scriptId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content })
                 });
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Erro ao atualizar conteúdo');
+                }
             } catch (error) {
                 console.error('Erro ao atualizar conteúdo:', error);
+                alert(`Erro ao atualizar conteúdo: ${error.message}`);
             }
         }
 
