@@ -65,20 +65,46 @@ export const VoiceGenerator = ({ open, onClose, onAudioGenerated, initialText, i
   const { toast } = useToast();
   const { synthesizeSpeech, synthesizeClonedVoice, isLoading } = useLMNT();
 
-  // Carrega vozes ao abrir o painel (clonadas do localStorage + locutores do backend)
+  // Carrega vozes (clonadas + locutores do backend) e define a seleção inicial
+  // numa única passagem, sem corrida: se o usuário veio da Galeria com um
+  // locutor explícito (initialVoiceKey), essa escolha sempre vence — antes,
+  // vozes clonadas (carregamento síncrono) sempre "ganhavam" dos locutores de
+  // API (carregamento assíncrono) por pura ordem de chegada.
   useEffect(() => {
-    if (open) {
-      loadClonedVoices();
-      loadApiVoices();
-    }
-  }, [open]);
+    if (!open) return;
 
-  // Pré-preenche texto e locutor quando aberto a partir do roteiro/galeria
-  useEffect(() => {
-    if (open) {
-      if (initialText !== undefined) setText(initialText);
-      if (initialVoiceKey) setSelectedKey(initialVoiceKey);
+    let cloned: ClonedVoiceEntry[] = [];
+    try {
+      const stored = localStorage.getItem(CLONED_VOICES_KEY);
+      cloned = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      console.error("Error loading cloned voices:", e);
     }
+    setClonedVoices(cloned);
+
+    if (initialText !== undefined) setText(initialText);
+
+    if (initialVoiceKey) {
+      setSelectedKey(initialVoiceKey);
+    } else if (cloned.length > 0) {
+      setSelectedKey(clonedKey(cloned[0].id));
+    }
+
+    (async () => {
+      try {
+        const res = await fetch("/api/voices");
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: ApiVoice[] = data.voices || [];
+        setApiVoices(list);
+        // Só usa o primeiro locutor de API como default se nada mais já foi selecionado.
+        if (!initialVoiceKey && cloned.length === 0 && list.length > 0) {
+          setSelectedKey(apiKey(list[0].provider, list[0].id));
+        }
+      } catch (e) {
+        console.error("Error loading locutores:", e);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialText, initialVoiceKey]);
 
@@ -99,32 +125,6 @@ export const VoiceGenerator = ({ open, onClose, onAudioGenerated, initialText, i
       };
     }
   }, [open]);
-
-  const loadClonedVoices = () => {
-    try {
-      const stored = localStorage.getItem(CLONED_VOICES_KEY);
-      const parsed: ClonedVoiceEntry[] = stored ? JSON.parse(stored) : [];
-      setClonedVoices(parsed);
-      // Seleciona a primeira voz clonada por padrão, se houver
-      setSelectedKey((prev) => prev || (parsed.length > 0 ? clonedKey(parsed[0].id) : ""));
-    } catch (e) {
-      console.error("Error loading cloned voices:", e);
-    }
-  };
-
-  const loadApiVoices = async () => {
-    try {
-      const res = await fetch("/api/voices");
-      if (!res.ok) return;
-      const data = await res.json();
-      const list: ApiVoice[] = data.voices || [];
-      setApiVoices(list);
-      // Se não há voz clonada selecionada, usa o primeiro locutor padrão
-      setSelectedKey((prev) => prev || (list.length > 0 ? apiKey(list[0].provider, list[0].id) : ""));
-    } catch (e) {
-      console.error("Error loading locutores:", e);
-    }
-  };
 
   // Resolve a chave selecionada para os dados necessários à geração
   const resolveSelected = () => {
