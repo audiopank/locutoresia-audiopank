@@ -583,8 +583,8 @@ def get_tracks():
 
         # Tentativa de usar o Supabase
         try:
-            if supabase_manager and supabase_manager.locutores_client:
-                response = supabase_manager.locutores_client.table('music-tracks') \
+            if supabase_manager and supabase_manager.newpost_manager_client:
+                response = supabase_manager.newpost_manager_client.table('music_tracks') \
                     .select('*') \
                     .eq('is_active', True) \
                     .order('created_at', desc=True) \
@@ -670,25 +670,25 @@ def upload_track():
         file_url = ""
         
         # Primeiro tenta usar o Supabase Storage e banco de dados
-        if supabase_manager and supabase_manager.locutores_client:
+        if supabase_manager and supabase_manager.newpost_manager_client:
             try:
                 # Upload para o Supabase Storage
                 # Primeiro, criamos um bucket se não existir (ou usamos o padrão)
                 # Vamos usar um bucket chamado 'music-tracks'
                 bucket_name = 'music-tracks'
-                
+
                 # Tenta fazer o upload
                 try:
                     storage_path = f"tracks/{unique_filename}"
-                    
-                    upload_result = supabase_manager.locutores_client.storage.from_(bucket_name).upload(
+
+                    upload_result = supabase_manager.newpost_manager_client.storage.from_(bucket_name).upload(
                         path=storage_path,
                         file=file_bytes,
                         file_options={"content-type": file.mimetype}
                     )
-                    
+
                     # Obtém a URL pública
-                    file_url = supabase_manager.locutores_client.storage.from_(bucket_name).get_public_url(storage_path)
+                    file_url = supabase_manager.newpost_manager_client.storage.from_(bucket_name).get_public_url(storage_path)
                     
                 except Exception as storage_error:
                     print(f"Erro no Supabase Storage: {storage_error}")
@@ -736,9 +736,9 @@ def upload_track():
         
         # Salva os metadados no Supabase, se disponível
         saved_to_supabase = False
-        if supabase_manager and supabase_manager.locutores_client:
+        if supabase_manager and supabase_manager.newpost_manager_client:
             try:
-                response = supabase_manager.locutores_client.table('music_tracks').insert(track_data).execute()
+                response = supabase_manager.newpost_manager_client.table('music_tracks').insert(track_data).execute()
                 track_data['id'] = response.data[0]['id']
                 saved_to_supabase = True
             except Exception as e:
@@ -779,9 +779,9 @@ def delete_track(track_id):
     
     try:
         # Tenta excluir do Supabase
-        if supabase_manager and supabase_manager.locutores_client:
+        if supabase_manager and supabase_manager.newpost_manager_client:
             try:
-                supabase_manager.locutores_client.table('music_tracks') \
+                supabase_manager.newpost_manager_client.table('music_tracks') \
                     .delete() \
                     .eq('id', track_id) \
                     .execute()
