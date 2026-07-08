@@ -5283,7 +5283,13 @@ def gemini_improve_script():
         client = genai.Client(api_key=api_key)
         model_name = 'gemini-2.5-flash'
         
-        prompt = f"Melhore o seguinte roteiro para uma locução profissional, mantendo o significado original, mas tornando-o mais fluido e envolvente:\n\n{text}"
+        prompt = (
+            "Melhore o seguinte roteiro para uma locução profissional, mantendo o significado original, "
+            "mas tornando-o mais fluido e envolvente. "
+            "Responda APENAS com o texto do roteiro melhorado, sem saudação, sem introdução, sem comentários "
+            "e sem marcações como \"---\" — pronto para ser narrado exatamente como está.\n\n"
+            f"Roteiro original:\n{text}"
+        )
         
         response = client.models.generate_content(
             model=model_name,
@@ -5437,7 +5443,13 @@ def gemini_change_tone():
         client = genai.Client(api_key=api_key)
         model_name = 'gemini-2.5-flash'
         
-        prompt = f"Reescreva o seguinte roteiro com um tom {tone_descriptions.get(tone, tone)}, mantendo todo o conteúdo e informação original:\n\n{text}"
+        prompt = (
+            f"Reescreva o seguinte roteiro com um tom {tone_descriptions.get(tone, tone)}, "
+            "mantendo todo o conteúdo e informação original. "
+            "Responda APENAS com o texto do roteiro reescrito, sem saudação, sem introdução, sem comentários "
+            "e sem marcações como \"---\" — pronto para ser narrado exatamente como está.\n\n"
+            f"Roteiro original:\n{text}"
+        )
         
         response = client.models.generate_content(
             model=model_name,
