@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca de Roteiros - Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --accent-color: #ec4899;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .main-header {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .library-container {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .filter-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .script-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .search-box, .form-control, .form-select {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        .search-box:focus, .form-control:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: var(--text-primary);
+        }
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            color: white;
+            font-weight: 500;
+        }
+        .btn-primary-custom:hover {
+            background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
+        }
+        .delete-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+            padding: 0.375rem 0.75rem;
+            border-radius: 8px;
+        }
+        .delete-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <header class="main-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-book me-2"></i>
+                        Biblioteca de Roteiros
+                    </h1>
+                    <p class="mb-0 text-muted">Todos os roteiros salvos</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <a href="/" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>
+                        Voltar ao Início
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="library-container">
+        <div class="filter-section">
+            <input type="text" class="form-control search-box" id="searchInput" placeholder="Pesquise por título ou conteúdo...">
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <select class="form-select" id="originSelect" style="max-width: 220px;">
+                    <option value="">Todos</option>
+                    <option value="mes">Este mês</option>
+                    <option value="newpost">NewPost-IA</option>
+                </select>
+                <button class="btn btn-primary-custom" onclick="loadScripts()">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    Atualizar
+                </button>
+            </div>
+        </div>
+
+        <div id="scriptsList"></div>
+
+        <div class="text-center mt-5" id="emptyState" style="display: none;">
+            <i class="fas fa-file-alt fa-4x mb-3" style="color: var(--text-secondary); opacity: 0.5;"></i>
+            <h4>Nenhum roteiro encontrado</h4>
+            <p class="text-muted">Salve roteiros no Editor da página inicial pra vê-los aqui.</p>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let SCRIPTS = [];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadScripts();
+            document.getElementById('searchInput').addEventListener('input', filterScripts);
+            document.getElementById('originSelect').addEventListener('change', filterScripts);
+        });
+
+        async function loadScripts() {
+            try {
+                const response = await fetch('/api/scripts');
+                const data = await response.json();
+                if (data.success) {
+                    SCRIPTS = data.scripts;
+                    filterScripts();
+                }
+            } catch (error) {
+                console.error('Erro ao carregar roteiros:', error);
+            }
+        }
+
+        function filterScripts() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const origin = document.getElementById('originSelect').value;
+            const now = new Date();
+
+            const filtered = SCRIPTS.filter(function(script) {
+                const matchesSearch = !search ||
+                    script.title.toLowerCase().includes(search) ||
+                    script.content.toLowerCase().includes(search);
+
+                let matchesOrigin = true;
+                if (origin === 'newpost') {
+                    matchesOrigin = script.title.startsWith('Roteiro NewPost-IA');
+                } else if (origin === 'mes') {
+                    const created = new Date(script.created_at);
+                    matchesOrigin = created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
+                }
+
+                return matchesSearch && matchesOrigin;
+            });
+
+            renderScripts(filtered);
+        }
+
+        function renderScripts(scripts) {
+            const container = document.getElementById('scriptsList');
+            const emptyState = document.getElementById('emptyState');
+
+            if (scripts.length === 0) {
+                container.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            container.innerHTML = scripts.map(function(script) {
+                const safeId = script.id.replace(/'/g, "\\'");
+                const escapedTitle = escapeHtml(script.title);
+                return `
+                <div class="script-card" id="script-${safeId}">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div class="flex-grow-1">
+                            <input type="text" class="form-control form-control-sm bg-transparent text-light border-0 fw-bold"
+                                   id="title-${safeId}" value="${escapedTitle}"
+                                   onchange="updateScriptTitle('${safeId}')">
+                            <small class="text-secondary">${new Date(script.created_at).toLocaleString('pt-BR')}</small>
+                        </div>
+                        <div class="d-flex gap-2 ms-2">
+                            <button class="btn btn-sm btn-outline-light" title="Usar no Editor" onclick="useInEditor('${safeId}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" title="Gerar Locução" onclick="useForVoice('${safeId}')">
+                                <i class="fas fa-microphone"></i>
+                            </button>
+                            <button class="delete-btn" title="Excluir" onclick="deleteScript('${safeId}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <textarea class="form-control form-control-sm bg-dark text-light border-secondary"
+                              id="content-${safeId}" rows="3"
+                              onchange="updateScriptContent('${safeId}')">${escapeHtml(script.content)}</textarea>
+                </div>
+            `;
+            }).join('');
+        }
+
+        async function updateScriptTitle(scriptId) {
+            const title = document.getElementById(`title-${scriptId}`).value;
+            try {
+                await fetch(`/api/scripts/${scriptId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+                loadScripts();
+            } catch (error) {
+                console.error('Erro ao atualizar título:', error);
+            }
+        }
+
+        async function updateScriptContent(scriptId) {
+            const content = document.getElementById(`content-${scriptId}`).value;
+            try {
+                await fetch(`/api/scripts/${scriptId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+            } catch (error) {
+                console.error('Erro ao atualizar conteúdo:', error);
+            }
+        }
+
+        async function deleteScript(scriptId) {
+            if (!confirm('Tem certeza que deseja excluir este roteiro?')) return;
+            try {
+                const response = await fetch(`/api/scripts/${scriptId}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    loadScripts();
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                console.error('Erro ao excluir:', error);
+                alert(`Erro ao excluir: ${error.message}`);
+            }
+        }
+
+        function useInEditor(scriptId) {
+            const script = SCRIPTS.find(function(s) { return s.id === scriptId; });
+            if (!script) return;
+            localStorage.setItem('pendingScriptContent', script.content);
+            window.location.href = '/';
+        }
+
+        function useForVoice(scriptId) {
+            const script = SCRIPTS.find(function(s) { return s.id === scriptId; });
+            if (!script) return;
+            localStorage.setItem('pendingVoiceText', script.content);
+            window.location.href = '/';
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

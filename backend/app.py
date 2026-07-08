@@ -569,6 +569,11 @@ def library():
     """Biblioteca de Trilhas Sonoras"""
     return render_template('library.html')
 
+@app.route('/roteiros')
+def scripts_library_page():
+    """Biblioteca de Roteiros"""
+    return render_template('scripts_library.html')
+
 
 # ===========================================
 # API de Trilhas Sonoras
