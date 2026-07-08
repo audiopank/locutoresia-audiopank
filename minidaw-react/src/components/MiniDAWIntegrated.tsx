@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Headphones, Newspaper, Search, Mic, Music, Save, Download, Play, Pause, Trash2,
-  Upload, Loader2, Settings, FolderOpen, Star, Plus, Workflow, Zap, FileText, Sliders, Wand2,
+  Upload, Loader2, Settings, FolderOpen, Star, Plus, Workflow, Zap, FileText, Sliders, Wand2, Home,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -295,6 +295,9 @@ const MiniDAWIntegrated = () => {
               </Button>
               <SecretsManager />
               <Badge variant="outline" className="border-white/20 text-white/60">v2.1</Badge>
+              <Button onClick={() => { window.location.href = "/"; }} variant="outline" className="gap-2 border-white/20 hover:bg-white/10">
+                <Home className="w-4 h-4" /> Início
+              </Button>
             </div>
           </div>
         </div>
