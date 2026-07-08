@@ -61,11 +61,13 @@ class SupabaseManager:
         reais da home. Falha silenciosamente (nunca deve quebrar o fluxo
         principal por causa de uma estatística).
         """
-        if not self.locutores_client:
+        # usage_events foi criada no projeto NEWPOST_SUPABASE_URL (mesmo Supabase
+        # onde vive o schema do Locutores IA hoje) — usar newpost_manager_client.
+        if not self.newpost_manager_client:
             return False
 
         try:
-            self.locutores_client.table("usage_events").insert(
+            self.newpost_manager_client.table("usage_events").insert(
                 {"event_type": event_type}
             ).execute()
             return True
@@ -80,13 +82,13 @@ class SupabaseManager:
         número).
         """
         counts = {"audio_generated": 0, "project_saved": 0}
-        if not self.locutores_client:
+        if not self.newpost_manager_client:
             return counts
 
         for event_type in counts:
             try:
                 result = (
-                    self.locutores_client.table("usage_events")
+                    self.newpost_manager_client.table("usage_events")
                     .select("id", count="exact")
                     .eq("event_type", event_type)
                     .execute()
