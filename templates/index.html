@@ -799,45 +799,59 @@
                 <div class="row">
                     <!-- Filter Panel -->
                     <div class="col-lg-3">
-                        <div class="filter-panel">
-                            <h5><i class="fas fa-filter"></i>Filtros</h5>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Gênero</label>
-                                <select class="form-select" id="genderFilter">
-                                    <option value="">Todos</option>
-                                    <option value="male">Masculino</option>
-                                    <option value="female">Feminino</option>
-                                </select>
+                        <div class="filters-sticky-wrapper">
+                            <div class="filter-panel">
+                                <h5><i class="fas fa-filter"></i>Filtros</h5>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Gênero</label>
+                                    <select class="form-select" id="genderFilter">
+                                        <option value="">Todos</option>
+                                        <option value="male">Masculino</option>
+                                        <option value="female">Feminino</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Idioma</label>
+                                    <select class="form-select" id="languageFilter">
+                                        <option value="">Todos</option>
+                                        <option value="pt-BR">Português (BR)</option>
+                                        <option value="en-US">Inglês (EUA)</option>
+                                        <option value="es-ES">Espanhol</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Estilo</label>
+                                    <select class="form-select" id="styleFilter">
+                                        <option value="">Todos</option>
+                                        <option value="professional">Profissional</option>
+                                        <option value="friendly">Amigável</option>
+                                        <option value="energetic">Enérgico</option>
+                                    </select>
+                                </div>
+
+                                <button class="btn btn-generate w-100 mb-2">
+                                    <i class="fas fa-search me-2"></i>Buscar
+                                </button>
+
+                                <button class="btn btn-outline-light w-100" id="clearFilters">
+                                    <i class="fas fa-redo me-2"></i>Limpar Filtros
+                                </button>
                             </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Idioma</label>
-                                <select class="form-select" id="languageFilter">
-                                    <option value="">Todos</option>
-                                    <option value="pt-BR">Português (BR)</option>
-                                    <option value="en-US">Inglês (EUA)</option>
-                                    <option value="es-ES">Espanhol</option>
-                                </select>
+
+                            <div class="encomenda-cta">
+                                <h6 class="encomenda-cta-title">Não quer mexer em nada?</h6>
+                                <p class="encomenda-cta-text">
+                                    Nossa equipe cria sua locução do zero — roteiro, voz e áudio
+                                    pronto pra usar, direto no seu WhatsApp.
+                                </p>
+                                <a href="https://wa.me/5585992262297?text=Ol%C3%A1!%20Quero%20encomendar%20uma%20locu%C3%A7%C3%A3o%20personalizada."
+                                   target="_blank" rel="noopener" class="encomenda-cta-btn">
+                                    <i class="fab fa-whatsapp"></i> Falar no WhatsApp
+                                </a>
                             </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Estilo</label>
-                                <select class="form-select" id="styleFilter">
-                                    <option value="">Todos</option>
-                                    <option value="professional">Profissional</option>
-                                    <option value="friendly">Amigável</option>
-                                    <option value="energetic">Enérgico</option>
-                                </select>
-                            </div>
-                            
-                            <button class="btn btn-generate w-100 mb-2">
-                                <i class="fas fa-search me-2"></i>Buscar
-                            </button>
-                            
-                            <button class="btn btn-outline-light w-100" id="clearFilters">
-                                <i class="fas fa-redo me-2"></i>Limpar Filtros
-                            </button>
                         </div>
                     </div>
                     
