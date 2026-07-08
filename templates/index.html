@@ -854,22 +854,6 @@
                                         <i class="fas fa-save me-2"></i>Salvar Roteiro
                                     </button>
                                 </div>
-                                
-                                <!-- Gemini Suggestions Area -->
-                                <div class="col-12" id="geminiSuggestions" style="display: none;">
-                                    <div class="p-3 bg-dark rounded-3">
-                                        <h6 class="text-light mb-3"><i class="fas fa-lightbulb me-2"></i>Sugestões do Gemini</h6>
-                                        <p id="suggestionText" class="text-secondary"></p>
-                                        <div class="d-flex gap-2 mt-2">
-                                            <button class="btn btn-sm btn-success" id="acceptSuggestionBtn">
-                                                <i class="fas fa-check me-1"></i>Aplicar
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-light" id="dismissSuggestionBtn">
-                                                <i class="fas fa-times me-1"></i>Descartar
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
 
@@ -1060,16 +1044,15 @@
             }, 5000);
         }
         // Script Editor and Gemini Functions
-        let currentSuggestion = '';
-
         async function improveScript() {
             const scriptEditor = document.getElementById('scriptEditor');
+            const textInput = document.getElementById('textInput');
             const script = scriptEditor.value.trim();
             if (!script) {
                 alert('Por favor, escreva um roteiro primeiro');
                 return;
             }
-            showNotification('Gerando sugestões...', 'info');
+            showNotification('Melhorando roteiro...', 'info');
             try {
                 const response = await fetch('/api/gemini/improve', {
                     method: 'POST',
@@ -1083,23 +1066,21 @@
 
                 const data = await response.json();
                 if (data.success) {
-                    currentSuggestion = data.text;
-                    document.getElementById('suggestionText').textContent = currentSuggestion;
-                    document.getElementById('geminiSuggestions').style.display = 'block';
-                    showNotification('Sugestão gerada com sucesso!', 'success');
+                    scriptEditor.value = data.text;
+                    if (textInput) textInput.value = data.text;
+                    showNotification('Roteiro melhorado!', 'success');
+                } else {
+                    throw new Error(data.error || 'Erro desconhecido');
                 }
             } catch (error) {
                 console.error('Error improving script:', error);
-                // Fallback: simple improvement
-                currentSuggestion = `Aqui está uma versão melhorada do seu roteiro:\n\n${script}`;
-                document.getElementById('suggestionText').textContent = currentSuggestion;
-                document.getElementById('geminiSuggestions').style.display = 'block';
-                showNotification('Usando melhorador local (API não disponível)', 'info');
+                showNotification('Não foi possível melhorar o roteiro. Tente novamente.', 'error');
             }
         }
 
         async function changeTone() {
             const scriptEditor = document.getElementById('scriptEditor');
+            const textInput = document.getElementById('textInput');
             const script = scriptEditor.value.trim();
             const tone = document.getElementById('toneSelect').value;
             if (!script) {
@@ -1120,29 +1101,16 @@
 
                 const data = await response.json();
                 if (data.success) {
-                    currentSuggestion = data.text;
-                    document.getElementById('suggestionText').textContent = currentSuggestion;
-                    document.getElementById('geminiSuggestions').style.display = 'block';
-                    showNotification('Tom alterado com sucesso!', 'success');
+                    scriptEditor.value = data.text;
+                    if (textInput) textInput.value = data.text;
+                    showNotification('Tom alterado!', 'success');
+                } else {
+                    throw new Error(data.error || 'Erro desconhecido');
                 }
             } catch (error) {
                 console.error('Error changing tone:', error);
-                // Fallback: just indicate the tone change
-                currentSuggestion = `Aqui está o seu roteiro com o tom "${tone}":\n\n${script}`;
-                document.getElementById('suggestionText').textContent = currentSuggestion;
-                document.getElementById('geminiSuggestions').style.display = 'block';
-                showNotification('Usando alterador local (API não disponível)', 'info');
+                showNotification('Não foi possível alterar o tom. Tente novamente.', 'error');
             }
-        }
-
-        function acceptSuggestion() {
-            document.getElementById('scriptEditor').value = currentSuggestion;
-            document.getElementById('textInput').value = currentSuggestion;
-            document.getElementById('geminiSuggestions').style.display = 'none';
-        }
-
-        function dismissSuggestion() {
-            document.getElementById('geminiSuggestions').style.display = 'none';
         }
 
         // Biblioteca de Roteiros
@@ -1354,12 +1322,6 @@
 
             const toneBtn = document.getElementById('changeToneBtn');
             if (toneBtn) toneBtn.addEventListener('click', changeTone);
-
-            const acceptBtn = document.getElementById('acceptSuggestionBtn');
-            if (acceptBtn) acceptBtn.addEventListener('click', acceptSuggestion);
-
-            const dismissBtn = document.getElementById('dismissSuggestionBtn');
-            if (dismissBtn) dismissBtn.addEventListener('click', dismissSuggestion);
 
             const saveBtn = document.getElementById('saveScriptBtn');
             if (saveBtn) saveBtn.addEventListener('click', saveScript);
