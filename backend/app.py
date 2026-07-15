@@ -776,7 +776,7 @@ def delete_track(track_id):
             "success": True,
             "message": "Trilha excluída com sucesso"
         }), 200
-        
+
     except Exception as e:
         print(f"Erro ao excluir trilha: {e}")
         import traceback
@@ -785,6 +785,94 @@ def delete_track(track_id):
             "success": False,
             "error": str(e)
         }), 500
+
+CLIENT_DELIVERIES_BUCKET = 'client-deliveries'
+
+@app.route('/api/client-deliveries/upload-url', methods=['POST', 'OPTIONS'])
+def get_client_delivery_upload_url():
+    """Gera uma signed upload URL do Supabase Storage (bucket privado) pro
+    navegador enviar o arquivo de locução direto pro Storage, sem passar
+    pela função serverless do Vercel (limite de ~4.5MB no corpo da requisição)."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase Storage não configurado"}), 500
+
+        data = request.get_json() or {}
+        filename = data.get('filename', '')
+        if not filename:
+            return jsonify({"success": False, "error": "Nome do arquivo é obrigatório"}), 400
+
+        import uuid
+        file_extension = os.path.splitext(filename)[1]
+        storage_path = f"entregas/{uuid.uuid4()}{file_extension}"
+
+        signed = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
+            .create_signed_upload_url(storage_path)
+
+        anon_key = os.getenv("NEWPOST_SUPABASE_ANON_KEY", "")
+
+        return jsonify({
+            "success": True,
+            "upload_url": signed["signed_url"],
+            "path": storage_path,
+            "apikey": anon_key
+        })
+    except Exception as e:
+        print(f"Erro ao gerar signed upload URL de entrega: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/client-deliveries', methods=['POST', 'OPTIONS'])
+def create_client_delivery():
+    """Salva o registro da entrega depois que o arquivo já foi enviado direto
+    pro Supabase Storage via signed upload URL. Nunca recebe o arquivo em si."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        data = request.get_json() or {}
+        client_name = data.get('client_name', '').strip()
+        storage_path = data.get('storage_path', '')
+        if not client_name:
+            return jsonify({"success": False, "error": "Nome do cliente é obrigatório"}), 400
+        if not storage_path:
+            return jsonify({"success": False, "error": "storage_path é obrigatório"}), 400
+
+        delivery_data = {
+            "client_name": client_name,
+            "client_contact": data.get('client_contact', ''),
+            "request_description": data.get('request_description', ''),
+            "storage_path": storage_path,
+            "file_size": int(data.get('file_size', 0) or 0),
+            "mime_type": data.get('mime_type', 'audio/mpeg'),
+            "status": "pendente"
+        }
+
+        response = supabase_manager.newpost_manager_client.table('client_deliveries').insert(delivery_data).execute()
+        delivery_data['id'] = response.data[0]['id']
+
+        return jsonify({"success": True, "delivery": delivery_data}), 201
+
+    except Exception as e:
+        print(f"Erro ao salvar entrega de cliente: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/busca-noticias')
 def busca_noticias():
