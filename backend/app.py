@@ -953,9 +953,12 @@ def respond_client_delivery(delivery_id):
         if not supabase_manager or not supabase_manager.newpost_manager_client:
             return jsonify({"success": False, "error": "Supabase não configurado"}), 500
 
-        supabase_manager.newpost_manager_client.table('client_deliveries') \
+        result = supabase_manager.newpost_manager_client.table('client_deliveries') \
             .update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}) \
             .eq('id', delivery_id).execute()
+
+        if not result.data:
+            return jsonify({"success": False, "error": "Entrega não encontrada"}), 404
 
         return jsonify({"success": True, "status": status})
 
