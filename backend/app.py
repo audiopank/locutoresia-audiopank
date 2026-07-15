@@ -1001,6 +1001,11 @@ def client_delivery_approval_page(delivery_id):
         traceback.print_exc()
         return render_template('aprovacao.html', found=False), 500
 
+@app.route('/entregas-clientes')
+def client_deliveries_page():
+    """Entregas de Clientes — cadastro e acompanhamento de locuções entregues."""
+    return render_template('entregas-clientes.html')
+
 @app.route('/busca-noticias')
 def busca_noticias():
     """Busca de Notícias + IA"""
