@@ -2,37 +2,103 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Aprovação de Locução</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aprovação de Locução - Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .approval-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            max-width: 500px;
+            width: 100%;
+            margin: 2rem;
+        }
+        .status-message {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-top: 1.5rem;
+        }
+        .status-aprovado { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+        .status-ajuste_solicitado { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    </style>
 </head>
 <body>
-    {% if not found %}
-        <p>Entrega não encontrada.</p>
-    {% else %}
-        <h3>{{ delivery.client_name }}</h3>
-        <p>{{ delivery.request_description }}</p>
-        <audio controls src="{{ playback_url }}"></audio>
-        <div id="responseArea">
-            {% if delivery.status == 'pendente' %}
-            <button onclick="respond('aprovado')">Aprovar</button>
-            <button onclick="respond('ajuste_solicitado')">Pedir Ajuste</button>
-            {% else %}
-            <p>Status atual: {{ delivery.status }}</p>
-            {% endif %}
-        </div>
-    {% endif %}
+    <div class="approval-card">
+        {% if not found %}
+            <h4 class="text-center"><i class="fas fa-exclamation-circle me-2"></i>Entrega não encontrada</h4>
+            <p class="text-secondary text-center">Esse link pode ter expirado ou não existe mais.</p>
+        {% else %}
+            <h4 class="mb-1">{{ delivery.client_name }}</h4>
+            <p class="text-secondary">{{ delivery.request_description }}</p>
+            <audio controls class="w-100 mt-3" src="{{ playback_url }}"></audio>
+
+            <div id="responseArea">
+                {% if delivery.status == 'pendente' %}
+                <div class="d-flex gap-2 mt-4">
+                    <button class="btn btn-success w-100" onclick="respond('aprovado')">
+                        <i class="fas fa-check me-2"></i>Aprovar
+                    </button>
+                    <button class="btn btn-outline-danger w-100" onclick="respond('ajuste_solicitado')">
+                        <i class="fas fa-edit me-2"></i>Pedir Ajuste
+                    </button>
+                </div>
+                {% elif delivery.status == 'aprovado' %}
+                <div class="status-message status-aprovado">
+                    <i class="fas fa-check-circle me-2"></i>Você já aprovou esta locução.
+                </div>
+                {% else %}
+                <div class="status-message status-ajuste_solicitado">
+                    <i class="fas fa-info-circle me-2"></i>Você já pediu ajuste nesta locução.
+                </div>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+
     <script>
         const deliveryId = "{{ delivery.id if found else '' }}";
+
         async function respond(status) {
-            const response = await fetch(`/api/client-deliveries/${deliveryId}/respond`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: status })
-            });
-            const result = await response.json();
-            if (result.success) {
-                document.getElementById('responseArea').innerHTML = `<p>Obrigado! Status: ${status}</p>`;
-            } else {
-                alert('Erro: ' + result.error);
+            try {
+                const response = await fetch(`/api/client-deliveries/${deliveryId}/respond`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: status })
+                });
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error);
+                }
+
+                const area = document.getElementById('responseArea');
+                if (status === 'aprovado') {
+                    area.innerHTML = '<div class="status-message status-aprovado"><i class="fas fa-check-circle me-2"></i>Obrigado! Locução aprovada.</div>';
+                } else {
+                    area.innerHTML = '<div class="status-message status-ajuste_solicitado"><i class="fas fa-info-circle me-2"></i>Obrigado! Vamos ajustar e te enviar um novo link em breve.</div>';
+                }
+            } catch (error) {
+                alert(`Erro ao registrar resposta: ${error.message}`);
             }
         }
     </script>
