@@ -915,9 +915,14 @@ def delete_client_delivery(delivery_id):
         return response
 
     try:
-        if supabase_manager and supabase_manager.newpost_manager_client:
-            supabase_manager.newpost_manager_client.table('client_deliveries') \
-                .delete().eq('id', delivery_id).execute()
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        result = supabase_manager.newpost_manager_client.table('client_deliveries') \
+            .delete().eq('id', delivery_id).execute()
+
+        if not result.data:
+            return jsonify({"success": False, "error": "Entrega não encontrada"}), 404
 
         return jsonify({"success": True, "message": "Entrega excluída com sucesso"}), 200
 
