@@ -932,6 +932,72 @@ def delete_client_delivery(delivery_id):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/client-deliveries/<delivery_id>/respond', methods=['POST', 'OPTIONS'])
+def respond_client_delivery(delivery_id):
+    """Endpoint público e de escopo estreito: só aceita mudar o status de UM
+    registro específico pra 'aprovado' ou 'ajuste_solicitado'. Não expõe
+    nenhum outro campo pra escrita, nem lista/lê outros registros."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        status = data.get('status', '')
+        if status not in ('aprovado', 'ajuste_solicitado'):
+            return jsonify({"success": False, "error": "Status inválido"}), 400
+
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        supabase_manager.newpost_manager_client.table('client_deliveries') \
+            .update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}) \
+            .eq('id', delivery_id).execute()
+
+        return jsonify({"success": True, "status": status})
+
+    except Exception as e:
+        print(f"Erro ao responder entrega de cliente: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/aprovacao/<delivery_id>')
+def client_delivery_approval_page(delivery_id):
+    """Página pública, sem login — cliente ouve a locução e aprova/pede ajuste.
+    Busca via service_role (server-side); o navegador do cliente nunca fala
+    direto com o Supabase."""
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return render_template('aprovacao.html', found=False), 404
+
+        response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+            .select('*').eq('id', delivery_id).limit(1).execute()
+
+        if not response.data:
+            return render_template('aprovacao.html', found=False), 404
+
+        delivery = response.data[0]
+
+        try:
+            signed = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
+                .create_signed_url(delivery['storage_path'], 3600)
+            playback_url = signed.get('signedURL') or signed.get('signedUrl')
+        except Exception as sign_err:
+            print(f"Erro ao gerar signed URL: {sign_err}")
+            playback_url = None
+
+        return render_template('aprovacao.html', found=True, delivery=delivery, playback_url=playback_url)
+
+    except Exception as e:
+        print(f"Erro ao carregar página de aprovação: {e}")
+        import traceback
+        traceback.print_exc()
+        return render_template('aprovacao.html', found=False), 500
+
 @app.route('/busca-noticias')
 def busca_noticias():
     """Busca de Notícias + IA"""

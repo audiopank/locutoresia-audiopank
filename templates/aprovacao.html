@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Aprovação de Locução</title>
+</head>
+<body>
+    {% if not found %}
+        <p>Entrega não encontrada.</p>
+    {% else %}
+        <h3>{{ delivery.client_name }}</h3>
+        <p>{{ delivery.request_description }}</p>
+        <audio controls src="{{ playback_url }}"></audio>
+        <div id="responseArea">
+            {% if delivery.status == 'pendente' %}
+            <button onclick="respond('aprovado')">Aprovar</button>
+            <button onclick="respond('ajuste_solicitado')">Pedir Ajuste</button>
+            {% else %}
+            <p>Status atual: {{ delivery.status }}</p>
+            {% endif %}
+        </div>
+    {% endif %}
+    <script>
+        const deliveryId = "{{ delivery.id if found else '' }}";
+        async function respond(status) {
+            const response = await fetch(`/api/client-deliveries/${deliveryId}/respond`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: status })
+            });
+            const result = await response.json();
+            if (result.success) {
+                document.getElementById('responseArea').innerHTML = `<p>Obrigado! Status: ${status}</p>`;
+            } else {
+                alert('Erro: ' + result.error);
+            }
+        }
+    </script>
+</body>
+</html>
