@@ -874,6 +874,59 @@ def create_client_delivery():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/client-deliveries', methods=['GET'])
+def list_client_deliveries():
+    """Lista as entregas cadastradas, cada uma com uma signed URL de leitura
+    gerada na hora (o bucket é privado, não existe URL pública fixa pra guardar)."""
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": True, "deliveries": []})
+
+        response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+            .select('*') \
+            .order('created_at', desc=True) \
+            .execute()
+
+        deliveries = response.data
+        for delivery in deliveries:
+            try:
+                signed = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
+                    .create_signed_url(delivery['storage_path'], 3600)
+                delivery['playback_url'] = signed.get('signedURL') or signed.get('signedUrl')
+            except Exception as e:
+                print(f"Erro ao gerar signed URL de leitura: {e}")
+                delivery['playback_url'] = None
+
+        return jsonify({"success": True, "deliveries": deliveries})
+
+    except Exception as e:
+        print(f"Erro ao listar entregas de clientes: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/client-deliveries/<delivery_id>', methods=['DELETE', 'OPTIONS'])
+def delete_client_delivery(delivery_id):
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'DELETE, OPTIONS')
+        return response
+
+    try:
+        if supabase_manager and supabase_manager.newpost_manager_client:
+            supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .delete().eq('id', delivery_id).execute()
+
+        return jsonify({"success": True, "message": "Entrega excluída com sucesso"}), 200
+
+    except Exception as e:
+        print(f"Erro ao excluir entrega de cliente: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/busca-noticias')
 def busca_noticias():
     """Busca de Notícias + IA"""
