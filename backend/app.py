@@ -1051,6 +1051,92 @@ def client_delivery_approval_page(delivery_id):
         traceback.print_exc()
         return render_template('aprovacao.html', found=False), 500
 
+@app.route('/api/clients', methods=['GET'])
+def list_clients():
+    """Ficha 360° (CRM): agrupa client_deliveries por cliente e devolve, pra cada
+    um, os números agregados (total, taxa de aprovação, ajustes, recorrência) +
+    o histórico das entregas. Sem signed URL — o áudio fica no link de aprovação
+    de cada entrega, não precisamos gerar N URLs só pra montar a visão de cliente."""
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": True, "clients": []})
+
+        response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+            .select('id,client_name,client_contact,request_description,status,feedback,created_at,updated_at') \
+            .order('created_at', desc=True) \
+            .execute()
+
+        grupos = {}
+        for d in response.data:
+            nome = (d.get('client_name') or '').strip()
+            contato = (d.get('client_contact') or '').strip()
+            # Chave de agrupamento: prefere o contato (mais único); cai pro nome.
+            chave = contato.lower() if contato else nome.lower()
+            if not chave:
+                continue
+
+            if chave not in grupos:
+                grupos[chave] = {
+                    "key": chave,
+                    "client_name": nome,
+                    "client_contact": contato,
+                    "total": 0,
+                    "aprovadas": 0,
+                    "pendentes": 0,
+                    "ajustes": 0,
+                    "primeira": d.get('created_at'),
+                    "ultima": d.get('created_at'),
+                    "deliveries": []
+                }
+
+            g = grupos[chave]
+            g["total"] += 1
+            status = d.get('status')
+            if status == 'aprovado':
+                g["aprovadas"] += 1
+            elif status == 'ajuste_solicitado':
+                g["ajustes"] += 1
+            else:
+                g["pendentes"] += 1
+
+            criado = d.get('created_at')
+            if criado:
+                if not g["primeira"] or criado < g["primeira"]:
+                    g["primeira"] = criado
+                if not g["ultima"] or criado > g["ultima"]:
+                    g["ultima"] = criado
+                # Como já vem ordenado desc, o primeiro nome visto é o mais recente.
+                if not g["client_name"] and nome:
+                    g["client_name"] = nome
+
+            g["deliveries"].append({
+                "id": d.get('id'),
+                "request_description": d.get('request_description'),
+                "status": status,
+                "feedback": d.get('feedback'),
+                "created_at": criado,
+                "updated_at": d.get('updated_at')
+            })
+
+        clients = list(grupos.values())
+        for g in clients:
+            g["taxa_aprovacao"] = round(g["aprovadas"] / g["total"] * 100) if g["total"] else 0
+        # Cliente mais recentemente ativo primeiro.
+        clients.sort(key=lambda c: c["ultima"] or "", reverse=True)
+
+        return jsonify({"success": True, "clients": clients})
+
+    except Exception as e:
+        print(f"Erro ao montar ficha de clientes: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/clientes')
+def clients_page():
+    """Clientes — Ficha 360° (CRM): entregas agrupadas por cliente."""
+    return render_template('clientes.html')
+
 @app.route('/entregas-clientes')
 def client_deliveries_page():
     """Entregas de Clientes — cadastro e acompanhamento de locuções entregues."""

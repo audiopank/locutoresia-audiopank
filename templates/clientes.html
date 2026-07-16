@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clientes - Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --good: #22c55e;
+            --warn: #f59e0b;
+            --crit: #ef4444;
+        }
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .page-container { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+        .section-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .back-link { color: var(--text-secondary); text-decoration: none; }
+        .back-link:hover { color: var(--text-primary); }
+
+        /* KPIs do topo */
+        .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+        .kpi {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+        }
+        .kpi .k-label {
+            font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+        .kpi .k-value { font-size: 1.9rem; font-weight: 700; margin-top: .2rem; font-variant-numeric: tabular-nums; }
+
+        /* Card de cliente */
+        .client-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .client-head { display: flex; align-items: center; gap: .85rem; }
+        .avatar {
+            width: 46px; height: 46px; border-radius: 10px; flex: 0 0 46px;
+            background: rgba(99, 102, 241, 0.18); color: #a5b4fc;
+            display: grid; place-items: center; font-weight: 700; font-size: 1.05rem;
+        }
+        .client-head .c-name { font-weight: 700; font-size: 1.05rem; }
+        .client-head .c-contact { color: var(--text-secondary); font-size: .82rem; }
+
+        .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; margin-top: 1rem; }
+        .tile {
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid var(--border-color);
+            border-radius: 8px; padding: .6rem .75rem;
+        }
+        .tile .t-k { font-size: .64rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
+        .tile .t-v { font-size: 1.25rem; font-weight: 700; margin-top: .1rem; font-variant-numeric: tabular-nums; }
+        .t-v.good { color: var(--good); }
+        .t-v.warn { color: var(--warn); }
+
+        .status-badge-pendente { background: #f59e0b; }
+        .status-badge-aprovado { background: #22c55e; }
+        .status-badge-ajuste_solicitado { background: #ef4444; }
+
+        .history { margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: .85rem; }
+        .hist-item {
+            display: flex; align-items: flex-start; gap: .6rem;
+            padding: .5rem 0; border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+        }
+        .hist-item:last-child { border-bottom: none; }
+        .hist-item .h-main { flex: 1; min-width: 0; }
+        .hist-item .h-desc { font-size: .9rem; }
+        .hist-item .h-date { font-size: .72rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+        .hist-item .h-feedback { font-size: .78rem; color: #fca5a5; margin-top: .2rem; }
+        .toggle-btn { color: var(--text-secondary); }
+        @media (max-width: 640px) {
+            .kpi-row { grid-template-columns: 1fr; }
+            .tiles { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <a href="/" class="back-link"><i class="fas fa-arrow-left me-2"></i>Voltar para Início</a>
+        <h2 class="mt-3 mb-1"><i class="fas fa-address-card me-2"></i>Clientes</h2>
+        <p class="text-secondary mb-4">Ficha 360° — cada cliente com todo o histórico de entregas e a taxa de aprovação.</p>
+
+        <div class="section-card">
+            <div class="kpi-row" id="kpiRow">
+                <div class="kpi"><div class="k-label">Clientes</div><div class="k-value">–</div></div>
+                <div class="kpi"><div class="k-label">Entregas no total</div><div class="k-value">–</div></div>
+                <div class="kpi"><div class="k-label">Aprovação média</div><div class="k-value">–</div></div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <h5 class="mb-3">Fichas de cliente</h5>
+            <div id="clientsList"><p class="text-secondary">Carregando...</p></div>
+        </div>
+    </div>
+
+    <script>
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function statusLabel(status) {
+            if (status === 'aprovado') return 'Aprovado';
+            if (status === 'ajuste_solicitado') return 'Ajuste Solicitado';
+            return 'Pendente';
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            if (isNaN(d)) return '—';
+            return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+
+        function initials(name) {
+            const parts = (name || '?').trim().split(/\s+/).filter(Boolean);
+            if (parts.length === 0) return '?';
+            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+
+        function toggleHistory(idx) {
+            const el = document.getElementById('hist-' + idx);
+            const btn = document.getElementById('togglebtn-' + idx);
+            if (!el) return;
+            const open = el.style.display !== 'none';
+            el.style.display = open ? 'none' : 'block';
+            btn.innerHTML = open
+                ? '<i class="fas fa-chevron-down me-1"></i>Ver histórico'
+                : '<i class="fas fa-chevron-up me-1"></i>Ocultar histórico';
+        }
+
+        function renderKpis(clients) {
+            const totalClientes = clients.length;
+            const totalEntregas = clients.reduce((s, c) => s + c.total, 0);
+            const totalAprovadas = clients.reduce((s, c) => s + c.aprovadas, 0);
+            const aprovMedia = totalEntregas ? Math.round(totalAprovadas / totalEntregas * 100) : 0;
+            document.getElementById('kpiRow').innerHTML = `
+                <div class="kpi"><div class="k-label">Clientes</div><div class="k-value">${totalClientes}</div></div>
+                <div class="kpi"><div class="k-label">Entregas no total</div><div class="k-value">${totalEntregas}</div></div>
+                <div class="kpi"><div class="k-label">Aprovação média</div><div class="k-value" style="color:${aprovMedia >= 70 ? 'var(--good)' : 'var(--warn)'}">${aprovMedia}%</div></div>
+            `;
+        }
+
+        function historyHtml(deliveries) {
+            return deliveries.map(d => {
+                const feedback = (d.status === 'ajuste_solicitado' && d.feedback)
+                    ? `<div class="h-feedback"><i class="fas fa-comment-dots me-1"></i>${escapeHtml(d.feedback)}</div>`
+                    : '';
+                return `
+                    <div class="hist-item">
+                        <span class="badge status-badge-${d.status}">${statusLabel(d.status)}</span>
+                        <div class="h-main">
+                            <div class="h-desc">${escapeHtml(d.request_description) || '<span class="text-secondary">(sem descrição)</span>'}</div>
+                            <div class="h-date">${formatDate(d.created_at)}</div>
+                            ${feedback}
+                        </div>
+                        <a href="/aprovacao/${d.id}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-light" title="Abrir link de aprovação">
+                            <i class="fas fa-arrow-up-right-from-square"></i>
+                        </a>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function loadClients() {
+            const container = document.getElementById('clientsList');
+            try {
+                const response = await fetch('/api/clients');
+                const result = await response.json();
+
+                if (!result.success || !result.clients || result.clients.length === 0) {
+                    container.innerHTML = '<p class="text-secondary">Nenhum cliente ainda. Cadastre entregas em <a href="/entregas-clientes" class="text-info">Entregas de Clientes</a> pra popular as fichas.</p>';
+                    document.getElementById('kpiRow').innerHTML = '';
+                    return;
+                }
+
+                renderKpis(result.clients);
+
+                container.innerHTML = result.clients.map((c, idx) => {
+                    const aprovColor = c.taxa_aprovacao >= 70 ? 'good' : 'warn';
+                    return `
+                        <div class="client-card">
+                            <div class="client-head">
+                                <div class="avatar">${escapeHtml(initials(c.client_name))}</div>
+                                <div>
+                                    <div class="c-name">${escapeHtml(c.client_name) || '<span class="text-secondary">(sem nome)</span>'}</div>
+                                    <div class="c-contact">${escapeHtml(c.client_contact) || '—'} · cliente desde ${formatDate(c.primeira)}</div>
+                                </div>
+                            </div>
+                            <div class="tiles">
+                                <div class="tile"><div class="t-k">Entregas</div><div class="t-v">${c.total}</div></div>
+                                <div class="tile"><div class="t-k">Aprovação</div><div class="t-v ${aprovColor}">${c.taxa_aprovacao}%</div></div>
+                                <div class="tile"><div class="t-k">Ajustes</div><div class="t-v">${c.ajustes}</div></div>
+                                <div class="tile"><div class="t-k">Última entrega</div><div class="t-v" style="font-size:.95rem">${formatDate(c.ultima)}</div></div>
+                            </div>
+                            <button class="btn btn-sm btn-link toggle-btn ps-0 mt-2" id="togglebtn-${idx}" onclick="toggleHistory(${idx})">
+                                <i class="fas fa-chevron-down me-1"></i>Ver histórico
+                            </button>
+                            <div class="history" id="hist-${idx}" style="display:none;">
+                                ${historyHtml(c.deliveries)}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Erro ao carregar clientes:', error);
+                container.innerHTML = '<p class="text-danger">Erro ao carregar clientes.</p>';
+            }
+        }
+
+        loadClients();
+    </script>
+</body>
+</html>
