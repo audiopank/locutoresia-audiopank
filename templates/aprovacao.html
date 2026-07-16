@@ -41,6 +41,18 @@
         }
         .status-aprovado { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
         .status-ajuste_solicitado { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .adjust-form textarea {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            width: 100%;
+            border-radius: 10px;
+            padding: 0.75rem;
+        }
+        .adjust-form textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
     </style>
 </head>
 <body>
@@ -55,13 +67,23 @@
 
             <div id="responseArea">
                 {% if delivery.status == 'pendente' %}
-                <div class="d-flex gap-2 mt-4">
+                <div id="actionButtons" class="d-flex gap-2 mt-4">
                     <button class="btn btn-success w-100" onclick="respond('aprovado')">
                         <i class="fas fa-check me-2"></i>Aprovar
                     </button>
-                    <button class="btn btn-outline-danger w-100" onclick="respond('ajuste_solicitado')">
+                    <button class="btn btn-outline-danger w-100" onclick="showAdjustForm()">
                         <i class="fas fa-edit me-2"></i>Pedir Ajuste
                     </button>
+                </div>
+                <div id="adjustForm" class="adjust-form mt-4" style="display: none;">
+                    <label class="mb-2">O que você gostaria de ajustar?</label>
+                    <textarea id="adjustFeedback" rows="4" placeholder="Ex: deixar o tom mais animado, corrigir o nome da loja no final..."></textarea>
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn btn-outline-secondary" onclick="hideAdjustForm()">Voltar</button>
+                        <button class="btn btn-danger w-100" onclick="submitAdjust()">
+                            <i class="fas fa-paper-plane me-2"></i>Enviar pedido de ajuste
+                        </button>
+                    </div>
                 </div>
                 {% elif delivery.status == 'aprovado' %}
                 <div class="status-message status-aprovado">
@@ -70,6 +92,9 @@
                 {% else %}
                 <div class="status-message status-ajuste_solicitado">
                     <i class="fas fa-info-circle me-2"></i>Você já pediu ajuste nesta locução.
+                    {% if delivery.feedback %}
+                    <div class="mt-2"><small>"{{ delivery.feedback }}"</small></div>
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>
@@ -79,12 +104,27 @@
     <script>
         const deliveryId = "{{ delivery.id if found else '' }}";
 
-        async function respond(status) {
+        function showAdjustForm() {
+            document.getElementById('actionButtons').style.display = 'none';
+            document.getElementById('adjustForm').style.display = 'block';
+        }
+
+        function hideAdjustForm() {
+            document.getElementById('adjustForm').style.display = 'none';
+            document.getElementById('actionButtons').style.display = 'flex';
+        }
+
+        function submitAdjust() {
+            const feedback = document.getElementById('adjustFeedback').value.trim();
+            respond('ajuste_solicitado', feedback);
+        }
+
+        async function respond(status, feedback) {
             try {
                 const response = await fetch(`/api/client-deliveries/${deliveryId}/respond`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: status })
+                    body: JSON.stringify({ status: status, feedback: feedback || '' })
                 });
                 const result = await response.json();
                 if (!result.success) {

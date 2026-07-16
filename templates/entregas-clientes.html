@@ -57,6 +57,15 @@
         .status-badge-ajuste_solicitado { background: #ef4444; }
         .back-link { color: var(--text-secondary); text-decoration: none; }
         .back-link:hover { color: var(--text-primary); }
+        .feedback-box {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 0.65rem 0.85rem;
+            color: #fca5a5;
+        }
+        .btn-whatsapp { background: #25d366; border-color: #25d366; color: #fff; }
+        .btn-whatsapp:hover { background: #1ebe5a; border-color: #1ebe5a; color: #fff; }
     </style>
 </head>
 <body>
@@ -106,6 +115,30 @@
             if (status === 'aprovado') return 'Aprovado';
             if (status === 'ajuste_solicitado') return 'Ajuste Solicitado';
             return 'Pendente';
+        }
+
+        // Monta o botão de envio do link certo pro tipo de contato.
+        // WhatsApp (wa.me) e e-mail (mailto) abrem já com a mensagem pronta —
+        // sem API paga, sem SMTP: o operador só aperta enviar.
+        function sendLinkButton(contact, clientName, approvalUrl) {
+            const raw = (contact || '').trim();
+            const msg = `Olá! Sua locução "${clientName}" está pronta. É só ouvir e aprovar por aqui: ${approvalUrl}`;
+
+            if (raw.includes('@')) {
+                const subject = encodeURIComponent('Aprovação da sua locução');
+                const mailLink = `mailto:${encodeURIComponent(raw)}?subject=${subject}&body=${encodeURIComponent(msg)}`;
+                return `<a href="${mailLink}" class="btn btn-sm btn-outline-info mt-2 me-2">
+                            <i class="fas fa-envelope me-1"></i>Enviar por e-mail
+                        </a>`;
+            }
+
+            let digits = raw.replace(/\D/g, '');
+            if (!digits) return '';
+            if (!digits.startsWith('55')) digits = '55' + digits;
+            const waLink = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+            return `<a href="${waLink}" target="_blank" rel="noopener" class="btn btn-sm btn-whatsapp mt-2 me-2">
+                        <i class="fab fa-whatsapp me-1"></i>Enviar no WhatsApp
+                    </a>`;
         }
 
         async function uploadDelivery() {
@@ -199,6 +232,11 @@
 
                 container.innerHTML = result.deliveries.map(d => {
                     const approvalUrl = `${window.location.origin}/aprovacao/${d.id}`;
+                    const feedbackBox = (d.status === 'ajuste_solicitado' && d.feedback)
+                        ? `<div class="feedback-box mt-2">
+                               <i class="fas fa-comment-dots me-1"></i><strong>Ajuste pedido:</strong> ${escapeHtml(d.feedback)}
+                           </div>`
+                        : '';
                     return `
                         <div class="delivery-card">
                             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -215,9 +253,13 @@
                                 </div>
                             </div>
                             <audio controls class="w-100 mt-2" src="${d.playback_url || ''}"></audio>
-                            <button class="btn btn-sm btn-outline-light mt-2" onclick="copyApprovalLink('${approvalUrl}')">
-                                <i class="fas fa-link me-1"></i>Copiar link de aprovação
-                            </button>
+                            ${feedbackBox}
+                            <div class="mt-2">
+                                ${sendLinkButton(d.client_contact, d.client_name, approvalUrl)}
+                                <button class="btn btn-sm btn-outline-light mt-2" onclick="copyApprovalLink('${approvalUrl}')">
+                                    <i class="fas fa-link me-1"></i>Copiar link
+                                </button>
+                            </div>
                         </div>
                     `;
                 }).join('');

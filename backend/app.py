@@ -953,8 +953,13 @@ def respond_client_delivery(delivery_id):
         if not supabase_manager or not supabase_manager.newpost_manager_client:
             return jsonify({"success": False, "error": "Supabase não configurado"}), 500
 
+        update_data = {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}
+        # Só o pedido de ajuste carrega comentário do cliente (o que deve mudar).
+        if status == 'ajuste_solicitado':
+            update_data['feedback'] = (data.get('feedback') or '').strip()
+
         result = supabase_manager.newpost_manager_client.table('client_deliveries') \
-            .update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}) \
+            .update(update_data) \
             .eq('id', delivery_id).execute()
 
         if not result.data:
