@@ -77,6 +77,43 @@
         .t-v.good { color: var(--good); }
         .t-v.warn { color: var(--warn); }
 
+        /* Painel de IA */
+        .ai-card {
+            background:
+                radial-gradient(120% 140% at 0% 0%, rgba(99, 102, 241, 0.16), transparent 55%),
+                var(--card-bg);
+            border-color: rgba(99, 102, 241, 0.35);
+        }
+        .ai-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+        .ai-title { font-weight: 700; font-size: 1.15rem; }
+        .ai-sub { color: var(--text-secondary); font-size: .85rem; margin-top: .15rem; }
+        .ai-btn {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #fff; font-weight: 600; border: none; white-space: nowrap;
+        }
+        .ai-btn:hover { filter: brightness(1.08); color: #fff; }
+        .ai-btn:disabled { opacity: .7; }
+
+        .insight-resumo {
+            font-size: 1.02rem; line-height: 1.5; font-weight: 600;
+            border-left: 3px solid var(--primary-color); padding-left: .8rem; margin-bottom: 1rem;
+        }
+        .insight-points { display: flex; flex-direction: column; gap: .55rem; margin-bottom: 1rem; }
+        .insight-point { display: flex; align-items: flex-start; gap: .6rem; font-size: .92rem; }
+        .insight-point .pi { flex: 0 0 auto; margin-top: .15rem; }
+        .insight-point.positivo .pi { color: var(--good); }
+        .insight-point.atencao .pi { color: var(--warn); }
+        .insight-rec {
+            background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 8px; padding: .75rem .9rem; font-size: .9rem;
+        }
+        .insight-rec .rec-k {
+            font-size: .68rem; letter-spacing: .08em; text-transform: uppercase;
+            color: #a5b4fc; display: block; margin-bottom: .2rem;
+        }
+        .ai-note { color: var(--text-secondary); font-size: .9rem; }
+        .ai-note .mini-stats { margin-top: .6rem; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+
         .status-badge-pendente { background: #f59e0b; }
         .status-badge-aprovado { background: #22c55e; }
         .status-badge-ajuste_solicitado { background: #ef4444; }
@@ -103,6 +140,19 @@
         <a href="/" class="back-link"><i class="fas fa-arrow-left me-2"></i>Voltar para Início</a>
         <h2 class="mt-3 mb-1"><i class="fas fa-address-card me-2"></i>Clientes</h2>
         <p class="text-secondary mb-4">Ficha 360° — cada cliente com todo o histórico de entregas e a taxa de aprovação.</p>
+
+        <div class="section-card ai-card">
+            <div class="ai-head">
+                <div>
+                    <div class="ai-title"><i class="fas fa-wand-magic-sparkles me-2"></i>Análise de Performance</div>
+                    <div class="ai-sub">A IA lê seu histórico e diz o que faz o cliente aprovar de primeira.</div>
+                </div>
+                <button class="btn ai-btn" id="insightBtn" onclick="loadInsight()">
+                    <i class="fas fa-bolt me-1"></i>Gerar análise
+                </button>
+            </div>
+            <div id="insightArea" class="mt-3" style="display:none;"></div>
+        </div>
 
         <div class="section-card">
             <div class="kpi-row" id="kpiRow">
@@ -187,6 +237,63 @@
                     </div>
                 `;
             }).join('');
+        }
+
+        function miniStats(s) {
+            if (!s || !s.total) return '';
+            return `<div class="mini-stats">${s.total} entrega(s) · ${s.taxa_aprovacao}% de aprovação · ${s.clientes} cliente(s)</div>`;
+        }
+
+        function renderInsight(data) {
+            const area = document.getElementById('insightArea');
+            area.style.display = 'block';
+
+            if (data.status === 'poucos_dados' || data.status === 'sem_ia') {
+                area.innerHTML = `<div class="ai-note"><i class="fas fa-circle-info me-1"></i>${escapeHtml(data.message)}${miniStats(data.stats)}</div>`;
+                return;
+            }
+
+            const ins = data.insight || {};
+            const pontos = Array.isArray(ins.pontos) ? ins.pontos : [];
+            const pontosHtml = pontos.map(p => {
+                const tipo = p.tipo === 'positivo' ? 'positivo' : 'atencao';
+                const icon = tipo === 'positivo' ? 'fa-circle-check' : 'fa-triangle-exclamation';
+                return `<div class="insight-point ${tipo}"><i class="fas ${icon} pi"></i><span>${escapeHtml(p.texto)}</span></div>`;
+            }).join('');
+
+            const rec = ins.recomendacao
+                ? `<div class="insight-rec"><span class="rec-k">Recomendação</span>${escapeHtml(ins.recomendacao)}</div>`
+                : '';
+
+            area.innerHTML = `
+                <div class="insight-resumo">${escapeHtml(ins.resumo) || 'Análise concluída.'}</div>
+                ${pontosHtml ? `<div class="insight-points">${pontosHtml}</div>` : ''}
+                ${rec}
+                <div class="ai-note mt-2"><small>Gerado por IA a partir do seu histórico${miniStats(data.stats)}</small></div>
+            `;
+        }
+
+        async function loadInsight() {
+            const btn = document.getElementById('insightBtn');
+            const area = document.getElementById('insightArea');
+            btn.disabled = true;
+            const original = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Analisando...';
+            area.style.display = 'block';
+            area.innerHTML = '<div class="ai-note"><i class="fas fa-spinner fa-spin me-1"></i>A IA está lendo seu histórico...</div>';
+            try {
+                const response = await fetch('/api/clients/performance-insight');
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Falha na análise');
+                }
+                renderInsight(result);
+            } catch (error) {
+                area.innerHTML = `<div class="ai-note text-danger"><i class="fas fa-circle-exclamation me-1"></i>Erro ao gerar análise: ${escapeHtml(error.message)}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
         }
 
         async function loadClients() {

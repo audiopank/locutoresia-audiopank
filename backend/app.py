@@ -1132,6 +1132,89 @@ def list_clients():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/clients/performance-insight', methods=['GET'])
+def clients_performance_insight():
+    """IA de Análise de Performance (feature 02 do roadmap): o Gemini lê o
+    histórico de entregas (descrição, status, feedback) e devolve, em português,
+    o que faz o cliente aprovar de primeira e onde costuma pedir ajuste.
+    On-demand (chamado por botão) pra não gastar token a cada carregamento."""
+    MIN_ENTREGAS = 3
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": True, "status": "poucos_dados",
+                            "stats": {}, "message": "Sem dados ainda."})
+
+        response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+            .select('client_name,client_contact,request_description,status,feedback,created_at') \
+            .order('created_at', desc=True) \
+            .execute()
+        entregas = response.data or []
+
+        total = len(entregas)
+        aprovadas = sum(1 for d in entregas if d.get('status') == 'aprovado')
+        ajustes = sum(1 for d in entregas if d.get('status') == 'ajuste_solicitado')
+        pendentes = total - aprovadas - ajustes
+        clientes = len({(d.get('client_contact') or d.get('client_name') or '').strip().lower()
+                        for d in entregas if (d.get('client_contact') or d.get('client_name'))})
+        taxa = round(aprovadas / total * 100) if total else 0
+        stats = {"total": total, "aprovadas": aprovadas, "ajustes": ajustes,
+                 "pendentes": pendentes, "clientes": clientes, "taxa_aprovacao": taxa}
+
+        # Poucos dados: não chama a IA (não há padrão a extrair) — devolve os números
+        # e uma mensagem honesta, do jeito que combinamos ("IA pronta esperando os dados").
+        if total < MIN_ENTREGAS:
+            return jsonify({"success": True, "status": "poucos_dados", "stats": stats,
+                            "message": f"A IA precisa de pelo menos {MIN_ENTREGAS} entregas pra achar padrão. "
+                                       f"Você tem {total} até agora — cadastre mais e volte aqui."})
+
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            return jsonify({"success": True, "status": "sem_ia", "stats": stats,
+                            "message": "IA não configurada (falta GEMINI_API_KEY). Os números acima já valem."})
+
+        linhas = "\n".join(
+            f"- {(d.get('request_description') or '(sem descrição)').strip()[:200]} | "
+            f"{d.get('status')} | {(d.get('feedback') or '-').strip()[:200]}"
+            for d in entregas[:40]
+        )
+
+        prompt = f"""Você é um analista de performance de um estúdio de locução com IA (Locutores IA).
+Analise o histórico de entregas abaixo e devolva SOMENTE um JSON válido (sem markdown, sem texto fora do JSON) com esta estrutura exata:
+{{
+  "resumo": "1 a 2 frases diretas sobre o que os dados mostram",
+  "pontos": [{{"tipo": "positivo", "texto": "..."}}, {{"tipo": "atencao", "texto": "..."}}],
+  "recomendacao": "1 dica prática pro estúdio aprovar mais de primeira"
+}}
+Regras: português do Brasil, tom prático e curto, no máximo 4 itens em 'pontos', cada 'tipo' é "positivo" ou "atencao". Baseie-se SÓ nos dados. Se forem poucos, seja honesto sobre a limitação no resumo.
+
+Dados agregados:
+- Total de entregas: {total} | Aprovadas: {aprovadas} | Pedidos de ajuste: {ajustes} | Pendentes: {pendentes}
+- Taxa de aprovação: {taxa}% | Clientes distintos: {clientes}
+
+Entregas (descrição | status | feedback do cliente):
+{linhas}
+"""
+
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        gem_response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        text_response = gem_response.text or ''
+        json_str = text_response.replace('```json', '').replace('```', '').strip()
+
+        try:
+            insight = json.loads(json_str)
+        except Exception:
+            insight = {"resumo": text_response[:300].strip() or "Análise concluída.",
+                       "pontos": [], "recomendacao": ""}
+
+        return jsonify({"success": True, "status": "ok", "stats": stats, "insight": insight})
+
+    except Exception as e:
+        print(f"Erro na análise de performance (IA): {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/clientes')
 def clients_page():
     """Clientes — Ficha 360° (CRM): entregas agrupadas por cliente."""
