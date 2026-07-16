@@ -1316,6 +1316,126 @@ Entregas (descrição | status | nº de ajustes pedidos | feedbacks do cliente):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/clients/kpi-alerts', methods=['GET'])
+def clients_kpi_alerts():
+    """Alertas de KPI (feature 03 do roadmap): regras em Python sobre status e
+    timestamps das entregas — cutuca o operador quando algo sai do trilho, sem
+    ele precisar ir procurar. Zero IA, zero dado novo; barato de chamar a cada load."""
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": True, "alerts": []})
+
+        # Fallback: sobrevive se a migração de total_ajustes ainda não rodou.
+        try:
+            response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .select('id,client_name,client_contact,request_description,status,total_ajustes,created_at,updated_at') \
+                .order('created_at', desc=True) \
+                .execute()
+        except Exception:
+            response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .select('id,client_name,client_contact,request_description,status,created_at,updated_at') \
+                .order('created_at', desc=True) \
+                .execute()
+        entregas = response.data or []
+
+        agora = datetime.now(timezone.utc)
+
+        def _horas_desde(ts):
+            if not ts:
+                return None
+            try:
+                dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+            except Exception:
+                return None
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return (agora - dt).total_seconds() / 3600
+
+        alerts = []
+
+        # --- Regras por entrega ---
+        for d in entregas:
+            nome = (d.get('client_name') or 'Cliente').strip()
+            status = d.get('status')
+            horas = _horas_desde(d.get('updated_at') or d.get('created_at'))
+            ajustes = int(d.get('total_ajustes') or 0)
+
+            if status == 'pendente' and horas is not None and horas >= 48:
+                dias = int(horas // 24)
+                alerts.append({
+                    "sev": "crit",
+                    "titulo": f"Entrega de {nome} pendente há {dias} dia(s)",
+                    "detalhe": "Cliente ainda não respondeu — reenvie o link ou faça um contato."
+                })
+
+            if status == 'ajuste_solicitado' and horas is not None and horas >= 24:
+                alerts.append({
+                    "sev": "crit" if horas >= 72 else "warn",
+                    "titulo": f"{nome} pediu ajuste há {int(horas)}h",
+                    "detalhe": "A versão corrigida ainda não foi enviada — o cliente está esperando."
+                })
+
+            if ajustes >= 3:
+                alerts.append({
+                    "sev": "warn",
+                    "titulo": f"{nome}: {ajustes} pedidos de ajuste na mesma entrega",
+                    "detalhe": "Vale reavaliar o briefing antes de gravar a próxima versão."
+                })
+
+        # --- Regras da visão geral ---
+        total = len(entregas)
+        aprovadas = sum(1 for d in entregas if d.get('status') == 'aprovado')
+        if total >= 5:
+            taxa = round(aprovadas / total * 100)
+            if taxa < 60:
+                alerts.append({
+                    "sev": "warn",
+                    "titulo": f"Taxa de aprovação em {taxa}%",
+                    "detalhe": "Abaixo de 60% — vale investigar o padrão nos pedidos de ajuste (a Análise IA ajuda)."
+                })
+            elif taxa >= 90:
+                alerts.append({
+                    "sev": "info",
+                    "titulo": f"Taxa de aprovação em {taxa}%",
+                    "detalhe": "Excelente — bom momento pra pedir depoimento ou indicação aos clientes."
+                })
+
+        # --- Cliente recorrente sumido (reativação) ---
+        grupos = {}
+        for d in entregas:
+            nome = (d.get('client_name') or '').strip()
+            contato = (d.get('client_contact') or '').strip()
+            chave = contato.lower() if contato else nome.lower()
+            if not chave:
+                continue
+            g = grupos.setdefault(chave, {"nome": nome or 'Cliente', "ultima": None, "total": 0})
+            g["total"] += 1
+            criado = d.get('created_at')
+            if criado and (g["ultima"] is None or criado > g["ultima"]):
+                g["ultima"] = criado
+                if nome:
+                    g["nome"] = nome
+        for g in grupos.values():
+            h = _horas_desde(g["ultima"])
+            if g["total"] >= 2 and h is not None and h >= 30 * 24:
+                dias = int(h // 24)
+                alerts.append({
+                    "sev": "info",
+                    "titulo": f"{g['nome']} sem pedidos há {dias} dias",
+                    "detalhe": "Cliente recorrente sumido — que tal um contato de reativação?"
+                })
+
+        ordem = {"crit": 0, "warn": 1, "info": 2}
+        alerts.sort(key=lambda a: ordem.get(a["sev"], 3))
+
+        return jsonify({"success": True, "alerts": alerts})
+
+    except Exception as e:
+        print(f"Erro ao montar alertas de KPI: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/clientes')
 def clients_page():
     """Clientes — Ficha 360° (CRM): entregas agrupadas por cliente."""

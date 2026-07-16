@@ -114,6 +114,39 @@
         .ai-note { color: var(--text-secondary); font-size: .9rem; }
         .ai-note .mini-stats { margin-top: .6rem; font-variant-numeric: tabular-nums; color: var(--text-primary); }
 
+        /* Alertas de KPI (nome .kpi-alert de propósito — .alert colide com Bootstrap) */
+        .kpi-alert {
+            display: flex; align-items: flex-start; gap: .7rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-left-width: 3px;
+            border-radius: 9px;
+            padding: .7rem .9rem;
+            margin-bottom: .55rem;
+        }
+        .kpi-alert:last-child { margin-bottom: 0; }
+        .kpi-alert.crit { border-left-color: var(--crit); }
+        .kpi-alert.warn { border-left-color: var(--warn); }
+        .kpi-alert.info { border-left-color: #38bdf8; }
+        .kpi-alert .a-body { flex: 1; min-width: 0; }
+        .kpi-alert .a-title { font-size: .92rem; font-weight: 600; }
+        .kpi-alert .a-detail { font-size: .8rem; color: var(--text-secondary); margin-top: .1rem; }
+        .sev-chip {
+            font-size: .62rem; letter-spacing: .08em; text-transform: uppercase;
+            font-weight: 700; padding: .15rem .5rem; border-radius: 999px; white-space: nowrap;
+            margin-top: .15rem;
+        }
+        .sev-chip.crit { color: var(--crit); background: rgba(239, 68, 68, 0.14); }
+        .sev-chip.warn { color: var(--warn); background: rgba(245, 158, 11, 0.14); }
+        .sev-chip.info { color: #38bdf8; background: rgba(56, 189, 248, 0.14); }
+        .all-clear {
+            display: flex; align-items: center; gap: .6rem;
+            color: var(--good); font-size: .92rem;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 9px; padding: .7rem .9rem;
+        }
+
         .status-badge-pendente { background: #f59e0b; }
         .status-badge-aprovado { background: #22c55e; }
         .status-badge-ajuste_solicitado { background: #ef4444; }
@@ -158,6 +191,12 @@
                 </button>
             </div>
             <div id="insightArea" class="mt-3" style="display:none;"></div>
+        </div>
+
+        <div class="section-card">
+            <h5 class="mb-1"><i class="fas fa-bell me-2"></i>Alertas</h5>
+            <p class="text-secondary mb-3" style="font-size:.85rem;">O sistema te avisa quando algo sai do trilho — entrega parada, ajuste esperando, cliente sumido.</p>
+            <div id="alertsList"><p class="text-secondary">Verificando...</p></div>
         </div>
 
         <div class="section-card">
@@ -243,6 +282,43 @@
                     </div>
                 `;
             }).join('');
+        }
+
+        function sevLabel(sev) {
+            if (sev === 'crit') return 'Urgente';
+            if (sev === 'warn') return 'Atenção';
+            return 'Info';
+        }
+
+        async function loadAlerts() {
+            const container = document.getElementById('alertsList');
+            try {
+                const response = await fetch('/api/clients/kpi-alerts');
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Falha ao verificar alertas');
+                }
+                const alerts = result.alerts || [];
+                if (alerts.length === 0) {
+                    container.innerHTML = '<div class="all-clear"><i class="fas fa-circle-check"></i>Tudo em dia — nenhum alerta no momento.</div>';
+                    return;
+                }
+                container.innerHTML = alerts.map(a => {
+                    const sev = (a.sev === 'crit' || a.sev === 'warn') ? a.sev : 'info';
+                    return `
+                        <div class="kpi-alert ${sev}">
+                            <span class="sev-chip ${sev}">${sevLabel(sev)}</span>
+                            <div class="a-body">
+                                <div class="a-title">${escapeHtml(a.titulo)}</div>
+                                <div class="a-detail">${escapeHtml(a.detalhe)}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Erro ao carregar alertas:', error);
+                container.innerHTML = '<p class="text-secondary">Não foi possível verificar os alertas agora.</p>';
+            }
         }
 
         function miniStats(s) {
@@ -350,6 +426,7 @@
         }
 
         loadClients();
+        loadAlerts();
     </script>
 </body>
 </html>
