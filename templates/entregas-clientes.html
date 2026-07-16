@@ -66,6 +66,38 @@
         }
         .btn-whatsapp { background: #25d366; border-color: #25d366; color: #fff; }
         .btn-whatsapp:hover { background: #1ebe5a; border-color: #1ebe5a; color: #fff; }
+
+        /* Pedidos do formulário público /solicitar */
+        .pedido-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            margin-bottom: .85rem;
+        }
+        .badge-pedido-novo { background: #eab308; color: #1a1a1a; }
+        .badge-pedido-em_producao { background: #f97316; }
+        .badge-pedido-aguardando_aprovacao { background: #3b82f6; }
+        .badge-pedido-concluido { background: #22c55e; }
+        .badge-pedido-cancelado { background: #64748b; }
+        .pedido-roteiro {
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: .55rem .75rem;
+            font-size: .85rem;
+            margin-top: .5rem;
+            white-space: pre-wrap;
+        }
+        .pedido-meta { font-size: .78rem; color: var(--text-secondary); margin-top: .35rem; }
+        .pedido-note {
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            border-radius: 8px;
+            padding: .6rem .85rem;
+            font-size: .85rem;
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -74,7 +106,19 @@
         <h2 class="mt-3 mb-4"><i class="fas fa-user-check me-2"></i>Entregas de Clientes</h2>
 
         <div class="section-card">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <h5 class="mb-0"><i class="fas fa-inbox me-2"></i>Pedidos recebidos</h5>
+                <button class="btn btn-sm btn-outline-light" onclick="copiarLinkSolicitar()">
+                    <i class="fas fa-link me-1"></i>Copiar link do formulário
+                </button>
+            </div>
+            <p class="text-secondary" style="font-size:.85rem;">Divulgue o link do formulário no WhatsApp/Instagram — os pedidos dos clientes caem aqui.</p>
+            <div id="pedidosList"><p class="text-secondary">Carregando...</p></div>
+        </div>
+
+        <div class="section-card">
             <h5 class="mb-3">Cadastrar nova entrega</h5>
+            <div id="pedidoVinculadoNote" class="pedido-note" style="display:none;"></div>
             <div class="mb-3">
                 <label class="form-label">Nome do cliente</label>
                 <input type="text" class="form-control" id="clientName" placeholder="Ex: Loja Fashion Center">
@@ -144,6 +188,129 @@
                     </a>`;
         }
 
+        // ---------- Pedidos (formulário público /solicitar) ----------
+        const TIPO_LABELS = { spot_30s: 'Spot 30s', spot_60s: 'Spot 60s', vinheta: 'Vinheta', institucional_ura: 'Institucional/URA', outro: 'Outro' };
+        const PEDIDO_STATUS_LABELS = { novo: 'Novo', em_producao: 'Em produção', aguardando_aprovacao: 'Aguardando aprovação', concluido: 'Concluído', cancelado: 'Cancelado' };
+        let pedidosCache = {};
+        let pedidoVinculado = null;
+
+        function formatDateBr(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            return isNaN(d) ? '' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+
+        function copiarLinkSolicitar() {
+            navigator.clipboard.writeText(`${window.location.origin}/solicitar`);
+            alert('Link do formulário copiado! Divulgue no WhatsApp/Instagram.');
+        }
+
+        async function loadPedidos() {
+            const container = document.getElementById('pedidosList');
+            try {
+                const response = await fetch('/api/pedidos');
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error || 'Falha ao carregar pedidos');
+
+                const pedidos = result.pedidos || [];
+                pedidosCache = {};
+                pedidos.forEach(p => { pedidosCache[p.id] = p; });
+
+                if (pedidos.length === 0) {
+                    container.innerHTML = '<p class="text-secondary mb-0">Nenhum pedido ainda. Copie o link do formulário e divulgue!</p>';
+                    return;
+                }
+
+                container.innerHTML = pedidos.map(p => {
+                    const tipo = TIPO_LABELS[p.tipo] || 'Outro';
+                    const contato = [p.whatsapp, p.email].filter(Boolean).join(' · ');
+                    const roteiro = p.roteiro
+                        ? `<div class="pedido-roteiro">${escapeHtml(p.roteiro.length > 400 ? p.roteiro.slice(0, 400) + '…' : p.roteiro)}</div>`
+                        : '';
+                    const meta = [
+                        p.estilo_voz ? `🎙 ${escapeHtml(p.estilo_voz)}` : '',
+                        p.referencia_trilha ? `🎵 ${escapeHtml(p.referencia_trilha)}` : '',
+                        p.prazo ? `⏱ ${escapeHtml(p.prazo)}` : ''
+                    ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
+                    let acoes = '';
+                    if (p.status === 'novo') {
+                        acoes = `
+                            <button class="btn btn-sm btn-warning mt-2 me-2" onclick="mudarStatusPedido('${p.id}', 'em_producao')">
+                                <i class="fas fa-play me-1"></i>Iniciar produção
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger mt-2" onclick="cancelarPedido('${p.id}')">Cancelar</button>`;
+                    } else if (p.status === 'em_producao') {
+                        acoes = `
+                            <button class="btn btn-sm btn-primary mt-2 me-2" onclick="criarEntregaDoPedido('${p.id}')">
+                                <i class="fas fa-microphone me-1"></i>Criar entrega deste pedido
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger mt-2" onclick="cancelarPedido('${p.id}')">Cancelar</button>`;
+                    }
+
+                    return `
+                        <div class="pedido-card">
+                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                <div>
+                                    <strong>${escapeHtml(p.cliente_nome)}</strong>
+                                    <span class="badge bg-secondary ms-1">${tipo}</span>
+                                    <span class="badge badge-pedido-${p.status} ms-1">${PEDIDO_STATUS_LABELS[p.status] || p.status}</span>
+                                    <p class="text-secondary mb-0 mt-1"><small>${escapeHtml(contato)}</small></p>
+                                </div>
+                                <small class="text-secondary">${formatDateBr(p.created_at)}</small>
+                            </div>
+                            ${roteiro}
+                            ${meta ? `<div class="pedido-meta">${meta}</div>` : ''}
+                            ${acoes}
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Erro ao carregar pedidos:', error);
+                container.innerHTML = '<p class="text-secondary mb-0">Pedidos indisponíveis (a tabela já foi criada no Supabase?).</p>';
+            }
+        }
+
+        async function mudarStatusPedido(id, status) {
+            try {
+                const response = await fetch(`/api/pedidos/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: status })
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error);
+                loadPedidos();
+            } catch (error) {
+                alert(`Erro ao atualizar pedido: ${error.message}`);
+            }
+        }
+
+        function cancelarPedido(id) {
+            if (!confirm('Cancelar este pedido?')) return;
+            mudarStatusPedido(id, 'cancelado');
+        }
+
+        function criarEntregaDoPedido(id) {
+            const p = pedidosCache[id];
+            if (!p) return;
+            const tipo = TIPO_LABELS[p.tipo] || 'Outro';
+            document.getElementById('clientName').value = p.cliente_nome || '';
+            document.getElementById('clientContact').value = p.whatsapp || p.email || '';
+            const partes = [tipo, p.estilo_voz, p.roteiro ? p.roteiro.slice(0, 160) : ''].filter(Boolean);
+            document.getElementById('requestDescription').value = partes.join(' — ');
+            pedidoVinculado = id;
+            const note = document.getElementById('pedidoVinculadoNote');
+            note.style.display = 'block';
+            note.innerHTML = `<i class="fas fa-link me-1"></i>Criando entrega do pedido de <strong>${escapeHtml(p.cliente_nome)}</strong> (#${escapeHtml(String(id).slice(0, 8).toUpperCase())}). Ao cadastrar, o pedido vira "Aguardando aprovação". <a href="#" onclick="cancelarVinculo(); return false;" class="text-info">Desvincular</a>`;
+            note.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function cancelarVinculo() {
+            pedidoVinculado = null;
+            document.getElementById('pedidoVinculadoNote').style.display = 'none';
+        }
+
         // Sobe o arquivo direto pro Supabase Storage via signed upload URL
         // (contorna o limite ~4.5MB da serverless do Vercel). Retorna urlResult
         // com o .path pra salvar no registro.
@@ -206,7 +373,8 @@
                         request_description: requestDescription,
                         storage_path: urlResult.path,
                         file_size: file.size,
-                        mime_type: file.type
+                        mime_type: file.type,
+                        pedido_id: pedidoVinculado || ''
                     })
                 });
                 const createResult = await createResponse.json();
@@ -219,7 +387,9 @@
                 document.getElementById('clientContact').value = '';
                 document.getElementById('requestDescription').value = '';
                 fileInput.value = '';
+                cancelarVinculo();
                 loadDeliveries();
+                loadPedidos();
 
             } catch (error) {
                 console.error('Erro no cadastro:', error);
@@ -351,6 +521,7 @@
         }
 
         loadDeliveries();
+        loadPedidos();
     </script>
 </body>
 </html>

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peça sua Locução - Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --good: #22c55e;
+        }
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            padding: 1.25rem 0 3rem;
+        }
+        .form-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.75rem;
+            max-width: 560px;
+            margin: 0 auto;
+        }
+        .brand {
+            text-align: center; margin-bottom: 1.25rem;
+        }
+        .brand .mic {
+            width: 54px; height: 54px; border-radius: 14px; margin: 0 auto .6rem;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: grid; place-items: center; font-size: 1.4rem; color: #fff;
+        }
+        .brand h1 { font-size: 1.35rem; font-weight: 700; margin: 0; }
+        .brand p { color: var(--text-secondary); font-size: .88rem; margin: .3rem 0 0; }
+        .form-label { color: var(--text-secondary); font-size: .85rem; margin-bottom: .3rem; }
+        .form-control, .form-select {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        .form-control:focus, .form-select:focus {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+            box-shadow: none;
+        }
+        .form-control::placeholder { color: #64748b; }
+        .btn-enviar {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #fff; font-weight: 600; border: none; padding: .7rem;
+        }
+        .btn-enviar:hover { filter: brightness(1.08); color: #fff; }
+        .btn-enviar:disabled { opacity: .7; }
+        /* Honeypot: invisível pra humanos, visível pra bots */
+        .hp-field { position: absolute; left: -9999px; opacity: 0; height: 0; overflow: hidden; }
+        .success-box {
+            text-align: center; padding: 1.5rem 0;
+        }
+        .success-box .check {
+            width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 1rem;
+            background: rgba(34, 197, 94, 0.15); color: var(--good);
+            display: grid; place-items: center; font-size: 1.8rem;
+        }
+        .success-box .ref {
+            font-family: monospace; background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color); border-radius: 8px;
+            padding: .35rem .8rem; display: inline-block; margin-top: .6rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-card">
+        <div class="brand">
+            <div class="mic"><i class="fas fa-microphone"></i></div>
+            <h1>Peça sua Locução</h1>
+            <p>Conte o que você precisa e a gente produz com voz profissional + trilha. Respondemos rapidinho no seu WhatsApp.</p>
+        </div>
+
+        <div id="formArea">
+            <div class="mb-3">
+                <label class="form-label">Seu nome *</label>
+                <input type="text" class="form-control" id="clienteNome" maxlength="120" placeholder="Ex: João da Silva">
+            </div>
+            <div class="row">
+                <div class="col-12 col-sm-6 mb-3">
+                    <label class="form-label">WhatsApp</label>
+                    <input type="text" class="form-control" id="whatsapp" maxlength="120" placeholder="(85) 99999-9999">
+                </div>
+                <div class="col-12 col-sm-6 mb-3">
+                    <label class="form-label">E-mail</label>
+                    <input type="email" class="form-control" id="email" maxlength="120" placeholder="voce@email.com">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Tipo de locução</label>
+                <select class="form-select" id="tipo">
+                    <option value="spot_30s">Spot 30 segundos</option>
+                    <option value="spot_60s">Spot 60 segundos</option>
+                    <option value="vinheta">Vinheta</option>
+                    <option value="institucional_ura">Institucional / URA telefônica</option>
+                    <option value="outro">Outro</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Texto / roteiro (ou descreva a ideia)</label>
+                <textarea class="form-control" id="roteiro" rows="4" maxlength="5000" placeholder="Cole aqui o texto da locução, ou descreva o que você quer que a gente escreva pra você."></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Estilo de voz desejado</label>
+                <input type="text" class="form-control" id="estiloVoz" maxlength="300" placeholder="Ex: voz feminina animada / voz masculina grave e séria">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Trilha de referência (opcional)</label>
+                <input type="text" class="form-control" id="referenciaTrilha" maxlength="500" placeholder="Link do YouTube ou descreva o clima da música">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Prazo desejado</label>
+                <input type="text" class="form-control" id="prazo" maxlength="120" placeholder="Ex: até sexta-feira / urgente">
+            </div>
+
+            <!-- Honeypot anti-spam: humano não vê nem preenche -->
+            <div class="hp-field" aria-hidden="true">
+                <label>Website</label>
+                <input type="text" id="website" tabindex="-1" autocomplete="off">
+            </div>
+
+            <button class="btn btn-enviar w-100" id="enviarBtn" onclick="enviarPedido()">
+                <i class="fas fa-paper-plane me-2"></i>Enviar pedido
+            </button>
+        </div>
+
+        <div id="successArea" class="success-box" style="display:none;">
+            <div class="check"><i class="fas fa-check"></i></div>
+            <h4>Pedido recebido!</h4>
+            <p class="text-secondary mb-0">Já estamos com o seu pedido em mãos e vamos te chamar no contato que você deixou.</p>
+            <div class="ref" id="pedidoRef"></div>
+        </div>
+    </div>
+
+    <script>
+        async function enviarPedido() {
+            const nome = document.getElementById('clienteNome').value.trim();
+            const whatsapp = document.getElementById('whatsapp').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const btn = document.getElementById('enviarBtn');
+
+            if (!nome) {
+                alert('Informe seu nome.');
+                return;
+            }
+            if (!whatsapp && !email) {
+                alert('Informe seu WhatsApp ou e-mail pra gente te responder.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
+
+            try {
+                const response = await fetch('/api/pedidos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cliente_nome: nome,
+                        whatsapp: whatsapp,
+                        email: email,
+                        tipo: document.getElementById('tipo').value,
+                        roteiro: document.getElementById('roteiro').value.trim(),
+                        estilo_voz: document.getElementById('estiloVoz').value.trim(),
+                        referencia_trilha: document.getElementById('referenciaTrilha').value.trim(),
+                        prazo: document.getElementById('prazo').value.trim(),
+                        website: document.getElementById('website').value
+                    })
+                });
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Falha ao enviar');
+                }
+                document.getElementById('formArea').style.display = 'none';
+                const box = document.getElementById('successArea');
+                box.style.display = 'block';
+                document.getElementById('pedidoRef').textContent = 'Protocolo: #' + result.pedido_ref;
+            } catch (error) {
+                alert(`Erro ao enviar pedido: ${error.message}`);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>Enviar pedido';
+            }
+        }
+    </script>
+</body>
+</html>

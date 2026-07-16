@@ -871,6 +871,22 @@ def create_client_delivery():
         response = supabase_manager.newpost_manager_client.table('client_deliveries').insert(delivery_data).execute()
         delivery_data['id'] = response.data[0]['id']
 
+        # Fluxo pedido → entrega: se a entrega nasceu de um pedido do /solicitar,
+        # linka e move o pedido pra 'aguardando_aprovacao'. Guarded: uuid validado
+        # (vem do navegador) e falha aqui não pode derrubar o cadastro da entrega.
+        pedido_id = (data.get('pedido_id') or '').strip()
+        if pedido_id:
+            try:
+                import re as _re
+                if _re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', pedido_id):
+                    supabase_manager.newpost_manager_client.table('pedidos') \
+                        .update({"entrega_id": delivery_data['id'],
+                                 "status": "aguardando_aprovacao",
+                                 "updated_at": datetime.now(timezone.utc).isoformat()}) \
+                        .eq('id', pedido_id).execute()
+            except Exception as link_err:
+                print(f"Não foi possível linkar pedido {pedido_id} à entrega: {link_err}")
+
         return jsonify({"success": True, "delivery": delivery_data}), 201
 
     except Exception as e:
@@ -1017,6 +1033,17 @@ def respond_client_delivery(delivery_id):
 
         if not result.data:
             return jsonify({"success": False, "error": "Entrega não encontrada"}), 404
+
+        # Fecha o fluxo pedido → entrega: aprovação conclui o pedido de origem.
+        # Guarded: tabela pedidos pode nem existir ainda; nunca derruba a resposta.
+        if status == 'aprovado':
+            try:
+                supabase_manager.newpost_manager_client.table('pedidos') \
+                    .update({"status": "concluido",
+                             "updated_at": datetime.now(timezone.utc).isoformat()}) \
+                    .eq('entrega_id', delivery_id).eq('status', 'aguardando_aprovacao').execute()
+            except Exception as pedido_err:
+                print(f"Não foi possível concluir pedido linkado: {pedido_err}")
 
         return jsonify({"success": True, "status": status})
 
@@ -1425,6 +1452,33 @@ def clients_kpi_alerts():
                     "detalhe": "Cliente recorrente sumido — que tal um contato de reativação?"
                 })
 
+        # --- Pedidos novos do formulário público (guarded: tabela pode não existir) ---
+        try:
+            pedidos_resp = supabase_manager.newpost_manager_client.table('pedidos') \
+                .select('cliente_nome,tipo,status,created_at') \
+                .in_('status', ['novo']) \
+                .execute()
+            tipos_label = {'spot_30s': 'Spot 30s', 'spot_60s': 'Spot 60s', 'vinheta': 'Vinheta',
+                           'institucional_ura': 'Institucional/URA', 'outro': 'Outro'}
+            for p in (pedidos_resp.data or []):
+                h = _horas_desde(p.get('created_at'))
+                nome_p = (p.get('cliente_nome') or 'Cliente').strip()
+                tipo_p = tipos_label.get(p.get('tipo'), 'Pedido')
+                if h is not None and h >= 24:
+                    alerts.append({
+                        "sev": "crit",
+                        "titulo": f"Pedido de {nome_p} ({tipo_p}) sem resposta há {int(h // 24)} dia(s)",
+                        "detalhe": "Cliente esperando retorno — responda e inicie a produção."
+                    })
+                else:
+                    alerts.append({
+                        "sev": "warn",
+                        "titulo": f"Novo pedido: {nome_p} — {tipo_p}",
+                        "detalhe": "Chegou pelo formulário público. Veja em Entregas de Clientes."
+                    })
+        except Exception as ped_err:
+            print(f"Pedidos indisponíveis nos alertas (tabela criada?): {ped_err}")
+
         ordem = {"crit": 0, "warn": 1, "info": 2}
         alerts.sort(key=lambda a: ordem.get(a["sev"], 3))
 
@@ -1432,6 +1486,141 @@ def clients_kpi_alerts():
 
     except Exception as e:
         print(f"Erro ao montar alertas de KPI: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ---------------------------------------------------------------------------
+# PEDIDOS — formulário público /solicitar (fluxo Cliente → Produção → Aprovação)
+# ---------------------------------------------------------------------------
+PEDIDO_TIPOS = ('spot_30s', 'spot_60s', 'vinheta', 'institucional_ura', 'outro')
+PEDIDO_STATUS = ('novo', 'em_producao', 'aguardando_aprovacao', 'concluido', 'cancelado')
+
+@app.route('/solicitar')
+def solicitar_page():
+    """Formulário público (sem login) pro cliente pedir uma locução.
+    Link direto pra divulgar no WhatsApp/Instagram."""
+    return render_template('solicitar.html')
+
+@app.route('/api/pedidos', methods=['POST', 'OPTIONS'])
+def create_pedido():
+    """Recebe a solicitação do formulário público. Endpoint público, então:
+    honeypot anti-spam, limites de tamanho e allowlist de tipo — o navegador
+    nunca fala com o Supabase, tudo passa por aqui (service_role)."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+
+        # Honeypot: campo invisível que humano não preenche. Bot preencheu?
+        # Finge sucesso e descarta — sem dar pista de que foi filtrado.
+        if (data.get('website') or '').strip():
+            return jsonify({"success": True, "pedido_ref": "recebido"}), 201
+
+        nome = (data.get('cliente_nome') or '').strip()[:120]
+        whatsapp = (data.get('whatsapp') or '').strip()[:120]
+        email = (data.get('email') or '').strip()[:120]
+        if not nome:
+            return jsonify({"success": False, "error": "Informe seu nome"}), 400
+        if not whatsapp and not email:
+            return jsonify({"success": False, "error": "Informe WhatsApp ou e-mail pra gente te responder"}), 400
+
+        tipo = data.get('tipo', 'outro')
+        if tipo not in PEDIDO_TIPOS:
+            tipo = 'outro'
+
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Sistema indisponível no momento"}), 500
+
+        pedido = {
+            "cliente_nome": nome,
+            "whatsapp": whatsapp,
+            "email": email,
+            "tipo": tipo,
+            "roteiro": (data.get('roteiro') or '').strip()[:5000],
+            "estilo_voz": (data.get('estilo_voz') or '').strip()[:300],
+            "referencia_trilha": (data.get('referencia_trilha') or '').strip()[:500],
+            "prazo": (data.get('prazo') or '').strip()[:120],
+            "status": "novo"
+        }
+        result = supabase_manager.newpost_manager_client.table('pedidos').insert(pedido).execute()
+        pedido_id = result.data[0]['id']
+
+        return jsonify({"success": True, "pedido_ref": pedido_id[:8].upper()}), 201
+
+    except Exception as e:
+        print(f"Erro ao criar pedido: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Não foi possível registrar o pedido agora"}), 500
+
+@app.route('/api/pedidos', methods=['GET'])
+def list_pedidos():
+    """Lista os pedidos pro painel interno (mais recentes primeiro)."""
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": True, "pedidos": []})
+
+        response = supabase_manager.newpost_manager_client.table('pedidos') \
+            .select('*') \
+            .order('created_at', desc=True) \
+            .execute()
+
+        return jsonify({"success": True, "pedidos": response.data or []})
+
+    except Exception as e:
+        print(f"Erro ao listar pedidos: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/pedidos/<pedido_id>', methods=['PATCH', 'OPTIONS'])
+def update_pedido(pedido_id):
+    """Atualização interna do pedido: status (allowlist) e/ou valor."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'PATCH, OPTIONS')
+        return response
+
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        data = request.get_json() or {}
+        update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+
+        if 'status' in data:
+            if data['status'] not in PEDIDO_STATUS:
+                return jsonify({"success": False, "error": "Status inválido"}), 400
+            update_data['status'] = data['status']
+
+        if 'valor' in data:
+            try:
+                valor = float(data['valor'])
+                if valor < 0:
+                    raise ValueError()
+                update_data['valor'] = valor
+            except (TypeError, ValueError):
+                return jsonify({"success": False, "error": "Valor inválido"}), 400
+
+        result = supabase_manager.newpost_manager_client.table('pedidos') \
+            .update(update_data) \
+            .eq('id', pedido_id).execute()
+
+        if not result.data:
+            return jsonify({"success": False, "error": "Pedido não encontrado"}), 404
+
+        return jsonify({"success": True, "pedido": result.data[0]})
+
+    except Exception as e:
+        print(f"Erro ao atualizar pedido: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
