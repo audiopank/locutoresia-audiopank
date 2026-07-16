@@ -102,6 +102,9 @@
                 <p class="text-secondary">Carregando...</p>
             </div>
         </div>
+
+        <!-- Input oculto usado pelo reenvio de versão corrigida (mesma entrega) -->
+        <input type="file" id="newVersionInput" accept="audio/*" style="display: none;" onchange="uploadNewVersion()">
     </div>
 
     <script>
@@ -141,6 +144,36 @@
                     </a>`;
         }
 
+        // Sobe o arquivo direto pro Supabase Storage via signed upload URL
+        // (contorna o limite ~4.5MB da serverless do Vercel). Retorna urlResult
+        // com o .path pra salvar no registro.
+        async function uploadAudioFile(file) {
+            const urlResponse = await fetch('/api/client-deliveries/upload-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: file.name })
+            });
+            const urlResult = await urlResponse.json();
+            if (!urlResult.success) {
+                throw new Error(urlResult.error);
+            }
+
+            const uploadFormData = new FormData();
+            uploadFormData.append('file', file);
+            const storageResponse = await fetch(urlResult.upload_url, {
+                method: 'PUT',
+                headers: {
+                    'apikey': urlResult.apikey,
+                    'Authorization': `Bearer ${urlResult.apikey}`
+                },
+                body: uploadFormData
+            });
+            if (!storageResponse.ok) {
+                throw new Error('Falha ao enviar o arquivo para o armazenamento');
+            }
+            return urlResult;
+        }
+
         async function uploadDelivery() {
             const clientName = document.getElementById('clientName').value.trim();
             const clientContact = document.getElementById('clientContact').value.trim();
@@ -162,29 +195,7 @@
             uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
 
             try {
-                const urlResponse = await fetch('/api/client-deliveries/upload-url', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename: file.name })
-                });
-                const urlResult = await urlResponse.json();
-                if (!urlResult.success) {
-                    throw new Error(urlResult.error);
-                }
-
-                const uploadFormData = new FormData();
-                uploadFormData.append('file', file);
-                const storageResponse = await fetch(urlResult.upload_url, {
-                    method: 'PUT',
-                    headers: {
-                        'apikey': urlResult.apikey,
-                        'Authorization': `Bearer ${urlResult.apikey}`
-                    },
-                    body: uploadFormData
-                });
-                if (!storageResponse.ok) {
-                    throw new Error('Falha ao enviar o arquivo para o armazenamento');
-                }
+                const urlResult = await uploadAudioFile(file);
 
                 const createResponse = await fetch('/api/client-deliveries', {
                     method: 'POST',
@@ -237,6 +248,11 @@
                                <i class="fas fa-comment-dots me-1"></i><strong>Ajuste pedido:</strong> ${escapeHtml(d.feedback)}
                            </div>`
                         : '';
+                    const newVersionBtn = (d.status === 'ajuste_solicitado')
+                        ? `<button class="btn btn-sm btn-warning mt-2 me-2" onclick="promptNewVersion('${d.id}')">
+                               <i class="fas fa-rotate me-1"></i>Enviar versão corrigida
+                           </button>`
+                        : '';
                     return `
                         <div class="delivery-card">
                             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -255,6 +271,7 @@
                             <audio controls class="w-100 mt-2" src="${d.playback_url || ''}"></audio>
                             ${feedbackBox}
                             <div class="mt-2">
+                                ${newVersionBtn}
                                 ${sendLinkButton(d.client_contact, d.client_name, approvalUrl)}
                                 <button class="btn btn-sm btn-outline-light mt-2" onclick="copyApprovalLink('${approvalUrl}')">
                                     <i class="fas fa-link me-1"></i>Copiar link
@@ -273,6 +290,44 @@
         function copyApprovalLink(url) {
             navigator.clipboard.writeText(url);
             alert('Link copiado para a área de transferência!');
+        }
+
+        // Reenvio de versão corrigida: abre o seletor de arquivo pra ESTA entrega.
+        let newVersionDeliveryId = null;
+        function promptNewVersion(id) {
+            newVersionDeliveryId = id;
+            const input = document.getElementById('newVersionInput');
+            input.value = '';
+            input.click();
+        }
+
+        async function uploadNewVersion() {
+            const input = document.getElementById('newVersionInput');
+            const file = input.files[0];
+            if (!file || !newVersionDeliveryId) return;
+
+            const deliveryId = newVersionDeliveryId;
+            newVersionDeliveryId = null;
+            try {
+                const urlResult = await uploadAudioFile(file);
+                const resp = await fetch(`/api/client-deliveries/${deliveryId}/new-version`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        storage_path: urlResult.path,
+                        file_size: file.size,
+                        mime_type: file.type
+                    })
+                });
+                const result = await resp.json();
+                if (!result.success) {
+                    throw new Error(result.error);
+                }
+                alert('Nova versão enviada! A entrega voltou para Pendente — reenvie o link pro cliente.');
+                loadDeliveries();
+            } catch (error) {
+                alert(`Erro ao enviar nova versão: ${error.message}`);
+            }
         }
 
         async function deleteDelivery(id) {

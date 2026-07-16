@@ -973,6 +973,51 @@ def respond_client_delivery(delivery_id):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/client-deliveries/<delivery_id>/new-version', methods=['POST', 'OPTIONS'])
+def new_version_client_delivery(delivery_id):
+    """Reenvio de versão corrigida: substitui o áudio da MESMA entrega, volta o
+    status pra 'pendente' e limpa o feedback anterior, pra o cliente revisar de
+    novo pelo mesmo link. O arquivo novo já subiu via signed upload URL."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        data = request.get_json() or {}
+        storage_path = data.get('storage_path', '')
+        if not storage_path:
+            return jsonify({"success": False, "error": "storage_path é obrigatório"}), 400
+
+        update_data = {
+            "storage_path": storage_path,
+            "file_size": int(data.get('file_size', 0) or 0),
+            "mime_type": data.get('mime_type', 'audio/mpeg'),
+            "status": "pendente",
+            "feedback": None,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        result = supabase_manager.newpost_manager_client.table('client_deliveries') \
+            .update(update_data) \
+            .eq('id', delivery_id).execute()
+
+        if not result.data:
+            return jsonify({"success": False, "error": "Entrega não encontrada"}), 404
+
+        return jsonify({"success": True, "delivery": result.data[0]})
+
+    except Exception as e:
+        print(f"Erro ao enviar nova versão da entrega: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/aprovacao/<delivery_id>')
 def client_delivery_approval_page(delivery_id):
     """Página pública, sem login — cliente ouve a locução e aprova/pede ajuste.
