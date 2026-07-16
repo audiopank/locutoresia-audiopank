@@ -809,9 +809,14 @@ def get_client_delivery_upload_url():
         if not filename:
             return jsonify({"success": False, "error": "Nome do arquivo é obrigatório"}), 400
 
+        # 'entrega' = locução do estúdio; 'amostra' = referência de voz que o
+        # cliente anexa ao pedir ajuste na página pública. Allowlist fechada.
+        kind = data.get('kind', 'entrega')
+        pasta = 'amostras' if kind == 'amostra' else 'entregas'
+
         import uuid
         file_extension = os.path.splitext(filename)[1]
-        storage_path = f"entregas/{uuid.uuid4()}{file_extension}"
+        storage_path = f"{pasta}/{uuid.uuid4()}{file_extension}"
 
         signed = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
             .create_signed_upload_url(storage_path)
@@ -897,6 +902,16 @@ def list_client_deliveries():
                 print(f"Erro ao gerar signed URL de leitura: {e}")
                 delivery['playback_url'] = None
 
+            # Amostra de voz anexada pelo cliente no pedido de ajuste (se houver).
+            delivery['amostra_url'] = None
+            if delivery.get('amostra_path'):
+                try:
+                    signed_amostra = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
+                        .create_signed_url(delivery['amostra_path'], 3600)
+                    delivery['amostra_url'] = signed_amostra.get('signedURL') or signed_amostra.get('signedUrl')
+                except Exception as e:
+                    print(f"Erro ao gerar signed URL da amostra: {e}")
+
         return jsonify({"success": True, "deliveries": deliveries})
 
     except Exception as e:
@@ -958,6 +973,17 @@ def respond_client_delivery(delivery_id):
         if status == 'ajuste_solicitado':
             feedback = (data.get('feedback') or '').strip()
             update_data['feedback'] = feedback
+
+            # Amostra de voz (opcional): o cliente anexa uma referência de estilo.
+            # Endpoint é público, então o caminho é validado por regex — só aceita
+            # o formato exato que o upload-url gera na pasta amostras/.
+            import re as _re
+            amostra_path = (data.get('amostra_path') or '').strip()
+            if amostra_path and _re.fullmatch(r'amostras/[0-9a-f-]{36}\.[A-Za-z0-9]{1,8}', amostra_path):
+                update_data['amostra_path'] = amostra_path
+            else:
+                amostra_path = ''
+
             # "Reenvio que lembra": acumula o histórico de ajustes pra sobreviver ao
             # reenvio de versão corrigida (que zera o feedback vivo). Protegido: se as
             # colunas ainda não existem (migração não rodada), cai no comportamento antigo.
@@ -969,15 +995,25 @@ def respond_client_delivery(delivery_id):
                     hist = row.get('ajustes_historico')
                     if not isinstance(hist, list):
                         hist = []
-                    hist.append({"feedback": feedback, "requested_at": datetime.now(timezone.utc).isoformat()})
+                    hist.append({"feedback": feedback, "amostra_path": amostra_path or None,
+                                 "requested_at": datetime.now(timezone.utc).isoformat()})
                     update_data['total_ajustes'] = int(row.get('total_ajustes') or 0) + 1
                     update_data['ajustes_historico'] = hist
             except Exception as hist_err:
                 print(f"Histórico de ajustes indisponível (rodar migração?): {hist_err}")
 
-        result = supabase_manager.newpost_manager_client.table('client_deliveries') \
-            .update(update_data) \
-            .eq('id', delivery_id).execute()
+        # Retry defensivo: se alguma coluna nova ainda não existe no banco,
+        # remove as chaves novas e grava o essencial (status/feedback).
+        try:
+            result = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .update(update_data) \
+                .eq('id', delivery_id).execute()
+        except Exception:
+            for k in ('total_ajustes', 'ajustes_historico', 'amostra_path'):
+                update_data.pop(k, None)
+            result = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .update(update_data) \
+                .eq('id', delivery_id).execute()
 
         if not result.data:
             return jsonify({"success": False, "error": "Entrega não encontrada"}), 404
@@ -1017,12 +1053,22 @@ def new_version_client_delivery(delivery_id):
             "mime_type": data.get('mime_type', 'audio/mpeg'),
             "status": "pendente",
             "feedback": None,
+            "amostra_path": None,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
+        # total_ajustes/ajustes_historico NÃO são tocados aqui de propósito:
+        # o histórico sobrevive à reaprovação ("reenvio que lembra").
 
-        result = supabase_manager.newpost_manager_client.table('client_deliveries') \
-            .update(update_data) \
-            .eq('id', delivery_id).execute()
+        # Retry defensivo: se a coluna amostra_path ainda não existe, grava sem ela.
+        try:
+            result = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .update(update_data) \
+                .eq('id', delivery_id).execute()
+        except Exception:
+            update_data.pop('amostra_path', None)
+            result = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .update(update_data) \
+                .eq('id', delivery_id).execute()
 
         if not result.data:
             return jsonify({"success": False, "error": "Entrega não encontrada"}), 404

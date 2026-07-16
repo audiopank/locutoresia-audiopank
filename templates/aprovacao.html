@@ -53,6 +53,20 @@
             outline: none;
             border-color: var(--primary-color);
         }
+        .adjust-form .sample-hint {
+            color: var(--text-secondary);
+            font-size: .8rem;
+            margin-bottom: .4rem;
+        }
+        .adjust-form input[type="file"] {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            width: 100%;
+            border-radius: 10px;
+            padding: 0.55rem 0.75rem;
+            font-size: .85rem;
+        }
     </style>
 </head>
 <body>
@@ -78,9 +92,14 @@
                 <div id="adjustForm" class="adjust-form mt-4" style="display: none;">
                     <label class="mb-2">O que você gostaria de ajustar?</label>
                     <textarea id="adjustFeedback" rows="4" placeholder="Ex: deixar o tom mais animado, corrigir o nome da loja no final..."></textarea>
-                    <div class="d-flex gap-2 mt-2">
+
+                    <label class="mt-3 mb-1">Amostra de voz <span class="text-secondary">(opcional)</span></label>
+                    <div class="sample-hint">Tem um áudio no estilo que você quer? Anexa aqui que refazemos a locução nessa linha.</div>
+                    <input type="file" id="sampleFile" accept="audio/*">
+
+                    <div class="d-flex gap-2 mt-3">
                         <button class="btn btn-outline-secondary" onclick="hideAdjustForm()">Voltar</button>
-                        <button class="btn btn-danger w-100" onclick="submitAdjust()">
+                        <button class="btn btn-danger w-100" id="adjustSubmitBtn" onclick="submitAdjust()">
                             <i class="fas fa-paper-plane me-2"></i>Enviar pedido de ajuste
                         </button>
                     </div>
@@ -114,17 +133,59 @@
             document.getElementById('actionButtons').style.display = 'flex';
         }
 
-        function submitAdjust() {
+        async function submitAdjust() {
             const feedback = document.getElementById('adjustFeedback').value.trim();
-            respond('ajuste_solicitado', feedback);
+            const fileInput = document.getElementById('sampleFile');
+            const file = fileInput.files[0];
+            const btn = document.getElementById('adjustSubmitBtn');
+            btn.disabled = true;
+            const original = btn.innerHTML;
+            try {
+                let amostraPath = '';
+                if (file) {
+                    // Amostra sobe direto pro Storage via signed URL (mesmo padrão do
+                    // upload de entrega — contorna o limite de corpo do Vercel).
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando amostra...';
+                    const urlResponse = await fetch('/api/client-deliveries/upload-url', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: file.name, kind: 'amostra' })
+                    });
+                    const urlResult = await urlResponse.json();
+                    if (!urlResult.success) {
+                        throw new Error(urlResult.error);
+                    }
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    const up = await fetch(urlResult.upload_url, {
+                        method: 'PUT',
+                        headers: {
+                            'apikey': urlResult.apikey,
+                            'Authorization': `Bearer ${urlResult.apikey}`
+                        },
+                        body: formData
+                    });
+                    if (!up.ok) {
+                        throw new Error('Falha ao enviar a amostra de voz');
+                    }
+                    amostraPath = urlResult.path;
+                }
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
+                await respond('ajuste_solicitado', feedback, amostraPath);
+            } catch (error) {
+                alert(`Erro ao enviar: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
         }
 
-        async function respond(status, feedback) {
+        async function respond(status, feedback, amostraPath) {
             try {
                 const response = await fetch(`/api/client-deliveries/${deliveryId}/respond`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: status, feedback: feedback || '' })
+                    body: JSON.stringify({ status: status, feedback: feedback || '', amostra_path: amostraPath || '' })
                 });
                 const result = await response.json();
                 if (!result.success) {

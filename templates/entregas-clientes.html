@@ -243,9 +243,15 @@
 
                 container.innerHTML = result.deliveries.map(d => {
                     const approvalUrl = `${window.location.origin}/aprovacao/${d.id}`;
-                    const feedbackBox = (d.status === 'ajuste_solicitado' && d.feedback)
+                    const amostraPlayer = d.amostra_url
+                        ? `<div class="mt-2"><small><i class="fas fa-music me-1"></i>Amostra de voz enviada pelo cliente (estilo desejado):</small>
+                               <audio controls class="w-100 mt-1" src="${d.amostra_url}"></audio>
+                           </div>`
+                        : '';
+                    const feedbackBox = (d.status === 'ajuste_solicitado' && (d.feedback || d.amostra_url))
                         ? `<div class="feedback-box mt-2">
-                               <i class="fas fa-comment-dots me-1"></i><strong>Ajuste pedido:</strong> ${escapeHtml(d.feedback)}
+                               <i class="fas fa-comment-dots me-1"></i><strong>Ajuste pedido:</strong> ${escapeHtml(d.feedback) || '<em>(sem comentário)</em>'}
+                               ${amostraPlayer}
                            </div>`
                         : '';
                     const newVersionBtn = (d.status === 'ajuste_solicitado')
