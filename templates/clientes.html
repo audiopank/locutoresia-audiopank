@@ -128,6 +128,12 @@
         .hist-item .h-desc { font-size: .9rem; }
         .hist-item .h-date { font-size: .72rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
         .hist-item .h-feedback { font-size: .78rem; color: #fca5a5; margin-top: .2rem; }
+        .ajuste-chip {
+            display: inline-block; font-size: .68rem; font-weight: 600;
+            color: var(--warn); background: rgba(245, 158, 11, 0.14);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            border-radius: 999px; padding: 0 .45rem; margin-left: .35rem;
+        }
         .toggle-btn { color: var(--text-secondary); }
         @media (max-width: 640px) {
             .kpi-row { grid-template-columns: 1fr; }
@@ -228,7 +234,7 @@
                         <span class="badge status-badge-${d.status}">${statusLabel(d.status)}</span>
                         <div class="h-main">
                             <div class="h-desc">${escapeHtml(d.request_description) || '<span class="text-secondary">(sem descrição)</span>'}</div>
-                            <div class="h-date">${formatDate(d.created_at)}</div>
+                            <div class="h-date">${formatDate(d.created_at)}${d.total_ajustes > 0 ? `<span class="ajuste-chip" title="Pediu ajuste ${d.total_ajustes}x na vida desta entrega">${d.total_ajustes}× ajuste</span>` : ''}</div>
                             ${feedback}
                         </div>
                         <a href="/aprovacao/${d.id}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-light" title="Abrir link de aprovação">

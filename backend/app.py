@@ -956,7 +956,24 @@ def respond_client_delivery(delivery_id):
         update_data = {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}
         # Só o pedido de ajuste carrega comentário do cliente (o que deve mudar).
         if status == 'ajuste_solicitado':
-            update_data['feedback'] = (data.get('feedback') or '').strip()
+            feedback = (data.get('feedback') or '').strip()
+            update_data['feedback'] = feedback
+            # "Reenvio que lembra": acumula o histórico de ajustes pra sobreviver ao
+            # reenvio de versão corrigida (que zera o feedback vivo). Protegido: se as
+            # colunas ainda não existem (migração não rodada), cai no comportamento antigo.
+            try:
+                atual = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                    .select('total_ajustes,ajustes_historico').eq('id', delivery_id).limit(1).execute()
+                if atual.data:
+                    row = atual.data[0]
+                    hist = row.get('ajustes_historico')
+                    if not isinstance(hist, list):
+                        hist = []
+                    hist.append({"feedback": feedback, "requested_at": datetime.now(timezone.utc).isoformat()})
+                    update_data['total_ajustes'] = int(row.get('total_ajustes') or 0) + 1
+                    update_data['ajustes_historico'] = hist
+            except Exception as hist_err:
+                print(f"Histórico de ajustes indisponível (rodar migração?): {hist_err}")
 
         result = supabase_manager.newpost_manager_client.table('client_deliveries') \
             .update(update_data) \
@@ -1061,10 +1078,18 @@ def list_clients():
         if not supabase_manager or not supabase_manager.newpost_manager_client:
             return jsonify({"success": True, "clients": []})
 
-        response = supabase_manager.newpost_manager_client.table('client_deliveries') \
-            .select('id,client_name,client_contact,request_description,status,feedback,created_at,updated_at') \
-            .order('created_at', desc=True) \
-            .execute()
+        # Fallback: se a migração de total_ajustes ainda não rodou, seleciona sem ela
+        # (o deploy é automático, pode rodar antes do SQL manual — não pode quebrar).
+        try:
+            response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .select('id,client_name,client_contact,request_description,status,feedback,total_ajustes,created_at,updated_at') \
+                .order('created_at', desc=True) \
+                .execute()
+        except Exception:
+            response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .select('id,client_name,client_contact,request_description,status,feedback,created_at,updated_at') \
+                .order('created_at', desc=True) \
+                .execute()
 
         grupos = {}
         for d in response.data:
@@ -1083,6 +1108,7 @@ def list_clients():
                     "total": 0,
                     "aprovadas": 0,
                     "pendentes": 0,
+                    "aguardando": 0,
                     "ajustes": 0,
                     "primeira": d.get('created_at'),
                     "ultima": d.get('created_at'),
@@ -1095,9 +1121,12 @@ def list_clients():
             if status == 'aprovado':
                 g["aprovadas"] += 1
             elif status == 'ajuste_solicitado':
-                g["ajustes"] += 1
+                g["aguardando"] += 1
             else:
                 g["pendentes"] += 1
+            # Ajustes = histórico acumulado ("reenvio que lembra"), não só os pendentes agora.
+            ajustes_da_entrega = int(d.get('total_ajustes') or 0)
+            g["ajustes"] += ajustes_da_entrega
 
             criado = d.get('created_at')
             if criado:
@@ -1114,6 +1143,7 @@ def list_clients():
                 "request_description": d.get('request_description'),
                 "status": status,
                 "feedback": d.get('feedback'),
+                "total_ajustes": ajustes_da_entrega,
                 "created_at": criado,
                 "updated_at": d.get('updated_at')
             })
@@ -1144,20 +1174,32 @@ def clients_performance_insight():
             return jsonify({"success": True, "status": "poucos_dados",
                             "stats": {}, "message": "Sem dados ainda."})
 
-        response = supabase_manager.newpost_manager_client.table('client_deliveries') \
-            .select('client_name,client_contact,request_description,status,feedback,created_at') \
-            .order('created_at', desc=True) \
-            .execute()
+        # Fallback igual ao do CRM: sobrevive ao intervalo antes da migração manual.
+        try:
+            response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .select('client_name,client_contact,request_description,status,feedback,total_ajustes,ajustes_historico,created_at') \
+                .order('created_at', desc=True) \
+                .execute()
+        except Exception:
+            response = supabase_manager.newpost_manager_client.table('client_deliveries') \
+                .select('client_name,client_contact,request_description,status,feedback,created_at') \
+                .order('created_at', desc=True) \
+                .execute()
         entregas = response.data or []
 
         total = len(entregas)
         aprovadas = sum(1 for d in entregas if d.get('status') == 'aprovado')
-        ajustes = sum(1 for d in entregas if d.get('status') == 'ajuste_solicitado')
-        pendentes = total - aprovadas - ajustes
+        aguardando = sum(1 for d in entregas if d.get('status') == 'ajuste_solicitado')
+        pendentes = total - aprovadas - aguardando
+        # Ajustes = histórico acumulado ("reenvio que lembra"); aprovado_primeira = aprovou sem nenhum ajuste.
+        ajustes = sum(int(d.get('total_ajustes') or 0) for d in entregas)
+        aprovado_primeira = sum(1 for d in entregas
+                                if d.get('status') == 'aprovado' and int(d.get('total_ajustes') or 0) == 0)
         clientes = len({(d.get('client_contact') or d.get('client_name') or '').strip().lower()
                         for d in entregas if (d.get('client_contact') or d.get('client_name'))})
         taxa = round(aprovadas / total * 100) if total else 0
         stats = {"total": total, "aprovadas": aprovadas, "ajustes": ajustes,
+                 "aprovado_primeira": aprovado_primeira,
                  "pendentes": pendentes, "clientes": clientes, "taxa_aprovacao": taxa}
 
         # Poucos dados: não chama a IA (não há padrão a extrair) — devolve os números
@@ -1172,9 +1214,22 @@ def clients_performance_insight():
             return jsonify({"success": True, "status": "sem_ia", "stats": stats,
                             "message": "IA não configurada (falta GEMINI_API_KEY). Os números acima já valem."})
 
+        def _feedbacks_da_entrega(d):
+            """Junta os feedbacks já pedidos nesta entrega (do histórico preservado),
+            caindo pro feedback vivo se o histórico ainda estiver vazio."""
+            hist = d.get('ajustes_historico')
+            fbs = []
+            if isinstance(hist, list):
+                fbs = [(f.get('feedback') or '').strip() for f in hist
+                       if isinstance(f, dict) and (f.get('feedback') or '').strip()]
+            if not fbs and (d.get('feedback') or '').strip():
+                fbs = [d.get('feedback').strip()]
+            return ("; ".join(fbs))[:300] or '-'
+
         linhas = "\n".join(
-            f"- {(d.get('request_description') or '(sem descrição)').strip()[:200]} | "
-            f"{d.get('status')} | {(d.get('feedback') or '-').strip()[:200]}"
+            f"- {(d.get('request_description') or '(sem descrição)').strip()[:180]} | "
+            f"status: {d.get('status')} | ajustes pedidos: {int(d.get('total_ajustes') or 0)} | "
+            f"feedbacks: {_feedbacks_da_entrega(d)}"
             for d in entregas[:40]
         )
 
@@ -1185,13 +1240,13 @@ Analise o histórico de entregas abaixo e devolva SOMENTE um JSON válido (sem m
   "pontos": [{{"tipo": "positivo", "texto": "..."}}, {{"tipo": "atencao", "texto": "..."}}],
   "recomendacao": "1 dica prática pro estúdio aprovar mais de primeira"
 }}
-Regras: português do Brasil, tom prático e curto, no máximo 4 itens em 'pontos', cada 'tipo' é "positivo" ou "atencao". Baseie-se SÓ nos dados. Se forem poucos, seja honesto sobre a limitação no resumo.
+Regras: português do Brasil, tom prático e curto, no máximo 4 itens em 'pontos', cada 'tipo' é "positivo" ou "atencao". Baseie-se SÓ nos dados. Cruze o texto da descrição com os ajustes/feedbacks pra achar QUE TIPO de locução costuma pedir ajuste. Se os dados forem poucos, seja honesto sobre a limitação no resumo.
 
 Dados agregados:
-- Total de entregas: {total} | Aprovadas: {aprovadas} | Pedidos de ajuste: {ajustes} | Pendentes: {pendentes}
-- Taxa de aprovação: {taxa}% | Clientes distintos: {clientes}
+- Total de entregas: {total} | Aprovadas: {aprovadas} (aprovadas de 1ª, sem nenhum ajuste: {aprovado_primeira}) | Aguardando refação: {aguardando} | Pendentes: {pendentes}
+- Total de pedidos de ajuste ao longo da vida das entregas: {ajustes} | Taxa de aprovação: {taxa}% | Clientes distintos: {clientes}
 
-Entregas (descrição | status | feedback do cliente):
+Entregas (descrição | status | nº de ajustes pedidos | feedbacks do cliente):
 {linhas}
 """
 
