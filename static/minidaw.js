@@ -2046,6 +2046,71 @@ window.loadVipProject = () => minidaw.loadVipProject();
 window.updateReverbAmount = (id, amount) => minidaw.updateReverbAmount(id, amount);
 window.updateCompressor = (id, param, value) => minidaw.updateCompressor(id, param, value);
 
+// ⚡ Incorporar Receita da IA (VoxCraft fase 3): pede a receita de mixagem pro
+// backend e aplica nos tracks — voz à frente, trilha de fundo com fade e a
+// cadeia de efeitos. IA = cérebro, MiniDAW = mãos.
+window.incorporarReceitaIA = async () => {
+    const btn = document.getElementById('recipeBtn');
+    if (!minidaw || !minidaw.tracks || minidaw.tracks.length === 0) {
+        alert('Suba a voz e a trilha no MiniDAW primeiro.');
+        return;
+    }
+    const comAudio = minidaw.tracks.filter(t => t.audioBuffer);
+    if (comAudio.length === 0) {
+        alert('Carregue o áudio das faixas antes de aplicar a receita.');
+        return;
+    }
+
+    const original = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Montando receita...'; }
+    try {
+        const payload = {
+            tracks: comAudio.map(t => ({ type: t.type, name: t.name, duration: t.duration || 0 }))
+        };
+        const resp = await fetch(window.location.origin + '/api/voxcraft/mix-recipe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await resp.json();
+        if (!result.success) throw new Error(result.error || 'Falha ao montar a receita');
+
+        let aplicadas = 0;
+        comAudio.forEach(track => {
+            const r = track.type === 'voice' ? result.voz
+                    : (track.type === 'music' ? result.trilha : null);
+            if (!r) return;
+
+            // Volume / pan / fades — setters oficiais atualizam track + áudio.
+            minidaw.updateTrackVolume(track.id, r.volume);
+            minidaw.updateTrackPan(track.id, r.pan);       // slider -100..100
+            minidaw.updateTrackFadeIn(track.id, r.fade_in);
+            minidaw.updateTrackFadeOut(track.id, r.fade_out);
+
+            // Efeitos: mescla os booleanos da receita e aplica no grafo de áudio.
+            if (r.effects && track.effects) {
+                Object.keys(track.effects).forEach(fx => {
+                    if (r.effects[fx] !== undefined) track.effects[fx] = !!r.effects[fx];
+                });
+                if (typeof minidaw.applyEffectStates === 'function') minidaw.applyEffectStates(track);
+            }
+
+            // Redesenha o card refletindo sliders + estado dos botões de efeito.
+            if (typeof minidaw.updateTrackUI === 'function') minidaw.updateTrackUI(track);
+            if (typeof minidaw.updateEffectsUI === 'function') minidaw.updateEffectsUI(track);
+            aplicadas++;
+        });
+
+        if (typeof minidaw.saveToLocalStorage === 'function') minidaw.saveToLocalStorage();
+        alert('🎚️ Receita aplicada em ' + aplicadas + ' faixa(s)!\n\n' + (result.resumo || '') + '\n\nÉ só dar play e refinar o que quiser.');
+    } catch (error) {
+        console.error('Erro ao incorporar receita:', error);
+        alert('Erro ao montar a receita: ' + error.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
+    }
+};
+
 // 🧹 Helper para limpar cache e resetar MiniDAW (use se der erro)
 window.resetMiniDAW = () => {
     localStorage.removeItem('minidaw_project');

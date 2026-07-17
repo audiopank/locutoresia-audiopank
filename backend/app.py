@@ -834,6 +834,127 @@ Português do Brasil, direto. Baseie-se SÓ no material fornecido."""
         return jsonify({"success": False, "error": "Não consegui analisar agora. Tente de novo."}), 500
 
 
+def _mix_recipe_default():
+    """Receita-base determinística (spot comercial): voz à frente com cadeia de
+    locução; trilha de fundo bem abaixo, com fade-out. A IA refina em cima disso."""
+    return {
+        "resumo": "Voz à frente e limpa; trilha de fundo bem mais baixa, com fade-out no final.",
+        "voz": {
+            "volume": 105, "pan": 0, "fade_in": 0, "fade_out": 0,
+            "effects": {"hpf": True, "compressor": True, "presence": True,
+                        "limiter": True, "reverb": False, "eq": False, "delay": False},
+            "motivo": "Cadeia padrão de locução: corta graves (HPF), comprime pra consistência, realça presença e protege no limiter."
+        },
+        "trilha": {
+            "volume": 28, "pan": 0, "fade_in": 0, "fade_out": 3,
+            "effects": {"hpf": False, "compressor": False, "presence": False,
+                        "limiter": True, "reverb": False, "eq": False, "delay": False},
+            "motivo": "Trilha bem abaixo da voz pra não competir, com fade-out de 3s no final."
+        }
+    }
+
+
+def _clamp_num(v, lo, hi, default):
+    try:
+        return max(lo, min(hi, float(v)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _sanitize_role(role_ia, base):
+    """Valida/clampa o que a IA devolveu pra um papel (voz/trilha), caindo no
+    default pra qualquer valor ausente ou fora de faixa — a IA nunca manda um
+    slider pra um valor inválido."""
+    if not isinstance(role_ia, dict):
+        return base
+    out = dict(base)
+    out["volume"] = _clamp_num(role_ia.get("volume"), 0, 150, base["volume"])
+    out["pan"] = _clamp_num(role_ia.get("pan"), -100, 100, base["pan"])
+    out["fade_in"] = _clamp_num(role_ia.get("fade_in"), 0, 5, base["fade_in"])
+    out["fade_out"] = _clamp_num(role_ia.get("fade_out"), 0, 5, base["fade_out"])
+    fx_ia = role_ia.get("effects") if isinstance(role_ia.get("effects"), dict) else {}
+    out["effects"] = {k: bool(fx_ia.get(k, base["effects"][k])) for k in base["effects"]}
+    if isinstance(role_ia.get("motivo"), str) and role_ia["motivo"].strip():
+        out["motivo"] = role_ia["motivo"].strip()[:300]
+    return out
+
+
+@app.route('/api/voxcraft/mix-recipe', methods=['POST', 'OPTIONS'])
+def voxcraft_mix_recipe():
+    """VoxCraft 2.0 - fase 3: receita de mixagem. Recebe as faixas carregadas no
+    MiniDAW (tipo/nome/duração) e devolve os ajustes de voz e trilha (volume, fade,
+    cadeia de efeitos) pro MiniDAW APLICAR nos tracks. IA = cérebro, MiniDAW = mãos.
+    Tudo clampado no backend; se a IA falhar, usa a receita-base determinística."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        tracks = data.get('tracks') if isinstance(data.get('tracks'), list) else []
+        contexto = (data.get('contexto') or '').strip()[:1000]
+
+        base = _mix_recipe_default()
+
+        # Sem IA configurada → devolve a receita-base (o MiniDAW já aplica algo bom).
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            return jsonify({"success": True, "fonte": "base", **base})
+
+        # Resumo das faixas pro prompt (tipo + duração).
+        linhas = []
+        for t in tracks[:12]:
+            tipo = 'voz' if t.get('type') == 'voice' else ('trilha' if t.get('type') == 'music' else 'outro')
+            dur = t.get('duration')
+            linhas.append(f"- {tipo}" + (f" (~{int(dur)}s)" if isinstance(dur, (int, float)) and dur else ""))
+        faixas_txt = "\n".join(linhas) or "- voz\n- trilha"
+
+        prompt = f"""Você é um engenheiro de mixagem de spots comerciais. Defina a RECEITA de mixagem pra dois papéis: "voz" e "trilha". Regra de ouro: num spot, a VOZ fica sempre à frente e a TRILHA é fundo (bem mais baixa).
+
+Faixas carregadas no projeto:
+{faixas_txt}
+
+Contexto do projeto (se houver): {contexto or 'não informado'}
+
+Devolva SOMENTE um JSON válido (sem markdown) nesta estrutura:
+{{
+  "resumo": "1 frase sobre a decisão de mixagem",
+  "voz": {{"volume": <90-120>, "pan": 0, "fade_in": <0-1>, "fade_out": <0-1>, "effects": {{"hpf": true, "compressor": true, "presence": true, "limiter": true, "reverb": false, "eq": false}}, "motivo": "1 frase"}},
+  "trilha": {{"volume": <15-40>, "pan": 0, "fade_in": <0-2>, "fade_out": <2-4>, "effects": {{"hpf": false, "compressor": false, "presence": false, "limiter": true, "reverb": false, "eq": false}}, "motivo": "1 frase"}}
+}}
+Regras rígidas: volume da voz entre 90 e 120; volume da trilha entre 15 e 40 e SEMPRE menor que o da voz; trilha quase sempre com fade_out entre 2 e 4; voz com hpf+compressor+presence+limiter ligados. Ajuste os números ao contexto (spot animado = trilha um pouco mais alta; institucional sério = trilha mais baixa). Português do Brasil."""
+
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            gem = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+            texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
+            import json as _json
+            parsed = _json.loads(texto)
+        except Exception as ia_err:
+            print(f"IA de receita falhou, usando base: {ia_err}")
+            return jsonify({"success": True, "fonte": "base", **base})
+
+        voz = _sanitize_role(parsed.get('voz'), base['voz'])
+        trilha = _sanitize_role(parsed.get('trilha'), base['trilha'])
+        # Garantia dura: trilha nunca mais alta que a voz num spot.
+        if trilha['volume'] >= voz['volume']:
+            trilha['volume'] = min(trilha['volume'], max(15, voz['volume'] - 40))
+        resumo = parsed.get('resumo') if isinstance(parsed.get('resumo'), str) and parsed.get('resumo').strip() else base['resumo']
+
+        return jsonify({"success": True, "fonte": "ia",
+                        "resumo": resumo.strip()[:300], "voz": voz, "trilha": trilha})
+
+    except Exception as e:
+        print(f"Erro na receita de mixagem (VoxCraft): {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Não consegui montar a receita agora."}), 500
+
+
 TRACKS_BUCKET = 'music-tracks'
 
 @app.route('/api/tracks/upload-url', methods=['POST', 'OPTIONS'])
