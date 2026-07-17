@@ -6452,7 +6452,7 @@ except ImportError as e:
     print(f"Aviso: Dashboard não disponível: {e}")
 
 # ============================================================
-# AGENTE VOXCRAFT AI - ESPECIALISTA EM PRODUÇÕES AUDIOVISUAIS
+# AGENTE VOXCRAFT AI - ESPECIALISTA EM LOCUÇÃO E ÁUDIO COM IA
 # ============================================================
 
 VOXCRAFT_SYSTEM_PROMPT = """Você é o **VoxCraft AI**, o especialista do Locutores IA (Studio Audio Pank).
