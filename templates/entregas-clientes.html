@@ -349,10 +349,10 @@
         function criarEntregaDoPedido(id) {
             const p = pedidosCache[id];
             if (!p) return;
-            const tipo = TIPO_LABELS[p.tipo] || 'Outro';
+            const servico = PLANO_LABELS[p.plano] || TIPO_LABELS[p.tipo] || 'Serviço';
             document.getElementById('clientName').value = p.cliente_nome || '';
             document.getElementById('clientContact').value = p.whatsapp || p.email || '';
-            const partes = [tipo, p.estilo_voz, p.roteiro ? p.roteiro.slice(0, 160) : ''].filter(Boolean);
+            const partes = [servico, p.estilo_voz, p.roteiro ? p.roteiro.slice(0, 160) : ''].filter(Boolean);
             document.getElementById('requestDescription').value = partes.join(' — ');
             pedidoVinculado = id;
             const note = document.getElementById('pedidoVinculadoNote');
