@@ -1463,7 +1463,22 @@ def client_delivery_approval_page(delivery_id):
             print(f"Erro ao gerar signed URL: {sign_err}")
             playback_url = None
 
-        return render_template('aprovacao.html', found=True, delivery=delivery, playback_url=playback_url)
+        # Pagamento: se esta entrega veio de um pedido com plano/valor, monta o
+        # link de checkout pra oferecer o pagamento DEPOIS que o cliente aprovar.
+        pagamento = None
+        try:
+            ped = supabase_manager.newpost_manager_client.table('pedidos') \
+                .select('plano,valor,pago').eq('entrega_id', delivery_id).limit(1).execute()
+            if ped.data:
+                p = ped.data[0]
+                checkout = _kiwify_url(p.get('plano')) or get_planos_config().get(p.get('plano'), {}).get('kiwify_url', '')
+                if p.get('valor') and not p.get('pago'):
+                    pagamento = {"valor": p.get('valor'), "checkout_url": checkout}
+        except Exception as pag_err:
+            print(f"Pagamento indisponível na aprovação (tabela pedidos?): {pag_err}")
+
+        return render_template('aprovacao.html', found=True, delivery=delivery,
+                               playback_url=playback_url, pagamento=pagamento)
 
     except Exception as e:
         print(f"Erro ao carregar página de aprovação: {e}")
@@ -1826,6 +1841,75 @@ def clients_kpi_alerts():
 PEDIDO_TIPOS = ('spot_30s', 'spot_60s', 'vinheta', 'institucional_ura', 'outro')
 PEDIDO_STATUS = ('novo', 'em_producao', 'aguardando_aprovacao', 'concluido', 'cancelado')
 
+# Tabela de preços AUTORITATIVA (server-side). O valor NUNCA vem do navegador —
+# o cliente escolhe o plano, o backend define o preço. 'outro' = orçamento manual.
+PEDIDO_PLANOS = {
+    'spot_30_45': {'label': 'Spot 30-45s', 'valor': 127.00},
+    'spot_60_90': {'label': 'Spot 60-90s', 'valor': 157.00},
+    'jingle':     {'label': 'Jingle',      'valor': 1507.00},
+    'outro':      {'label': 'Outro (orçamento)', 'valor': None},
+}
+
+# Links de checkout do Kiwify (URLs PÚBLICAS, não são segredo). Preencher quando
+# os 3 produtos forem criados no dashboard — ou definir por env var
+# KIWIFY_CHECKOUT_<PLANO> (ex: KIWIFY_CHECKOUT_SPOT_30_45). Env tem prioridade.
+KIWIFY_CHECKOUT = {
+    'spot_30_45': '',
+    'spot_60_90': '',
+    'jingle': '',
+}
+
+def _kiwify_url(plano):
+    if not plano:
+        return ''
+    env_key = 'KIWIFY_CHECKOUT_' + plano.upper()
+    return (os.getenv(env_key) or KIWIFY_CHECKOUT.get(plano, '') or '').strip()
+
+
+def _default_planos():
+    """Planos padrão (código) — usados como fallback e valores iniciais do Admin."""
+    return {k: {"label": v["label"], "valor": v["valor"], "kiwify_url": _kiwify_url(k)}
+            for k, v in PEDIDO_PLANOS.items()}
+
+
+def get_planos_config():
+    """Planos efetivos: o que o Admin salvou no banco (app_config) sobrepõe os
+    padrões do código. Nunca quebra — se o banco/tabela não existir, usa os padrões."""
+    base = _default_planos()
+    try:
+        if supabase_manager and supabase_manager.newpost_manager_client:
+            r = supabase_manager.newpost_manager_client.table('app_config') \
+                .select('valor').eq('chave', 'planos').limit(1).execute()
+            if r.data and isinstance(r.data[0].get('valor'), dict):
+                salvo = r.data[0]['valor']
+                for k in base:
+                    s = salvo.get(k)
+                    if not isinstance(s, dict):
+                        continue
+                    if s.get('valor') is not None:
+                        try:
+                            base[k]['valor'] = float(s['valor'])
+                        except (TypeError, ValueError):
+                            pass
+                    if 'kiwify_url' in s:
+                        url = str(s.get('kiwify_url') or '').strip()
+                        base[k]['kiwify_url'] = url if url.startswith('https://') else ''
+                    if s.get('label'):
+                        base[k]['label'] = str(s['label'])[:60]
+    except Exception as e:
+        print(f"app_config indisponível, usando planos padrão: {e}")
+    return base
+
+
+def _admin_ok():
+    """Gate do Admin: compara a senha do header com ADMIN_PASSWORD (env). Sem a env
+    definida, o Admin fica DESLIGADO (nega tudo) — nunca fica aberto por engano."""
+    esperado = os.getenv('ADMIN_PASSWORD', '')
+    if not esperado:
+        return False
+    enviada = request.headers.get('X-Admin-Password', '')
+    return bool(enviada) and enviada == esperado
+
 @app.route('/solicitar')
 def solicitar_page():
     """Formulário público (sem login) pro cliente pedir uma locução.
@@ -1864,6 +1948,14 @@ def create_pedido():
         if tipo not in PEDIDO_TIPOS:
             tipo = 'outro'
 
+        # Plano (com preço). O VALOR é definido AQUI pela config (que o Admin edita),
+        # nunca pelo cliente — senão dava pra fraudar o preço no navegador.
+        planos_cfg = get_planos_config()
+        plano = data.get('plano', 'outro')
+        if plano not in planos_cfg:
+            plano = 'outro'
+        valor = planos_cfg[plano]['valor']
+
         if not supabase_manager or not supabase_manager.newpost_manager_client:
             return jsonify({"success": False, "error": "Sistema indisponível no momento"}), 500
 
@@ -1872,13 +1964,21 @@ def create_pedido():
             "whatsapp": whatsapp,
             "email": email,
             "tipo": tipo,
+            "plano": plano,
+            "valor": valor,
             "roteiro": (data.get('roteiro') or '').strip()[:5000],
             "estilo_voz": (data.get('estilo_voz') or '').strip()[:300],
             "referencia_trilha": (data.get('referencia_trilha') or '').strip()[:500],
             "prazo": (data.get('prazo') or '').strip()[:120],
             "status": "novo"
         }
-        result = supabase_manager.newpost_manager_client.table('pedidos').insert(pedido).execute()
+        # Fallback: se a migração de plano/valor ainda não rodou, salva sem elas.
+        try:
+            result = supabase_manager.newpost_manager_client.table('pedidos').insert(pedido).execute()
+        except Exception:
+            pedido.pop('plano', None)
+            pedido.pop('valor', None)
+            result = supabase_manager.newpost_manager_client.table('pedidos').insert(pedido).execute()
         pedido_id = result.data[0]['id']
 
         return jsonify({"success": True, "pedido_ref": pedido_id[:8].upper()}), 201
@@ -1940,9 +2040,21 @@ def update_pedido(pedido_id):
             except (TypeError, ValueError):
                 return jsonify({"success": False, "error": "Valor inválido"}), 400
 
-        result = supabase_manager.newpost_manager_client.table('pedidos') \
-            .update(update_data) \
-            .eq('id', pedido_id).execute()
+        if 'pago' in data:
+            update_data['pago'] = bool(data['pago'])
+            update_data['pago_em'] = datetime.now(timezone.utc).isoformat() if data['pago'] else None
+
+        # Fallback: se a migração de pago ainda não rodou, grava sem as chaves novas.
+        try:
+            result = supabase_manager.newpost_manager_client.table('pedidos') \
+                .update(update_data) \
+                .eq('id', pedido_id).execute()
+        except Exception:
+            update_data.pop('pago', None)
+            update_data.pop('pago_em', None)
+            result = supabase_manager.newpost_manager_client.table('pedidos') \
+                .update(update_data) \
+                .eq('id', pedido_id).execute()
 
         if not result.data:
             return jsonify({"success": False, "error": "Pedido não encontrado"}), 404
@@ -1954,6 +2066,78 @@ def update_pedido(pedido_id):
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/planos', methods=['GET'])
+def list_planos():
+    """Planos + preços pro formulário público (só o que o cliente precisa ver)."""
+    cfg = get_planos_config()
+    planos = [{"key": k, "label": v["label"], "valor": v["valor"]}
+              for k, v in cfg.items()]
+    return jsonify({"success": True, "planos": planos})
+
+@app.route('/admin')
+def admin_page():
+    """Painel do Admin (dono): edita preços dos planos + links de checkout.
+    A página abre pra qualquer um, mas ler/salvar config exige a senha de admin."""
+    return render_template('admin.html')
+
+@app.route('/api/admin/config', methods=['GET', 'POST', 'OPTIONS'])
+def admin_config():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,X-Admin-Password')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        return response
+
+    if not _admin_ok():
+        # 401 genérico — não revela se a senha existe/está errada nem se a env está setada.
+        return jsonify({"success": False, "error": "Acesso negado"}), 401
+
+    if request.method == 'GET':
+        return jsonify({"success": True, "planos": get_planos_config(),
+                        "admin_email": os.getenv('ADMIN_EMAIL', '')})
+
+    # POST — salva a config editada pelo Admin.
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        data = request.get_json() or {}
+        planos_in = data.get('planos') if isinstance(data.get('planos'), dict) else {}
+        atual = get_planos_config()
+        limpo = {}
+        for k in atual:  # só chaves conhecidas — ignora qualquer coisa injetada
+            entrada = planos_in.get(k) if isinstance(planos_in.get(k), dict) else {}
+            # valor: número >= 0, ou None (plano "outro"/orçamento)
+            valor = atual[k]['valor']
+            if 'valor' in entrada:
+                raw = entrada.get('valor')
+                if raw in (None, '', 'null'):
+                    valor = None
+                else:
+                    try:
+                        valor = max(0.0, float(raw))
+                    except (TypeError, ValueError):
+                        return jsonify({"success": False, "error": f"Valor inválido no plano {k}"}), 400
+            # kiwify_url: vazio ou https:// (bloqueia javascript:/http inseguro)
+            url = str(entrada.get('kiwify_url', atual[k].get('kiwify_url', '')) or '').strip()
+            if url and not url.startswith('https://'):
+                return jsonify({"success": False, "error": f"O link do plano {k} precisa começar com https://"}), 400
+            limpo[k] = {"label": atual[k]['label'], "valor": valor, "kiwify_url": url}
+
+        supabase_manager.newpost_manager_client.table('app_config').upsert({
+            "chave": "planos", "valor": limpo,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+
+        return jsonify({"success": True, "planos": limpo})
+
+    except Exception as e:
+        print(f"Erro ao salvar config do admin: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Não foi possível salvar agora"}), 500
 
 @app.route('/clientes')
 def clients_page():

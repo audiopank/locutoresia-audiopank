@@ -108,6 +108,7 @@
                 <div class="status-message status-aprovado">
                     <i class="fas fa-check-circle me-2"></i>Você já aprovou esta locução.
                 </div>
+                <div id="payArea"></div>
                 {% else %}
                 <div class="status-message status-ajuste_solicitado">
                     <i class="fas fa-info-circle me-2"></i>Você já pediu ajuste nesta locução.
@@ -122,6 +123,31 @@
 
     <script>
         const deliveryId = "{{ delivery.id if found else '' }}";
+        const pagamento = {{ pagamento | tojson if pagamento else 'null' }};
+
+        function pagamentoHtml() {
+            if (!pagamento) return '';
+            const valor = (pagamento.valor != null)
+                ? 'R$ ' + Number(pagamento.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                : '';
+            if (pagamento.checkout_url) {
+                return `<a href="${pagamento.checkout_url}" target="_blank" rel="noopener" class="btn btn-success w-100 mt-3">
+                            <i class="fas fa-lock me-2"></i>Pagar agora${valor ? ' (' + valor + ')' : ''}
+                        </a>`;
+            }
+            if (valor) {
+                return `<div class="status-message" style="background: rgba(99,102,241,0.12); color:#c7d2fe; margin-top:.75rem;">
+                            <i class="fas fa-hourglass-half me-2"></i>Valor: <strong>${valor}</strong>. Em breve te enviamos o link de pagamento.
+                        </div>`;
+            }
+            return '';
+        }
+
+        // Se a página já abre com status aprovado, mostra o pagamento.
+        document.addEventListener('DOMContentLoaded', function () {
+            const payArea = document.getElementById('payArea');
+            if (payArea) payArea.innerHTML = pagamentoHtml();
+        });
 
         function showAdjustForm() {
             document.getElementById('actionButtons').style.display = 'none';
@@ -194,7 +220,7 @@
 
                 const area = document.getElementById('responseArea');
                 if (status === 'aprovado') {
-                    area.innerHTML = '<div class="status-message status-aprovado"><i class="fas fa-check-circle me-2"></i>Obrigado! Locução aprovada.</div>';
+                    area.innerHTML = '<div class="status-message status-aprovado"><i class="fas fa-check-circle me-2"></i>Obrigado! Locução aprovada.</div>' + pagamentoHtml();
                 } else {
                     area.innerHTML = '<div class="status-message status-ajuste_solicitado"><i class="fas fa-info-circle me-2"></i>Obrigado! Vamos ajustar e te enviar um novo link em breve.</div>';
                 }

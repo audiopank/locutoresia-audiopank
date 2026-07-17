@@ -190,6 +190,7 @@
 
         // ---------- Pedidos (formulário público /solicitar) ----------
         const TIPO_LABELS = { spot_30s: 'Spot 30s', spot_60s: 'Spot 60s', vinheta: 'Vinheta', institucional_ura: 'Institucional/URA', outro: 'Outro' };
+        const PLANO_LABELS = { spot_30_45: 'Spot 30-45s', spot_60_90: 'Spot 60-90s', jingle: 'Jingle', outro: 'Orçamento' };
         const PEDIDO_STATUS_LABELS = { novo: 'Novo', em_producao: 'Em produção', aguardando_aprovacao: 'Aguardando aprovação', concluido: 'Concluído', cancelado: 'Cancelado' };
         let pedidosCache = {};
         let pedidoVinculado = null;
@@ -198,6 +199,23 @@
             if (!iso) return '';
             const d = new Date(iso);
             return isNaN(d) ? '' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+
+        function formatBRL(v) {
+            return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function recebimentosDoMes(pedidos) {
+            const agora = new Date();
+            let total = 0;
+            pedidos.forEach(p => {
+                if (!p.pago || !p.valor) return;
+                const d = p.pago_em ? new Date(p.pago_em) : null;
+                if (d && !isNaN(d) && d.getMonth() === agora.getMonth() && d.getFullYear() === agora.getFullYear()) {
+                    total += Number(p.valor) || 0;
+                }
+            });
+            return total;
         }
 
         function copiarLinkSolicitar() {
@@ -221,8 +239,16 @@
                     return;
                 }
 
-                container.innerHTML = pedidos.map(p => {
-                    const tipo = TIPO_LABELS[p.tipo] || 'Outro';
+                const recebido = recebimentosDoMes(pedidos);
+                const widget = `<div class="pedido-note d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-hand-holding-dollar me-1"></i>Recebimentos do mês</span>
+                        <strong style="color:#34d399; font-size:1.05rem;">${formatBRL(recebido)}</strong>
+                    </div>`;
+
+                container.innerHTML = widget + pedidos.map(p => {
+                    const plano = PLANO_LABELS[p.plano] || TIPO_LABELS[p.tipo] || 'Orçamento';
+                    const valorBadge = p.valor ? `<span class="badge bg-success ms-1">${formatBRL(p.valor)}</span>` : '';
+                    const pagoBadge = p.pago ? `<span class="badge ms-1" style="background:#059669;"><i class="fas fa-check me-1"></i>Pago</span>` : '';
                     const contato = [p.whatsapp, p.email].filter(Boolean).join(' · ');
                     const roteiro = p.roteiro
                         ? `<div class="pedido-roteiro">${escapeHtml(p.roteiro.length > 400 ? p.roteiro.slice(0, 400) + '…' : p.roteiro)}</div>`
@@ -247,14 +273,26 @@
                             </button>
                             <button class="btn btn-sm btn-outline-danger mt-2" onclick="cancelarPedido('${p.id}')">Cancelar</button>`;
                     }
+                    // Controle de pagamento (manual por enquanto; o webhook automatiza depois)
+                    if (p.valor && !p.pago) {
+                        acoes += ` <button class="btn btn-sm btn-success mt-2 me-2" onclick="marcarPago('${p.id}', true)">
+                                       <i class="fas fa-dollar-sign me-1"></i>Marcar como pago
+                                   </button>`;
+                    } else if (p.pago) {
+                        acoes += ` <button class="btn btn-sm btn-outline-secondary mt-2" onclick="marcarPago('${p.id}', false)">
+                                       Desfazer pago
+                                   </button>`;
+                    }
 
                     return `
                         <div class="pedido-card">
                             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                                 <div>
                                     <strong>${escapeHtml(p.cliente_nome)}</strong>
-                                    <span class="badge bg-secondary ms-1">${tipo}</span>
+                                    <span class="badge bg-secondary ms-1">${plano}</span>
+                                    ${valorBadge}
                                     <span class="badge badge-pedido-${p.status} ms-1">${PEDIDO_STATUS_LABELS[p.status] || p.status}</span>
+                                    ${pagoBadge}
                                     <p class="text-secondary mb-0 mt-1"><small>${escapeHtml(contato)}</small></p>
                                 </div>
                                 <small class="text-secondary">${formatDateBr(p.created_at)}</small>
@@ -289,6 +327,21 @@
         function cancelarPedido(id) {
             if (!confirm('Cancelar este pedido?')) return;
             mudarStatusPedido(id, 'cancelado');
+        }
+
+        async function marcarPago(id, pago) {
+            try {
+                const response = await fetch(`/api/pedidos/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pago: pago })
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error);
+                loadPedidos();
+            } catch (error) {
+                alert(`Erro ao atualizar pagamento: ${error.message}`);
+            }
         }
 
         function criarEntregaDoPedido(id) {
