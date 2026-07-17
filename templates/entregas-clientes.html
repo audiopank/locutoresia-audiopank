@@ -189,7 +189,9 @@
         }
 
         // ---------- Pedidos (formulário público /solicitar) ----------
-        const TIPO_LABELS = { spot_30s: 'Spot 30s', spot_60s: 'Spot 60s', vinheta: 'Vinheta', institucional_ura: 'Institucional/URA', outro: 'Outro' };
+        // Alinha os rótulos antigos (tipo) com o nome novo dos planos, pra pedidos
+        // antigos (sem plano) exibirem o mesmo texto dos novos.
+        const TIPO_LABELS = { spot_30s: 'Spot 30-45s', spot_60s: 'Spot 60-90s', vinheta: 'Vinheta', institucional_ura: 'Institucional/URA', outro: 'Orçamento' };
         const PLANO_LABELS = { spot_30_45: 'Spot 30-45s', spot_60_90: 'Spot 60-90s', jingle: 'Jingle', outro: 'Orçamento' };
         const PEDIDO_STATUS_LABELS = { novo: 'Novo', em_producao: 'Em produção', aguardando_aprovacao: 'Aguardando aprovação', concluido: 'Concluído', cancelado: 'Cancelado' };
         let pedidosCache = {};
