@@ -2067,6 +2067,104 @@ def update_pedido(pedido_id):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/webhooks/kiwify/<token>', methods=['POST'])
+def kiwify_webhook(token):
+    """Webhook do Kiwify: marca o pedido como PAGO automaticamente quando o cliente
+    paga. Segurança: o token secreto vai NA URL (env KIWIFY_WEBHOOK_TOKEN) — só quem
+    tem a URL secreta chama. Guarda o último payload em app_config pra diagnóstico."""
+    import hmac as _hmac
+    esperado = os.getenv('KIWIFY_WEBHOOK_TOKEN', '')
+    # Sem token configurado, ou token errado → 404 (não revela que a rota existe).
+    if not esperado or not token or not _hmac.compare_digest(str(token), esperado):
+        return jsonify({"error": "not found"}), 404
+
+    try:
+        payload = request.get_json(silent=True)
+        if payload is None:
+            try:
+                import json as _json
+                payload = _json.loads(request.data.decode('utf-8')) if request.data else {}
+            except Exception:
+                payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+
+        # Guarda o último webhook (aparado) pra a gente inspecionar o formato real.
+        if supabase_manager and supabase_manager.newpost_manager_client:
+            try:
+                import json as _json
+                supabase_manager.newpost_manager_client.table('app_config').upsert({
+                    "chave": "kiwify_last_webhook",
+                    "valor": {"recebido_em": datetime.now(timezone.utc).isoformat(),
+                              "payload": _json.loads(_json.dumps(payload)[:6000])},
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).execute()
+            except Exception as log_err:
+                print(f"Não guardou último webhook: {log_err}")
+
+        # Extrai campos com fallbacks (nomes confirmados em exemplos reais do Kiwify).
+        def _pega(d, *caminhos):
+            for c in caminhos:
+                cur = d
+                ok = True
+                for parte in c.split('.'):
+                    if isinstance(cur, dict) and parte in cur:
+                        cur = cur[parte]
+                    else:
+                        ok = False
+                        break
+                if ok and cur not in (None, ''):
+                    return cur
+            return ''
+
+        status = str(_pega(payload, 'order_status', 'status', 'Order.order_status', 'webhook_event_type', 'event')).lower()
+        pago_ok = any(s in status for s in ('paid', 'approved', 'aprovad', 'pago'))
+        email = str(_pega(payload, 'Customer.email', 'customer.email', 'email', 'buyer.email')).strip().lower()
+        mobile = str(_pega(payload, 'Customer.mobile', 'customer.mobile', 'Customer.phone', 'mobile'))
+        import re as _re
+        mobile_digits = _re.sub(r'\D', '', mobile)
+
+        if not pago_ok:
+            # Evento que não é pagamento aprovado (boleto gerado, reembolso, etc.) — ignora.
+            return jsonify({"success": True, "ignored": True, "status": status}), 200
+
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": True, "matched": False}), 200
+
+        # Casa com o pedido: entre os NÃO pagos com valor, o mais recente cujo e-mail
+        # (ou telefone) bate. Heurística — volume baixo, dono confere no painel.
+        pend = supabase_manager.newpost_manager_client.table('pedidos') \
+            .select('id,email,whatsapp,valor,pago,created_at') \
+            .eq('pago', False).order('created_at', desc=True).limit(80).execute()
+        alvo = None
+        for p in (pend.data or []):
+            if not p.get('valor'):
+                continue
+            p_email = str(p.get('email') or '').strip().lower()
+            p_digits = _re.sub(r'\D', '', str(p.get('whatsapp') or ''))
+            if (email and p_email and email == p_email) or \
+               (mobile_digits and p_digits and mobile_digits[-8:] == p_digits[-8:]):
+                alvo = p
+                break
+
+        if not alvo:
+            print(f"Webhook Kiwify pago mas sem pedido correspondente (email={email}, mobile={mobile_digits})")
+            return jsonify({"success": True, "matched": False}), 200
+
+        supabase_manager.newpost_manager_client.table('pedidos') \
+            .update({"pago": True, "pago_em": datetime.now(timezone.utc).isoformat(),
+                     "updated_at": datetime.now(timezone.utc).isoformat()}) \
+            .eq('id', alvo['id']).execute()
+
+        return jsonify({"success": True, "matched": True, "pedido_id": alvo['id']}), 200
+
+    except Exception as e:
+        print(f"Erro no webhook Kiwify: {e}")
+        import traceback
+        traceback.print_exc()
+        # 200 mesmo em erro pra o Kiwify não ficar reenviando em loop.
+        return jsonify({"success": False}), 200
+
 @app.route('/api/planos', methods=['GET'])
 def list_planos():
     """Planos + preços pro formulário público (só o que o cliente precisa ver)."""
@@ -2095,8 +2193,20 @@ def admin_config():
         return jsonify({"success": False, "error": "Acesso negado"}), 401
 
     if request.method == 'GET':
+        ultimo_webhook = None
+        try:
+            if supabase_manager and supabase_manager.newpost_manager_client:
+                w = supabase_manager.newpost_manager_client.table('app_config') \
+                    .select('valor').eq('chave', 'kiwify_last_webhook').limit(1).execute()
+                if w.data:
+                    ultimo_webhook = w.data[0].get('valor')
+        except Exception:
+            pass
+        webhook_configurado = bool(os.getenv('KIWIFY_WEBHOOK_TOKEN', ''))
         return jsonify({"success": True, "planos": get_planos_config(),
-                        "admin_email": os.getenv('ADMIN_EMAIL', '')})
+                        "admin_email": os.getenv('ADMIN_EMAIL', ''),
+                        "webhook_configurado": webhook_configurado,
+                        "ultimo_webhook": ultimo_webhook})
 
     # POST — salva a config editada pelo Admin.
     try:

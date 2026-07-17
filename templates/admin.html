@@ -70,6 +70,13 @@
                 </button>
                 <p class="mt-2 mb-0" id="saveMsg" style="display:none;"></p>
             </div>
+
+            <div class="section-card">
+                <h5 class="mb-1"><i class="fas fa-plug me-2"></i>Webhook do Kiwify (pagamento automático)</h5>
+                <p class="text-secondary" style="font-size:.85rem;" id="webhookStatus">—</p>
+                <p class="text-secondary" style="font-size:.8rem;">Último webhook recebido (aparece aqui após um pagamento de teste):</p>
+                <pre id="webhookBox" style="background:rgba(15,23,42,.7); border:1px solid var(--border-color); border-radius:8px; padding:.75rem; font-size:.72rem; max-height:280px; overflow:auto; white-space:pre-wrap; color:#cbd5e1;">Nenhum ainda.</pre>
+            </div>
         </div>
     </div>
 
@@ -99,6 +106,7 @@
                 if (!result.success) throw new Error(result.error || 'Falha');
                 sessionStorage.setItem('adminPass', senha);
                 renderPlanos(result.planos);
+                renderWebhook(result);
                 document.getElementById('lockScreen').style.display = 'none';
                 document.getElementById('adminPanel').style.display = 'block';
             } catch (e) {
@@ -132,6 +140,17 @@
                         </div>
                     </div>`;
             }).join('');
+        }
+
+        function renderWebhook(result) {
+            const status = document.getElementById('webhookStatus');
+            const box = document.getElementById('webhookBox');
+            status.innerHTML = result.webhook_configurado
+                ? '<span style="color:#34d399;"><i class="fas fa-check-circle me-1"></i>Token configurado no servidor (KIWIFY_WEBHOOK_TOKEN).</span>'
+                : '<span style="color:#f59e0b;"><i class="fas fa-triangle-exclamation me-1"></i>Token ainda NÃO configurado na Vercel (KIWIFY_WEBHOOK_TOKEN).</span>';
+            box.textContent = result.ultimo_webhook
+                ? JSON.stringify(result.ultimo_webhook, null, 2)
+                : 'Nenhum ainda.';
         }
 
         async function salvar() {
