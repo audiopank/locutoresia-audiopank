@@ -251,6 +251,19 @@
         .rec-motivo { color: var(--text-secondary); font-size: .88rem; margin: .5rem 0; }
         .rec-audio { width: 100%; margin-top: .4rem; }
 
+        .analise-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .6rem; margin-top: 1rem; }
+        @media (min-width: 768px) { .analise-grid { grid-template-columns: repeat(4, 1fr); } }
+        .analise-tile {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 9px; padding: .65rem .8rem;
+        }
+        .analise-tile .a-k {
+            font-size: .64rem; letter-spacing: .06em; text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+        .analise-tile .a-v { font-size: .95rem; font-weight: 600; margin-top: .15rem; }
+
         @media (max-width: 768px) {
             .track-grid {
                 grid-template-columns: 1fr;
@@ -284,6 +297,17 @@
     </header>
 
     <main class="library-container">
+        <!-- Análise Inteligente de Áudio (VoxCraft ouve a voz) -->
+        <div class="ai-rec-section">
+            <div class="ai-rec-title"><i class="fas fa-waveform-lines me-2" style="color: var(--secondary-color);"></i>Análise Inteligente de Áudio</div>
+            <div class="ai-rec-sub">Suba a locução e o VoxCraft ouve: tom, energia, propósito e público — e já sugere a trilha certa.</div>
+            <input type="file" class="form-control" id="analiseFile" accept="audio/*">
+            <button class="btn btn-primary-custom mt-3" id="analiseBtn" onclick="analisarVoz()">
+                <i class="fas fa-headphones me-1"></i>Analisar áudio
+            </button>
+            <div id="analiseResultado" class="mt-3" style="display:none;"></div>
+        </div>
+
         <!-- Recomendação Inteligente (VoxCraft lê o acervo real) -->
         <div class="ai-rec-section">
             <div class="ai-rec-title"><i class="fas fa-wand-magic-sparkles me-2" style="color: var(--secondary-color);"></i>Recomendação Inteligente de Trilhas</div>
@@ -750,6 +774,92 @@
             localStorage.setItem('selectedTrackUrl', url);
             localStorage.setItem('selectedTrackName', name);
             window.location.href = targetMinidaw === 'minidaw-react' ? '/minidaw-react' : '/minidaw';
+        }
+
+        // ---------- Análise Inteligente de Áudio (fase 2) ----------
+        let ultimaAnalise = null;
+
+        async function analisarVoz() {
+            const fileInput = document.getElementById('analiseFile');
+            const file = fileInput.files[0];
+            const btn = document.getElementById('analiseBtn');
+            const area = document.getElementById('analiseResultado');
+            if (!file) {
+                alert('Escolha o arquivo de voz (mp3/wav).');
+                return;
+            }
+            btn.disabled = true;
+            const original = btn.innerHTML;
+            area.style.display = 'block';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Enviando a voz...';
+            area.innerHTML = '<p class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Enviando o áudio...</p>';
+            try {
+                // 1. Sobe a voz direto pro Storage (pasta analises/) via signed URL
+                const urlResponse = await fetch('/api/client-deliveries/upload-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: file.name, kind: 'analise' })
+                });
+                const urlResult = await urlResponse.json();
+                if (!urlResult.success) throw new Error(urlResult.error);
+
+                const formData = new FormData();
+                formData.append('file', file);
+                const up = await fetch(urlResult.upload_url, {
+                    method: 'PUT',
+                    headers: { 'apikey': urlResult.apikey, 'Authorization': `Bearer ${urlResult.apikey}` },
+                    body: formData
+                });
+                if (!up.ok) throw new Error('Falha ao enviar o áudio');
+
+                // 2. VoxCraft (Gemini) ouve e analisa
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Ouvindo e analisando...';
+                area.innerHTML = '<p class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>O VoxCraft está ouvindo a locução...</p>';
+                const resp = await fetch('/api/voxcraft/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ storage_path: urlResult.path })
+                });
+                const result = await resp.json();
+                if (!result.success) throw new Error(result.error || 'Falha na análise');
+
+                ultimaAnalise = result.analise || {};
+                renderAnalise(ultimaAnalise);
+            } catch (error) {
+                console.error('Erro na análise:', error);
+                area.innerHTML = `<p class="text-danger"><i class="fas fa-circle-exclamation me-1"></i>Erro: ${escapeHtml(error.message)}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
+        function renderAnalise(a) {
+            const area = document.getElementById('analiseResultado');
+            area.style.display = 'block';
+            const resumo = a.resumo ? `<div class="rec-resumo">${escapeHtml(a.resumo)}</div>` : '';
+            const tiles = `
+                <div class="analise-grid">
+                    <div class="analise-tile"><div class="a-k">Tom emocional</div><div class="a-v">${escapeHtml(a.tom_emocional || '—')}</div></div>
+                    <div class="analise-tile"><div class="a-k">Energia</div><div class="a-v">${escapeHtml(a.energia || '—')}</div></div>
+                    <div class="analise-tile"><div class="a-k">Propósito</div><div class="a-v">${escapeHtml(a.proposito || '—')}</div></div>
+                    <div class="analise-tile"><div class="a-k">Público-alvo</div><div class="a-v">${escapeHtml(a.publico_alvo || '—')}</div></div>
+                </div>`;
+            const ritmo = a.ritmo ? `<p class="text-muted mt-2 mb-0"><i class="fas fa-drum me-1"></i>Ritmo: ${escapeHtml(a.ritmo)}</p>` : '';
+            const acao = a.trilha_ideal
+                ? `<div class="rec-motivo mt-3"><i class="fas fa-lightbulb me-1"></i><strong>Trilha ideal:</strong> ${escapeHtml(a.trilha_ideal)}</div>
+                   <button class="btn btn-sm btn-primary-custom" onclick="recomendarDaAnalise()"><i class="fas fa-wand-magic-sparkles me-1"></i>Recomendar trilha pra essa voz</button>`
+                : '';
+            area.innerHTML = resumo + tiles + ritmo + acao;
+        }
+
+        function recomendarDaAnalise() {
+            if (!ultimaAnalise) return;
+            const desc = ultimaAnalise.trilha_ideal || ultimaAnalise.resumo || '';
+            const campo = document.getElementById('recDescricao');
+            campo.value = desc;
+            campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            gerarRecomendacao();
         }
 
         // Persiste a recomendação pra não sumir ao ir no MiniDAW e voltar (recarrega a página).

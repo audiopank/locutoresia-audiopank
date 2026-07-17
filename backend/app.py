@@ -738,6 +738,102 @@ ACERVO DE TRILHAS (escolha só destes):
         return jsonify({"success": False, "error": "Não consegui recomendar agora. Tente de novo."}), 500
 
 
+@app.route('/api/voxcraft/analyze', methods=['POST', 'OPTIONS'])
+def voxcraft_analyze():
+    """VoxCraft 2.0 - fase 2: análise inteligente de áudio/roteiro. Recebe a voz
+    gravada (via signed URL, Gemini multimodal ouve o áudio) OU o roteiro em texto
+    e devolve tom emocional, energia, propósito e público-alvo — mais uma descrição
+    de trilha ideal, que alimenta a recomendação de trilhas (fase 1)."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        roteiro = (data.get('roteiro') or '').strip()[:5000]
+        storage_path = (data.get('storage_path') or '').strip()
+
+        if not roteiro and not storage_path:
+            return jsonify({"success": False, "error": "Envie a voz gravada ou cole o roteiro."}), 400
+
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            return jsonify({"success": False, "error": "IA não configurada (falta GEMINI_API_KEY)."}), 500
+
+        from google import genai
+        from google.genai import types
+
+        prompt = """Você é um engenheiro de áudio de um estúdio de locução comercial.
+Analise a VOZ (ou o roteiro) e devolva SOMENTE um JSON válido (sem markdown) nesta estrutura exata:
+{
+  "tom_emocional": "ex: animado e caloroso / sério e institucional / dramático",
+  "energia": "baixa | média | alta",
+  "ritmo": "ex: cadência rápida e vendedora / fala pausada",
+  "proposito": "ex: varejo promocional / institucional sério / narração educativa / comercial animado",
+  "publico_alvo": "ex: jovens 18-30 urbanos",
+  "resumo": "1-2 frases sobre o material",
+  "trilha_ideal": "descrição curta do estilo de trilha que combina (gênero + mood + energia + BPM aproximado)"
+}
+Português do Brasil, direto. Baseie-se SÓ no material fornecido."""
+
+        parts = [types.Part.from_text(text=prompt)]
+        fonte = "roteiro"
+
+        if storage_path:
+            import re as _re
+            if not _re.fullmatch(r'analises/[0-9a-f-]{36}\.[A-Za-z0-9]{1,8}', storage_path):
+                return jsonify({"success": False, "error": "Áudio inválido."}), 400
+            if not supabase_manager or not supabase_manager.newpost_manager_client:
+                return jsonify({"success": False, "error": "Storage indisponível."}), 500
+
+            signed = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
+                .create_signed_url(storage_path, 600)
+            audio_url = signed.get('signedURL') or signed.get('signedUrl')
+
+            import requests as _requests
+            resp_audio = _requests.get(audio_url, timeout=30)
+            resp_audio.raise_for_status()
+            audio_bytes = resp_audio.content
+            if len(audio_bytes) > 20 * 1024 * 1024:
+                return jsonify({"success": False, "error": "Áudio muito grande (máx 20MB)."}), 400
+
+            ext = storage_path.rsplit('.', 1)[-1].lower()
+            mime = {'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'm4a': 'audio/mp4', 'mp4': 'audio/mp4',
+                    'ogg': 'audio/ogg', 'aac': 'audio/aac', 'webm': 'audio/webm',
+                    'flac': 'audio/flac'}.get(ext, 'audio/mpeg')
+            parts.append(types.Part.from_text(text="Analise a VOZ de locução no áudio anexado."))
+            parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=mime))
+            fonte = "audio"
+        else:
+            parts.append(types.Part.from_text(text="ROTEIRO a analisar:\n" + roteiro))
+
+        client = genai.Client(api_key=api_key)
+        gem = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[types.Content(role='user', parts=parts)]
+        )
+        texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
+
+        import json as _json
+        try:
+            analise = _json.loads(texto)
+        except Exception:
+            analise = {"resumo": (texto[:400] or "Análise concluída."),
+                       "tom_emocional": "", "energia": "", "ritmo": "",
+                       "proposito": "", "publico_alvo": "", "trilha_ideal": ""}
+
+        return jsonify({"success": True, "fonte": fonte, "analise": analise})
+
+    except Exception as e:
+        print(f"Erro na análise de áudio (VoxCraft): {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Não consegui analisar agora. Tente de novo."}), 500
+
+
 TRACKS_BUCKET = 'music-tracks'
 
 @app.route('/api/tracks/upload-url', methods=['POST', 'OPTIONS'])
@@ -922,9 +1018,10 @@ def get_client_delivery_upload_url():
             return jsonify({"success": False, "error": "Nome do arquivo é obrigatório"}), 400
 
         # 'entrega' = locução do estúdio; 'amostra' = referência de voz que o
-        # cliente anexa ao pedir ajuste na página pública. Allowlist fechada.
+        # cliente anexa ao pedir ajuste; 'analise' = voz que o estúdio sobe pro
+        # VoxCraft analisar. Allowlist fechada (folder controlado pelo backend).
         kind = data.get('kind', 'entrega')
-        pasta = 'amostras' if kind == 'amostra' else 'entregas'
+        pasta = {'amostra': 'amostras', 'analise': 'analises'}.get(kind, 'entregas')
 
         import uuid
         file_extension = os.path.splitext(filename)[1]
