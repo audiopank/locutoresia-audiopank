@@ -219,6 +219,38 @@
             gap: 1.5rem;
         }
 
+        /* Recomendação Inteligente (VoxCraft) */
+        .ai-rec-section {
+            background:
+                radial-gradient(130% 130% at 0% 0%, rgba(139, 92, 246, 0.18), transparent 55%),
+                var(--card-bg);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .ai-rec-title { font-weight: 700; font-size: 1.15rem; }
+        .ai-rec-sub { color: var(--text-secondary); font-size: .85rem; margin: .15rem 0 1rem; }
+        .rec-resumo {
+            border-left: 3px solid var(--secondary-color);
+            padding-left: .8rem; font-weight: 600; margin: 1rem 0;
+        }
+        .rec-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1rem 1.15rem;
+            margin-bottom: .85rem;
+        }
+        .rec-rank {
+            width: 26px; height: 26px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: #fff; font-weight: 700; font-size: .85rem;
+            display: inline-grid; place-items: center; flex: 0 0 26px;
+        }
+        .rec-motivo { color: var(--text-secondary); font-size: .88rem; margin: .5rem 0; }
+        .rec-audio { width: 100%; margin-top: .4rem; }
+
         @media (max-width: 768px) {
             .track-grid {
                 grid-template-columns: 1fr;
@@ -252,6 +284,17 @@
     </header>
 
     <main class="library-container">
+        <!-- Recomendação Inteligente (VoxCraft lê o acervo real) -->
+        <div class="ai-rec-section">
+            <div class="ai-rec-title"><i class="fas fa-wand-magic-sparkles me-2" style="color: var(--secondary-color);"></i>Recomendação Inteligente de Trilhas</div>
+            <div class="ai-rec-sub">Descreva o projeto e o VoxCraft escolhe 3 trilhas do SEU acervo, com o porquê de cada uma.</div>
+            <textarea class="form-control" id="recDescricao" rows="2" placeholder="Ex: Spot 30s de loja de roupas, público jovem, tom animado e urbano"></textarea>
+            <button class="btn btn-primary-custom mt-3" id="recBtn" onclick="gerarRecomendacao()">
+                <i class="fas fa-bolt me-1"></i>Gerar recomendação
+            </button>
+            <div id="recResultado" class="mt-3" style="display:none;"></div>
+        </div>
+
         <!-- Seção de Upload -->
         <div class="upload-section" id="uploadSection">
             <h5 class="mb-3">
@@ -706,6 +749,64 @@
             localStorage.setItem('selectedTrackUrl', url);
             localStorage.setItem('selectedTrackName', name);
             window.location.href = targetMinidaw === 'minidaw-react' ? '/minidaw-react' : '/minidaw';
+        }
+
+        async function gerarRecomendacao() {
+            const descricao = document.getElementById('recDescricao').value.trim();
+            const btn = document.getElementById('recBtn');
+            const area = document.getElementById('recResultado');
+            if (!descricao) {
+                alert('Descreva o projeto primeiro.');
+                return;
+            }
+            btn.disabled = true;
+            const original = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Analisando o acervo...';
+            area.style.display = 'block';
+            area.innerHTML = '<p class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>O VoxCraft está escolhendo as trilhas do seu acervo...</p>';
+            try {
+                const response = await fetch('/api/voxcraft/recommend-tracks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ descricao: descricao })
+                });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error || 'Falha na recomendação');
+
+                if (result.status === 'sem_trilhas') {
+                    area.innerHTML = `<p class="text-muted"><i class="fas fa-circle-info me-1"></i>${escapeHtml(result.message)}</p>`;
+                    return;
+                }
+
+                const resumo = result.resumo ? `<div class="rec-resumo">${escapeHtml(result.resumo)}</div>` : '';
+                const cards = (result.tracks || []).map((t, i) => `
+                    <div class="rec-card">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="rec-rank">${i + 1}</span>
+                            <strong>${escapeHtml(t.name)}</strong>
+                        </div>
+                        <div class="track-meta">
+                            <span class="meta-tag"><i class="fas fa-tag me-1"></i>${escapeHtml(t.genre || '-')}</span>
+                            <span class="meta-tag"><i class="fas fa-heart me-1"></i>${escapeHtml(t.mood || '-')}</span>
+                            <span class="meta-tag"><i class="fas fa-clock me-1"></i>${t.duration || 0}s</span>
+                            <span class="meta-tag"><i class="fas fa-tachometer-alt me-1"></i>${t.bpm || 120} BPM</span>
+                        </div>
+                        <div class="rec-motivo"><i class="fas fa-quote-left me-1"></i>${escapeHtml(t.motivo)}</div>
+                        <audio class="rec-audio" controls src="${t.file_url || ''}"></audio>
+                        <div class="mt-2 d-flex gap-2 flex-wrap">
+                            <button class="btn btn-sm btn-primary-custom" onclick="useTrack('minidaw', '${t.file_url}', '${escapeHtml(t.name)}')"><i class="fas fa-plus me-1"></i>Usar no MiniDAW</button>
+                            <button class="btn btn-sm btn-secondary" onclick="useTrack('minidaw-react', '${t.file_url}', '${escapeHtml(t.name)}')">MiniDAW React</button>
+                        </div>
+                    </div>
+                `).join('');
+                area.innerHTML = resumo + cards;
+            } catch (error) {
+                console.error('Erro na recomendação:', error);
+                area.innerHTML = `<p class="text-danger"><i class="fas fa-circle-exclamation me-1"></i>Erro: ${escapeHtml(error.message)}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
         }
 
         async function deleteTrack(trackId) {

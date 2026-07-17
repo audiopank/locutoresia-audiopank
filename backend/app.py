@@ -626,6 +626,118 @@ def get_tracks():
         }), 200
 
 
+@app.route('/api/voxcraft/recommend-tracks', methods=['POST', 'OPTIONS'])
+def voxcraft_recommend_tracks():
+    """VoxCraft robusto: lê o roteiro/descrição do projeto + o ACERVO REAL de
+    trilhas (music_tracks) e o Gemini escolhe EXATAMENTE 3 trilhas que você JÁ
+    TEM, ordenadas por adequação, com justificativa. Diferente do prompt estático:
+    aqui ele recomenda trilhas reais (nome + URL), não gêneros genéricos."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        descricao = (data.get('descricao') or '').strip()[:3000]
+        if not descricao:
+            return jsonify({"success": False, "error": "Descreva o projeto pra eu recomendar."}), 400
+
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Biblioteca indisponível no momento."}), 500
+
+        tracks_resp = supabase_manager.newpost_manager_client.table('music_tracks') \
+            .select('id,name,artist,genre,mood,duration,bpm,description,file_url') \
+            .eq('is_active', True).execute()
+        acervo = tracks_resp.data or []
+
+        if len(acervo) == 0:
+            return jsonify({"success": True, "status": "sem_trilhas",
+                            "message": "Sua Biblioteca de Trilhas está vazia. Suba algumas trilhas primeiro que eu recomendo as certas pra cada projeto."})
+
+        # Índice por id pra remontar as trilhas reais (e barrar id inventado pela IA).
+        por_id = {str(t['id']): t for t in acervo}
+
+        catalogo = "\n".join(
+            f"- id={t['id']} | \"{(t.get('name') or '').strip()[:80]}\" | "
+            f"genero={t.get('genre') or '-'} | mood={t.get('mood') or '-'} | "
+            f"bpm={t.get('bpm') or '-'} | duracao={t.get('duration') or '-'}s"
+            + (f" | desc={(t.get('description') or '').strip()[:80]}" if t.get('description') else "")
+            for t in acervo[:80]
+        )
+
+        n_alvo = min(3, len(acervo))
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            return jsonify({"success": False, "error": "IA não configurada (falta GEMINI_API_KEY)."}), 500
+
+        prompt = f"""Você é um engenheiro de áudio de um estúdio de locução. O cliente descreveu um projeto e você precisa escolher, do ACERVO REAL abaixo, EXATAMENTE {n_alvo} trilha(s) que combinam melhor — ordenadas da melhor pra menos boa.
+
+Devolva SOMENTE um JSON válido (sem markdown) nesta estrutura:
+{{
+  "resumo": "1 frase sobre o clima ideal pra esse projeto",
+  "recomendacoes": [{{"id": "<id EXATO do acervo>", "motivo": "por que essa trilha combina (gênero/mood/bpm x o projeto), 1-2 frases"}}]
+}}
+Regras: use APENAS ids que existem no acervo abaixo. Escolha {n_alvo} itens distintos. Português do Brasil, direto.
+
+PROJETO DO CLIENTE:
+{descricao}
+
+ACERVO DE TRILHAS (escolha só destes):
+{catalogo}
+"""
+
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        gem = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
+
+        import json as _json
+        try:
+            parsed = _json.loads(texto)
+        except Exception:
+            parsed = {"resumo": "", "recomendacoes": []}
+
+        # Remonta com as trilhas reais, na ordem da IA, ignorando ids inventados/repetidos.
+        vistos = set()
+        recomendadas = []
+        for rec in (parsed.get('recomendacoes') or []):
+            tid = str(rec.get('id', ''))
+            if tid in por_id and tid not in vistos:
+                vistos.add(tid)
+                t = por_id[tid]
+                recomendadas.append({
+                    "id": t['id'], "name": t.get('name'), "artist": t.get('artist'),
+                    "genre": t.get('genre'), "mood": t.get('mood'),
+                    "bpm": t.get('bpm'), "duration": t.get('duration'),
+                    "file_url": t.get('file_url'),
+                    "motivo": (rec.get('motivo') or '').strip()
+                })
+
+        # Rede de segurança: se a IA não devolveu ids válidos, cai pras primeiras do acervo.
+        if not recomendadas:
+            for t in acervo[:n_alvo]:
+                recomendadas.append({
+                    "id": t['id'], "name": t.get('name'), "artist": t.get('artist'),
+                    "genre": t.get('genre'), "mood": t.get('mood'),
+                    "bpm": t.get('bpm'), "duration": t.get('duration'),
+                    "file_url": t.get('file_url'),
+                    "motivo": "Sugestão do acervo (a IA não conseguiu justificar desta vez)."
+                })
+
+        return jsonify({"success": True, "status": "ok",
+                        "resumo": (parsed.get('resumo') or '').strip(),
+                        "tracks": recomendadas[:n_alvo]})
+
+    except Exception as e:
+        print(f"Erro na recomendação de trilhas (VoxCraft): {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Não consegui recomendar agora. Tente de novo."}), 500
+
+
 TRACKS_BUCKET = 'music-tracks'
 
 @app.route('/api/tracks/upload-url', methods=['POST', 'OPTIONS'])
