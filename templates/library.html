@@ -442,6 +442,7 @@
             loadTracks();
             setupDragAndDrop();
             setupEventListeners();
+            restoreRecomendacao();
         });
 
         function setupEventListeners() {
@@ -751,6 +752,62 @@
             window.location.href = targetMinidaw === 'minidaw-react' ? '/minidaw-react' : '/minidaw';
         }
 
+        // Persiste a recomendação pra não sumir ao ir no MiniDAW e voltar (recarrega a página).
+        const REC_STORAGE_KEY = 'voxcraftRecomendacao';
+
+        function renderRecResultado(resumo, tracks) {
+            const area = document.getElementById('recResultado');
+            if (!tracks || tracks.length === 0) {
+                area.style.display = 'none';
+                area.innerHTML = '';
+                return;
+            }
+            area.style.display = 'block';
+            const resumoHtml = resumo ? `<div class="rec-resumo">${escapeHtml(resumo)}</div>` : '';
+            const cards = tracks.map((t, i) => `
+                <div class="rec-card">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="rec-rank">${i + 1}</span>
+                        <strong>${escapeHtml(t.name)}</strong>
+                    </div>
+                    <div class="track-meta">
+                        <span class="meta-tag"><i class="fas fa-tag me-1"></i>${escapeHtml(t.genre || '-')}</span>
+                        <span class="meta-tag"><i class="fas fa-heart me-1"></i>${escapeHtml(t.mood || '-')}</span>
+                        <span class="meta-tag"><i class="fas fa-clock me-1"></i>${t.duration || 0}s</span>
+                        <span class="meta-tag"><i class="fas fa-tachometer-alt me-1"></i>${t.bpm || 120} BPM</span>
+                    </div>
+                    <div class="rec-motivo"><i class="fas fa-quote-left me-1"></i>${escapeHtml(t.motivo)}</div>
+                    <audio class="rec-audio" controls src="${t.file_url || ''}"></audio>
+                    <div class="mt-2 d-flex gap-2 flex-wrap">
+                        <button class="btn btn-sm btn-primary-custom" onclick="useTrack('minidaw', '${t.file_url}', '${escapeHtml(t.name)}')"><i class="fas fa-plus me-1"></i>Usar no MiniDAW</button>
+                        <button class="btn btn-sm btn-secondary" onclick="useTrack('minidaw-react', '${t.file_url}', '${escapeHtml(t.name)}')">MiniDAW React</button>
+                    </div>
+                </div>
+            `).join('');
+            const limpar = `<button class="btn btn-sm btn-secondary mt-1" onclick="limparRecomendacao()"><i class="fas fa-xmark me-1"></i>Limpar recomendação</button>`;
+            area.innerHTML = resumoHtml + cards + limpar;
+        }
+
+        function limparRecomendacao() {
+            localStorage.removeItem(REC_STORAGE_KEY);
+            document.getElementById('recDescricao').value = '';
+            const area = document.getElementById('recResultado');
+            area.style.display = 'none';
+            area.innerHTML = '';
+        }
+
+        function restoreRecomendacao() {
+            try {
+                const raw = localStorage.getItem(REC_STORAGE_KEY);
+                if (!raw) return;
+                const saved = JSON.parse(raw);
+                if (saved.descricao) document.getElementById('recDescricao').value = saved.descricao;
+                renderRecResultado(saved.resumo, saved.tracks);
+            } catch (e) {
+                console.error('Erro ao restaurar recomendação:', e);
+            }
+        }
+
         async function gerarRecomendacao() {
             const descricao = document.getElementById('recDescricao').value.trim();
             const btn = document.getElementById('recBtn');
@@ -774,32 +831,16 @@
                 if (!result.success) throw new Error(result.error || 'Falha na recomendação');
 
                 if (result.status === 'sem_trilhas') {
+                    localStorage.removeItem(REC_STORAGE_KEY);
                     area.innerHTML = `<p class="text-muted"><i class="fas fa-circle-info me-1"></i>${escapeHtml(result.message)}</p>`;
                     return;
                 }
 
-                const resumo = result.resumo ? `<div class="rec-resumo">${escapeHtml(result.resumo)}</div>` : '';
-                const cards = (result.tracks || []).map((t, i) => `
-                    <div class="rec-card">
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="rec-rank">${i + 1}</span>
-                            <strong>${escapeHtml(t.name)}</strong>
-                        </div>
-                        <div class="track-meta">
-                            <span class="meta-tag"><i class="fas fa-tag me-1"></i>${escapeHtml(t.genre || '-')}</span>
-                            <span class="meta-tag"><i class="fas fa-heart me-1"></i>${escapeHtml(t.mood || '-')}</span>
-                            <span class="meta-tag"><i class="fas fa-clock me-1"></i>${t.duration || 0}s</span>
-                            <span class="meta-tag"><i class="fas fa-tachometer-alt me-1"></i>${t.bpm || 120} BPM</span>
-                        </div>
-                        <div class="rec-motivo"><i class="fas fa-quote-left me-1"></i>${escapeHtml(t.motivo)}</div>
-                        <audio class="rec-audio" controls src="${t.file_url || ''}"></audio>
-                        <div class="mt-2 d-flex gap-2 flex-wrap">
-                            <button class="btn btn-sm btn-primary-custom" onclick="useTrack('minidaw', '${t.file_url}', '${escapeHtml(t.name)}')"><i class="fas fa-plus me-1"></i>Usar no MiniDAW</button>
-                            <button class="btn btn-sm btn-secondary" onclick="useTrack('minidaw-react', '${t.file_url}', '${escapeHtml(t.name)}')">MiniDAW React</button>
-                        </div>
-                    </div>
-                `).join('');
-                area.innerHTML = resumo + cards;
+                // Guarda pra sobreviver à ida ao MiniDAW e volta.
+                localStorage.setItem(REC_STORAGE_KEY, JSON.stringify({
+                    descricao: descricao, resumo: result.resumo, tracks: result.tracks
+                }));
+                renderRecResultado(result.resumo, result.tracks);
             } catch (error) {
                 console.error('Erro na recomendação:', error);
                 area.innerHTML = `<p class="text-danger"><i class="fas fa-circle-exclamation me-1"></i>Erro: ${escapeHtml(error.message)}</p>`;
