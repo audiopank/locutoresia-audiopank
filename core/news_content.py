@@ -222,6 +222,56 @@ def gerar_post_ia(titulo: str, resumo: str, categoria: str = 'geral',
         return None
 
 
+def gerar_post_do_tema(tema: str, limite: int = LIMITE_PADRAO) -> dict:
+    """Cria um post do ZERO a partir de um tema: título + legenda + hashtags.
+    Ex.: tema="lançamento do iPhone 17" → post pronto pra revisar e publicar.
+    Retorna {} se a IA não estiver disponível (o chamador avisa o usuário)."""
+    tema = (tema or '').strip()
+    api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_AI_STUDIO_API_KEY')
+    if not api_key or not tema:
+        return {}
+
+    prompt = f"""Você escreve posts para a NewPost-IA, uma rede social brasileira.
+Crie um post ORIGINAL sobre o tema abaixo.
+
+Tema: {tema}
+
+Devolva SOMENTE um JSON válido (sem markdown):
+{{
+  "titulo": "título curto e chamativo, até 80 caracteres",
+  "legenda": "2 a 4 frases, no máximo {limite} caracteres, tom envolvente e informativo",
+  "hashtags": ["tag1", "tag2", "tag3"]
+}}
+Regras: português do Brasil; não invente fatos, números ou datas como se fossem
+confirmados — se o tema for especulativo, escreva de forma aberta; nada de
+sensacionalismo; hashtags em minúsculo e SEM o '#'; não use markdown."""
+
+    try:
+        from google import genai
+        import json as _json
+        client = genai.Client(api_key=api_key)
+        resposta = client.models.generate_content(
+            model='gemini-2.5-flash', contents=prompt
+        )
+        texto = (resposta.text or '').replace('```json', '').replace('```', '').strip()
+        dados = _json.loads(texto)
+
+        titulo = str(dados.get('titulo') or '').strip().strip('"')[:120]
+        legenda = limpar_noticia(str(dados.get('legenda') or ''), limite)
+        hashtags = []
+        for h in (dados.get('hashtags') or [])[:6]:
+            tag = re.sub(r'\W+', '', str(h)).lower()
+            if tag and tag not in hashtags:
+                hashtags.append(tag)
+
+        if not titulo and not legenda:
+            return {}
+        return {"titulo": titulo, "legenda": legenda, "hashtags": hashtags}
+    except Exception as e:
+        print(f"[news_content] geração do zero indisponível: {e}")
+        return {}
+
+
 def montar_corpo(titulo: str, resumo: str, categoria: str = 'geral',
                  limite: int = LIMITE_PADRAO, usar_ia: bool = True) -> str:
     """Corpo final do post (sem título e sem hashtags — cada pipeline põe o seu

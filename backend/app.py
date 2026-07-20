@@ -5205,6 +5205,37 @@ def api_delete_all_rejected_posts():
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/social/generate-post', methods=['POST'])
+def api_generate_social_post_from_theme():
+    """Cria um post do ZERO a partir de um TEMA: a IA escreve título, legenda e
+    hashtags. Diferente do /generate-caption, que só reescreve o que já existe."""
+    try:
+        data = request.get_json() or {}
+        tema = (data.get('tema') or '').strip()[:500]
+        if not tema:
+            return jsonify({"success": False, "error": "Informe o tema do post"}), 400
+
+        from core.news_content import gerar_post_do_tema
+        gerado = gerar_post_do_tema(tema)
+        if not gerado:
+            return jsonify({
+                "success": False,
+                "error": "IA indisponível no momento (verifique a GEMINI_API_KEY) — tente de novo."
+            }), 200
+
+        return jsonify({
+            "success": True,
+            "title": gerado.get("titulo", ""),
+            "caption": gerado.get("legenda", ""),
+            "hashtags": gerado.get("hashtags", [])
+        })
+
+    except Exception as e:
+        import traceback
+        print(f"[DEBUG] Erro em api_generate_social_post_from_theme: {e}")
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/social/generate-caption', methods=['POST'])
 def api_generate_social_caption():
     """Gera legenda IA para um post via Gemini"""

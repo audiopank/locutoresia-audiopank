@@ -537,6 +537,21 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <!-- Criar do ZERO: só o tema, a IA escreve título + legenda + hashtags -->
+                <div class="mb-3 p-3" style="background: rgba(124,58,237,.12); border: 1px solid rgba(124,58,237,.4); border-radius: 10px;">
+                    <label class="form-label mb-1"><i class="fas fa-wand-magic-sparkles me-1" style="color:#a78bfa"></i><strong>Criar do zero com IA</strong></label>
+                    <div class="text-muted mb-2" style="font-size:.82rem;">Digite só o tema — a IA escreve o título, a legenda e as hashtags pra você.</div>
+                    <div class="d-flex gap-2">
+                        <input type="text" class="form-control" id="new-theme"
+                               placeholder="Ex: lançamento do iPhone 17, dicas de locução para spots..."
+                               onkeydown="if(event.key==='Enter'){event.preventDefault();generatePostFromTheme();}">
+                        <button type="button" class="btn btn-sm" id="btn-ai-post" onclick="generatePostFromTheme()"
+                                style="background:linear-gradient(135deg,#7C3AED,#ec4899); color:#fff; font-weight:600; white-space:nowrap;">
+                            <i class="fas fa-wand-magic-sparkles me-1"></i>Criar com IA
+                        </button>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label">Título do Post *</label>
                     <input type="text" class="form-control" id="new-title" placeholder="Ex: Flamengo vence no Maracanã...">
@@ -895,6 +910,42 @@
         } finally {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-magic me-1"></i>Gerar com IA';
+        }
+    }
+
+    // Cria o post INTEIRO a partir de um tema (título + legenda + hashtags)
+    async function generatePostFromTheme() {
+        const tema = document.getElementById('new-theme').value.trim();
+        const btn  = document.getElementById('btn-ai-post');
+
+        if (!tema) { showToast('Digite o tema do post primeiro!', 'error'); return; }
+
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading-pulse"></span>Escrevendo...';
+
+        try {
+            const res = await fetch('/api/social/generate-post', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tema })
+            });
+            const data = await res.json();
+            if (!data.success) { showToast('Erro: ' + (data.error || 'falha ao gerar'), 'error'); return; }
+
+            if (data.title)   document.getElementById('new-title').value = data.title;
+            if (data.caption) document.getElementById('new-caption').value = data.caption;
+            if (data.hashtags && data.hashtags.length) {
+                document.getElementById('new-hashtags').value = data.hashtags.join(', ');
+            }
+            // atualiza o contador de caracteres da legenda
+            document.getElementById('new-caption').dispatchEvent(new Event('input'));
+            showToast('Post criado pela IA! Revise antes de salvar ✨');
+        } catch (e) {
+            showToast('Erro ao criar post: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
         }
     }
 
