@@ -4271,6 +4271,23 @@ def api_create_social_post():
         
         bruto_sp = data.get('caption') or data.get('summary') or data.get('content', '')
 
+        # PORTÃO DE CONTEÚDO SENSÍVEL: crimes/violência (homicídio, feminicídio,
+        # estupro...) não podem virar nem rascunho. O filtro já existia mas só
+        # rodava no pipeline A — este é o funil por onde passa TODA notícia da
+        # curadoria, então é aqui que ele protege de verdade.
+        try:
+            from core.content_filter import blocked_reason
+            motivo_bloqueio = blocked_reason(title_sp, bruto_sp)
+            if motivo_bloqueio:
+                print(f"[social] 🚫 Bloqueado pelo filtro ({motivo_bloqueio}): {title_sp[:70]}")
+                return jsonify({
+                    "success": False,
+                    "blocked": True,
+                    "error": "Notícia bloqueada pelo filtro de conteúdo sensível"
+                }), 200
+        except Exception as e:
+            print(f"[social] filtro de conteúdo indisponível: {e}")
+
         # Aproveita a foto embutida no HTML do resumo do RSS ANTES de limpar as tags
         # (antes ela era descartada e todo post ia pro feed sem imagem).
         image_url_sp = (data.get('image_url') or '').strip()
