@@ -46,7 +46,10 @@ except ImportError:
 except Exception as e:
     print(f"❌ Erro ao carregar .env: {e}")
 
-# UUID válido conhecido (perfil 'NewPost-IA' verificado em profiles) — fallback
+# Fallback de author_id. ATENÇÃO: este UUID NÃO é o perfil 'NewPost-IA verificado',
+# como dizia o comentário anterior. No projeto do feed (hzmt) ele corresponde ao
+# perfil 'MÍDIA DIGITAL:' com is_verified=false. Confirmado em 20/07/2026 lendo
+# profiles.display_name. Confira o dono antes de publicar em nome deste id.
 NEWPOST_AUTHOR_ID_FALLBACK = '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3'
 _UUID_RE = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
 
