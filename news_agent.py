@@ -399,10 +399,10 @@ class NewsAgent:
         # Preparar payload usando o formato que você informou
         categoria = news.get("category", "geral")
         legenda_formatada = self.formatar_legenda(news)
-        payload = { 
-            "author_id": AI_AUTHOR_ID, 
+        payload = {
+            "author_id": AI_AUTHOR_ID,
             "content": legenda_formatada,
-            "privacy": "public",
+            # 'privacy' NÃO existe na tabela posts (PGRST204) — mandar quebra o insert
             "status": "published",
             "is_ia_generated": True,
             "category": categoria,

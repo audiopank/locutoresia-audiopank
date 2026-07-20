@@ -66,6 +66,29 @@ def get_newpost_author_id():
 TAG_REJEITADO = '__rejeitado__'
 
 
+def insert_post_resiliente(url, payload, headers, tentativas=4):
+    """Insere na tabela `posts` tolerando colunas que não existem no schema.
+
+    O schema da NewPost-IA já nos surpreendeu várias vezes (privacy, image_url,
+    caption, hashtags...). Quando o PostgREST devolve PGRST204 ("Could not find
+    the 'X' column"), em vez de derrubar a publicação a gente remove a coluna
+    reclamada e tenta de novo. Retorna (response, payload_efetivamente_enviado).
+    """
+    corpo = dict(payload)
+    resp = None
+    for _ in range(tentativas):
+        resp = requests.post(url, json=corpo, headers=headers, timeout=10)
+        if resp.status_code in (200, 201) or 'PGRST204' not in (resp.text or ''):
+            return resp, corpo
+        achado = re.search(r"Could not find the '([^']+)' column", resp.text or '')
+        if not achado or achado.group(1) not in corpo:
+            return resp, corpo
+        coluna = achado.group(1)
+        print(f"[DEBUG] Coluna '{coluna}' não existe em 'posts' — removendo e tentando de novo")
+        corpo.pop(coluna, None)
+    return resp, corpo
+
+
 def strip_html(text):
     """Remove tags HTML e decodifica entidades p/ texto limpo no feed da NewPost-IA.
     Ex.: '<p>Olá &amp; bem-vindo</p>' -> 'Olá & bem-vindo'.
@@ -4931,10 +4954,11 @@ def api_publish_social_post(post_id):
                 categoria = local_post.get("category", "geral")
                 legenda_formatada = formatar_legenda(local_post)
                 # 'posts' E o feed da NewPost-IA. Publicar = inserir como published/public
+                # ATENÇÃO: a tabela 'posts' NÃO tem coluna 'privacy' (PGRST204).
+                # O insert_post_resiliente ainda protege caso o schema mude de novo.
                 insert_payload = {
                     'author_id': newpost_author_id,
                     'content': legenda_formatada,
-                    'privacy': 'public',
                     'status': 'published',
                     'is_ia_generated': True,
                     'category': categoria,
@@ -4944,11 +4968,10 @@ def api_publish_social_post(post_id):
 
                 print(f"[DEBUG] Inserindo post local na tabela 'posts' para obter id real...")
                 print(f"[DEBUG] Payload a ser inserido: {json.dumps(insert_payload, ensure_ascii=False)}")
-                resp_insert = requests.post(
+                resp_insert, insert_payload = insert_post_resiliente(
                     f"{supabase_url}/rest/v1/posts",
-                    json=insert_payload,
-                    headers=headers,
-                    timeout=10
+                    insert_payload,
+                    headers
                 )
                 print(f"[DEBUG] Insert no Supabase: {resp_insert.status_code} - {resp_insert.text[:300]}")
 
