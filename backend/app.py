@@ -59,6 +59,13 @@ def get_newpost_author_id():
     m = _UUID_RE.search(raw)
     return m.group(0) if m else NEWPOST_AUTHOR_ID_FALLBACK
 
+# Marcador de post REJEITADO na curadoria. Vai numa tag dedicada porque a coluna
+# `status` da tabela posts só aceita draft/ready/published — gravar 'draft' ao
+# rejeitar deixava o post idêntico a um rascunho (o botão parecia não funcionar)
+# e fazia o "remover rejeitados" apagar TODOS os rascunhos junto.
+TAG_REJEITADO = '__rejeitado__'
+
+
 def strip_html(text):
     """Remove tags HTML e decodifica entidades p/ texto limpo no feed da NewPost-IA.
     Ex.: '<p>Olá &amp; bem-vindo</p>' -> 'Olá & bem-vindo'.
@@ -4236,7 +4243,16 @@ def api_list_social_posts():
                 # Mapear status para português (se necessário)
                 if post.get('status'):
                     processed_post['status'] = status_map_reverse.get(post['status'], post['status'])
-                    
+
+                # Rejeitado é marcado por TAG dedicada, não por status: a coluna
+                # status da tabela só aceita draft/ready/published, então rejeitar
+                # gravava 'draft' e ficava idêntico a um rascunho (botão "morto").
+                if TAG_REJEITADO in (post.get('tags') or []):
+                    processed_post['status'] = 'rejeitado'
+                    # não mostra a tag interna no card da curadoria
+                    processed_post['hashtags'] = [t for t in (processed_post.get('hashtags') or [])
+                                                  if t != TAG_REJEITADO]
+
                 valid_posts.append(processed_post)
             
             # Salvar os posts no armazenamento local para backup
@@ -4733,7 +4749,11 @@ def api_reject_social_post(post_id):
         for i, post in enumerate(social_posts_store):
             if str(post.get('id')) == str(post_id):
                 found_local = True
-                social_posts_store[i]['status'] = 'rascunho'
+                social_posts_store[i]['status'] = 'rejeitado'
+                tags_local = list(social_posts_store[i].get('tags') or [])
+                if TAG_REJEITADO not in tags_local:
+                    tags_local.append(TAG_REJEITADO)
+                social_posts_store[i]['tags'] = tags_local
                 social_posts_store[i]['updated_at'] = now_iso
                 print(f"[DEBUG] Post rejeitado no armazenamento local!")
                 break
@@ -4753,9 +4773,27 @@ def api_reject_social_post(post_id):
                     'Prefer': 'return=representation'
                 }
 
+                # Lê as tags atuais pra ACRESCENTAR o marcador (não sobrescrever
+                # as tags da notícia) e marca como rejeitado de verdade.
+                tags_novas = [TAG_REJEITADO]
+                try:
+                    r_get = requests.get(
+                        f"{supabase_url}/rest/v1/posts?id=eq.{post_id}&select=tags",
+                        headers=headers, timeout=10
+                    )
+                    if r_get.status_code == 200 and r_get.json():
+                        atuais = r_get.json()[0].get('tags') or []
+                        tags_novas = list(atuais)
+                        if TAG_REJEITADO not in tags_novas:
+                            tags_novas.append(TAG_REJEITADO)
+                except Exception as e:
+                    print(f"[DEBUG] Não leu tags atuais ({e}); marcando só com o marcador")
+
                 response = requests.patch(
                     f"{supabase_url}/rest/v1/posts?id=eq.{post_id}",
-                    json={"status": "draft", "updated_at": now_iso},
+                    # status continua 'draft' (fora do feed público); o que marca
+                    # como REJEITADO é a tag dedicada.
+                    json={"status": "draft", "tags": tags_novas, "updated_at": now_iso},
                     headers=headers,
                     timeout=10
                 )
@@ -5124,9 +5162,12 @@ def api_delete_all_rejected_posts():
             'Prefer': 'return=representation'
         }
         
-        # Deletar posts com status = 'draft' ou 'rejeitado' e author_id correto
+        # Deleta APENAS os marcados como rejeitados (tag dedicada).
+        # ANTES isto era status=in.(draft,rejeitado), o que apagava TODOS os
+        # rascunhos pendentes de curadoria junto — destrutivo e errado.
         response = requests.delete(
-            f"{supabase_url}/rest/v1/posts?author_id=eq.{newpost_author_id}&status=in.(draft,rejeitado)",
+            f"{supabase_url}/rest/v1/posts"
+            f"?author_id=eq.{newpost_author_id}&tags=cs.%7B{TAG_REJEITADO}%7D",
             headers=headers,
             timeout=10
         )
@@ -5138,9 +5179,20 @@ def api_delete_all_rejected_posts():
                     deleted_count = len(response.json())
             except:
                 pass
-                
+
+            # Tira também da memória local, senão continuariam aparecendo na lista
+            global social_posts_store
+            antes = len(social_posts_store)
+            social_posts_store[:] = [
+                p for p in social_posts_store
+                if TAG_REJEITADO not in (p.get('tags') or []) and p.get('status') != 'rejeitado'
+            ]
+            removidos_local = antes - len(social_posts_store)
+            if removidos_local and not deleted_count:
+                deleted_count = removidos_local
+
             return jsonify({
-                "success": True, 
+                "success": True,
                 "message": "Posts rejeitados deletados com sucesso",
                 "deleted_count": deleted_count
             })
