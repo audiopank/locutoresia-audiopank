@@ -156,7 +156,20 @@ class NewsAutomationAgent:
 
                 if auto_publish:
                     for news_item in news_list:
-                        content = news_item.get("conteudo_completo", news_item.get("resumo", ""))
+                        bruto = news_item.get("conteudo_completo", news_item.get("resumo", ""))
+                        # Post escrito por IA + faxina (tira CTA do portal, crédito de
+                        # foto e frases repetidas) — módulo compartilhado com o outro
+                        # pipeline. O autor/perfil deste agente continua o mesmo.
+                        try:
+                            from .news_content import montar_corpo
+                            content = montar_corpo(
+                                titulo=news_item.get("titulo", ""),
+                                resumo=bruto,
+                                categoria=category
+                            )
+                        except Exception as e:
+                            logger.warning(f"Redação/faxina indisponível, usando texto bruto: {e}")
+                            content = bruto
                         publish_result = self.publish_single(
                             title=news_item["titulo"],
                             content=content,

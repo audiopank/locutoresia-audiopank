@@ -369,15 +369,26 @@ class NewsAgent:
         self.timeout = 10
 
     def formatar_legenda(self, news):
-        """Formata a legenda no padrão da NewPost-IA"""
+        """Formata a legenda no padrão da NewPost-IA (perfil/autor deste agente)."""
         categoria = news.get("category", "geral")
         emojis = {"tecnologia": "💻", "economia": "📈", "brasil": "📰", "politica": "🗳️", "geral": "📰"}
         emoji = emojis.get(categoria.lower(), "📰")
         titulo = news.get("title", "")
-        desc = news.get("summary", news.get("snippet", ""))
-        desc = desc[:120] if len(desc) > 120 else desc
+        bruto = news.get("summary", news.get("snippet", ""))
+
+        # Post escrito por IA + faxina (módulo compartilhado com o outro pipeline).
+        # Antes era `bruto[:120]`, que cortava no meio e ainda carregava CTA do
+        # portal ("clique aqui", "mande para o g1") e crédito de foto.
+        try:
+            from core.news_content import montar_corpo
+            desc = montar_corpo(titulo=titulo, resumo=bruto, categoria=categoria, limite=280)
+        except Exception as e:
+            logger.warning(f"Redação/faxina indisponível, usando resumo cru: {e}")
+            desc = bruto[:280] if len(bruto) > 280 else bruto
+
         palavras_titulo = titulo.split()
         keyword = palavras_titulo[1] if len(palavras_titulo) > 1 else categoria
+        keyword = re.sub(r'\W+', '', keyword) or categoria
         return f"{emoji} {titulo}\n\n{desc}\n\n#{categoria.capitalize()} #NewPostIA #{keyword}"
 
     def save_to_supabase(self, news: Dict):
