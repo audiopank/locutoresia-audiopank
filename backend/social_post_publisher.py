@@ -399,13 +399,22 @@ Responda APENAS com o JSON, sem markdown.
             publish_results["posts_table"] = {"success": False, "error": str(e)}
 
         # 4. Determinar sucesso final
-        final_success = publish_results["posts_table"]["success"] and publish_results["scheduled_posts"]["success"]
+        # O que define publicação é o post ter entrado na tabela 'posts'. O PASSO 2
+        # (fila 'scheduled_posts') é best-effort: o consumidor dele é a Edge Function
+        # 'auto-publish-posts', que hoje responde 404. Enquanto ela não existir, exigir
+        # sucesso dele aqui fazia o publisher gritar "erro" com o post já gravado.
+        final_success = publish_results["posts_table"]["success"]
         new_status = "publicado" if final_success else "erro"
-        
+
         if final_success:
             message = "✅ Post publicado com sucesso na NewPost-IA! 🎉 Aparecerá no Feed em breve."
+            if not publish_results["scheduled_posts"]["success"]:
+                logger.warning(
+                    "⚠️ Post gravado, mas não entrou na fila 'scheduled_posts': %s",
+                    publish_results["scheduled_posts"].get("error"),
+                )
         else:
-            message = f"❌ Falha na publicação: {publish_results['posts_table'].get('error') or publish_results['scheduled_posts'].get('error')}"
+            message = f"❌ Falha na publicação: {publish_results['posts_table'].get('error')}"
 
         # 5. Atualizar status local
         self.update_post(post_id, {
