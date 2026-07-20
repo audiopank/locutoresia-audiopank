@@ -4937,16 +4937,34 @@ def api_publish_social_post(post_id):
                     print(f"[DEBUG] Aviso: falha ao checar duplicata por título: {e_dup}")
 
             def formatar_legenda(post):
-                """Formata a legenda no padrão da NewPost-IA"""
+                """Legenda do post no feed.
+
+                Cuidados: (1) o corpo do rascunho JÁ vem com o cabeçalho
+                "📰 Título", então não repetimos o título — senão sai duplicado;
+                (2) não cortamos mais em 120 caracteres, que mutilava o texto
+                revisado na curadoria (o rascunho já nasce limitado na faxina).
+                """
                 categoria = post.get("category", "geral")
                 emojis = {"tecnologia": "💻", "economia": "📈", "brasil": "📰", "politica": "🗳️", "geral": "📰"}
                 emoji = emojis.get(categoria.lower(), "📰")
-                titulo = post.get("title", "")
-                desc = post.get("content", post.get("caption", ""))
-                desc = desc[:120] if len(desc) > 120 else desc
+                titulo = (post.get("title") or "").strip()
+                corpo = (post.get("content") or post.get("caption") or "").strip()
+
+                inicio = corpo[:len(titulo) + 8].lower() if titulo else ''
+                if titulo and titulo.lower() in inicio:
+                    base = corpo  # o corpo já começa com o título
+                elif titulo:
+                    base = f"{emoji} {titulo}\n\n{corpo}"
+                else:
+                    base = corpo
+
+                if len(base) > 1200:
+                    base = base[:1200].rstrip() + '...'
+
                 palavras_titulo = titulo.split()
                 keyword = palavras_titulo[1] if len(palavras_titulo) > 1 else categoria
-                return f"{emoji} {titulo}\n\n{desc}\n\n#{categoria.capitalize()} #NewPostIA #{keyword}"
+                keyword = re.sub(r'\W+', '', keyword) or categoria
+                return f"{base}\n\n#{categoria.capitalize()} #NewPostIA #{keyword}"
 
             # Só insere se a dedup por source_url não tiver encontrado um post existente
             if not post:
@@ -4955,8 +4973,14 @@ def api_publish_social_post(post_id):
                 # 'posts' E o feed da NewPost-IA. Publicar = inserir como published/public
                 # ATENÇÃO: a tabela 'posts' NÃO tem coluna 'privacy' (PGRST204).
                 # O insert_post_resiliente ainda protege caso o schema mude de novo.
+                titulo_post = (local_post.get('title') or '').strip()
+                imagem_post = (local_post.get('image_url') or '').strip()
+                fonte_post = (local_post.get('source_url') or '').strip()
+
                 insert_payload = {
                     'author_id': newpost_author_id,
+                    # 'title' é NOT NULL no schema desta tabela
+                    'title': titulo_post or 'Post',
                     'content': legenda_formatada,
                     'status': 'published',
                     'is_ia_generated': True,
@@ -4964,6 +4988,16 @@ def api_publish_social_post(post_id):
                     'tags': [f"#{categoria.capitalize()}", "#NewPostIA", "#LocutoresIA"],
                     'published_at': now_iso
                 }
+
+                # Enriquecimento: a foto da matéria (capturada do RSS na criação do
+                # rascunho) e o link real da fonte. Só mandamos quando existem —
+                # campo vazio no feed fica pior que campo ausente.
+                if fonte_post.lower().startswith('http'):
+                    insert_payload['source_url'] = fonte_post
+                if imagem_post.lower().startswith('http'):
+                    insert_payload['image_url'] = imagem_post          # coluna existe neste projeto
+                    insert_payload['media_urls'] = [imagem_post]       # arrays que o feed usa pra renderizar
+                    insert_payload['media_types'] = ['image']
 
                 print(f"[DEBUG] Inserindo post local na tabela 'posts' para obter id real...")
                 print(f"[DEBUG] Payload a ser inserido: {json.dumps(insert_payload, ensure_ascii=False)}")
