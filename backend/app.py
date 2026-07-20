@@ -89,6 +89,59 @@ def insert_post_resiliente(url, payload, headers, tentativas=4, timeout=10):
     return resp, corpo
 
 
+def publicar_no_feed_newpost(titulo, conteudo, categoria='geral', image_url='', source_url='', tags=None):
+    """Publica no FEED REAL da NewPost-IA (plugpost-ai.lovable.app).
+
+    ⚠️ São DOIS projetos Supabase trabalhando juntos: o resto do app grava no
+    projeto de trabalho do Locutores IA (NEWPOST_SUPABASE_URL), mas a rede social
+    que o público vê roda em OUTRO projeto (PLUGPOST_*). Sem este passo o post
+    fica só no banco interno e NUNCA aparece no feed.
+
+    Devolve uma string de status; nunca levanta exceção (não pode derrubar o publish).
+    """
+    try:
+        url = os.getenv('PLUGPOST_SUPABASE_URL',
+                        os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co')).rstrip('/')
+        key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
+        if not (url and key):
+            return 'sem credenciais PLUGPOST (defina PLUGPOST_SUPABASE_URL e PLUGPOST_SUPABASE_SERVICE_KEY)'
+
+        autor_raw = os.getenv('PLUGPOST_AUTHOR_ID') or os.getenv('NEWPOST_AUTHOR_ID', '') or ''
+        achado = _UUID_RE.search(autor_raw)
+        autor = achado.group(0) if achado else NEWPOST_AUTHOR_ID_FALLBACK
+
+        payload = {
+            'author_id': autor,
+            'title': (titulo or 'Post')[:300],          # title é NOT NULL
+            'content': conteudo or titulo or '',
+            'status': 'published',
+            'is_ia_generated': True,
+            'category': categoria or 'geral',
+            'tags': tags or ['#NewPostIA', '#LocutoresIA'],
+            'published_at': datetime.now(timezone.utc).isoformat()
+        }
+        if str(source_url or '').lower().startswith('http'):
+            payload['source_url'] = source_url
+        if str(image_url or '').lower().startswith('http'):
+            payload['image_url'] = image_url
+            payload['media_urls'] = [image_url]
+            payload['media_types'] = ['image']
+
+        headers = {
+            'apikey': key,
+            'Authorization': f'Bearer {key}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+        resp, payload = insert_post_resiliente(f"{url}/rest/v1/posts", payload, headers, timeout=30)
+        if resp is not None and resp.status_code in (200, 201):
+            return 'publicado'
+        return f"falhou:{getattr(resp, 'status_code', '?')} {str(getattr(resp, 'text', ''))[:200]}"
+    except Exception as e:
+        print(f"[DEBUG] Erro ao publicar no feed NewPost-IA: {e}")
+        return f'erro: {e}'
+
+
 def strip_html(text):
     """Remove tags HTML e decodifica entidades p/ texto limpo no feed da NewPost-IA.
     Ex.: '<p>Olá &amp; bem-vindo</p>' -> 'Olá & bem-vindo'.
@@ -5052,6 +5105,19 @@ def api_publish_social_post(post_id):
 
         post['content'] = clean_content
 
+        # --- PUBLICA NO FEED REAL DA NEWPOST-IA (o SEGUNDO projeto Supabase) ---
+        # O insert acima grava no projeto de trabalho do Locutores IA. A rede
+        # social que o público vê (plugpost-ai.lovable.app) roda em outro projeto,
+        # então sem este passo o post nunca aparecia no feed.
+        feed_status = publicar_no_feed_newpost(
+            titulo=(post.get('title') or '').strip(),
+            conteudo=clean_content,
+            categoria=post.get('category') or 'geral',
+            image_url=post.get('image_url') or '',
+            source_url=post.get('source_url') or ''
+        )
+        print(f"[DEBUG] Feed NewPost-IA (plugpost): {feed_status}")
+
         # --- PASSO 2 (best-effort): tabela 'newpost_posts' NAO existe neste projeto Supabase ---
         # O feed REAL da NewPost-IA e a propria tabela 'posts' (ja inserida acima como published/public).
         # Mantido como best-effort: se a tabela existir em outro ambiente, alimenta; senao, ignora (nao derruba o publish).
@@ -5153,7 +5219,13 @@ def api_publish_social_post(post_id):
                 print(f"[DEBUG] Post marcado como 'publicado' na memória local")
                 break
 
-        return jsonify({"success": True, "message": "Post publicado com sucesso no fluxo completo!"})
+        # Devolve o resultado do feed real pra o operador saber se de fato saiu
+        # na rede social (e não só no banco interno).
+        if feed_status == 'publicado':
+            msg = "Post publicado com sucesso na NewPost-IA!"
+        else:
+            msg = f"Post salvo, mas o feed da NewPost-IA respondeu: {feed_status}"
+        return jsonify({"success": True, "message": msg, "feed_newpost": feed_status})
 
     except Exception as e:
         import traceback
