@@ -66,7 +66,7 @@ def get_newpost_author_id():
 TAG_REJEITADO = '__rejeitado__'
 
 
-def insert_post_resiliente(url, payload, headers, tentativas=4):
+def insert_post_resiliente(url, payload, headers, tentativas=4, timeout=10):
     """Insere na tabela `posts` tolerando colunas que não existem no schema.
 
     O schema da NewPost-IA já nos surpreendeu várias vezes (privacy, image_url,
@@ -77,7 +77,7 @@ def insert_post_resiliente(url, payload, headers, tentativas=4):
     corpo = dict(payload)
     resp = None
     for _ in range(tentativas):
-        resp = requests.post(url, json=corpo, headers=headers, timeout=10)
+        resp = requests.post(url, json=corpo, headers=headers, timeout=timeout)
         if resp.status_code in (200, 201) or 'PGRST204' not in (resp.text or ''):
             return resp, corpo
         achado = re.search(r"Could not find the '([^']+)' column", resp.text or '')
@@ -4428,11 +4428,10 @@ def api_create_social_post():
                     'Prefer': 'return=representation'
                 }
                 
-                response = requests.post(
+                response, post_data_supabase = insert_post_resiliente(
                     f"{supabase_url}/rest/v1/posts",
-                    json=post_data_supabase,
-                    headers=headers,
-                    timeout=10
+                    post_data_supabase,
+                    headers
                 )
                 
                 if response.status_code in (200, 201):
@@ -5338,11 +5337,10 @@ def api_create_social_from_news():
             post_data['media_urls'] = [image_url]
             post_data['media_types'] = ['image']
         
-        response = requests.post(
+        response, post_data = insert_post_resiliente(
             f"{supabase_url}/rest/v1/posts",
-            json=post_data,
-            headers=headers,
-            timeout=10
+            post_data,
+            headers
         )
         
         if response.status_code in (200, 201):
@@ -6290,10 +6288,10 @@ def run_newpost_publish(payload, trigger_source='api'):
                     "Prefer": "return=representation"
                 }
 
-                plugpost_response = requests.post(
+                plugpost_response, plugpost_payload = insert_post_resiliente(
                     f"{plugpost_url}/rest/v1/posts",
-                    json=plugpost_payload,
-                    headers=headers,
+                    plugpost_payload,
+                    headers,
                     timeout=30
                 )
 
@@ -7297,10 +7295,10 @@ def api_publish_to_newpost():
                     "Prefer": "return=representation"
                 }
                 
-                plugpost_response = requests.post(
+                plugpost_response, plugpost_payload = insert_post_resiliente(
                     f"{plugpost_url}/rest/v1/posts",
-                    json=plugpost_payload,
-                    headers=headers,
+                    plugpost_payload,
+                    headers,
                     timeout=30
                 )
                 
