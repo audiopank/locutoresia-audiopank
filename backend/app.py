@@ -7,6 +7,7 @@ import time
 import schedule as _schedule
 import uuid
 import re
+import unicodedata
 import html as html_lib
 import glob
 import json
@@ -69,6 +70,42 @@ def get_newpost_author_id():
 TAG_REJEITADO = '__rejeitado__'
 
 
+# Categorias diferindo só por caixa/acento contam como valores distintos no banco.
+# Em 20/07/2026 a tabela `posts` tinha 24 valores para ~10 categorias reais:
+# 'esportes'(326)/'Esportes'(95)/'esporte'(1), 'economia'(122)/'Economia'(90),
+# 'tecnologia'(111)/'Tecnologia'(86), 'geral'(638)/'Geral'(38),
+# 'politica'(63)/'política'(2), 'musica'(25)/'música'(4).
+# Isso quebra qualquer agrupamento por categoria e é a hipótese em aberto para
+# ~34% dos posts não chegarem ao feed (o sincronizador vive no outro projeto e
+# não dá para inspecionar; ver memória do projeto).
+_CATEGORIA_ALIASES = {
+    'esporte': 'esportes',   # singular aparece 1x, claramente digitação
+}
+
+
+def normalizar_categoria(valor):
+    """Reduz a categoria à forma canônica: minúscula, sem acento, sem espaço sobrando.
+
+    Conservadora de propósito: NÃO mexe em hífen/underscore nem funde categorias
+    semanticamente distintas (ex.: 'futebol' continua 'futebol', não vira
+    'esportes'). Só colapsa o que difere apenas por caixa ou acento.
+
+    >>> normalizar_categoria('Esportes')
+    'esportes'
+    >>> normalizar_categoria(' Política ')
+    'politica'
+    >>> normalizar_categoria(None) is None
+    True
+    """
+    if valor is None:
+        return None                      # não inventa categoria onde não havia
+    txt = unicodedata.normalize('NFKD', str(valor)).encode('ascii', 'ignore').decode()
+    txt = re.sub(r'\s+', ' ', txt).strip().lower()
+    if not txt:
+        return 'geral'
+    return _CATEGORIA_ALIASES.get(txt, txt)
+
+
 def insert_post_resiliente(url, payload, headers, tentativas=4, timeout=10):
     """Insere na tabela `posts` tolerando colunas que não existem no schema.
 
@@ -78,6 +115,10 @@ def insert_post_resiliente(url, payload, headers, tentativas=4, timeout=10):
     reclamada e tenta de novo. Retorna (response, payload_efetivamente_enviado).
     """
     corpo = dict(payload)
+    # Funil único: todos os inserts em `posts` passam por aqui, então normalizar a
+    # categoria neste ponto cobre os 5 caminhos de publicação de uma vez.
+    if 'category' in corpo:
+        corpo['category'] = normalizar_categoria(corpo['category'])
     resp = None
     for _ in range(tentativas):
         resp = requests.post(url, json=corpo, headers=headers, timeout=timeout)
@@ -7281,10 +7322,15 @@ def api_generate_post():
         try:
             api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
             if api_key:
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-pro')
-                
+                # SDK novo (google-genai), mesmo padrão dos endpoints /api/gemini/*.
+                # Antes usava 'google.generativeai' + 'gemini-pro': o pacote não está
+                # instalado e o modelo foi aposentado, então este trecho SEMPRE caía
+                # no except e a otimização por IA nunca rodava.
+                from google import genai
+
+                client = genai.Client(api_key=api_key)
+                model_name = 'gemini-2.5-flash'
+
                 prompt = f"""Você é um redator de notícias para o NewPost-IA.
 Reescreva o post abaixo MANTENDO ESTRITAMENTE TODAS as regras oficiais:
 - TÍTULO MAX 60 CARACTERES (COM EMOJI NO INÍCIO)
@@ -7297,8 +7343,11 @@ Post original:
 
 Responda APENAS o post reescrito, sem explicações."""
                 
-                response = model.generate_content(prompt)
-                
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+
                 return jsonify({
                     "success": True,
                     "data": {

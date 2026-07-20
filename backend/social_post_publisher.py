@@ -91,9 +91,14 @@ class SocialPostPublisher:
             if not gemini_key:
                 return {"success": False, "error": "Gemini API Key não configurada"}
 
-            import google.generativeai as genai
-            genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel("gemini-pro")
+            # SDK novo (google-genai), mesmo padrão dos endpoints /api/gemini/*.
+            # Antes usava 'google.generativeai' + 'gemini-pro': o pacote não está
+            # instalado e o modelo foi aposentado, então a geração de legenda por IA
+            # SEMPRE caía no except e devolvia o fallback sem avisar.
+            from google import genai
+
+            client = genai.Client(api_key=gemini_key)
+            model_name = "gemini-2.5-flash"
 
             hashtags_str = " ".join(hashtags) if hashtags else "#brasil #noticias #ia"
 
@@ -111,7 +116,10 @@ Retorne um JSON com:
 
 Responda APENAS com o JSON, sem markdown.
 """
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt
+            )
             text = response.text.strip().replace("```json", "").replace("```", "").strip()
 
             try:
