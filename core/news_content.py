@@ -41,6 +41,8 @@ _PADROES_LIXO = [
     r'v[íi]deos?\s*:\s*assista[^.\n]*',
     r'veja mais not[íi]cias[^.\n]*',
     r'entre no canal[^.\n]*',
+    # Boilerplate institucional que a Forbes manda no RSS de toda matéria
+    r'forbes,?\s+a mais conceituada revista[^.\n]*\.?',
 ]
 
 # Foto embutida no HTML do resumo do RSS (os portais mandam a imagem da matéria ali)
@@ -128,6 +130,40 @@ def limpar_noticia(texto: str, limite: int = LIMITE_PADRAO) -> str:
     t = _dedupe_frases(t)
     t = re.sub(r'\s{2,}', ' ', t).strip()
     return _cortar(t, limite)
+
+
+def limpar_para_publicar(texto: str) -> str:
+    """Faxina do PORTÃO DE PUBLICAÇÃO — rede de segurança para rascunhos antigos
+    (criados antes da faxina) e para o que o operador editou na curadoria.
+
+    Diferente de limpar_noticia(): aqui NÃO trunca e NÃO junta tudo numa linha —
+    preserva os parágrafos do texto curado. Remove o lixo de portal e linhas
+    repetidas (o 'Initial plugin text' aparece uma vez por linha).
+    """
+    if not texto:
+        return ''
+    t = _strip_html(texto)
+    saida = []
+    vistas = set()
+    for linha in t.split('\n'):
+        alvo = linha.strip()
+        if not alvo:
+            saida.append('')  # preserva a quebra de parágrafo
+            continue
+        if any(re.match(p, alvo, flags=re.IGNORECASE) for p in _PADROES_CREDITO):
+            continue
+        for padrao in _PADROES_LIXO:
+            alvo = re.sub(padrao, ' ', alvo, flags=re.IGNORECASE)
+        alvo = re.sub(r'[ ]{2,}', ' ', alvo).strip(' -–—:;,')
+        if len(alvo) < 3:
+            continue
+        chave = re.sub(r'\W+', '', alvo.lower())[:80]
+        if chave in vistas:
+            continue  # linha repetida (placeholder de plugin)
+        vistas.add(chave)
+        saida.append(alvo)
+    t = '\n'.join(saida)
+    return re.sub(r'\n{3,}', '\n\n', t).strip()
 
 
 def extrair_imagem(html_texto: str) -> str:

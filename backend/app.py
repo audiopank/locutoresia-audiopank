@@ -4945,6 +4945,17 @@ def api_publish_social_post(post_id):
         # Remove a linha "🔗 Fonte: <url>" do corpo — o feed ja exibe source_url como link separado (evita duplicata)
         clean_content = re.sub(r'(?m)^\s*🔗?\s*Fonte:.*$', '', clean_content)
         clean_content = re.sub(r'\n{3,}', '\n\n', clean_content).strip()
+
+        # Rede de segurança: rascunhos criados ANTES da faxina (ou editados na
+        # curadoria) ainda carregam rodapé do portal ("O post X apareceu primeiro
+        # em Y"), boilerplate da Forbes e CTAs. Limpa sem truncar e preservando
+        # os parágrafos do texto curado.
+        try:
+            from core.news_content import limpar_para_publicar
+            clean_content = limpar_para_publicar(clean_content) or clean_content
+        except Exception as e:
+            print(f"[social] faxina de publicação indisponível: {e}")
+
         post['content'] = clean_content
 
         # --- PASSO 2 (best-effort): tabela 'newpost_posts' NAO existe neste projeto Supabase ---
