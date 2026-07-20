@@ -4269,9 +4269,31 @@ def api_create_social_post():
         # Formatar o conteúdo
         title_sp = data.get('title', '').strip()
         
-        summary_sp = data.get('caption') or data.get('summary') or data.get('content', '')
-        summary_sp = strip_html(summary_sp) if summary_sp else ''
-        
+        bruto_sp = data.get('caption') or data.get('summary') or data.get('content', '')
+
+        # Aproveita a foto embutida no HTML do resumo do RSS ANTES de limpar as tags
+        # (antes ela era descartada e todo post ia pro feed sem imagem).
+        image_url_sp = (data.get('image_url') or '').strip()
+        if not image_url_sp and bruto_sp:
+            try:
+                from core.news_content import extrair_imagem
+                image_url_sp = extrair_imagem(bruto_sp)
+            except Exception as e:
+                print(f"[social] extração de imagem indisponível: {e}")
+
+        # Faxina compartilhada: tira HTML, CTA do portal ("clique aqui", "participe
+        # do canal"), crédito de foto, "O post X apareceu primeiro em Y" e frases
+        # repetidas (o 'Initial plugin text'). Cai no strip_html se o módulo falhar.
+        if bruto_sp:
+            try:
+                from core.news_content import limpar_noticia
+                summary_sp = limpar_noticia(bruto_sp, limite=500)
+            except Exception as e:
+                print(f"[social] faxina indisponível, usando strip_html: {e}")
+                summary_sp = strip_html(bruto_sp)
+        else:
+            summary_sp = ''
+
         source_url_sp = data.get('url') or data.get('source_url', '')
         source_url_sp = source_url_sp.strip() if source_url_sp else ''
         
@@ -4299,6 +4321,7 @@ def api_create_social_post():
             'content': final_content_sp,
             'caption': final_content_sp,
             'source_url': source_url_sp,
+            'image_url': image_url_sp,
             'tags': data.get('hashtags', []),
             'hashtags': data.get('hashtags', []),
             'status': status_pt,
@@ -5112,13 +5135,26 @@ def api_generate_social_caption():
         
         title = data.get('title', '')
         content = data.get('content', '')
-        
-        # Gerar uma legenda com TODO o conteúdo (não cortar!)
-        if content.strip():
-            caption = f"{title}\n\n{content.strip()}"
-        else:
-            caption = f"{title}\n\nNotícia importante sobre o tema."
-        
+
+        # A IA reescreve o conteúdo como post de feed (antes esta rota só
+        # concatenava título + texto e chamava isso de "gerar com IA").
+        corpo = ''
+        try:
+            from core.news_content import montar_corpo
+            corpo = montar_corpo(
+                titulo=title,
+                resumo=content,
+                categoria=data.get('category', 'geral'),
+                limite=500
+            )
+        except Exception as e:
+            print(f"[social] redação IA indisponível: {e}")
+
+        if not corpo:
+            corpo = content.strip() if content.strip() else "Notícia importante sobre o tema."
+
+        caption = f"{title}\n\n{corpo}"
+
         # Hashtags relevantes
         hashtags = ['noticia', 'brasil', 'atualidades']
         

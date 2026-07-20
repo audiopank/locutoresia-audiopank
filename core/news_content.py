@@ -35,12 +35,23 @@ _PADROES_LIXO = [
     r'receba[^.\n]*not[íi]cias[^.\n]*whatsapp[^.\n]*',
     r'este conte[úu]do[^.\n]*',
     r'todos os direitos reservados[^.\n]*',
+    # Rodapé padrão de RSS WordPress (Olhar Digital, Forbes, etc.)
+    r'o post\s+.*?\s+apareceu primeiro em\s+[^.\n]*\.?',
+    r'participe do canal[^.\n]*',                              # g1 regional no WhatsApp
+    r'v[íi]deos?\s*:\s*assista[^.\n]*',
+    r'veja mais not[íi]cias[^.\n]*',
+    r'entre no canal[^.\n]*',
 ]
+
+# Foto embutida no HTML do resumo do RSS (os portais mandam a imagem da matéria ali)
+_IMG_SRC = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 
 # Créditos de foto / assinatura de repórter (ex.: "AP Photo/Richard Drew", "Ana Marin/g1")
 _PADROES_CREDITO = [
-    r'^\s*(foto|imagem|arte|v[íi]deo)\s*:.*$',
-    r'^\s*[A-ZÀ-Ú][\wÀ-ú.\- ]{2,40}/(g1|uol|folha|globo|reuters|afp|ap|efe)\s*$',
+    r'^\s*(foto|imagem|arte|v[íi]deo)s?\s*:.*$',
+    # Linha inteira do tipo "Ana Marin/g1" ou "Corpo de Bombeiros/Divulgação"
+    r'^\s*[\wÀ-ú.\-\s]{2,60}/\s*(g1|uol|folha|globo|oglobo|reuters|afp|ap|efe|estad[ãa]o|'
+    r'divulga[çc][ãa]o|arquivo pessoal|getty images)\s*$',
     r'^\s*(ap photo|reuters|afp|getty images|divulga[çc][ãa]o)\b.*$',
 ]
 
@@ -117,6 +128,18 @@ def limpar_noticia(texto: str, limite: int = LIMITE_PADRAO) -> str:
     t = _dedupe_frases(t)
     t = re.sub(r'\s{2,}', ' ', t).strip()
     return _cortar(t, limite)
+
+
+def extrair_imagem(html_texto: str) -> str:
+    """Pega a foto embutida no HTML do resumo do RSS — é a imagem da matéria que
+    hoje é descartada, deixando todo post do feed sem foto. Retorna '' se não achar."""
+    if not html_texto:
+        return ''
+    achado = _IMG_SRC.search(html_texto)
+    if not achado:
+        return ''
+    url = achado.group(1).strip()
+    return url if url.lower().startswith('http') else ''
 
 
 def _prompt_post(titulo: str, resumo: str, categoria: str, limite: int) -> str:
