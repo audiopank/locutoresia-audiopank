@@ -95,7 +95,7 @@ class NewsAutomationAgent:
             logger.error(f"❌ Erro ao buscar notícias: {e}")
             return {"success": False, "error": str(e)}
 
-    def publish_single(self, title: str, content: str, author_id: str = None, category: str = None) -> Dict[str, Any]:
+    def publish_single(self, title: str, content: str, author_id: str = None, category: str = None, source_url: str = None) -> Dict[str, Any]:
         """Publica uma única notícia na NewPost-IA"""
         try:
             author = author_id or self.newpost_author_id
@@ -111,7 +111,8 @@ class NewsAutomationAgent:
                 content=content,
                 author_id=author,
                 category=category or "Geral",
-                tags=tags
+                tags=tags,
+                source_url=source_url
             )
             return result
         except Exception as e:
@@ -173,7 +174,9 @@ class NewsAutomationAgent:
                         publish_result = self.publish_single(
                             title=news_item["titulo"],
                             content=content,
-                            category=category
+                            category=category,
+                            # link real da matéria (era um UUID aleatório antes)
+                            source_url=news_item.get("url") or news_item.get("link", "")
                         )
                         if publish_result.get("success"):
                             total_published += 1

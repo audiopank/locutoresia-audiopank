@@ -861,6 +861,19 @@
                     throw new Error('Erro ao parsear resposta do servidor');
                 }
                 
+                // Uma URL inválida (ex.: posts antigos que gravaram um UUID em
+                // source_url) não pode derrubar a lista inteira — antes o
+                // new URL() estourava dentro do .map() e caía no catch,
+                // deixando a tela vazia mesmo com publicações existindo.
+                const hostnameSeguro = (u) => {
+                    if (!u) return 'Desconhecida';
+                    try {
+                        return new URL(u).hostname;
+                    } catch (_) {
+                        return 'Desconhecida';
+                    }
+                };
+
                 const publicationsList = document.getElementById('publicationsList');
                 const totalPublications = document.getElementById('totalPublications');
                 
@@ -894,7 +907,7 @@
                                 <span style="color: #64748b; font-size: 11px;">${new Date(pub.created_at || pub.published_at || Date.now()).toLocaleString('pt-BR')}</span>
                             </div>
                             <div style="color: #94a3b8; font-size: 11px; margin-bottom: 8px;">
-                                Fonte: ${pub.source_url ? new URL(pub.source_url).hostname : 'Desconhecida'}
+                                Fonte: ${hostnameSeguro(pub.source_url)}
                             </div>
                             <div id="title-${pub.id}" style="color: white; font-size: 13px; margin-bottom: 8px; line-height: 1.4; font-weight: bold;">
                                 ${pub.title || 'Sem título'}

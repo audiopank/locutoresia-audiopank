@@ -148,7 +148,7 @@ class SupabaseManager:
 
         return False
 
-    def publish_to_newpost(self, title: str, content: str, author_id: Optional[str] = None, category: str = "Geral", tags: Optional[List[str]] = None) -> Dict[str, Any]:
+    def publish_to_newpost(self, title: str, content: str, author_id: Optional[str] = None, category: str = "Geral", tags: Optional[List[str]] = None, source_url: Optional[str] = None) -> Dict[str, Any]:
         """Publica um post na NewPost-IA usando o payload que você informou"""
         try:
             # Se não tem author_id, usa o padrão do .env
@@ -168,7 +168,10 @@ class SupabaseManager:
                     "content": f"📰 {title}\n\n{content}",
                     "status": "published",
                     "is_ia_generated": True,
-                    "source_url": str(uuid.uuid4()),
+                    # Link REAL da matéria. Antes gravava um str(uuid.uuid4()) aqui,
+                    # o que não é URL — quebrava quem fazia new URL(source_url) na
+                    # tela e deixava o post sem a fonte de verdade.
+                    "source_url": (source_url or "").strip(),
                     "category": category,
                     "tags": tags
                 }
