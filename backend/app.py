@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, make_response
+from flask import Flask, render_template, request, jsonify, send_file, make_response, redirect
 import hashlib
 import os
 import sys
@@ -2385,6 +2385,17 @@ def clients_page():
 def client_deliveries_page():
     """Entregas de Clientes — cadastro e acompanhamento de locuções entregues."""
     return render_template('entregas-clientes.html')
+
+@app.route('/pedidos')
+def pedidos_page():
+    """URL dedicada para o painel de pedidos.
+
+    O painel já vive dentro de /entregas-clientes (mesma tela, mesmo JS batendo
+    em /api/pedidos). Em vez de duplicar as ~580 linhas do template, esta rota
+    manda para a âncora da seção — URL curta pra divulgar/favoritar sem criar
+    uma segunda tela para manter em sincronia.
+    """
+    return redirect('/entregas-clientes#pedidos')
 
 @app.route('/busca-noticias')
 def busca_noticias():

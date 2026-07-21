@@ -77,7 +77,7 @@
         {% else %}
             <h4 class="mb-1">{{ delivery.client_name }}</h4>
             <p class="text-secondary">{{ delivery.request_description }}</p>
-            <audio controls class="w-100 mt-3" src="{{ playback_url }}"></audio>
+            <audio id="player" controls class="w-100 mt-3" src="{{ playback_url }}"></audio>
 
             <div id="responseArea">
                 {% if delivery.status == 'pendente' %}
@@ -91,6 +91,22 @@
                 </div>
                 <div id="adjustForm" class="adjust-form mt-4" style="display: none;">
                     <label class="mb-2">O que você gostaria de ajustar?</label>
+
+                    <!-- Marcação de trecho: o cliente ouve, marca início e fim, e o
+                         tempo entra no texto do feedback. Sem isso ele escreve "no
+                         meio do áudio", que não ajuda na hora de refazer. -->
+                    <div class="sample-hint">
+                        Ouça o áudio e marque o trecho — o tempo entra no seu comentário.
+                    </div>
+                    <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
+                        <button type="button" class="btn btn-sm btn-outline-light" id="markBtn" onclick="marcarTrecho()">
+                            <i class="fas fa-stopwatch me-1"></i>Marcar início
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="markCancel"
+                                onclick="cancelarMarcacao()" style="display:none;">Cancelar</button>
+                        <small class="text-secondary" id="markHint"></small>
+                    </div>
+
                     <textarea id="adjustFeedback" rows="4" placeholder="Ex: deixar o tom mais animado, corrigir o nome da loja no final..."></textarea>
 
                     <label class="mt-3 mb-1">Amostra de voz <span class="text-secondary">(opcional)</span></label>
@@ -148,6 +164,60 @@
             const payArea = document.getElementById('payArea');
             if (payArea) payArea.innerHTML = pagamentoHtml();
         });
+
+        // ── Marcação de trecho no player ─────────────────────────────────
+        // Estado: null = nada marcado; número = início já marcado (em segundos).
+        let marcaInicio = null;
+
+        function fmtTempo(seg) {
+            if (!isFinite(seg) || seg < 0) seg = 0;
+            const m = Math.floor(seg / 60);
+            const s = Math.floor(seg % 60);
+            return m + ':' + String(s).padStart(2, '0');
+        }
+
+        function marcarTrecho() {
+            const player = document.getElementById('player');
+            const btn = document.getElementById('markBtn');
+            const cancelBtn = document.getElementById('markCancel');
+            const hint = document.getElementById('markHint');
+            if (!player) return;
+            const agora = player.currentTime || 0;
+
+            if (marcaInicio === null) {
+                marcaInicio = agora;
+                btn.innerHTML = '<i class="fas fa-flag-checkered me-1"></i>Marcar fim';
+                cancelBtn.style.display = '';
+                hint.textContent = 'Início em ' + fmtTempo(marcaInicio) + ' — ouça e marque o fim.';
+                return;
+            }
+
+            // Se o cliente marcou o fim antes do início (voltou o áudio), inverte
+            // em vez de gravar um trecho invertido.
+            let ini = marcaInicio, fim = agora;
+            if (fim < ini) { const t = ini; ini = fim; fim = t; }
+
+            const trecho = (Math.abs(fim - ini) < 1)
+                ? '⏱ em ' + fmtTempo(ini) + ': '
+                : '⏱ do ' + fmtTempo(ini) + ' ao ' + fmtTempo(fim) + ': ';
+
+            const ta = document.getElementById('adjustFeedback');
+            const sep = (ta.value && !ta.value.endsWith('\n')) ? '\n' : '';
+            ta.value += sep + trecho;
+            ta.focus();
+            ta.selectionStart = ta.selectionEnd = ta.value.length;
+
+            cancelarMarcacao();
+            hint.textContent = 'Trecho adicionado. Descreva o ajuste e marque outro se precisar.';
+        }
+
+        function cancelarMarcacao() {
+            marcaInicio = null;
+            document.getElementById('markBtn').innerHTML =
+                '<i class="fas fa-stopwatch me-1"></i>Marcar início';
+            document.getElementById('markCancel').style.display = 'none';
+            document.getElementById('markHint').textContent = '';
+        }
 
         function showAdjustForm() {
             document.getElementById('actionButtons').style.display = 'none';
