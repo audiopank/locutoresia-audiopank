@@ -132,8 +132,18 @@
                 <textarea class="form-control" id="requestDescription" rows="2" placeholder="Ex: Spot 30s pra loja de roupas, tom energético"></textarea>
             </div>
             <div class="mb-3">
-                <label class="form-label">Arquivo de áudio</label>
+                <label class="form-label">Prévia (com carimbo) — é o que o cliente ouve</label>
                 <input type="file" class="form-control" id="audioFile" accept="audio/*">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">
+                    Arquivo definitivo <span class="text-secondary">(sem carimbo, opcional)</span>
+                </label>
+                <input type="file" class="form-control" id="finalFile" accept="audio/*">
+                <small class="text-secondary">
+                    Fica travado até o pedido constar como pago. Aí o cliente baixa sozinho
+                    pelo mesmo link de aprovação — sem você mandar no WhatsApp.
+                </small>
             </div>
             <button class="btn btn-primary" id="uploadBtn" onclick="uploadDelivery()">
                 <i class="fas fa-upload me-2"></i>Cadastrar Entrega
@@ -369,11 +379,11 @@
         // Sobe o arquivo direto pro Supabase Storage via signed upload URL
         // (contorna o limite ~4.5MB da serverless do Vercel). Retorna urlResult
         // com o .path pra salvar no registro.
-        async function uploadAudioFile(file) {
+        async function uploadAudioFile(file, kind) {
             const urlResponse = await fetch('/api/client-deliveries/upload-url', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: file.name })
+                body: JSON.stringify({ filename: file.name, kind: kind || 'entrega' })
             });
             const urlResult = await urlResponse.json();
             if (!urlResult.success) {
@@ -417,7 +427,18 @@
             uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
 
             try {
-                const urlResult = await uploadAudioFile(file);
+                const urlResult = await uploadAudioFile(file, 'entrega');
+
+                // Definitivo é opcional: sobe pra pasta 'finais' e só é liberado
+                // pro cliente quando o pedido estiver pago.
+                let finalPath = '';
+                const finalInput = document.getElementById('finalFile');
+                const finalFile = finalInput ? finalInput.files[0] : null;
+                if (finalFile) {
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando definitivo...';
+                    const finalResult = await uploadAudioFile(finalFile, 'final');
+                    finalPath = finalResult.path;
+                }
 
                 const createResponse = await fetch('/api/client-deliveries', {
                     method: 'POST',
@@ -427,6 +448,7 @@
                         client_contact: clientContact,
                         request_description: requestDescription,
                         storage_path: urlResult.path,
+                        final_path: finalPath,
                         file_size: file.size,
                         mime_type: file.type,
                         pedido_id: pedidoVinculado || ''

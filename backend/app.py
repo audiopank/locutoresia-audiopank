@@ -1265,11 +1265,13 @@ def get_client_delivery_upload_url():
         if not filename:
             return jsonify({"success": False, "error": "Nome do arquivo é obrigatório"}), 400
 
-        # 'entrega' = locução do estúdio; 'amostra' = referência de voz que o
-        # cliente anexa ao pedir ajuste; 'analise' = voz que o estúdio sobe pro
-        # VoxCraft analisar. Allowlist fechada (folder controlado pelo backend).
+        # 'entrega' = prévia com carimbo que o cliente ouve; 'final' = arquivo
+        # definitivo sem carimbo (só baixa depois de pago); 'amostra' = referência
+        # de voz que o cliente anexa ao pedir ajuste; 'analise' = voz que o estúdio
+        # sobe pro VoxCraft analisar. Allowlist fechada (folder é do backend).
         kind = data.get('kind', 'entrega')
-        pasta = {'amostra': 'amostras', 'analise': 'analises'}.get(kind, 'entregas')
+        pasta = {'amostra': 'amostras', 'analise': 'analises',
+                 'final': 'finais'}.get(kind, 'entregas')
 
         import uuid
         file_extension = os.path.splitext(filename)[1]
@@ -1325,7 +1327,22 @@ def create_client_delivery():
             "status": "pendente"
         }
 
-        response = supabase_manager.newpost_manager_client.table('client_deliveries').insert(delivery_data).execute()
+        # Arquivo definitivo (sem carimbo) é opcional e vai num campo separado da
+        # prévia. Se a coluna ainda não existir (migração não rodada), o insert
+        # inteiro falharia por causa de um campo opcional — daí o retry sem ele.
+        final_path = (data.get('final_path') or '').strip()
+        if final_path:
+            delivery_data['final_path'] = final_path
+
+        try:
+            response = supabase_manager.newpost_manager_client.table('client_deliveries').insert(delivery_data).execute()
+        except Exception as insert_err:
+            if final_path and 'final_path' in str(insert_err):
+                print("[entregas] coluna 'final_path' não existe — rode ALTER_CLIENT_DELIVERIES_ADD_FINAL.sql. Salvando sem ela.")
+                delivery_data.pop('final_path', None)
+                response = supabase_manager.newpost_manager_client.table('client_deliveries').insert(delivery_data).execute()
+            else:
+                raise
         delivery_data['id'] = response.data[0]['id']
 
         # Fluxo pedido → entrega: se a entrega nasceu de um pedido do /solicitar,
@@ -1592,20 +1609,38 @@ def client_delivery_approval_page(delivery_id):
 
         # Pagamento: se esta entrega veio de um pedido com plano/valor, monta o
         # link de checkout pra oferecer o pagamento DEPOIS que o cliente aprovar.
+        #
+        # E é aqui que o DEFINITIVO é liberado. O cliente ouve a prévia (com carimbo)
+        # em `playback_url`; o arquivo limpo só vira URL se o pedido estiver pago.
+        # A trava é SERVER-SIDE de propósito: sem `pago`, a signed URL do final não
+        # chega a ser gerada, então não adianta mexer no HTML pra tentar baixar.
+        # `pago` fica true tanto pelo webhook do Kiwify quanto pelo botão manual
+        # "marcar como pago" do painel — então PIX direto também libera.
         pagamento = None
+        download_final = None
         try:
             ped = supabase_manager.newpost_manager_client.table('pedidos') \
                 .select('plano,valor,pago').eq('entrega_id', delivery_id).limit(1).execute()
-            if ped.data:
-                p = ped.data[0]
+            p = ped.data[0] if ped.data else None
+            if p:
                 checkout = _kiwify_url(p.get('plano')) or get_planos_config().get(p.get('plano'), {}).get('kiwify_url', '')
                 if p.get('valor') and not p.get('pago'):
                     pagamento = {"valor": p.get('valor'), "checkout_url": checkout}
+
+            # Sem pedido vinculado não há como saber se foi pago -> não libera.
+            if p and p.get('pago') and delivery.get('final_path'):
+                try:
+                    sf = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
+                        .create_signed_url(delivery['final_path'], 3600)
+                    download_final = sf.get('signedURL') or sf.get('signedUrl')
+                except Exception as sf_err:
+                    print(f"Erro ao assinar o arquivo final: {sf_err}")
         except Exception as pag_err:
             print(f"Pagamento indisponível na aprovação (tabela pedidos?): {pag_err}")
 
         return render_template('aprovacao.html', found=True, delivery=delivery,
-                               playback_url=playback_url, pagamento=pagamento)
+                               playback_url=playback_url, pagamento=pagamento,
+                               download_final=download_final)
 
     except Exception as e:
         print(f"Erro ao carregar página de aprovação: {e}")

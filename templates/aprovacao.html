@@ -140,6 +140,19 @@
     <script>
         const deliveryId = "{{ delivery.id if found else '' }}";
         const pagamento = {{ pagamento | tojson if pagamento else 'null' }};
+        // URL do arquivo definitivo. Só vem preenchida do servidor quando o pedido
+        // está pago — se não estiver, nem existe aqui pra ser "descoberta".
+        const downloadFinal = {{ download_final | tojson if download_final else 'null' }};
+
+        function downloadHtml() {
+            if (!downloadFinal) return '';
+            return `<a href="${downloadFinal}" download class="btn btn-success w-100 mt-3">
+                        <i class="fas fa-download me-2"></i>Baixar spot definitivo
+                    </a>
+                    <div class="sample-hint mt-2">
+                        Pagamento confirmado — este é o arquivo final, sem a marcação de exemplo.
+                    </div>`;
+        }
 
         function pagamentoHtml() {
             if (!pagamento) return '';
@@ -162,7 +175,8 @@
         // Se a página já abre com status aprovado, mostra o pagamento.
         document.addEventListener('DOMContentLoaded', function () {
             const payArea = document.getElementById('payArea');
-            if (payArea) payArea.innerHTML = pagamentoHtml();
+            // Pago -> botão de download do definitivo. Ainda não pago -> checkout.
+            if (payArea) payArea.innerHTML = downloadHtml() + pagamentoHtml();
         });
 
         // ── Marcação de trecho no player ─────────────────────────────────
@@ -290,7 +304,9 @@
 
                 const area = document.getElementById('responseArea');
                 if (status === 'aprovado') {
-                    area.innerHTML = '<div class="status-message status-aprovado"><i class="fas fa-check-circle me-2"></i>Obrigado! Locução aprovada.</div>' + pagamentoHtml();
+                    // downloadHtml() cobre o caso de já estar pago na hora de aprovar
+                    // (ex.: o estúdio marcou como pago antes, PIX direto).
+                    area.innerHTML = '<div class="status-message status-aprovado"><i class="fas fa-check-circle me-2"></i>Obrigado! Locução aprovada.</div>' + downloadHtml() + pagamentoHtml();
                 } else {
                     area.innerHTML = '<div class="status-message status-ajuste_solicitado"><i class="fas fa-info-circle me-2"></i>Obrigado! Vamos ajustar e te enviar um novo link em breve.</div>';
                 }
