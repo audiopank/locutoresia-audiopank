@@ -2240,33 +2240,18 @@ def kiwify_webhook(token):
 
         # Guarda o último webhook (aparado) pra a gente inspecionar o formato real.
         #
-        # SONDA DE ASSINATURA (temporária, só observa — NÃO valida nada):
-        # queremos passar a verificar a assinatura do Kiwify, mas a doc pública do
-        # webhook de VENDAS não descreve o método (a de Ed25519 é do Kiwify Banking,
-        # produto diferente). Implementar HMAC no chute com bloqueio faria o app
-        # rejeitar pagamento real em silêncio. Então primeiro capturamos o que chega
-        # — query string, headers e o corpo CRU (o HMAC é sempre sobre os bytes crus,
-        # nunca sobre o JSON re-serializado) — e só depois ligamos a validação com o
-        # algoritmo comprovado. Remover esta sonda quando a validação estiver ativa.
+        # A sonda que descobriu o algoritmo da assinatura foi removida (commit a33a0f4
+        # provou HMAC-SHA1 do corpo cru). Não guardamos mais o corpo cru: ele duplica
+        # o payload e carrega dado pessoal do comprador (e-mail, CPF, telefone,
+        # endereço) sem necessidade agora que a validação está ativa.
         if supabase_manager and supabase_manager.newpost_manager_client:
             try:
                 import json as _json
-                try:
-                    corpo_cru = request.get_data(as_text=True) or ''
-                except Exception:
-                    corpo_cru = ''
-                cabecalhos = {k: v for k, v in request.headers.items()
-                              if k.lower() in ('content-type', 'user-agent', 'x-kiwify-signature',
-                                               'x-signature', 'signature', 'x-hub-signature',
-                                               'x-hub-signature-256', 'x-kiwify-token')}
                 supabase_manager.newpost_manager_client.table('app_config').upsert({
                     "chave": "kiwify_last_webhook",
                     "valor": {"recebido_em": datetime.now(timezone.utc).isoformat(),
                               "payload": _json.loads(_json.dumps(payload)[:6000]),
-                              "query": dict(request.args),
-                              "headers": cabecalhos,
-                              "corpo_cru": corpo_cru[:6000],
-                              "corpo_bytes": len(corpo_cru)},
+                              "assinatura_ok": bool(os.getenv('KIWIFY_SIGNATURE_TOKEN'))},
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }).execute()
             except Exception as log_err:
