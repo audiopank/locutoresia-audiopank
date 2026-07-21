@@ -2205,6 +2205,28 @@ def kiwify_webhook(token):
     if not esperado or not token or not _hmac.compare_digest(str(token), esperado):
         return jsonify({"error": "not found"}), 404
 
+    # 2ª camada: ASSINATURA. O segredo na URL sozinho é frágil — quem tiver a URL
+    # (ela vaza em log, print, histórico de chat) pode forjar um "paid" com o e-mail
+    # de um pedido pendente e marcá-lo pago sem ter pago. A assinatura fecha isso:
+    # só quem tem o token de assinatura do painel do Kiwify consegue produzi-la.
+    #
+    # Algoritmo COMPROVADO empiricamente em 21/07/2026 com um "Compra aprovada" real:
+    # HMAC-SHA1 do corpo CRU (bytes exatos, nunca o JSON re-serializado), chave =
+    # token do painel do Kiwify, assinatura hex na query string `?signature=`.
+    # Testado contra HMAC-SHA256, SHA1 simples e HMAC com o token da URL: só este bate.
+    #
+    # Sem KIWIFY_SIGNATURE_TOKEN setado, a validação fica DESLIGADA (mantém o
+    # comportamento antigo) — assim setar a env é o que liga a proteção, e o webhook
+    # não quebra no intervalo entre este deploy e a configuração da env.
+    sig_token = os.getenv('KIWIFY_SIGNATURE_TOKEN', '')
+    if sig_token:
+        recebida = (request.args.get('signature') or '').strip().lower()
+        corpo_cru = request.get_data() or b''
+        calculada = _hmac.new(sig_token.encode('utf-8'), corpo_cru, hashlib.sha1).hexdigest()
+        if not recebida or not _hmac.compare_digest(calculada, recebida):
+            print(f"[kiwify] 🚫 assinatura invalida (recebida={recebida[:12]}...) — requisicao descartada")
+            return jsonify({"error": "invalid signature"}), 401
+
     try:
         payload = request.get_json(silent=True)
         if payload is None:
