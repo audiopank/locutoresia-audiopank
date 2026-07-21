@@ -258,7 +258,19 @@ class DatabaseManager:
         """Salva notícias no banco, retorna (salvos, duplicados)"""
         saved = 0
         duplicates = 0
-        
+
+        # Portão de conteúdo sensível na ENTRADA: crime/violência não entra nem no
+        # cache, então não tem como vazar para nenhum caminho de publicação depois.
+        # Este agente não passava pelo filtro — em 20/07/2026 havia 16 posts
+        # publicados que a regra proíbe (facadas, tiroteio, homicídio, sequestro).
+        try:
+            from core.content_filter import filter_news
+            news_data, bloqueadas = filter_news(news_data)
+            if bloqueadas:
+                logger.info(f"🚫 [FILTRO] {len(bloqueadas)} notícia(s) barrada(s) antes do cache")
+        except Exception as e:  # nunca derrubar a coleta por causa do filtro
+            logger.warning(f"⚠️ Filtro de conteúdo indisponível ({e}) — seguindo sem filtrar")
+
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -393,6 +405,23 @@ class NewsAgent:
 
     def save_to_supabase(self, news: Dict):
         """Salva notícia na tabela posts usando o payload que você informou"""
+        # Portão de conteúdo sensível na SAÍDA. Redundante com save_news de
+        # propósito: publicar é irreversível no feed público, e o cache pode ter
+        # itens antigos de antes do filtro existir.
+        # FAIL-CLOSED: se o filtro não carregar, NÃO publica. Publicar sem filtro
+        # é o exato risco que ele existe para evitar.
+        try:
+            from core.content_filter import blocked_reason
+        except Exception as e:
+            logger.error(f"🚫 Filtro de conteúdo indisponível ({e}) — publicação abortada por segurança")
+            return
+        motivo = blocked_reason(news.get('title'), news.get('snippet'),
+                                news.get('summary'), news.get('content'))
+        if motivo:
+            logger.info(f"🚫 [FILTRO] Publicação barrada ({motivo}): "
+                        f"{str(news.get('title'))[:70]}")
+            return
+
         # TODO: Substitua pelo ID correto do perfil Locutores IA na variável NEWPOST_AUTHOR_ID
         AI_AUTHOR_ID = os.getenv("NEWPOST_AUTHOR_ID", "3f51ca52-5a5c-4cf0-a95a-ec26c96245e3")
         

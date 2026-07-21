@@ -284,6 +284,33 @@ Responda APENAS com o JSON, sem markdown.
                 "error": f"O post precisa estar aprovado para publicar. Status atual: {post.get('approval_status')}",
             }
 
+        # 2b. Portão de conteúdo sensível — crime/violência não vai para o feed.
+        # Fica DEPOIS da checagem de aprovação porque nem aprovação humana libera:
+        # a regra é do produto, não do fluxo. Este publisher não passava pelo
+        # filtro, e em 20/07/2026 havia 16 posts publicados que a regra proíbe.
+        # FAIL-CLOSED: se o filtro não carregar, NÃO publica.
+        try:
+            from core.content_filter import blocked_reason
+        except Exception as e:
+            logger.error(f"🚫 Filtro de conteúdo indisponível ({e}) — publicação abortada por segurança")
+            return {
+                "success": False,
+                "error": "Filtro de conteúdo indisponível; publicação bloqueada por segurança",
+            }
+
+        motivo = blocked_reason(post.get("title"), post.get("caption"),
+                                post.get("content"), post.get("summary"))
+        if motivo:
+            logger.info(f"🚫 [FILTRO] Publicação barrada ({motivo}): "
+                        f"{str(post.get('title'))[:70]}")
+            self.update_post(post_id, {"status": "bloqueado"})
+            return {
+                "success": False,
+                "blocked": True,
+                "error": "Post bloqueado pelo filtro de conteúdo sensível",
+                "motivo": motivo,
+            }
+
         # 3. Preparar dados
         hashtags = post.get("hashtags", [])
         hashtag_str = " ".join([f"#{h}" for h in hashtags])
