@@ -1061,6 +1061,100 @@ class MiniDAW {
         }
     }
 
+    // ── DUCKING AUTOMÁTICO ───────────────────────────────────────────────
+    // Abaixa a trilha quando a voz entra e devolve o volume nas pausas — é o que
+    // separa "voz por cima de música" de spot de rádio. Antes a trilha tocava no
+    // volume cheio durante toda a locução e só caía no fade final.
+    //
+    // Detecta fala de verdade (RMS por janela) em vez de simplesmente abaixar do
+    // início ao fim: nas respiradas entre frases a trilha sobe, que é o movimento
+    // que dá vida ao spot.
+    detectarTrechosDeVoz(voiceTracks) {
+        const JANELA = 0.03;      // 30ms — resolução da análise
+        const HOLD = 0.30;        // junta trechos separados por menos que isso
+        const segmentos = [];
+
+        for (const track of voiceTracks) {
+            const buf = track.audioBuffer;
+            if (!buf) continue;
+            const sr = buf.sampleRate;
+            const passo = Math.max(1, Math.floor(JANELA * sr));
+            const dados = buf.getChannelData(0);
+
+            // RMS por janela + pico, pra calibrar o limiar na gravação real
+            // (locução baixinha e locução alta precisam do mesmo comportamento).
+            const rms = [];
+            let pico = 0;
+            for (let i = 0; i < dados.length; i += passo) {
+                let soma = 0;
+                const fim = Math.min(i + passo, dados.length);
+                for (let j = i; j < fim; j++) soma += dados[j] * dados[j];
+                const v = Math.sqrt(soma / Math.max(1, fim - i));
+                rms.push(v);
+                if (v > pico) pico = v;
+            }
+
+            // Piso ABSOLUTO antes do limiar relativo. Sem ele, uma faixa que só
+            // tem ruído de fundo (pico ~-60dBFS) passaria no "8% do próprio pico"
+            // e a trilha ficaria abaixada o spot inteiro sem ninguém falando.
+            // 0.003 ≈ -50 dBFS: bem abaixo de qualquer locução real.
+            if (pico < 0.003) continue;
+
+            const limiar = pico * 0.08;              // 8% do pico = tem voz
+            let inicio = null;
+            for (let k = 0; k < rms.length; k++) {
+                const temVoz = rms[k] >= limiar;
+                if (temVoz && inicio === null) inicio = k * JANELA;
+                if (!temVoz && inicio !== null) {
+                    segmentos.push([inicio, k * JANELA]);
+                    inicio = null;
+                }
+            }
+            if (inicio !== null) segmentos.push([inicio, rms.length * JANELA]);
+        }
+
+        if (!segmentos.length) return [];
+
+        // Une trechos próximos (respiradas curtas não devem soltar a trilha).
+        segmentos.sort((a, b) => a[0] - b[0]);
+        const unidos = [segmentos[0].slice()];
+        for (let i = 1; i < segmentos.length; i++) {
+            const ult = unidos[unidos.length - 1];
+            if (segmentos[i][0] - ult[1] <= HOLD) {
+                ult[1] = Math.max(ult[1], segmentos[i][1]);
+            } else {
+                unidos.push(segmentos[i].slice());
+            }
+        }
+        return unidos;
+    }
+
+    // Escreve a automação de ganho da trilha a partir dos trechos de voz.
+    // `nivel` é o volume normal da faixa (0..1); devolve true se ducou algo.
+    // Padrão de broadcast: DUCK_GAIN ~-11dB, attack curto, release suave.
+    aplicarDucking(gainParam, trechos, nivel, ateQuando) {
+        const DUCK_GAIN = 0.28, ATTACK = 0.08, RELEASE = 0.45;
+        if (!trechos.length) return false;
+        const abaixado = nivel * DUCK_GAIN;
+
+        // NÃO ancora em t=0: quem cuida do início é o fade-in do chamador (mexer
+        // aqui criaria dois eventos no mesmo instante e brigaria com ele).
+        for (const [ini, fim] of trechos) {
+            if (ini >= ateQuando) break;
+            const t0 = Math.max(0, ini - ATTACK);
+            const t1 = Math.min(fim, ateQuando);
+            if (t0 > 0) gainParam.setValueAtTime(nivel, t0);   // ancora antes de descer
+            gainParam.linearRampToValueAtTime(abaixado, Math.min(ini, ateQuando));
+            gainParam.setValueAtTime(abaixado, t1);            // segura embaixo
+            // Release NÃO é cortado em `ateQuando`: no último trecho isso criaria
+            // dois eventos no mesmo instante e a trilha saltaria de 0.28 pra cheia
+            // de uma vez (clique). Deixando passar, ela sobe suave e o fade final
+            // do export leva a zero por cima.
+            gainParam.linearRampToValueAtTime(nivel, t1 + RELEASE);
+        }
+        return true;
+    }
+
     async exportMix() {
         const tracksWithAudio = this.tracks.filter(t => t.audioBuffer);
         if (tracksWithAudio.length === 0) {
@@ -1181,11 +1275,21 @@ class MiniDAW {
                 // Apply fade out (manual or auto)
                 if (track.type === 'music' && voiceTracks.length > 0) {
                     // Auto fade-out for music tracks
-                    const autoFadeStart = maxVoiceDuration;
-                    trackGain.gain.linearRampToValueAtTime(
-                        track.volume / 100,
-                        autoFadeStart
+                    // DUCKING: abaixa a trilha nos trechos com voz e devolve o
+                    // volume nas pausas. Antes ficava no volume cheio a locução
+                    // inteira e só caía no fade final — voz e música competindo.
+                    const trechosDeVoz = this.detectarTrechosDeVoz(voiceTracks);
+                    const ducou = this.aplicarDucking(
+                        trackGain.gain, trechosDeVoz, track.volume / 100, maxVoiceDuration
                     );
+                    if (!ducou) {
+                        // Sem voz detectada (faixa muda?) — comportamento antigo.
+                        trackGain.gain.linearRampToValueAtTime(
+                            track.volume / 100,
+                            maxVoiceDuration
+                        );
+                    }
+                    // Fade final continua igual: some 1.05s depois do fim da voz.
                     trackGain.gain.linearRampToValueAtTime(
                         0,
                         maxVoiceDuration + 1.05
