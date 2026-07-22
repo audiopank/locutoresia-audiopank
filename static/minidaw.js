@@ -16,7 +16,18 @@ class MiniDAW {
         this.scissorMode = false;
         this.globalZoom = 1;
         this.autoFadeEnabled = true;
-        this.autoFadeDuration = 1.05;
+        // ⚠️ autoFadeDuration NÃO está ligado em nada — o código usa 1.05 fixo em
+        // todos os pontos (playback, export, botão de auto-fade). Mudar aqui não
+        // muda o áudio. Mantido pra não quebrar quem lê, mas não confie nele.
+        this.autoFadeDuration = 1.10;
+
+        // DUCKING — o quanto a trilha abaixa embaixo da voz (multiplicador do
+        // volume da faixa). Ajuste este número de ouvido:
+        //   0.28 ≈ -11 dB  trilha quase some (era o valor inicial, ficou baixo demais)
+        //   0.45 ≈  -7 dB  trilha presente embaixo da voz  ← padrão atual
+        //   0.60 ≈  -4 dB  trilha bem audível, disputa mais com a locução
+        this.duckGain = 0.45;
+
         this.voiceEndDetected = new Map();
         
         this.init();
@@ -860,11 +871,20 @@ class MiniDAW {
         if (track.type === 'music' && voiceTracks.length > 0) {
             // Auto fade-out for music tracks
             const maxVoiceDuration = Math.max(...voiceTracks.map(t => t.duration), 0);
-            const autoFadeStart = maxVoiceDuration;
-            nodes.gainNode.gain.linearRampToValueAtTime(
-                track.volume / 100,
-                this.audioContext.currentTime + autoFadeStart
+            // DUCKING NO PREVIEW: mesma automação do export, mas deslocada pra
+            // base de tempo do playback. Sem isto o ducking só aparecia no arquivo
+            // exportado e não dava pra ajustar de ouvido antes de renderizar.
+            const trechosDeVoz = this.detectarTrechosDeVoz(voiceTracks);
+            const ducou = this.aplicarDucking(
+                nodes.gainNode.gain, trechosDeVoz, track.volume / 100,
+                maxVoiceDuration, this.audioContext.currentTime
             );
+            if (!ducou) {
+                nodes.gainNode.gain.linearRampToValueAtTime(
+                    track.volume / 100,
+                    this.audioContext.currentTime + maxVoiceDuration
+                );
+            }
             nodes.gainNode.gain.linearRampToValueAtTime(
                 0,
                 this.audioContext.currentTime + maxVoiceDuration + 1.05
@@ -1131,11 +1151,15 @@ class MiniDAW {
 
     // Escreve a automação de ganho da trilha a partir dos trechos de voz.
     // `nivel` é o volume normal da faixa (0..1); devolve true se ducou algo.
-    // Padrão de broadcast: DUCK_GAIN ~-11dB, attack curto, release suave.
-    aplicarDucking(gainParam, trechos, nivel, ateQuando) {
-        const DUCK_GAIN = 0.28, ATTACK = 0.08, RELEASE = 0.45;
+    //
+    // `offset` existe porque os dois caminhos usam bases de tempo diferentes:
+    // o export (OfflineAudioContext) agenda a partir de 0, e o playback agenda a
+    // partir de audioContext.currentTime. Sem o offset, o ducking no preview
+    // cairia todo no passado e não aconteceria nada.
+    aplicarDucking(gainParam, trechos, nivel, ateQuando, offset = 0) {
+        const ATTACK = 0.08, RELEASE = 0.45;
         if (!trechos.length) return false;
-        const abaixado = nivel * DUCK_GAIN;
+        const abaixado = nivel * this.duckGain;
 
         // NÃO ancora em t=0: quem cuida do início é o fade-in do chamador (mexer
         // aqui criaria dois eventos no mesmo instante e brigaria com ele).
@@ -1143,14 +1167,14 @@ class MiniDAW {
             if (ini >= ateQuando) break;
             const t0 = Math.max(0, ini - ATTACK);
             const t1 = Math.min(fim, ateQuando);
-            if (t0 > 0) gainParam.setValueAtTime(nivel, t0);   // ancora antes de descer
-            gainParam.linearRampToValueAtTime(abaixado, Math.min(ini, ateQuando));
-            gainParam.setValueAtTime(abaixado, t1);            // segura embaixo
+            if (t0 > 0) gainParam.setValueAtTime(nivel, offset + t0);
+            gainParam.linearRampToValueAtTime(abaixado, offset + Math.min(ini, ateQuando));
+            gainParam.setValueAtTime(abaixado, offset + t1);   // segura embaixo
             // Release NÃO é cortado em `ateQuando`: no último trecho isso criaria
-            // dois eventos no mesmo instante e a trilha saltaria de 0.28 pra cheia
-            // de uma vez (clique). Deixando passar, ela sobe suave e o fade final
-            // do export leva a zero por cima.
-            gainParam.linearRampToValueAtTime(nivel, t1 + RELEASE);
+            // dois eventos no mesmo instante e a trilha saltaria do valor abaixado
+            // pra cheia de uma vez (clique). Deixando passar, ela sobe suave e o
+            // fade final leva a zero por cima.
+            gainParam.linearRampToValueAtTime(nivel, offset + t1 + RELEASE);
         }
         return true;
     }
