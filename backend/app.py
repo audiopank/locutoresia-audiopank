@@ -2015,16 +2015,22 @@ PEDIDO_STATUS = ('novo', 'em_producao', 'aguardando_aprovacao', 'concluido', 'ca
 # Tabela de preços AUTORITATIVA (server-side). O valor NUNCA vem do navegador —
 # o cliente escolhe o plano, o backend define o preço. 'outro' = orçamento manual.
 PEDIDO_PLANOS = {
+    'teaser_5s':  {'label': 'TEASER 5 Seg. voz masculina ou feminina', 'valor': 2.00},
     'spot_30_45': {'label': 'Spot 30-45s', 'valor': 127.00},
     'spot_60_90': {'label': 'Spot 60-90s', 'valor': 157.00},
     'jingle':     {'label': 'Jingle',      'valor': 1507.00},
     'outro':      {'label': 'Outro (orçamento)', 'valor': None},
 }
+# ⚠️ Plano NOVO só entra aqui, no código. O Admin edita preço/label/checkout dos
+# planos existentes, mas não cria: get_planos_config() percorre `for k in base`,
+# onde base = PEDIDO_PLANOS. Criar o produto só na Kiwify não faz ele aparecer
+# no /solicitar.
 
 # Links de checkout do Kiwify (URLs PÚBLICAS, não são segredo). Preencher quando
 # os 3 produtos forem criados no dashboard — ou definir por env var
 # KIWIFY_CHECKOUT_<PLANO> (ex: KIWIFY_CHECKOUT_SPOT_30_45). Env tem prioridade.
 KIWIFY_CHECKOUT = {
+    'teaser_5s': '',
     'spot_30_45': '',
     'spot_60_90': '',
     'jingle': '',
