@@ -1536,6 +1536,47 @@ def respond_client_delivery(delivery_id):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/client-deliveries/<delivery_id>/final', methods=['POST', 'OPTIONS'])
+def set_client_delivery_final(delivery_id):
+    """Anexa o arquivo DEFINITIVO (sem carimbo) a uma entrega já criada.
+
+    No fluxo real do estúdio o definitivo raramente existe na hora do cadastro:
+    manda-se a prévia carimbada, o cliente aprova, paga, e só então o arquivo
+    limpo é preparado. Sem esta rota o definitivo só podia ser informado na
+    criação — quem esquecesse ficava sem jeito de completar a entrega.
+
+    O arquivo já subiu via signed upload URL (kind='final'); aqui só gravamos o
+    caminho. NÃO mexe em status nem no áudio da prévia.
+    """
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        final_path = (request.get_json() or {}).get('final_path', '').strip()
+        if not final_path:
+            return jsonify({"success": False, "error": "final_path é obrigatório"}), 400
+
+        result = supabase_manager.newpost_manager_client.table('client_deliveries') \
+            .update({"final_path": final_path,
+                     "updated_at": datetime.now(timezone.utc).isoformat()}) \
+            .eq('id', delivery_id).execute()
+
+        if not result.data:
+            return jsonify({"success": False, "error": "Entrega não encontrada"}), 404
+
+        return jsonify({"success": True, "delivery": result.data[0]})
+    except Exception as e:
+        print(f"Erro ao anexar arquivo definitivo: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/api/client-deliveries/<delivery_id>/new-version', methods=['POST', 'OPTIONS'])
 def new_version_client_delivery(delivery_id):
     """Reenvio de versão corrigida: substitui o áudio da MESMA entrega, volta o

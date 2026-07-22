@@ -159,6 +159,7 @@
 
         <!-- Input oculto usado pelo reenvio de versão corrigida (mesma entrega) -->
         <input type="file" id="newVersionInput" accept="audio/*" style="display: none;" onchange="uploadNewVersion()">
+        <input type="file" id="finalInput" accept="audio/*" style="display: none;" onchange="uploadDefinitivo()">
     </div>
 
     <script>
@@ -506,6 +507,16 @@
                                <i class="fas fa-rotate me-1"></i>Enviar versão corrigida
                            </button>`
                         : '';
+                    // Definitivo: mostra se já tem (só informativo) ou o botão pra
+                    // anexar. No fluxo real ele quase nunca existe no cadastro — o
+                    // arquivo limpo é preparado depois que o cliente aprova e paga.
+                    const finalBtn = d.final_path
+                        ? `<span class="badge bg-success mt-2 me-2" style="padding:.45rem .6rem;">
+                               <i class="fas fa-lock-open me-1"></i>Definitivo anexado
+                           </span>`
+                        : `<button class="btn btn-sm btn-success mt-2 me-2" onclick="anexarDefinitivo('${d.id}')">
+                               <i class="fas fa-file-audio me-1"></i>Anexar definitivo
+                           </button>`;
                     return `
                         <div class="delivery-card">
                             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -524,6 +535,7 @@
                             <audio controls class="w-100 mt-2" src="${d.playback_url || ''}"></audio>
                             ${feedbackBox}
                             <div class="mt-2">
+                                ${finalBtn}
                                 ${newVersionBtn}
                                 ${sendLinkButton(d.client_contact, d.client_name, approvalUrl)}
                                 <button class="btn btn-sm btn-outline-light mt-2" onclick="copyApprovalLink('${approvalUrl}')">
@@ -580,6 +592,39 @@
                 loadDeliveries();
             } catch (error) {
                 alert(`Erro ao enviar nova versão: ${error.message}`);
+            }
+        }
+
+        // Anexar o arquivo DEFINITIVO (sem carimbo) a uma entrega já existente.
+        // O cliente só ganha o botão de baixar depois que o pedido consta pago.
+        let finalDeliveryId = null;
+        function anexarDefinitivo(id) {
+            finalDeliveryId = id;
+            const input = document.getElementById('finalInput');
+            input.value = '';
+            input.click();
+        }
+
+        async function uploadDefinitivo() {
+            const input = document.getElementById('finalInput');
+            const file = input.files[0];
+            if (!file || !finalDeliveryId) return;
+
+            const deliveryId = finalDeliveryId;
+            finalDeliveryId = null;
+            try {
+                const urlResult = await uploadAudioFile(file, 'final');
+                const resp = await fetch(`/api/client-deliveries/${deliveryId}/final`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ final_path: urlResult.path })
+                });
+                const result = await resp.json();
+                if (!result.success) throw new Error(result.error);
+                alert('Arquivo definitivo anexado! O cliente vai poder baixar assim que o pedido constar como pago.');
+                loadDeliveries();
+            } catch (error) {
+                alert(`Erro ao anexar o definitivo: ${error.message}`);
             }
         }
 
