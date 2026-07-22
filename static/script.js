@@ -495,3 +495,14 @@ function handleAudioFileSelect(event) {
 async function cloneVoice() {
     alert('Clonagem de voz requer plano pago no ElevenLabs.\nAcesse elevenlabs.io para fazer upgrade.');
 }
+
+// Ponte com o cadastro de entrega. Usa o Blob que a geração já guardou em
+// memória (lastGeneratedAudioBlob) — no Vercel o arquivo vive em /tmp efêmero,
+// então buscá-lo de volta por URL numa requisição posterior é frágil.
+function enviarVozParaEntrega() {
+    if (typeof lastGeneratedAudioBlob === 'undefined' || !lastGeneratedAudioBlob) {
+        alert('Gere a locução primeiro.');
+        return;
+    }
+    window.enviarParaEntrega(lastGeneratedAudioBlob, `locucao-${Date.now()}.wav`);
+}

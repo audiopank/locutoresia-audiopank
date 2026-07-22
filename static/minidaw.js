@@ -1381,6 +1381,13 @@ class MiniDAW {
             // Download
             this.downloadBlob(blob, filename);
 
+            // Guarda o mix pra o botão "Enviar para entrega" mandar direto pro
+            // cadastro do cliente, sem o vaivém de baixar e subir o mesmo arquivo.
+            this.ultimoMixBlob = blob;
+            this.ultimoMixNome = filename;
+            const btnEnviar = document.getElementById('btnEnviarEntrega');
+            if (btnEnviar) btnEnviar.style.display = '';
+
             setTimeout(() => {
                 this.showMixingStatus(false);
                 this.showNotification('Mix exportado com sucesso!', 'success');
@@ -2272,4 +2279,14 @@ window.testAudioContext = async () => {
     } else {
         console.log('ℹ️ AudioContext já está:', minidaw.audioContext.state);
     }
+};
+
+// Ponte com o cadastro de entrega: usa o mix já exportado (Blob em memória),
+// então não refaz o render nem depende de arquivo em disco.
+window.enviarMixParaEntrega = () => {
+    if (!minidaw.ultimoMixBlob) {
+        minidaw.showNotification('Exporte o mix primeiro', 'warning');
+        return;
+    }
+    window.enviarParaEntrega(minidaw.ultimoMixBlob, minidaw.ultimoMixNome);
 };
