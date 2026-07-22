@@ -739,6 +739,30 @@
             </button>
         </div>
 
+        <!-- Transporte de baixo: mesmos Play/Stop do topo, repetidos embaixo das
+             faixas. Com 2-3 tracks abertos a barra de cima sai da tela e era
+             preciso rolar pra cima só pra dar play e conferir a mixagem. -->
+        <div class="timeline-container" id="bottomTransport" style="margin-top: 1rem;">
+            <div class="timeline-header">
+                <div class="playback-controls-enhanced">
+                    <button class="control-btn" onclick="togglePlayback()" title="Play/Pause (Espaço)">
+                        <i class="fas fa-play" id="playIconBottom"></i>
+                    </button>
+                    <button class="control-btn" onclick="stopPlayback()" title="Stop (S)">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                    <div class="control-group">
+                        <span class="control-label">Tempo:</span>
+                        <span id="currentTimeBottom">0:00</span>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Duração:</span>
+                        <span id="totalDurationBottom">0:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Export Panel -->
         <div class="export-panel">
             <h4 class="mb-3">

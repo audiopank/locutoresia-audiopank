@@ -829,10 +829,7 @@ class MiniDAW {
         }
 
         this.isPlaying = true;
-        const playIcon = document.getElementById('playIcon');
-        if (playIcon) {
-            playIcon.className = 'fas fa-pause';
-        }
+        this.setPlayIcon('fas fa-pause');
 
         // Start all tracks
         this.tracks.forEach(track => {
@@ -918,14 +915,21 @@ class MiniDAW {
         };
     }
 
+    // Mantém os dois botões de play (topo e o de baixo das faixas) no mesmo
+    // estado. Antes o ícone era mexido direto pelo id, o que deixaria o segundo
+    // botão mostrando "play" com o áudio tocando.
+    setPlayIcon(classe) {
+        ['playIcon', 'playIconBottom'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.className = classe;
+        });
+    }
+
     stop() {
         this.isPlaying = false;
         this.currentTime = 0;
 
-        const playIcon = document.getElementById('playIcon');
-        if (playIcon) {
-            playIcon.className = 'fas fa-play';
-        }
+        this.setPlayIcon('fas fa-play');
 
         // Stop all tracks
         this.trackNodes.forEach(nodes => {
@@ -956,17 +960,20 @@ class MiniDAW {
             }
         }
 
-        const currentTimeEl = document.getElementById('currentTime');
-        if (currentTimeEl) {
-            currentTimeEl.textContent = this.formatTime(this.currentTime);
-        }
+        // Atualiza os dois transportes (topo e o de baixo das faixas).
+        const txt = this.formatTime(this.currentTime);
+        ['currentTime', 'currentTimeBottom'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = txt;
+        });
     }
 
     updateDuration() {
-        const durationEl = document.getElementById('totalDuration');
-        if (durationEl) {
-            durationEl.textContent = this.formatTime(this.duration);
-        }
+        const txt = this.formatTime(this.duration);
+        ['totalDuration', 'totalDurationBottom'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = txt;
+        });
     }
 
     formatTime(seconds) {
