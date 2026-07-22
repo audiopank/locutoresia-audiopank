@@ -2015,7 +2015,9 @@ PEDIDO_STATUS = ('novo', 'em_producao', 'aguardando_aprovacao', 'concluido', 'ca
 # Tabela de preços AUTORITATIVA (server-side). O valor NUNCA vem do navegador —
 # o cliente escolhe o plano, o backend define o preço. 'outro' = orçamento manual.
 PEDIDO_PLANOS = {
-    'teaser_5s':  {'label': 'TEASER 5 Seg. voz masculina ou feminina', 'valor': 2.00},
+    # R$ 5,00 é o MÍNIMO que a Kiwify aceita por produto — não abaixar sem
+    # conferir lá, senão o site anuncia um preço e o checkout cobra outro.
+    'teaser_5s':  {'label': 'TEASER 5 Seg. voz masculina ou feminina', 'valor': 5.00},
     'spot_30_45': {'label': 'Spot 30-45s', 'valor': 127.00},
     'spot_60_90': {'label': 'Spot 60-90s', 'valor': 157.00},
     'jingle':     {'label': 'Jingle',      'valor': 1507.00},
