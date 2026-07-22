@@ -282,6 +282,15 @@ if os.environ.get('VERCEL'):
 else:
     app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), '..', 'generated_audio')
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+    # DEV: relê o template quando o arquivo muda. Os dois entrypoints locais
+    # rodam sem reloader (start_simple.py usa use_reloader=False e
+    # backend/start_server.py usa debug=False), então o Jinja guardava o HTML em
+    # memória e mudança em template só aparecia reiniciando o Python — enquanto
+    # mudança em static/*.js aparecia com Ctrl+F5. Essa assimetria já custou
+    # tempo de debug ("mudei o HTML e não aparece nada").
+    # Fora do bloco do Vercel de propósito: em produção cada deploy sobe processo
+    # novo, então o custo de um stat() por render não se justifica lá.
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
