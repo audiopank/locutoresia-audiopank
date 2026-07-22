@@ -1392,7 +1392,24 @@ def list_client_deliveries():
             .execute()
 
         deliveries = response.data
+
+        # Qual entrega está ligada a qual pedido, e se está paga. Sem isso o
+        # painel não mostrava a dependência que LIBERA o download do definitivo,
+        # e dava pra anexar o arquivo na entrega errada sem perceber: o pedido
+        # aponta pra UMA entrega só, e cada "Cadastrar entrega" cria outra.
+        pedido_por_entrega = {}
+        try:
+            peds = supabase_manager.newpost_manager_client.table('pedidos') \
+                .select('entrega_id,pago,valor').not_.is_('entrega_id', 'null').execute()
+            for p in (peds.data or []):
+                pedido_por_entrega[p['entrega_id']] = p
+        except Exception as e:
+            print(f"Não deu pra cruzar pedidos com entregas: {e}")
+
         for delivery in deliveries:
+            p = pedido_por_entrega.get(delivery['id'])
+            delivery['tem_pedido'] = bool(p)
+            delivery['pedido_pago'] = bool(p and p.get('pago'))
             try:
                 signed = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
                     .create_signed_url(delivery['storage_path'], 3600)

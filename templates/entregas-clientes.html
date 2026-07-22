@@ -511,12 +511,38 @@
                     // anexar. No fluxo real ele quase nunca existe no cadastro — o
                     // arquivo limpo é preparado depois que o cliente aprova e paga.
                     const finalBtn = d.final_path
-                        ? `<span class="badge bg-success mt-2 me-2" style="padding:.45rem .6rem;">
-                               <i class="fas fa-lock-open me-1"></i>Definitivo anexado
-                           </span>`
+                        ? `<button class="btn btn-sm btn-outline-success mt-2 me-2" onclick="anexarDefinitivo('${d.id}')">
+                               <i class="fas fa-check me-1"></i>Definitivo anexado — trocar
+                           </button>`
                         : `<button class="btn btn-sm btn-success mt-2 me-2" onclick="anexarDefinitivo('${d.id}')">
                                <i class="fas fa-file-audio me-1"></i>Anexar definitivo
                            </button>`;
+
+                    // Estado do que LIBERA o download pro cliente. Antes era
+                    // invisível: dava pra anexar o definitivo numa entrega sem
+                    // pedido e ficar esperando um botão que nunca ia aparecer.
+                    let liberacao;
+                    if (!d.tem_pedido) {
+                        liberacao = `<div class="mt-2" style="font-size:.8rem;color:#fca5a5;">
+                            <i class="fas fa-unlink me-1"></i>Sem pedido vinculado — o cliente
+                            <strong>não</strong> recebe o botão de baixar. Crie a entrega pelo
+                            botão "Criar entrega deste pedido", em Pedidos recebidos.
+                        </div>`;
+                    } else if (!d.pedido_pago) {
+                        liberacao = `<div class="mt-2" style="font-size:.8rem;color:#fcd34d;">
+                            <i class="fas fa-hourglass-half me-1"></i>Pedido vinculado, aguardando pagamento.
+                        </div>`;
+                    } else if (!d.final_path) {
+                        liberacao = `<div class="mt-2" style="font-size:.8rem;color:#fcd34d;">
+                            <i class="fas fa-exclamation-triangle me-1"></i>Pago! Falta anexar o
+                            arquivo definitivo pro cliente poder baixar.
+                        </div>`;
+                    } else {
+                        liberacao = `<div class="mt-2" style="font-size:.8rem;color:#86efac;">
+                            <i class="fas fa-unlock me-1"></i>Pago e definitivo anexado — o cliente
+                            já pode baixar pelo link.
+                        </div>`;
+                    }
                     return `
                         <div class="delivery-card">
                             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -534,6 +560,7 @@
                             </div>
                             <audio controls class="w-100 mt-2" src="${d.playback_url || ''}"></audio>
                             ${feedbackBox}
+                            ${liberacao}
                             <div class="mt-2">
                                 ${finalBtn}
                                 ${newVersionBtn}
