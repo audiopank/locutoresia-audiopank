@@ -249,7 +249,7 @@ class MiniDAW {
                     </div>
                 </div>
                 <div class="track-effects">
-                            <button class="effect-btn" onclick="window.location.href='/library'" title="Biblioteca de Trilhas">
+                            <button class="effect-btn" onclick="abrirBibliotecaModal()" title="Biblioteca de Trilhas (adiciona sem apagar a voz)">
                                 <i class="fas fa-book-open"></i> Biblioteca
                             </button>
                             <button class="effect-btn" onclick="window.open('https://app.lmnt.com/', '_blank')" title="LMNT Studio">
@@ -2210,6 +2210,71 @@ class MiniDAW {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // BIBLIOTECA DE TRILHAS — agora ABRE EM MODAL, sem sair da MiniDAW.
+    // Antes o botão fazia window.location.href='/library', o que RECARREGAVA a
+    // página e matava a voz que já estava nas faixas (o áudio gerado vive só na
+    // memória). A trilha escolhida é ADICIONADA à sessão atual, não substitui.
+    // ═══════════════════════════════════════════════════════════════════
+    async abrirBibliotecaModal() {
+        try {
+            const r = await fetch('/api/tracks');
+            const d = await r.json();
+            const tracks = (d && d.tracks) ? d.tracks : [];
+            const esc = (s) => String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+            const modal = document.createElement('div');
+            modal.id = 'modal-biblioteca';
+            modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);' +
+                'display:flex;align-items:center;justify-content:center;padding:1rem;';
+            const linhas = tracks.length ? tracks.map(t => `
+                <div style="background:#0e1424;border:1px solid #2a3350;border-radius:8px;padding:.6rem .8rem;margin-bottom:.5rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;">
+                        <div style="color:#e6e8f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.name)}</div>
+                        <button data-usar="${esc(t.file_url)}" data-nome="${esc(t.name)}"
+                            style="background:#22c55e;color:#052e16;border:none;border-radius:6px;padding:.4rem .8rem;font-weight:600;cursor:pointer;flex-shrink:0;">
+                            + Usar
+                        </button>
+                    </div>
+                    <audio controls preload="none" src="${esc(t.file_url)}" style="width:100%;margin-top:.4rem;height:32px;"></audio>
+                </div>`).join('') : '<div style="color:#8b93a7;text-align:center;padding:1.5rem;">Nenhuma trilha na biblioteca ainda.</div>';
+
+            modal.innerHTML = `
+                <div style="background:#141a2e;border:1px solid #2a3350;border-radius:14px;max-width:560px;width:100%;padding:1.25rem;max-height:85vh;overflow:auto;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
+                        <h5 style="margin:0;color:#e6e8f0;">📚 Biblioteca de Trilhas</h5>
+                        <button id="bib-fechar" style="background:#2a3350;color:#e6e8f0;border:none;border-radius:6px;padding:.35rem .7rem;cursor:pointer;">Fechar</button>
+                    </div>
+                    <p style="color:#8b93a7;font-size:.78rem;margin:0 0 .75rem;">A trilha entra como uma nova faixa — a voz e os efeitos que já estão continuam.</p>
+                    <div>${linhas}</div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            const fechar = () => modal.remove();
+            modal.querySelector('#bib-fechar').onclick = fechar;
+            modal.onclick = (e) => { if (e.target === modal) fechar(); };
+            modal.querySelectorAll('[data-usar]').forEach(b =>
+                b.onclick = async () => {
+                    const url = b.getAttribute('data-usar');
+                    const nome = b.getAttribute('data-nome') || 'Trilha';
+                    fechar();
+                    try {
+                        this.showNotification('Carregando trilha...', 'info');
+                        this.addTrack('music');                 // ADICIONA — não limpa nada
+                        const track = this.tracks[this.tracks.length - 1];
+                        await this.loadAudioFromUrl(url, track.id, nome);
+                        this.showNotification(`Trilha "${nome}" adicionada!`, 'success');
+                    } catch (e) {
+                        this.showNotification('Erro ao carregar a trilha: ' + e.message, 'error');
+                    }
+                });
+        } catch (e) {
+            this.showNotification('Erro ao abrir a biblioteca: ' + e.message, 'error');
+        }
+    }
+
     // Cut track at position
     async cutTrackAtTime(trackId, cutTime) {
         const track = this.tracks.find(t => t.id === trackId);
@@ -2344,6 +2409,7 @@ window.loadVipProject = () => minidaw.loadVipProject();   // import .vip — man
 // Fluxo NOVO (Supabase): salvar/reabrir projeto com áudio de verdade.
 window.salvarProjetoSupabase = () => minidaw.salvarProjetoSupabase();
 window.abrirMeusProjetos = () => minidaw.abrirMeusProjetos();
+window.abrirBibliotecaModal = () => minidaw.abrirBibliotecaModal();
 
 // Efeitos de áudio
 window.updateReverbAmount = (id, amount) => minidaw.updateReverbAmount(id, amount);
