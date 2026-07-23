@@ -1277,10 +1277,11 @@ def get_client_delivery_upload_url():
         # 'entrega' = prévia com carimbo que o cliente ouve; 'final' = arquivo
         # definitivo sem carimbo (só baixa depois de pago); 'amostra' = referência
         # de voz que o cliente anexa ao pedir ajuste; 'analise' = voz que o estúdio
-        # sobe pro VoxCraft analisar. Allowlist fechada (folder é do backend).
+        # sobe pro VoxCraft analisar; 'projeto' = áudio das faixas de um projeto da
+        # MiniDAW salvo (voz/trilha). Allowlist fechada (folder é do backend).
         kind = data.get('kind', 'entrega')
         pasta = {'amostra': 'amostras', 'analise': 'analises',
-                 'final': 'finais'}.get(kind, 'entregas')
+                 'final': 'finais', 'projeto': 'projetos'}.get(kind, 'entregas')
 
         import uuid
         file_extension = os.path.splitext(filename)[1]
@@ -7897,25 +7898,25 @@ def agents_deployer():
 # =====================================================================
 # Projetos VIP — Audio Pank Studio (salvar/abrir projetos da MiniDAW)
 # =====================================================================
-def _vip_file():
-    # Vercel: filesystem read-only exceto /tmp (persistência efêmera por instância)
-    if os.environ.get('VERCEL'):
-        return os.path.join('/tmp', 'vip_projects.json')
-    return os.path.join(os.path.dirname(__file__), '..', 'vip_projects.json')
+MINIDAW_PROJECTS_TABLE = 'minidaw_projects'
 
 def load_vip_projects():
-    f = _vip_file()
-    if os.path.exists(f):
-        try:
-            with open(f, 'r', encoding='utf-8') as fp:
-                return json.load(fp)
-        except Exception:
-            return []
-    return []
+    """Lê os projetos da MiniDAW do Supabase (ykswh).
 
-def save_vip_projects(projects):
-    with open(_vip_file(), 'w', encoding='utf-8') as fp:
-        json.dump(projects, fp, ensure_ascii=False, indent=2)
+    Substitui o /tmp/vip_projects.json antigo, que na Vercel era efêmero por
+    instância -> o projeto "sumia" ao reabrir. Agora persiste de verdade.
+    O áudio das faixas NÃO fica na linha: cada faixa carrega um `audio_path`
+    (bucket client-deliveries, pasta projetos/) e o download é por signed URL.
+    """
+    if not supabase_manager or not supabase_manager.newpost_manager_client:
+        return []
+    try:
+        r = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
+            .select('*').order('updated_at', desc=True).execute()
+        return r.data or []
+    except Exception as e:
+        print(f'[VIP] erro ao listar projetos: {e}')
+        return []
 
 def _vip_cors_preflight():
     response = make_response()
@@ -7948,38 +7949,37 @@ def save_vip_project():
     if request.method == 'OPTIONS':
         return _vip_cors_preflight()
     try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({'success': False, 'error': 'Supabase não configurado'}), 500
+
         data = request.get_json() or {}
         name = (data.get('name') or '').strip()
         if not name:
             return jsonify({'success': False, 'error': 'Nome do projeto é obrigatório'}), 400
 
-        projects = load_vip_projects()
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         pid = data.get('id') or str(uuid.uuid4())
+        is_new_project = not data.get('id')
 
-        project = {
+        # `tracks` já vem do navegador com os ajustes/efeitos + o audio_path de
+        # cada faixa (o áudio subiu antes, direto pro Storage via signed URL).
+        row = {
             'id': pid,
             'name': name,
-            'description': data.get('description', ''),
-            'projectId': data.get('projectId', ''),
             'roteiro': data.get('roteiro', ''),
             'tracks': data.get('tracks', []),
             'updated_at': now,
-            'created_at': data.get('created_at') or now,
         }
+        if is_new_project:
+            row['created_at'] = now
 
-        idx = next((i for i, p in enumerate(projects) if p.get('id') == pid), None)
-        is_new_project = idx is None
-        if idx is not None:
-            projects[idx] = project
-        else:
-            projects.insert(0, project)
-        save_vip_projects(projects)
+        supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
+            .upsert(row).execute()
 
-        if is_new_project and supabase_manager:
+        if is_new_project:
             supabase_manager.log_usage_event('project_saved')
 
-        return jsonify({'success': True, 'project': project})
+        return jsonify({'success': True, 'project': row})
     except Exception as e:
         print(f'[VIP] ERRO ao salvar: {e}')
         import traceback
@@ -7991,10 +7991,29 @@ def get_vip_project(project_id):
     if request.method == 'OPTIONS':
         return _vip_cors_preflight()
     try:
-        projects = load_vip_projects()
-        project = next((p for p in projects if p.get('id') == project_id), None)
-        if not project:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({'success': False, 'error': 'Supabase não configurado'}), 500
+
+        r = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
+            .select('*').eq('id', project_id).limit(1).execute()
+        if not r.data:
             return jsonify({'success': False, 'error': 'Projeto não encontrado'}), 404
+        project = r.data[0]
+
+        # Para cada faixa, gera uma signed URL de LEITURA do áudio (1h). O
+        # navegador baixa por ela e decodifica de volta pro buffer. Sem isto o
+        # projeto reabria só com os ajustes, sem som (o furo que a gente conserta).
+        for tr in (project.get('tracks') or []):
+            path = tr.get('audio_path')
+            tr['audio_url'] = None
+            if path:
+                try:
+                    signed = supabase_manager.newpost_manager_client.storage \
+                        .from_(CLIENT_DELIVERIES_BUCKET).create_signed_url(path, 3600)
+                    tr['audio_url'] = signed.get('signedURL') or signed.get('signedUrl')
+                except Exception as serr:
+                    print(f'[VIP] erro ao assinar audio {path}: {serr}')
+
         return jsonify({'success': True, 'project': project})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -8004,9 +8023,10 @@ def delete_vip_project(project_id):
     if request.method == 'OPTIONS':
         return _vip_cors_preflight()
     try:
-        projects = load_vip_projects()
-        new_list = [p for p in projects if p.get('id') != project_id]
-        save_vip_projects(new_list)
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({'success': False, 'error': 'Supabase não configurado'}), 500
+        supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
+            .delete().eq('id', project_id).execute()
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

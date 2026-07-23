@@ -696,11 +696,13 @@
                     </button>
                 </div>
                 <div class="project-controls">
-                    <button class="vip-save-btn" onclick="saveVipProject()" title="Salvar Projeto VIP">
-                        <i class="fas fa-star"></i>
-                        Salvar VIP
+                    <!-- Fluxo principal agora é o Supabase (salva com audio e reabre
+                         pela lista). O .vip de disco continua disponivel no menu. -->
+                    <button class="vip-save-btn" onclick="salvarProjetoSupabase()" title="Salvar projeto (voz + trilha + efeitos) no Supabase">
+                        <i class="fas fa-save"></i>
+                        Salvar Projeto
                     </button>
-                    <button class="control-btn" onclick="loadVipProject()" title="Carregar Projeto VIP">
+                    <button class="control-btn" onclick="abrirMeusProjetos()" title="Meus Projetos — reabrir com áudio">
                         <i class="fas fa-folder-open"></i>
                     </button>
                 </div>

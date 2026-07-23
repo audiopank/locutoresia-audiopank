@@ -2058,6 +2058,158 @@ class MiniDAW {
         input.click();
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // PROJETOS NO SUPABASE — salvar a mixagem (voz+trilha+efeitos) e reabrir
+    // DEPOIS trazendo o áudio de volta. Substitui o .vip de disco e o
+    // localStorage-sem-áudio, que faziam o projeto "voltar vazio".
+    // O áudio de cada faixa sobe pro Storage (signed URL, kind='projeto') e a
+    // linha guarda só o caminho — nada de base64 gigante.
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Sobe um WAV da faixa pro Storage e devolve o audio_path.
+    async _uploadAudioProjeto(blob) {
+        const ru = await fetch('/api/client-deliveries/upload-url', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: `faixa-${Date.now()}.wav`, kind: 'projeto' })
+        });
+        const u = await ru.json();
+        if (!u.success) throw new Error(u.error || 'Falha ao preparar o envio do áudio');
+        const fd = new FormData();
+        fd.append('file', blob, 'faixa.wav');
+        const up = await fetch(u.upload_url, {
+            method: 'PUT',
+            headers: { 'apikey': u.apikey, 'Authorization': `Bearer ${u.apikey}` },
+            body: fd
+        });
+        if (!up.ok) throw new Error('Falha ao enviar o áudio da faixa');
+        return u.path;
+    }
+
+    async salvarProjetoSupabase() {
+        const comAudio = this.tracks.filter(t => t.audioBuffer);
+        if (comAudio.length === 0) {
+            this.showNotification('Adicione voz/trilha antes de salvar', 'warning');
+            return;
+        }
+        const nome = prompt('Nome do projeto:', this.projetoNome || 'Meu projeto');
+        if (!nome) return;
+        try {
+            this.showNotification('Salvando projeto (enviando áudios)...', 'info');
+            const tracks = [];
+            for (const t of comAudio) {
+                const wav = this.bufferToWav(t.audioBuffer);
+                const audio_path = await this._uploadAudioProjeto(wav);
+                tracks.push({
+                    name: t.name, type: t.type,
+                    volume: t.volume, pan: t.pan,
+                    fadeIn: t.fadeIn, fadeOut: t.fadeOut,
+                    effects: t.effects, eqSettings: t.eqSettings,
+                    audio_path
+                });
+            }
+            const body = { name: nome, tracks };
+            if (this.projetoId) body.id = this.projetoId;   // atualiza em vez de duplicar
+            const r = await fetch('/api/projects', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'Falha ao salvar');
+            this.projetoId = d.project.id;
+            this.projetoNome = nome;
+            this.showNotification(`Projeto "${nome}" salvo! Reabra por "Meus Projetos".`, 'success');
+        } catch (e) {
+            this.showNotification('Erro ao salvar projeto: ' + e.message, 'error');
+        }
+    }
+
+    async abrirMeusProjetos() {
+        try {
+            const r = await fetch('/api/projects');
+            const d = await r.json();
+            const projetos = (d && d.projects) ? d.projects : [];
+            const esc = (s) => String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+            const modal = document.createElement('div');
+            modal.id = 'modal-projetos';
+            modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);' +
+                'display:flex;align-items:center;justify-content:center;padding:1rem;';
+            const linhas = projetos.length ? projetos.map(p => `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;
+                            background:#0e1424;border:1px solid #2a3350;border-radius:8px;padding:.6rem .8rem;margin-bottom:.5rem;">
+                    <div style="min-width:0;">
+                        <div style="color:#e6e8f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.name)}</div>
+                        <div style="color:#8b93a7;font-size:.75rem;">${p.tracks_count || 0} faixa(s) · ${(p.updated_at || '').slice(0,16).replace('T',' ')}</div>
+                    </div>
+                    <div style="display:flex;gap:.4rem;flex-shrink:0;">
+                        <button data-abrir="${esc(p.id)}" style="background:#22c55e;color:#052e16;border:none;border-radius:6px;padding:.4rem .7rem;font-weight:600;cursor:pointer;">Abrir</button>
+                        <button data-excluir="${esc(p.id)}" style="background:#3a1620;color:#f87171;border:1px solid #7f1d1d;border-radius:6px;padding:.4rem .6rem;cursor:pointer;">🗑️</button>
+                    </div>
+                </div>`).join('') : '<div style="color:#8b93a7;text-align:center;padding:1.5rem;">Nenhum projeto salvo ainda.</div>';
+
+            modal.innerHTML = `
+                <div style="background:#141a2e;border:1px solid #2a3350;border-radius:14px;max-width:520px;width:100%;padding:1.25rem;max-height:85vh;overflow:auto;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;">
+                        <h5 style="margin:0;color:#e6e8f0;">📂 Meus Projetos</h5>
+                        <button id="proj-fechar" style="background:#2a3350;color:#e6e8f0;border:none;border-radius:6px;padding:.35rem .7rem;cursor:pointer;">Fechar</button>
+                    </div>
+                    <div>${linhas}</div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            const fechar = () => modal.remove();
+            modal.querySelector('#proj-fechar').onclick = fechar;
+            modal.onclick = (e) => { if (e.target === modal) fechar(); };
+            modal.querySelectorAll('[data-abrir]').forEach(b =>
+                b.onclick = () => { fechar(); this.carregarProjetoSupabase(b.getAttribute('data-abrir')); });
+            modal.querySelectorAll('[data-excluir]').forEach(b =>
+                b.onclick = async () => {
+                    if (!confirm('Excluir este projeto? O áudio salvo continua no Storage.')) return;
+                    await fetch(`/api/projects/${b.getAttribute('data-excluir')}`, { method: 'DELETE' });
+                    fechar(); this.abrirMeusProjetos();
+                });
+        } catch (e) {
+            this.showNotification('Erro ao listar projetos: ' + e.message, 'error');
+        }
+    }
+
+    async carregarProjetoSupabase(id) {
+        try {
+            this.showNotification('Abrindo projeto...', 'info');
+            const r = await fetch(`/api/projects/${id}`);
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'Projeto não encontrado');
+            const proj = d.project;
+
+            this.clearAllTracks(true);   // true = sem confirmação
+
+            for (const td of (proj.tracks || [])) {
+                this.addTrack(td.type || 'music');
+                const track = this.tracks[this.tracks.length - 1];
+                // Restaura SÓ os ajustes — NÃO o id (manter o id novo evita o
+                // descasamento de DOM que o load do .vip tinha).
+                track.name      = td.name ?? track.name;
+                track.volume    = (td.volume    != null) ? td.volume    : 100;
+                track.pan       = (td.pan       != null) ? td.pan       : 0;
+                track.fadeIn    = (td.fadeIn    != null) ? td.fadeIn    : 0;
+                track.fadeOut   = (td.fadeOut   != null) ? td.fadeOut   : 0;
+                track.effects   = td.effects    || track.effects;
+                track.eqSettings= td.eqSettings || track.eqSettings;
+                if (td.audio_url) {
+                    await this.loadAudioFromUrl(td.audio_url, track.id, td.name);
+                }
+                this.updateTrackUI(track);
+            }
+            this.projetoId = proj.id;
+            this.projetoNome = proj.name;
+            this.showNotification(`Projeto "${proj.name}" aberto com áudio e efeitos!`, 'success');
+        } catch (e) {
+            this.showNotification('Erro ao abrir projeto: ' + e.message, 'error');
+        }
+    }
+
     // Cut track at position
     async cutTrackAtTime(trackId, cutTime) {
         const track = this.tracks.find(t => t.id === trackId);
@@ -2187,8 +2339,11 @@ window.toggleScissorMode = () => minidaw.toggleScissorMode();
 window.stopPlayback = () => minidaw.stopPlayback();
 window.trackZoomIn = (id) => minidaw.trackZoomIn(id);
 window.trackZoomOut = (id) => minidaw.trackZoomOut(id);
-window.saveVipProject = () => minidaw.saveVipProject();
-window.loadVipProject = () => minidaw.loadVipProject();
+window.saveVipProject = () => minidaw.saveVipProject();   // export .vip (backup em disco) — mantido
+window.loadVipProject = () => minidaw.loadVipProject();   // import .vip — mantido
+// Fluxo NOVO (Supabase): salvar/reabrir projeto com áudio de verdade.
+window.salvarProjetoSupabase = () => minidaw.salvarProjetoSupabase();
+window.abrirMeusProjetos = () => minidaw.abrirMeusProjetos();
 
 // Efeitos de áudio
 window.updateReverbAmount = (id, amount) => minidaw.updateReverbAmount(id, amount);
