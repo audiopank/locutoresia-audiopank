@@ -8004,15 +8004,20 @@ def get_vip_project(project_id):
         # navegador baixa por ela e decodifica de volta pro buffer. Sem isto o
         # projeto reabria só com os ajustes, sem som (o furo que a gente conserta).
         for tr in (project.get('tracks') or []):
-            path = tr.get('audio_path')
             tr['audio_url'] = None
+            path = tr.get('audio_path')
             if path:
+                # Áudio subido pra pasta projetos/ (voz gerada) -> signed URL 1h.
                 try:
                     signed = supabase_manager.newpost_manager_client.storage \
                         .from_(CLIENT_DELIVERIES_BUCKET).create_signed_url(path, 3600)
                     tr['audio_url'] = signed.get('signedURL') or signed.get('signedUrl')
                 except Exception as serr:
                     print(f'[VIP] erro ao assinar audio {path}: {serr}')
+            elif tr.get('audio_url_direct'):
+                # Faixa que já estava no Storage com URL pública estável (ex.:
+                # trilha da Biblioteca). Usa direto, sem assinar.
+                tr['audio_url'] = tr['audio_url_direct']
 
         return jsonify({'success': True, 'project': project})
     except Exception as e:

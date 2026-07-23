@@ -2099,19 +2099,29 @@ class MiniDAW {
             const tracks = [];
             for (let i = 0; i < comAudio.length; i++) {
                 const t = comAudio[i];
-                passo = `converter faixa ${i + 1} (${t.name}) para WAV`;
-                console.log('[projeto] ' + passo);
-                const wav = this.bufferToWav(t.audioBuffer);
-                passo = `enviar áudio da faixa ${i + 1} (${t.name}) — ${(wav.size / 1024 / 1024).toFixed(1)}MB`;
-                console.log('[projeto] ' + passo);
-                const audio_path = await this._uploadAudioProjeto(wav);
-                tracks.push({
+                const td = {
                     name: t.name, type: t.type,
                     volume: t.volume, pan: t.pan,
                     fadeIn: t.fadeIn, fadeOut: t.fadeOut,
-                    effects: t.effects, eqSettings: t.eqSettings,
-                    audio_path
-                });
+                    effects: t.effects, eqSettings: t.eqSettings
+                };
+                if (t.audioUrl && /^https?:/i.test(t.audioUrl)) {
+                    // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
+                    // /object/public/...). NÃO reenvia — evita reupload de arquivo
+                    // grande (era o gargalo) e aponta direto pra URL pública.
+                    passo = `referenciar faixa ${i + 1} (${t.name}) — já no Storage`;
+                    console.log('[projeto] ' + passo);
+                    td.audio_url_direct = t.audioUrl;
+                } else {
+                    // Voz gerada / arquivo local (blob:) — sobe o WAV.
+                    passo = `converter faixa ${i + 1} (${t.name}) para WAV`;
+                    console.log('[projeto] ' + passo);
+                    const wav = this.bufferToWav(t.audioBuffer);
+                    passo = `enviar áudio da faixa ${i + 1} (${t.name}) — ${(wav.size / 1024 / 1024).toFixed(1)}MB`;
+                    console.log('[projeto] ' + passo);
+                    td.audio_path = await this._uploadAudioProjeto(wav);
+                }
+                tracks.push(td);
             }
             passo = 'gravar o projeto no banco';
             console.log('[projeto] ' + passo);
