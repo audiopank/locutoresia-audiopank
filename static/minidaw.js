@@ -2093,11 +2093,17 @@ class MiniDAW {
         }
         const nome = prompt('Nome do projeto:', this.projetoNome || 'Meu projeto');
         if (!nome) return;
+        let passo = 'início';
         try {
             this.showNotification('Salvando projeto (enviando áudios)...', 'info');
             const tracks = [];
-            for (const t of comAudio) {
+            for (let i = 0; i < comAudio.length; i++) {
+                const t = comAudio[i];
+                passo = `converter faixa ${i + 1} (${t.name}) para WAV`;
+                console.log('[projeto] ' + passo);
                 const wav = this.bufferToWav(t.audioBuffer);
+                passo = `enviar áudio da faixa ${i + 1} (${t.name}) — ${(wav.size / 1024 / 1024).toFixed(1)}MB`;
+                console.log('[projeto] ' + passo);
                 const audio_path = await this._uploadAudioProjeto(wav);
                 tracks.push({
                     name: t.name, type: t.type,
@@ -2107,6 +2113,8 @@ class MiniDAW {
                     audio_path
                 });
             }
+            passo = 'gravar o projeto no banco';
+            console.log('[projeto] ' + passo);
             const body = { name: nome, tracks };
             if (this.projetoId) body.id = this.projetoId;   // atualiza em vez de duplicar
             const r = await fetch('/api/projects', {
@@ -2114,12 +2122,15 @@ class MiniDAW {
                 body: JSON.stringify(body)
             });
             const d = await r.json();
-            if (!d.success) throw new Error(d.error || 'Falha ao salvar');
+            if (!d.success) throw new Error(d.error || 'Falha ao gravar no banco');
             this.projetoId = d.project.id;
             this.projetoNome = nome;
+            console.log('[projeto] salvo:', d.project.id);
             this.showNotification(`Projeto "${nome}" salvo! Reabra por "Meus Projetos".`, 'success');
         } catch (e) {
-            this.showNotification('Erro ao salvar projeto: ' + e.message, 'error');
+            console.error('[projeto] FALHOU em:', passo, e);
+            // alert (não some) pra o erro não passar despercebido como antes.
+            alert(`Não consegui salvar o projeto.\nOnde parou: ${passo}\nErro: ${e.message}`);
         }
     }
 
