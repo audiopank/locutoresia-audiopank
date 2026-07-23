@@ -468,27 +468,15 @@
                     <button class="clear-logs" onclick="clearLogs()">🗑️ Limpar logs</button>
                 </div>
 
-                <div class="card" style="margin-top: 24px;">
-                    <h2>📊 Publicações Salvas</h2>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <span style="color: #94a3b8; font-size: 14px;">Total: <span id="totalPublications" style="color: #4ade80; font-weight: bold; font-size: 16px;">0</span></span>
-                        <div style="display: flex; gap: 8px;">
-                            <button onclick="loadPublications()" class="button button-outline" style="padding: 8px 16px; font-size: 12px; background-color: #3b82f6; border-color: #3b82f6; color: white;">
-                                🔄 Atualizar
-                            </button>
-                            <button onclick="clearPublications()" class="button button-outline" style="padding: 8px 16px; font-size: 12px; background-color: #ef4444; border-color: #ef4444; color: white;">
-                                🗑️ Limpar
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div id="publicationsList" style="max-height: 300px; overflow-y: auto;">
-                        <div style="color: #64748b; text-align: center; padding: 32px; font-style: italic;">
-                            Nenhuma publicação ainda...
-                        </div>
-                    </div>
-                </div>
+                <!-- Painel "Publicações Salvas" REMOVIDO (22/07/2026): era um 3º
+                     lugar de curadoria, redundante e furado. A lista vinha de um
+                     cache em memória (social_posts_store) com IDs fantasmas e status
+                     que não batia com o banco; Editar/Aprovar/Postar mentiam sucesso
+                     (não checavam linha afetada); Limpar dava 405 (rota DELETE
+                     inexistente). A curadoria de verdade é o /social-posts (Posts
+                     Sociais), que funciona. As funções JS (loadPublications etc.)
+                     ficam no arquivo, inertes — loadPublications tem guard e
+                     retorna cedo sem o elemento. Da pra ressuscitar se quiser. -->
 
                 <div class="info-box">
                     <h3>ℹ️ Configuração do Sistema</h3>
@@ -847,6 +835,10 @@
         }
 
         async function loadPublications() {
+            // Painel "Publicações Salvas" foi removido — sem o elemento na página,
+            // não há o que preencher. Guard evita TypeError na chamada de
+            // DOMContentLoaded e nas de pós-busca, que continuam existindo.
+            if (!document.getElementById('publicationsList')) return;
             try {
                 const response = await fetch(`${API_BASE}/api/social/posts`);
                 
