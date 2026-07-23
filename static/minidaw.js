@@ -21,12 +21,18 @@ class MiniDAW {
         // muda o áudio. Mantido pra não quebrar quem lê, mas não confie nele.
         this.autoFadeDuration = 1.10;
 
-        // DUCKING — o quanto a trilha abaixa embaixo da voz (multiplicador do
-        // volume da faixa). Ajuste este número de ouvido:
-        //   0.28 ≈ -11 dB  trilha quase some (era o valor inicial, ficou baixo demais)
-        //   0.45 ≈  -7 dB  trilha presente embaixo da voz  ← padrão atual
-        //   0.60 ≈  -4 dB  trilha bem audível, disputa mais com a locução
+        // ── DUCKING — TODOS os ajustes num lugar só, afináveis de ouvido ──
+        // duckGain: o quanto a trilha abaixa embaixo da voz (multiplicador).
+        //   0.28 ≈ -11 dB (quase some) | 0.45 ≈ -7 dB (padrão) | 0.60 ≈ -4 dB
         this.duckGain = 0.45;
+        // duckAttack: tempo pra ABAIXAR quando a voz entra. Menor = mais brusco.
+        //   0.08 era abrupto ("baixa de uma vez"); 0.20 desce suave sem tapar a sílaba.
+        this.duckAttack = 0.20;
+        // duckRelease: tempo pra SUBIR quando a voz para. Maior = mais suave.
+        this.duckRelease = 0.65;
+        // duckHold: pausas menores que isso NÃO soltam a trilha. Era 0.30 e a trilha
+        //   pulava (bombeava) entre frases; 0.70 mantém ela quieta nas respiradas.
+        this.duckHold = 0.70;
 
         this.voiceEndDetected = new Map();
         
@@ -1098,7 +1104,7 @@ class MiniDAW {
     // que dá vida ao spot.
     detectarTrechosDeVoz(voiceTracks) {
         const JANELA = 0.03;      // 30ms — resolução da análise
-        const HOLD = 0.30;        // junta trechos separados por menos que isso
+        const HOLD = this.duckHold; // junta trechos separados por menos que isso
         const segmentos = [];
 
         for (const track of voiceTracks) {
@@ -1164,7 +1170,7 @@ class MiniDAW {
     // partir de audioContext.currentTime. Sem o offset, o ducking no preview
     // cairia todo no passado e não aconteceria nada.
     aplicarDucking(gainParam, trechos, nivel, ateQuando, offset = 0) {
-        const ATTACK = 0.08, RELEASE = 0.45;
+        const ATTACK = this.duckAttack, RELEASE = this.duckRelease;
         if (!trechos.length) return false;
         const abaixado = nivel * this.duckGain;
 
