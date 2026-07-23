@@ -7633,15 +7633,11 @@ def api_publish_to_newpost():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/busca-noticias')
-def busca_noticias_page():
-    """Página de Busca de Notícias + Geração de Posts"""
-    return render_template('busca-noticias.html')
-
-@app.route('/ai-dashboard')
-def ai_dashboard():
-    """Rota para Central IA Autônoma - Notícias Reais via RSS"""
-    return render_template('ai_dashboard.html')
+# Rotas /busca-noticias e /ai-dashboard REMOVIDAS daqui (22/07/2026): eram
+# definições DUPLICADAS. As originais ficam em busca_noticias() (~L2538) e
+# ai_dashboard_page() (~L4064), que renderizam os mesmos templates. O Flask
+# resolvia pela primeira e estas segundas ficavam mortas (inalcançáveis por URL).
+# Removidas pra não confundir quem edita.
 
 @app.route('/api/news/automation/status', methods=['GET'])
 def api_news_automation_status():
