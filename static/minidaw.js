@@ -2463,12 +2463,11 @@ window.updateEQ = (id, band, value) => minidaw.updateEQ(id, band, value);
 window.togglePlayback = () => minidaw.togglePlayback();
 window.setFormat = (format) => minidaw.setFormat(format);
 window.exportMix = () => minidaw.exportMix();
-// Otimizar 1-clique: seta o alvo de loudness, exporta, e volta o alvo pra null
-// (pra o "Exportar" normal continuar sem otimizacao).
+// Otimizar 1-clique: usa o alvo ALTO (streaming), que o usuario aprovou como
+// "claro, forte, com brilho". Exporta e volta o alvo pra null (pra o "Exportar"
+// normal continuar sem otimizacao).
 window.exportarOtimizado = () => {
-    const sel = document.getElementById('otimizarAlvo');
-    const preset = sel ? sel.value : 'streaming';
-    minidaw.masterTarget = minidaw.otimizarPresets[preset] ?? minidaw.otimizarPresets.streaming;
+    minidaw.masterTarget = minidaw.otimizarPresets.streaming;
     Promise.resolve(minidaw.exportMix()).finally(() => { minidaw.masterTarget = null; });
 };
 window.normalizeVolumes = () => minidaw.normalizeVolumes();
