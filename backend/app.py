@@ -7427,13 +7427,21 @@ def api_fetch_news():
                 fonte = getattr(getattr(entry, 'source', {}), 'title', 'Fonte') if hasattr(entry, 'source') else 'Fonte'
                 link = getattr(entry, 'link', '')
             
+            # LIMPEZA: o resumo do RSS vem com HTML cru (tags <img> de logo/imagem
+            # gigante, links, texto enorme). strip_html tira as tags (some a imagem)
+            # e a gente limita o tamanho pra virar um resumo de verdade, não um
+            # textão. Era isso que deixava a prévia bagunçada.
+            titulo_limpo = strip_html(titulo).strip()
+            resumo_limpo = strip_html(resumo).strip()
+            if len(resumo_limpo) > 600:
+                resumo_limpo = resumo_limpo[:600].rsplit(' ', 1)[0] + '…'
             news_list.append({
-                "titulo": titulo,
-                "resumo": resumo,
+                "titulo": titulo_limpo,
+                "resumo": resumo_limpo,
                 "fonte": fonte,
                 "link": link
             })
-        
+
         return jsonify({
             "success": True,
             "data": {
@@ -7560,74 +7568,67 @@ def api_publish_to_newpost():
         return response
     
     try:
-        print("[DEBUG] Getting JSON data!")
-        data = request.get_json()
-        print(f"[DEBUG] Data received: {data}")
-        title = data.get('titulo', data.get('title', '')).strip()
-        content = data.get('conteudo', data.get('content', '')).strip()
-        author_id = data.get('author_id', data.get('authorId'))
-        
-        if not author_id:
-            author_id = os.getenv("NEWPOST_AUTHOR_ID")
-        
-        # 1. Publicar na NewPost-IA Manager (ykswhzqdjoshjoaruhqs)
-        from core.supabase_manager import SupabaseManager
-        supabase_mgr = SupabaseManager()
-        result = supabase_mgr.publish_to_newpost(title, content, author_id)
-        
-        # 2. Publicar no PlugPost Feed (hzmtdfojctctvgqjdbex - PROJETO DA LOVABLE!)
-        try:
-            plugpost_url = 'https://hzmtdfojctctvgqjdbex.supabase.co'
-            plugpost_key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM'
-            plugpost_author_id = '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3'
-            
-            if plugpost_url and plugpost_key:
-                print(f"[DEBUG] Publishing to PlugPost (busca-noticias): {plugpost_url}")
-                
-                # Payload EXATO do usuário (sem campo privacy!)
-                plugpost_payload = {
-                    "author_id": author_id or plugpost_author_id,
-                    "title": title,
-                    "content": f"📰 {title}\n\n{content}",
-                    "status": "published",
-                    "is_ia_generated": True,
-                    "source_url": str(uuid.uuid4()),
-                    "category": "geral",
-                    "tags": ["NewPostIA", "LocutoresIA"]
-                }
-                
-                headers = {
-                    "apikey": plugpost_key,
-                    "Authorization": f"Bearer {plugpost_key}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=representation"
-                }
-                
-                plugpost_response, plugpost_payload = insert_post_resiliente(
-                    f"{plugpost_url}/rest/v1/posts",
-                    plugpost_payload,
-                    headers,
-                    timeout=30
-                )
-                
-                if plugpost_response.status_code in (200, 201):
-                    plugpost_data = plugpost_response.json()
-                    print(f"[DEBUG] PlugPost publish SUCCESS (busca-noticias)! Post ID: {plugpost_data[0]['id'] if plugpost_data else 'N/A'}")
-                    # Atualiza o resultado com o ID do PlugPost
-                    if plugpost_data and len(plugpost_data) > 0:
-                        result["plugpost_post_id"] = plugpost_data[0]['id']
-                        result["success"] = True  # Garante que retorne sucesso
-                else:
-                    print(f"[DEBUG] PlugPost publish failed (busca-noticias): {plugpost_response.status_code} - {plugpost_response.text}")
-            else:
-                print(f"[DEBUG] Skipping PlugPost (busca-noticias): missing credentials")
-                
-        except Exception as plugpost_err:
-            print(f"[DEBUG] PlugPost error (busca-noticias): {plugpost_err}")
-            import traceback
-            traceback.print_exc()
-        
-        return jsonify(result)
+        data = request.get_json() or {}
+        title = str(data.get('titulo', data.get('title', '')) or '').strip()
+        content = str(data.get('conteudo', data.get('content', '')) or '').strip()
+        categoria = str(data.get('categoria', data.get('category', '')) or 'geral').strip()
+        link = str(data.get('link', '') or '').strip()
+
+        if not content and not title:
+            return jsonify({"success": False, "error": "Post vazio"}), 400
+
+        # Publica DIRETO no FEED (hzmt) como "Futuro em Pauta", via anon key.
+        # Antes tentava 2 caminhos, os 2 furados: gravar no ykswh (source_url
+        # vazio -> 23505 duplicado) e no hzmt com uma service key MORTA hardcoded.
+        # O feed é o hzmt, e a anon dele funciona pra inserir (comprovado). O
+        # limite (nao editar/apagar por aqui) o usuario aceita: edita no app da
+        # Lovable logado como Futuro em Pauta.
+        FUTURO_EM_PAUTA_ID = '4ac786cc-a640-4c7f-a12f-5031731044bf'
+        feed_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+        feed_key = os.getenv('SUPABASE_ANON_KEY', '')
+        if not feed_key:
+            return jsonify({"success": False, "error": "SUPABASE_ANON_KEY (feed) não configurada"}), 500
+
+        # Sempre publica como Futuro em Pauta (o perfil do usuario no feed).
+        autor = FUTURO_EM_PAUTA_ID
+
+        # Garante conteudo limpo (o front ja manda montado, mas nao custa) e um
+        # source_url UNICO: usa o link real da noticia (dedup natural — o mesmo
+        # artigo nao posta 2x) ou um uuid quando nao ha link.
+        conteudo = strip_html(content or title).strip()
+        src = link if link.lower().startswith('http') else str(uuid.uuid4())
+
+        payload = {
+            "author_id": autor,
+            "content": conteudo,
+            "status": "published",
+            "is_ia_generated": True,
+            "source_url": src,
+            "category": categoria or 'geral',
+            "tags": data.get('tags') or ["Notícias", "FuturoEmPauta"],
+        }
+        headers = {
+            "apikey": feed_key,
+            "Authorization": f"Bearer {feed_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        }
+        resp, payload = insert_post_resiliente(f"{feed_url}/rest/v1/posts", payload, headers, timeout=30)
+
+        if resp is not None and resp.status_code in (200, 201):
+            d = resp.json()
+            pid = d[0]['id'] if isinstance(d, list) and d else None
+            return jsonify({"success": True, "message": "Publicado no feed como Futuro em Pauta",
+                            "post_id": pid, "author": "Futuro em Pauta"})
+
+        texto = getattr(resp, 'text', '') or ''
+        if '23505' in texto:
+            # source_url duplicado = esse ARTIGO ja foi publicado antes. Nao e erro.
+            return jsonify({"success": False, "already": True,
+                            "error": "Esta notícia já foi publicada antes (mesmo link)."}), 200
+
+        return jsonify({"success": False,
+                        "error": f"Falha ao publicar no feed ({getattr(resp,'status_code','?')}): {texto[:200]}"}), 200
     except Exception as e:
         print(f"Erro publish to newpost: {e}")
         import traceback

@@ -460,7 +460,9 @@
                 
                 const data = await response.json();
                 if (data.success) {
-                    showToast('✅ Post publicado na NewPost-IA com sucesso!');
+                    showToast('✅ Publicado no feed como Futuro em Pauta!');
+                } else if (data.already) {
+                    showToast('ℹ️ Essa notícia já foi publicada antes (mesmo link).', 'error');
                 } else {
                     showToast(`❌ Erro: ${data.error}`, 'error');
                 }
