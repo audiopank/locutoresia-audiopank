@@ -496,53 +496,47 @@ except ImportError:
     print("⚠️ feedparser não instalado, usando notícias mockadas")
 
 # Fontes RSS (Notícias Reais)
+# Feeds VERIFICADOS vivos em 24/07/2026 (testados: 200 + itens). Os antigos
+# tinham muito feed morto (techtudo 400, exame 404, ge.globo/lance/globoesporte
+# — Esportes estava 0/3 e caía no MOCK; oglobo/gazeta/diario/veja retornavam 0).
+# g1/* e forbes são estáveis; UOL só funciona no host rss.uol.com.br/feed/*.xml.
 RSS_FEEDS = {
     "Tecnologia": [
         "https://g1.globo.com/rss/g1/tecnologia/",
-        "https://techtudo.com.br/rss/feed/",
         "https://olhardigital.com.br/feed/",
-        "https://exame.com/tecnologia/feed/"
+        "http://rss.uol.com.br/feed/tecnologia.xml",
     ],
     "Economia": [
-        "https://exame.com/mercados/feed/",
         "https://g1.globo.com/rss/g1/economia/",
-        "https://forbes.com.br/feed/"
+        "https://forbes.com.br/feed/",
+        "http://rss.uol.com.br/feed/economia.xml",
     ],
     "Esportes": [
-        "https://ge.globo.com/rss/ultimas-noticias/",
-        "https://www.lance.com.br/rss/ultimas-noticias/",
-        "https://globoesporte.globo.com/rss/feed/"
+        "http://rss.uol.com.br/feed/esporte.xml",   # os 3 do g1/ge/lance morreram
     ],
     "Política": [
         "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml",
-        "https://noticias.uol.com.br/politica/ultimas-noticias/feed/",
-        "https://g1.globo.com/rss/g1/politica/"
+        "https://g1.globo.com/rss/g1/politica/",
     ],
     "Saúde": [
         "https://g1.globo.com/rss/g1/saude/",
-        "https://noticias.uol.com.br/saude/ultimas-noticias/feed/"
     ],
     "Ciência": [
         "https://g1.globo.com/rss/g1/ciencia-e-saude/",
-        "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml"
+        "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml",
     ],
     "Entretenimento": [
         "https://g1.globo.com/rss/g1/pop-arte/",
-        "https://entretenimento.uol.com.br/feed/ultimas-noticias/"
     ],
     "Turismo": [
         "https://g1.globo.com/rss/g1/turismo-e-viagem/",
-        "https://veja.abril.com.br/feed/turismo/"
     ],
     "Cultura": [
         "https://g1.globo.com/rss/g1/pop-arte/",
-        "https://veja.abril.com.br/feed/cultura/"
     ],
     "Notícias Gerais": [
         "https://g1.globo.com/rss/g1/",
-        "https://oglobo.globo.com/rss/",
-        "https://gazetadopovo.com.br/feed/",
-        "https://diariodonordeste.verdesmares.com.br/feed/"
+        "http://rss.uol.com.br/feed/economia.xml",
     ]
 }
 
@@ -596,26 +590,27 @@ def fetch_news_from_rss(category="Tecnologia", limit=7):
         ]
     }
     
+    # MOCK DESATIVADO: devolver notícia inventada que PARECE real é perigoso — o
+    # usuário quase publicou "Brasil vence partida importante" (falsa) como notícia.
+    # Sem feedparser ou sem resultado, retorna vazio e a tela diz "nada encontrado".
     if not HAS_FEEDPARSER:
-        return mock_news.get(category, mock_news["Notícias Gerais"])[:limit]
-    
+        return []
+
     feeds = RSS_FEEDS.get(category, RSS_FEEDS["Tecnologia"])
     all_entries = []
     
     for feed_url in feeds:
         try:
             feed = feedparser.parse(feed_url)
-            entries = feed.entries[:3]
+            entries = feed.entries[:6]   # até 6 por feed (era 3 — categorias com 1 feed só traziam 3)
             all_entries.extend(entries)
         except Exception as e:
             print(f"Erro no feed {feed_url}: {e}")
             continue
     
     all_entries = all_entries[:limit]
-    
-    if not all_entries:
-        return mock_news.get(category, mock_news["Notícias Gerais"])[:limit]
-    
+
+    # Sem resultado real → vazio (NUNCA mock/notícia inventada).
     return all_entries
 
 # Importar agente de notícias de forma segura (apenas se não estiver no Vercel)
