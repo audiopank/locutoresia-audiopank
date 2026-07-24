@@ -1204,6 +1204,112 @@ class MiniDAW {
         return true;
     }
 
+    // ── ENCURTAR PAUSAS (strip silence) ─────────────────────────────────
+    // Reconstrói o buffer de voz encurtando o SILÊNCIO entre as falas pra no
+    // máximo `pausaMax` segundos. A fala fica intacta (com folga de 60ms nas
+    // pontas pra não cortar palavra/respiração) e há um fade de 6ms nas junções
+    // pra não dar clique. Reusa detectarTrechosDeVoz (mesma detecção do ducking).
+    // O `pausaMax` é o controle do usuário: maior = mais respiro (não sufoca).
+    encurtarPausas(buffer, trechos, pausaMax) {
+        const sr = buffer.sampleRate;
+        const nch = buffer.numberOfChannels;
+        const N = buffer.length;
+        if (!trechos || trechos.length === 0) return buffer;   // sem fala: não mexe
+
+        const PAD = Math.round(0.06 * sr);                       // 60ms de folga
+        const CAP = Math.round(Math.max(0.05, pausaMax) * sr);   // pausa máx (min 50ms)
+        const XF = Math.round(0.006 * sr);                       // 6ms fade anti-clique
+        const clamp = (x) => Math.max(0, Math.min(N, x));
+        const segs = trechos.map(([a, b]) => [Math.round(a * sr), Math.round(b * sr)]);
+
+        // Monta as faixas [ini,fim] (amostras) a copiar; o excedente de silêncio
+        // entre elas é PULADO.
+        const ranges = [];
+        for (let i = 0; i < segs.length; i++) {
+            let ini = clamp(segs[i][0] - PAD);
+            let fim = clamp(segs[i][1] + PAD);
+            if (i === 0) ini = clamp(segs[0][0] - CAP);          // pré-silêncio capado
+            if (i < segs.length - 1) {
+                const proxIni = clamp(segs[i + 1][0] - PAD);
+                const gap = proxIni - fim;
+                fim = fim + Math.max(0, Math.min(gap, CAP));     // mantém só CAP de silêncio
+            } else {
+                fim = clamp(fim + CAP);                          // tail capado
+            }
+            if (ranges.length && ini <= ranges[ranges.length - 1][1]) {
+                ranges[ranges.length - 1][1] = Math.max(ranges[ranges.length - 1][1], fim);
+            } else {
+                ranges.push([ini, fim]);
+            }
+        }
+
+        const outLen = ranges.reduce((s, [a, b]) => s + (b - a), 0);
+        if (outLen <= 0 || outLen >= N) return buffer;           // nada a ganhar
+
+        const out = this.audioContext.createBuffer(nch, outLen, sr);
+        for (let ch = 0; ch < nch; ch++) {
+            const src = buffer.getChannelData(ch);
+            const dst = out.getChannelData(ch);
+            let pos = 0;
+            for (let r = 0; r < ranges.length; r++) {
+                for (let i = ranges[r][0]; i < ranges[r][1]; i++) dst[pos++] = src[i];
+            }
+            // fades curtos nas junções (silêncio, mas garante zero clique)
+            let acc = 0;
+            for (let r = 0; r < ranges.length; r++) {
+                const len = ranges[r][1] - ranges[r][0];
+                if (r > 0) for (let k = 0; k < XF && k < len; k++) dst[acc + k] *= k / XF;
+                if (r < ranges.length - 1) for (let k = 0; k < XF && k < len; k++) dst[acc + len - 1 - k] *= k / XF;
+                acc += len;
+            }
+        }
+        return out;
+    }
+
+    // Aplica o encurtar em todas as faixas de voz. Guarda o buffer ORIGINAL na
+    // primeira vez, e aplica SEMPRE a partir dele — assim o usuário mexe no valor
+    // e re-aplica sem degradar, e o Desfazer volta 100%.
+    encurtarPausasVoz(pausaMax) {
+        if (!this.vozOriginais) this.vozOriginais = new Map();
+        const vozes = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
+        if (vozes.length === 0) { this.showNotification('Nenhuma voz na timeline', 'warning'); return; }
+
+        let mexeu = false;
+        for (const t of vozes) {
+            if (!this.vozOriginais.has(t.id)) this.vozOriginais.set(t.id, t.audioBuffer);
+            const original = this.vozOriginais.get(t.id);
+            const trechos = this.detectarTrechosDeVoz([{ audioBuffer: original }]);
+            const novo = this.encurtarPausas(original, trechos, pausaMax);
+            t.audioBuffer = novo;
+            t.duration = novo.duration;
+            this.drawWaveform(t);
+            if (novo.duration < original.duration - 0.01) mexeu = true;
+        }
+        // recalcula a duração total
+        this.duration = Math.max(0, ...this.tracks.filter(t => t.audioBuffer).map(t => t.duration));
+        this.updateDuration();
+        this.showNotification(mexeu
+            ? `Pausas encurtadas (máx ${pausaMax}s entre falas). Ouça — se sufocou, aumente o valor.`
+            : 'Nenhuma pausa longa pra encurtar nesse valor.', mexeu ? 'success' : 'info');
+    }
+
+    desfazerEncurtar() {
+        if (!this.vozOriginais || this.vozOriginais.size === 0) {
+            this.showNotification('Nada pra desfazer', 'info'); return;
+        }
+        for (const t of this.tracks) {
+            if (t.type === 'voice' && this.vozOriginais.has(t.id)) {
+                t.audioBuffer = this.vozOriginais.get(t.id);
+                t.duration = t.audioBuffer.duration;
+                this.drawWaveform(t);
+            }
+        }
+        this.vozOriginais.clear();
+        this.duration = Math.max(0, ...this.tracks.filter(t => t.audioBuffer).map(t => t.duration));
+        this.updateDuration();
+        this.showNotification('Voz restaurada ao original', 'success');
+    }
+
     // Normaliza o loudness do mix renderizado pro alvo (dBFS RMS aprox.) e aplica
     // um soft-limiter (tanh) no teto de -1dB. Dá o "alto e consistente": todo
     // export sai no mesmo nível, sem clipar. Trabalha in-place no buffer.
@@ -2470,6 +2576,15 @@ window.exportarOtimizado = () => {
     minidaw.masterTarget = minidaw.otimizarPresets.streaming;
     Promise.resolve(minidaw.exportMix()).finally(() => { minidaw.masterTarget = null; });
 };
+// Encurtar pausas: lê o input de pausa máxima e aplica na voz.
+window.encurtarPausas = () => {
+    const el = document.getElementById('pausaMax');
+    let v = el ? parseFloat(el.value) : 0.4;
+    if (!isFinite(v) || v <= 0) v = 0.4;
+    v = Math.max(0.1, Math.min(1.5, v));
+    minidaw.encurtarPausasVoz(v);
+};
+window.desfazerEncurtar = () => minidaw.desfazerEncurtar();
 window.normalizeVolumes = () => minidaw.normalizeVolumes();
 window.applyAutoFade = () => minidaw.applyAutoFade();
 window.clearAllTracks = () => minidaw.clearAllTracks();
