@@ -34,6 +34,18 @@ class MiniDAW {
         //   pulava (bombeava) entre frases; 0.70 mantém ela quieta nas respiradas.
         this.duckHold = 0.70;
 
+        // ── OTIMIZAR (mastering leve) ─────────────────────────────────────
+        // Alvo de loudness do "Otimizar 1-clique". null = desligado (export
+        // normal). Quando setado (dBFS RMS aprox.), o export normaliza o mix pro
+        // alvo e aplica soft-limiter em -1dB. NÃO é LUFS certificado — é
+        // "profissional, alto e consistente". Presets em otimizarPresets.
+        this.masterTarget = null;
+        this.otimizarPresets = {
+            streaming: -15,  // alto (YouTube/Insta/WhatsApp) — padrão
+            podcast:   -19,
+            radio:     -23,  // padrão de broadcast (mais baixo/normalizado)
+        };
+
         this.voiceEndDetected = new Map();
         
         this.init();
@@ -1192,6 +1204,45 @@ class MiniDAW {
         return true;
     }
 
+    // Normaliza o loudness do mix renderizado pro alvo (dBFS RMS aprox.) e aplica
+    // um soft-limiter (tanh) no teto de -1dB. Dá o "alto e consistente": todo
+    // export sai no mesmo nível, sem clipar. Trabalha in-place no buffer.
+    // NÃO é LUFS certificado (o navegador não mede LUFS de verdade) — é uma
+    // normalização por RMS, honesta e consistente.
+    masterizarBuffer(buffer, alvoDbfs) {
+        const nch = buffer.numberOfChannels;
+        // 1. mede RMS global e pico
+        let soma = 0, n = 0, pico = 0;
+        for (let ch = 0; ch < nch; ch++) {
+            const d = buffer.getChannelData(ch);
+            for (let i = 0; i < d.length; i++) {
+                soma += d[i] * d[i];
+                const a = Math.abs(d[i]);
+                if (a > pico) pico = a;
+            }
+            n += d.length;
+        }
+        const rms = Math.sqrt(soma / Math.max(1, n));
+        if (rms <= 0) return buffer;   // silêncio: nada a fazer
+
+        // 2. ganho pro alvo, com teto de +18dB (não amplifica faixa quase muda a ponto
+        //    de trazer ruído de fundo pra frente).
+        const alvoLin = Math.pow(10, alvoDbfs / 20);
+        let ganho = Math.min(alvoLin / rms, 7.94);   // 7.94 ≈ +18dB
+
+        // 3. aplica ganho + soft-limiter tanh no teto -1dBFS (0.891). tanh é
+        //    quase linear nos níveis normais e arredonda os picos suavemente,
+        //    mantendo alto sem clip duro.
+        const C = 0.8913;   // -1 dBFS
+        for (let ch = 0; ch < nch; ch++) {
+            const d = buffer.getChannelData(ch);
+            for (let i = 0; i < d.length; i++) {
+                d[i] = C * Math.tanh((d[i] * ganho) / C);
+            }
+        }
+        return buffer;
+    }
+
     async exportMix() {
         const tracksWithAudio = this.tracks.filter(t => t.audioBuffer);
         if (tracksWithAudio.length === 0) {
@@ -1367,6 +1418,13 @@ class MiniDAW {
 
             // Render
             const renderedBuffer = await offlineContext.startRendering();
+
+            // OTIMIZAR: se um alvo foi escolhido, normaliza o loudness do mix e
+            // limita os picos. É o "alto e consistente" do mastering leve.
+            if (this.masterTarget != null) {
+                this.updateMixingProgress(93, 'Otimizando (loudness + limiter)...');
+                this.masterizarBuffer(renderedBuffer, this.masterTarget);
+            }
 
             this.updateMixingProgress(95, 'Convertendo formato...');
 
@@ -2405,6 +2463,14 @@ window.updateEQ = (id, band, value) => minidaw.updateEQ(id, band, value);
 window.togglePlayback = () => minidaw.togglePlayback();
 window.setFormat = (format) => minidaw.setFormat(format);
 window.exportMix = () => minidaw.exportMix();
+// Otimizar 1-clique: seta o alvo de loudness, exporta, e volta o alvo pra null
+// (pra o "Exportar" normal continuar sem otimizacao).
+window.exportarOtimizado = () => {
+    const sel = document.getElementById('otimizarAlvo');
+    const preset = sel ? sel.value : 'streaming';
+    minidaw.masterTarget = minidaw.otimizarPresets[preset] ?? minidaw.otimizarPresets.streaming;
+    Promise.resolve(minidaw.exportMix()).finally(() => { minidaw.masterTarget = null; });
+};
 window.normalizeVolumes = () => minidaw.normalizeVolumes();
 window.applyAutoFade = () => minidaw.applyAutoFade();
 window.clearAllTracks = () => minidaw.clearAllTracks();

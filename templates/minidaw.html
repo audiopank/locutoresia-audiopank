@@ -788,6 +788,20 @@
                     <i class="fas fa-download me-1"></i>
                     Exportar
                 </button>
+                <!-- OTIMIZAR 1-clique: normaliza loudness (alto e consistente) +
+                     limiter -1dB e exporta. O seletor escolhe o alvo. -->
+                <div class="control-group">
+                    <select class="form-select form-select-sm" id="otimizarAlvo" title="Alvo de loudness">
+                        <option value="streaming" selected>Streaming (alto)</option>
+                        <option value="podcast">Podcast</option>
+                        <option value="radio">Rádio/TV</option>
+                    </select>
+                </div>
+                <button class="btn btn-daw" style="background:#f59e0b;color:#1a1a1a;font-weight:600;"
+                        onclick="exportarOtimizado()" title="Normaliza o volume (alto e consistente) e exporta">
+                    <i class="fas fa-wand-magic-sparkles me-1"></i>
+                    Otimizar e Exportar
+                </button>
                 <!-- Só aparece depois que existe um mix exportado — antes disso
                      não há o que enviar. -->
                 <button class="btn btn-daw" id="btnEnviarEntrega" style="display:none;"
