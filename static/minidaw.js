@@ -311,19 +311,28 @@ class MiniDAW {
                 <div class="effects-panel ${track.effects.eq ? 'active' : ''}" id="effects_${track.id}">
                     <div class="effect-control">
                         <div class="effect-label">Equalizador</div>
-                        <input type="range" class="form-range" min="-20" max="20" value="0" 
-                               onchange="minidaw.updateEQ('${track.id}', 'low', this.value)">
+                        <input type="range" class="form-range" min="-20" max="20" value="${track.eqSettings?.low || 0}"
+                               oninput="minidaw.updateEQ('${track.id}', 'low', this.value)"
+                               title="Graves — 200Hz (corpo, peito)">
                         <small>Graves</small>
                     </div>
                     <div class="effect-control">
-                        <input type="range" class="form-range" min="-20" max="20" value="0" 
-                               onchange="minidaw.updateEQ('${track.id}', 'mid', this.value)">
+                        <input type="range" class="form-range" min="-20" max="20" value="${track.eqSettings?.mid || 0}"
+                               oninput="minidaw.updateEQ('${track.id}', 'mid', this.value)"
+                               title="Médios — 1kHz (corpo da voz)">
                         <small>Médios</small>
                     </div>
                     <div class="effect-control">
-                        <input type="range" class="form-range" min="-20" max="20" value="0" 
-                               onchange="minidaw.updateEQ('${track.id}', 'high', this.value)">
+                        <input type="range" class="form-range" min="-20" max="20" value="${track.eqSettings?.high || 0}"
+                               oninput="minidaw.updateEQ('${track.id}', 'high', this.value)"
+                               title="Agudos — 3.5kHz (definição das consoantes)">
                         <small>Agudos</small>
+                    </div>
+                    <div class="effect-control">
+                        <input type="range" class="form-range" min="-12" max="12" value="${track.eqSettings?.air || 0}"
+                               oninput="minidaw.updateEQ('${track.id}', 'air', this.value)"
+                               title="Brilho — 10kHz (o ar da voz; suba pouco, 2 a 4 já aparece)">
+                        <small>Brilho</small>
                     </div>
                 </div>
             `}
@@ -348,7 +357,7 @@ class MiniDAW {
                 track.audioBuffer = audioBuffer;
                 track.duration = audioBuffer.duration;
                 track.zoom = track.zoom || 1;
-                track.eqSettings = track.eqSettings || { low: 0, mid: 0, high: 0 };
+                track.eqSettings = track.eqSettings || { low: 0, mid: 0, high: 0, air: 0 };
                 
                 // Update duration if this is the longest track
                 if (audioBuffer.duration > this.duration) {
@@ -383,7 +392,7 @@ class MiniDAW {
                 track.audioBuffer = audioBuffer;
                 track.duration = audioBuffer.duration;
                 track.zoom = track.zoom || 1;
-                track.eqSettings = track.eqSettings || { low: 0, mid: 0, high: 0 };
+                track.eqSettings = track.eqSettings || { low: 0, mid: 0, high: 0, air: 0 };
                 track.name = name;
                 
                 // Update duration if this is the longest track
@@ -413,13 +422,31 @@ class MiniDAW {
         hpfNode.type = 'highpass';
         hpfNode.frequency.value = 80; // 80Hz
         
-        // 2. EQ
-        const eqNode = this.audioContext.createBiquadFilter();
+        // 2. EQ de 4 BANDAS. Antes era UM filtro só pros três sliders: mexer nos
+        //    Agudos reapontava o filtro pra 4kHz e mexer nos Graves o levava pra
+        //    250Hz, APAGANDO o ajuste anterior. Agora cada banda tem o seu.
+        const eqLowNode = this.audioContext.createBiquadFilter();
+        eqLowNode.type = 'lowshelf';
+        eqLowNode.frequency.value = 200;      // corpo / peito
+        eqLowNode.gain.value = 0;
+
+        const eqNode = this.audioContext.createBiquadFilter();   // médios
         eqNode.type = 'peaking';
-        eqNode.frequency.value = 1000;
+        eqNode.frequency.value = 1000;        // presença de corpo médio
         eqNode.gain.value = 0;
         eqNode.Q.value = 1;
-        
+
+        const eqHighNode = this.audioContext.createBiquadFilter();
+        eqHighNode.type = 'peaking';
+        eqHighNode.frequency.value = 3500;    // definição das consoantes
+        eqHighNode.gain.value = 0;
+        eqHighNode.Q.value = 0.9;
+
+        const eqAirNode = this.audioContext.createBiquadFilter();
+        eqAirNode.type = 'highshelf';
+        eqAirNode.frequency.value = 10000;    // BRILHO / ar — o que faltava
+        eqAirNode.gain.value = 0;
+
         // 3. Presence boost (clarity)
         const presenceNode = this.audioContext.createBiquadFilter();
         presenceNode.type = 'highshelf';
@@ -464,8 +491,11 @@ class MiniDAW {
         
         // Connect nodes: HPF -> EQ -> Presence -> Compressor -> Limiter -> Analyser -> Gain -> Pan -> Master
         // Reverb is parallel: Limiter -> Reverb -> ReverbGain -> Pan
-        hpfNode.connect(eqNode);
-        eqNode.connect(presenceNode);
+        hpfNode.connect(eqLowNode);
+        eqLowNode.connect(eqNode);
+        eqNode.connect(eqHighNode);
+        eqHighNode.connect(eqAirNode);
+        eqAirNode.connect(presenceNode);
         presenceNode.connect(compressorNode);
         compressorNode.connect(limiterNode);
         limiterNode.connect(analyser);
@@ -480,7 +510,10 @@ class MiniDAW {
         this.trackNodes.set(track.id, {
             inputNode: hpfNode,
             hpfNode,
-            eqNode,
+            eqLowNode,
+            eqNode,          // médios
+            eqHighNode,
+            eqAirNode,
             presenceNode,
             compressorNode,
             limiterNode,
@@ -524,8 +557,13 @@ class MiniDAW {
             nodes.hpfNode.frequency.value = 10; // Bypass (frequência muito baixa)
         }
 
-        // EQ
-        nodes.eqNode.gain.value = track.effects.eq ? (track.eqSettings?.mid || 0) : 0;
+        // EQ — as QUATRO bandas (antes só os médios eram aplicados)
+        const eq = track.eqSettings || {};
+        const ligado = track.effects.eq;
+        nodes.eqLowNode.gain.value  = ligado ? (eq.low  || 0) : 0;
+        nodes.eqNode.gain.value     = ligado ? (eq.mid  || 0) : 0;
+        nodes.eqHighNode.gain.value = ligado ? (eq.high || 0) : 0;
+        nodes.eqAirNode.gain.value  = ligado ? (eq.air  || 0) : 0;
 
         // Presence boost
         nodes.presenceNode.gain.value = track.effects.presence ? 4 : 0; // +4dB de presença
@@ -713,22 +751,16 @@ class MiniDAW {
 
         const nodes = this.trackNodes.get(trackId);
         if (nodes && track.effects.eq) {
-            switch(band) {
-                case 'low':
-                    nodes.eqNode.frequency.value = 250;
-                    nodes.eqNode.gain.value = track.eqSettings[band];
-                    break;
-                case 'mid':
-                    nodes.eqNode.frequency.value = 1000;
-                    nodes.eqNode.gain.value = track.eqSettings[band];
-                    break;
-                case 'high':
-                    nodes.eqNode.frequency.value = 4000;
-                    nodes.eqNode.gain.value = track.eqSettings[band];
-                    break;
-            }
+            // Cada banda no SEU filtro. Antes todas disputavam o mesmo nó, então
+            // a última mexida apagava as outras.
+            const alvo = { low: nodes.eqLowNode, mid: nodes.eqNode,
+                           high: nodes.eqHighNode, air: nodes.eqAirNode }[band];
+            if (alvo) alvo.gain.value = track.eqSettings[band];
         }
-        this.saveToLocalStorage();
+        // O áudio muda na hora; salvar é que não precisa rodar a cada pixel do
+        // arraste (o slider usa oninput pra soar em tempo real).
+        clearTimeout(this._eqSaveTimer);
+        this._eqSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
     updateReverbAmount(trackId, amount) {
@@ -1400,11 +1432,33 @@ class MiniDAW {
                 }
                 
                 // 2. EQ
+                // EQ de 4 bandas — MESMAS frequências do playback, senão o que
+                // você ouve não é o que sai no arquivo. Antes o export só aplicava
+                // os médios: os sliders de Graves e Agudos não saíam no MP3.
+                const eqLig = track.effects.eq;
+                const eqSet = track.eqSettings || {};
+
+                const eqLowNode = offlineContext.createBiquadFilter();
+                eqLowNode.type = 'lowshelf';
+                eqLowNode.frequency.value = 200;
+                eqLowNode.gain.value = eqLig ? (eqSet.low || 0) : 0;
+
                 const eqNode = offlineContext.createBiquadFilter();
                 eqNode.type = 'peaking';
                 eqNode.frequency.value = 1000;
-                eqNode.gain.value = track.effects.eq ? (track.eqSettings?.mid || 0) : 0;
+                eqNode.gain.value = eqLig ? (eqSet.mid || 0) : 0;
                 eqNode.Q.value = 1;
+
+                const eqHighNode = offlineContext.createBiquadFilter();
+                eqHighNode.type = 'peaking';
+                eqHighNode.frequency.value = 3500;
+                eqHighNode.gain.value = eqLig ? (eqSet.high || 0) : 0;
+                eqHighNode.Q.value = 0.9;
+
+                const eqAirNode = offlineContext.createBiquadFilter();
+                eqAirNode.type = 'highshelf';
+                eqAirNode.frequency.value = 10000;
+                eqAirNode.gain.value = eqLig ? (eqSet.air || 0) : 0;
                 
                 // 3. Presence
                 const presenceNode = offlineContext.createBiquadFilter();
@@ -1504,8 +1558,11 @@ class MiniDAW {
 
                 // Connect the entire chain
                 source.connect(hpfNode);
-                hpfNode.connect(eqNode);
-                eqNode.connect(presenceNode);
+                hpfNode.connect(eqLowNode);
+                eqLowNode.connect(eqNode);
+                eqNode.connect(eqHighNode);
+                eqHighNode.connect(eqAirNode);
+                eqAirNode.connect(presenceNode);
                 presenceNode.connect(compressorNode);
                 compressorNode.connect(limiterNode);
                 limiterNode.connect(trackGain);
