@@ -608,10 +608,30 @@ def fetch_news_from_rss(category="Tecnologia", limit=7):
             print(f"Erro no feed {feed_url}: {e}")
             continue
     
-    all_entries = all_entries[:limit]
+    # PORTÃO DE CONTEÚDO SENSÍVEL NA COLETA. Esta função é o funil por onde
+    # passam as DUAS telas — /api/news/fetch (Busca Notícias) e /api/news/execute
+    # (News Auto Post) — então barrar aqui protege as duas de uma vez. Notícia de
+    # crime/violência não chega nem a APARECER na lista pra curadoria.
+    # Filtra ANTES de cortar no limite, senão bloquear reduziria a quantidade.
+    try:
+        from core.content_filter import blocked_reason
+        limpas = []
+        for e in all_entries:
+            g = (lambda k: (e.get(k, '') if hasattr(e, 'get') else getattr(e, k, '')))
+            motivo = blocked_reason(g('title'), g('summary'), g('description'))
+            if motivo:
+                print(f"[filtro] bloqueada na coleta ({motivo}): {str(g('title'))[:90]}")
+                continue
+            limpas.append(e)
+        all_entries = limpas
+    except Exception as filtro_err:
+        # Aqui é só uma LISTA pra curadoria humana, então seguir sem filtro não
+        # publica nada sozinho. O portão que não pode falhar aberto é o do
+        # publish (api_publish_to_newpost), e lá ele é fail-closed.
+        print(f"[filtro] INDISPONÍVEL na coleta ({filtro_err}) — lista sem filtro")
 
     # Sem resultado real → vazio (NUNCA mock/notícia inventada).
-    return all_entries
+    return all_entries[:limit]
 
 # Importar agente de notícias de forma segura (apenas se não estiver no Vercel)
 news_agent = None
@@ -2957,9 +2977,15 @@ def execute_news():
                 for entry in entries:
                     # feedparser entry ou dict mock — normalizar via .get com fallback
                     get = (lambda k, default='': entry.get(k, default)) if hasattr(entry, 'get') else (lambda k, default='': getattr(entry, k, default))
+                    # Limpa o HTML cru do RSS (tag <img> do logo, links) que estava
+                    # vazando pro rascunho da curadoria. A tela de Busca Notícias já
+                    # limpava; esta (News Auto Post) não — mesmo problema, dois lugares.
+                    _resumo = strip_html(str(get('summary', get('description', '')) or '')).strip()
+                    if len(_resumo) > 1200:
+                        _resumo = _resumo[:1200].rsplit(' ', 1)[0] + '…'
                     news_list.append({
-                        "title": get('title', ''),
-                        "summary": get('summary', get('description', '')),
+                        "title": strip_html(str(get('title', '') or '')).strip(),
+                        "summary": _resumo,
                         "source": get('source', {}).get('title', '') if isinstance(get('source', None), dict) else (get('source_title', '') or cat_label),
                         "url": get('link', '') or get('url', ''),
                         "category": cat_label,
@@ -7611,6 +7637,24 @@ def api_publish_to_newpost():
 
         if not content and not title:
             return jsonify({"success": False, "error": "Post vazio"}), 400
+
+        # PORTÃO DE CONTEÚDO SENSÍVEL — última barreira antes do FEED PÚBLICO.
+        # Faltava aqui: este endpoint foi reescrito em 23/07 pra publicar direto
+        # no feed e ficou SEM o filtro, então notícia de crime/violência passava
+        # (comprovado: um post de violência chegou ao feed em 27/07).
+        # FAIL-CLOSED de propósito: se o filtro não puder rodar, NÃO publica.
+        try:
+            from core.content_filter import blocked_reason
+            motivo_bloqueio = blocked_reason(title, content, categoria)
+        except Exception as filtro_err:
+            print(f"[filtro] falhou ao carregar no publish: {filtro_err}")
+            return jsonify({"success": False, "blocked": True,
+                            "error": "Filtro de conteúdo indisponível — publicação bloqueada por segurança."}), 200
+        if motivo_bloqueio:
+            print(f"[filtro] BLOQUEADO no publish ({motivo_bloqueio}): {title[:90]}")
+            return jsonify({"success": False, "blocked": True,
+                            "error": f"Bloqueado pelo filtro de conteúdo sensível (padrão: {motivo_bloqueio}). "
+                                     f"Esta notícia não vai para o feed."}), 200
 
         # Publica DIRETO no FEED (hzmt) como "Futuro em Pauta", via anon key.
         # Antes tentava 2 caminhos, os 2 furados: gravar no ykswh (source_url
