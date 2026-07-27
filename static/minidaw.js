@@ -1349,18 +1349,17 @@ class MiniDAW {
         return buffer;
     }
 
-    async exportMix() {
+    // ═══════════════════════════════════════════════════════════════════
+    // RENDER — o motor de mixagem num lugar só (antes vivia inline dentro
+    // do exportMix). Recebe QUAIS faixas entram no render, mas a duração e
+    // o ducking continuam vindo do projeto INTEIRO: renderizar uma faixa
+    // sozinha (stem) devolve exatamente o que ela é DENTRO do mix, então
+    // os stems somam de volta no mix final — é isso que faz stem ser stem.
+    // ═══════════════════════════════════════════════════════════════════
+    async _renderizarParaExport(tracksParaRenderizar, aoProgredir) {
         const tracksWithAudio = this.tracks.filter(t => t.audioBuffer);
-        if (tracksWithAudio.length === 0) {
-            this.showNotification('Adicione arquivos de áudio primeiro', 'warning');
-            return;
-        }
-
-        this.showMixingStatus(true);
-        this.updateMixingProgress(0, 'Preparando mixagem...');
-
-        try {
-            // Encontra a track de voz mais longa
+        {
+            // Encontra a track de voz mais longa (sempre do projeto inteiro)
             const voiceTracks = tracksWithAudio.filter(t => t.type === 'voice');
             let maxVoiceDuration = 0;
             let finalDuration = this.duration;
@@ -1382,9 +1381,9 @@ class MiniDAW {
             masterGain.connect(offlineContext.destination);
 
             // Mix all tracks
-            for (let i = 0; i < tracksWithAudio.length; i++) {
-                const track = tracksWithAudio[i];
-                this.updateMixingProgress((i / tracksWithAudio.length) * 80, `Processando ${track.name}...`);
+            for (let i = 0; i < tracksParaRenderizar.length; i++) {
+                const track = tracksParaRenderizar[i];
+                if (aoProgredir) aoProgredir((i / tracksParaRenderizar.length) * 80, `Processando ${track.name}...`);
 
                 // Create source
                 const source = offlineContext.createBufferSource();
@@ -1520,10 +1519,25 @@ class MiniDAW {
                 source.start(0);
             }
 
-            this.updateMixingProgress(90, 'Renderizando áudio...');
+            if (aoProgredir) aoProgredir(90, 'Renderizando áudio...');
+            return await offlineContext.startRendering();
+        }
+    }
 
-            // Render
-            const renderedBuffer = await offlineContext.startRendering();
+    async exportMix() {
+        const tracksWithAudio = this.tracks.filter(t => t.audioBuffer);
+        if (tracksWithAudio.length === 0) {
+            this.showNotification('Adicione arquivos de áudio primeiro', 'warning');
+            return;
+        }
+
+        this.showMixingStatus(true);
+        this.updateMixingProgress(0, 'Preparando mixagem...');
+
+        try {
+            const renderedBuffer = await this._renderizarParaExport(
+                tracksWithAudio, (p, t) => this.updateMixingProgress(p, t)
+            );
 
             // OTIMIZAR: se um alvo foi escolhido, normaliza o loudness do mix e
             // limita os picos. É o "alto e consistente" do mastering leve.
@@ -1543,7 +1557,9 @@ class MiniDAW {
                 filename = `mix_${Date.now()}.wav`;
             } else {
                 blob = await this.bufferToMp3(renderedBuffer);
-                filename = `mix_${Date.now()}.mp3`;
+                // Sem encoder, bufferToMp3 devolve WAV — o nome acompanha.
+                const ext = blob.type === 'audio/mpeg' ? 'mp3' : 'wav';
+                filename = `mix_${Date.now()}.${ext}`;
             }
 
             this.updateMixingProgress(100, 'Concluído!');
@@ -1633,11 +1649,339 @@ class MiniDAW {
         return new Blob([arrayBuffer], { type: 'audio/wav' });
     }
 
-    async bufferToMp3(buffer) {
-        // This is a simplified MP3 conversion
-        // In production, you'd use a proper MP3 encoder library
-        const wavBlob = this.bufferToWav(buffer);
-        return wavBlob; // For now, return WAV as MP3 placeholder
+    // MP3 DE VERDADE. Antes esta função devolvia o WAV com nome .mp3 — o
+    // arquivo "mp3" tinha 10x o tamanho e podia ser recusado por player/WhatsApp.
+    // O lamejs já vinha carregado no minidaw.html e nunca era usado.
+    // Se o encoder não estiver disponível, devolve WAV MESMO (type audio/wav) e
+    // quem chama ajusta a extensão — melhor entregar .wav do que mentir no nome.
+    async bufferToMp3(buffer, kbps) {
+        const bitrate = kbps || parseInt(this.mp3Bitrate, 10) || 192;
+        try {
+            if (typeof lamejs === 'undefined' || !lamejs.Mp3Encoder) throw new Error('lamejs ausente');
+
+            const nch = Math.min(2, buffer.numberOfChannels);
+            const encoder = new lamejs.Mp3Encoder(nch, buffer.sampleRate, bitrate);
+            const total = buffer.length;
+
+            // Float32 (-1..1) → Int16, que é o que o lamejs come.
+            const paraInt16 = (f32) => {
+                const out = new Int16Array(f32.length);
+                for (let i = 0; i < f32.length; i++) {
+                    const s = Math.max(-1, Math.min(1, f32[i]));
+                    out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                return out;
+            };
+
+            const left = paraInt16(buffer.getChannelData(0));
+            const right = nch > 1 ? paraInt16(buffer.getChannelData(1)) : null;
+
+            const partes = [];
+            const BLOCO = 1152;   // tamanho de frame do MP3
+            for (let i = 0; i < total; i += BLOCO) {
+                const l = left.subarray(i, i + BLOCO);
+                const r = right ? right.subarray(i, i + BLOCO) : null;
+                const buf = r ? encoder.encodeBuffer(l, r) : encoder.encodeBuffer(l);
+                if (buf.length > 0) partes.push(new Uint8Array(buf));
+            }
+            const fim = encoder.flush();
+            if (fim.length > 0) partes.push(new Uint8Array(fim));
+
+            return new Blob(partes, { type: 'audio/mpeg' });
+        } catch (e) {
+            console.warn('[mp3] encoder indisponível, exportando WAV:', e);
+            return this.bufferToWav(buffer);   // type: 'audio/wav'
+        }
+    }
+
+    // Cópia independente do buffer. Necessária porque masterizarBuffer trabalha
+    // IN-PLACE: sem copiar, masterizar o mesmo mix em dois alvos (alto e rádio)
+    // faria o segundo mastering em cima do áudio já limitado do primeiro.
+    _copiarBuffer(buffer) {
+        const copia = this.audioContext.createBuffer(
+            buffer.numberOfChannels, buffer.length, buffer.sampleRate
+        );
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+            copia.getChannelData(ch).set(buffer.getChannelData(ch));
+        }
+        return copia;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PACOTE DE STEMS — voz.wav + trilha.wav + mix em dois formatos, tudo
+    // num ZIP. Sem biblioteca de ZIP: uso o método "store" (sem compressão)
+    // porque WAV/MP3 já são densos e não encolhem com deflate — seriam
+    // ~100KB de dependência externa pra economizar ~0%.
+    // ═══════════════════════════════════════════════════════════════════
+
+    _crc32(u8) {
+        if (!MiniDAW._crcTabela) {
+            const t = new Uint32Array(256);
+            for (let n = 0; n < 256; n++) {
+                let c = n;
+                for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                t[n] = c >>> 0;
+            }
+            MiniDAW._crcTabela = t;
+        }
+        const t = MiniDAW._crcTabela;
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < u8.length; i++) c = t[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    // arquivos: [{ nome: 'stems/voz.wav', dados: Uint8Array }]
+    _zipStore(arquivos) {
+        const enc = new TextEncoder();
+        const partes = [];      // corpo (headers locais + dados)
+        const central = [];     // diretório central
+        let offset = 0;
+
+        const agora = new Date();
+        const horaDos = ((agora.getHours() << 11) | (agora.getMinutes() << 5) | (agora.getSeconds() >> 1)) & 0xFFFF;
+        const dataDos = (((agora.getFullYear() - 1980) << 9) | ((agora.getMonth() + 1) << 5) | agora.getDate()) & 0xFFFF;
+
+        for (const a of arquivos) {
+            const nome = enc.encode(a.nome);
+            const dados = a.dados;
+            const crc = this._crc32(dados);
+
+            const lh = new DataView(new ArrayBuffer(30));
+            lh.setUint32(0, 0x04034b50, true);   // assinatura do header local
+            lh.setUint16(4, 20, true);           // versão necessária (2.0)
+            lh.setUint16(6, 0x0800, true);       // flag bit 11: nome em UTF-8
+            lh.setUint16(8, 0, true);            // método 0 = store
+            lh.setUint16(10, horaDos, true);
+            lh.setUint16(12, dataDos, true);
+            lh.setUint32(14, crc, true);
+            lh.setUint32(18, dados.length, true);
+            lh.setUint32(22, dados.length, true);
+            lh.setUint16(26, nome.length, true);
+            lh.setUint16(28, 0, true);           // sem campo extra
+            partes.push(new Uint8Array(lh.buffer), nome, dados);
+
+            const cd = new DataView(new ArrayBuffer(46));
+            cd.setUint32(0, 0x02014b50, true);   // assinatura do diretório central
+            cd.setUint16(4, 20, true);           // versão que criou
+            cd.setUint16(6, 20, true);           // versão necessária
+            cd.setUint16(8, 0x0800, true);
+            cd.setUint16(10, 0, true);
+            cd.setUint16(12, horaDos, true);
+            cd.setUint16(14, dataDos, true);
+            cd.setUint32(16, crc, true);
+            cd.setUint32(20, dados.length, true);
+            cd.setUint32(24, dados.length, true);
+            cd.setUint16(28, nome.length, true);
+            cd.setUint16(30, 0, true);
+            cd.setUint16(32, 0, true);
+            cd.setUint16(34, 0, true);
+            cd.setUint16(36, 0, true);
+            cd.setUint32(38, 0, true);
+            cd.setUint32(42, offset, true);      // onde está o header local
+            central.push(new Uint8Array(cd.buffer), nome);
+
+            offset += 30 + nome.length + dados.length;
+        }
+
+        let tamCentral = 0;
+        for (const p of central) tamCentral += p.length;
+
+        const eocd = new DataView(new ArrayBuffer(22));
+        eocd.setUint32(0, 0x06054b50, true);
+        eocd.setUint16(4, 0, true);
+        eocd.setUint16(6, 0, true);
+        eocd.setUint16(8, arquivos.length, true);
+        eocd.setUint16(10, arquivos.length, true);
+        eocd.setUint32(12, tamCentral, true);
+        eocd.setUint32(16, offset, true);
+        eocd.setUint16(20, 0, true);
+
+        return new Blob(partes.concat(central, [new Uint8Array(eocd.buffer)]), { type: 'application/zip' });
+    }
+
+    _slugArquivo(s) {
+        // ̀-ͯ = marcas de acento que o NFD separa da letra.
+        return String(s || 'faixa')
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')   // tira acento
+            .replace(/[^a-zA-Z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .toLowerCase() || 'faixa';
+    }
+
+    async pacoteDeStems() {
+        const comAudio = this.tracks.filter(t => t.audioBuffer);
+        if (comAudio.length === 0) {
+            this.showNotification('Adicione voz/trilha antes de gerar o pacote', 'warning');
+            return;
+        }
+
+        this.showMixingStatus(true);
+        this.updateMixingProgress(0, 'Preparando o pacote...');
+        const bytes = async (blob) => new Uint8Array(await blob.arrayBuffer());
+
+        try {
+            const arquivos = [];
+            const linhas = [];
+
+            // 1. STEMS — cada faixa renderizada SOZINHA, mas com a mesma cadeia
+            //    de efeitos, o mesmo ducking e a mesma duração que ela tem
+            //    dentro do mix. Somando os stems você tem o mix de volta.
+            const usados = {};
+            for (let i = 0; i < comAudio.length; i++) {
+                const t = comAudio[i];
+                this.updateMixingProgress(5 + (i / comAudio.length) * 45, `Stem: ${t.name}...`);
+                const buf = await this._renderizarParaExport([t]);
+                let nome = this._slugArquivo(t.name);
+                usados[nome] = (usados[nome] || 0) + 1;
+                if (usados[nome] > 1) nome += '-' + usados[nome];
+                const caminho = `stems/${nome}.wav`;
+                arquivos.push({ nome: caminho, dados: await bytes(this.bufferToWav(buf)) });
+                linhas.push(`${caminho}  —  ${t.type === 'voice' ? 'voz' : 'trilha'}, isolada, já com os efeitos da mixagem`);
+            }
+
+            // 2. MIX completo renderizado UMA vez e masterizado em dois alvos.
+            //    Cada alvo numa CÓPIA: masterizarBuffer trabalha in-place.
+            this.updateMixingProgress(55, 'Renderizando o mix final...');
+            const mix = await this._renderizarParaExport(comAudio);
+
+            this.updateMixingProgress(70, 'Mix alto (MP3 320kbps)...');
+            const alto = this._copiarBuffer(mix);
+            this.masterizarBuffer(alto, this.otimizarPresets.streaming);
+            const blobAlto = await this.bufferToMp3(alto, 320);
+            const extAlto = blobAlto.type === 'audio/mpeg' ? 'mp3' : 'wav';
+            arquivos.push({ nome: `mix_final_alto.${extAlto}`, dados: await bytes(blobAlto) });
+            linhas.push(`mix_final_alto.${extAlto}  —  mix pronto, volume ALTO (o mesmo do "Otimizar e Exportar"). WhatsApp, Instagram, YouTube, Spotify.`);
+
+            this.updateMixingProgress(85, 'Mix rádio/TV (WAV)...');
+            const radio = this._copiarBuffer(mix);
+            this.masterizarBuffer(radio, this.otimizarPresets.radio);
+            arquivos.push({ nome: 'mix_final_radio.wav', dados: await bytes(this.bufferToWav(radio)) });
+            linhas.push('mix_final_radio.wav  —  mesmo mix no nível baixo de broadcast (-23), WAV. Só pra emissora que exige; soa mais baixo de propósito.');
+
+            // 3. LEIA-ME — o cliente/emissora abre o ZIP e sabe o que é cada coisa.
+            const sr = mix.sampleRate;
+            const leiame = [
+                'PACOTE DE ÁUDIO — Studio Audio Pank',
+                'Gerado em ' + new Date().toLocaleString('pt-BR'),
+                '',
+                'CONTEÚDO:',
+                ...linhas.map(l => '  • ' + l),
+                '',
+                'ESPECIFICAÇÃO: ' + sr + ' Hz, 16 bits, estéreo. Picos limitados a -1 dBFS.',
+                'Os stems somam de volta no mix (mesma cadeia, mesmo ducking, mesma duração).',
+                'Níveis por normalização de RMS — profissional e consistente, não LUFS certificado.',
+                ''
+            ].join('\r\n');
+            arquivos.push({ nome: 'LEIA-ME.txt', dados: new TextEncoder().encode(leiame) });
+
+            this.updateMixingProgress(95, 'Compactando...');
+            const zip = this._zipStore(arquivos);
+            const nomeZip = `pacote-${this._slugArquivo(this.projetoNome || 'locucao')}-${Date.now()}.zip`;
+
+            this.ultimoPacoteBlob = zip;
+            this.ultimoPacoteNome = nomeZip;
+            this.downloadBlob(zip, nomeZip);
+
+            this.updateMixingProgress(100, 'Pacote pronto!');
+            setTimeout(() => this.showMixingStatus(false), 800);
+            this._mostrarOpcoesPacote(arquivos, zip.size);
+        } catch (e) {
+            console.error('[pacote] falhou:', e);
+            this.showMixingStatus(false);
+            alert('Não consegui montar o pacote.\nErro: ' + e.message);
+        }
+    }
+
+    // Depois de baixar o ZIP: as duas saídas que evitam o vaivém manual —
+    // link direto de 7 dias (pra colar no WhatsApp) ou entrega de cliente
+    // (reusa o cadastro que já existe; NÃO é um sistema de entrega novo).
+    _mostrarOpcoesPacote(arquivos, tamanho) {
+        const esc = (s) => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+        const antigo = document.getElementById('modal-pacote');
+        if (antigo) antigo.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'modal-pacote';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);' +
+            'display:flex;align-items:center;justify-content:center;padding:1rem;';
+        modal.innerHTML = `
+            <div style="background:#141a2e;color:#e6e8f0;border:1px solid #2a3350;border-radius:14px;
+                        max-width:560px;width:100%;padding:1.25rem;max-height:90vh;overflow:auto;">
+                <h5 style="margin:0 0 .25rem;">📦 Pacote pronto — ${(tamanho / 1024 / 1024).toFixed(1)} MB</h5>
+                <p style="font-size:.85rem;opacity:.7;margin:0 0 .9rem;">
+                    O ZIP já foi baixado. Se quiser, mande direto pro cliente daqui.
+                </p>
+                <div style="background:#0e1424;border:1px solid #2a3350;border-radius:8px;
+                            padding:.6rem .8rem;margin-bottom:1rem;font-size:.8rem;line-height:1.7;">
+                    ${arquivos.map(a => '<div>📄 ' + esc(a.nome) + '</div>').join('')}
+                </div>
+                <div id="pacoteStatus" style="font-size:.85rem;margin-bottom:.75rem;min-height:1.2em;"></div>
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;">
+                    <button id="pacoteFechar" style="padding:.5rem 1rem;border-radius:8px;
+                            background:#2a3350;color:#e6e8f0;border:none;cursor:pointer;">Fechar</button>
+                    <button id="pacoteLink" style="padding:.5rem 1rem;border-radius:8px;
+                            background:#3b82f6;color:#fff;border:none;font-weight:600;cursor:pointer;">
+                        🔗 Link de 7 dias</button>
+                    <button id="pacoteEntrega" style="padding:.5rem 1rem;border-radius:8px;
+                            background:#22c55e;color:#052e16;border:none;font-weight:600;cursor:pointer;">
+                        📨 Enviar para entrega</button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+
+        const status = modal.querySelector('#pacoteStatus');
+        modal.querySelector('#pacoteFechar').onclick = () => modal.remove();
+
+        modal.querySelector('#pacoteEntrega').onclick = () => {
+            modal.remove();
+            window.enviarParaEntrega(this.ultimoPacoteBlob, this.ultimoPacoteNome);
+        };
+
+        modal.querySelector('#pacoteLink').onclick = async (ev) => {
+            const btn = ev.currentTarget;
+            btn.disabled = true;
+            status.style.color = '#93c5fd';
+            try {
+                status.textContent = 'Enviando o pacote...';
+                const ru = await fetch('/api/client-deliveries/upload-url', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: this.ultimoPacoteNome, kind: 'pacote' })
+                });
+                const u = await ru.json();
+                if (!u.success) throw new Error(u.error || 'Falha ao preparar o envio');
+
+                const fd = new FormData();
+                fd.append('file', this.ultimoPacoteBlob, this.ultimoPacoteNome);
+                const up = await fetch(u.upload_url, {
+                    method: 'PUT',
+                    headers: { 'apikey': u.apikey, 'Authorization': `Bearer ${u.apikey}` },
+                    body: fd
+                });
+                if (!up.ok) throw new Error('Falha ao enviar o pacote pro armazenamento');
+
+                status.textContent = 'Gerando o link...';
+                const rl = await fetch('/api/stems/share-link', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: u.path })
+                });
+                const l = await rl.json();
+                if (!l.success) throw new Error(l.error || 'Falha ao gerar o link');
+
+                status.style.color = '#4ade80';
+                status.innerHTML = '✅ Link válido por 7 dias (já copiado):<br>' +
+                    '<input readonly value="' + esc(l.url) + '" style="width:100%;margin-top:.4rem;' +
+                    'padding:.4rem;border-radius:6px;background:#0e1424;color:#93c5fd;' +
+                    'border:1px solid #2a3350;font-size:.75rem;">';
+                try { await navigator.clipboard.writeText(l.url); } catch (_) { /* sem permissão: fica no campo */ }
+            } catch (e) {
+                status.style.color = '#f87171';
+                status.textContent = '❌ ' + e.message;
+                btn.disabled = false;
+            }
+        };
     }
 
     downloadBlob(blob, filename) {
@@ -2585,6 +2929,8 @@ window.encurtarPausas = () => {
     minidaw.encurtarPausasVoz(v);
 };
 window.desfazerEncurtar = () => minidaw.desfazerEncurtar();
+// Pacote de Stems: stems separados + mix em dois formatos, num ZIP só.
+window.pacoteDeStems = () => minidaw.pacoteDeStems();
 window.normalizeVolumes = () => minidaw.normalizeVolumes();
 window.applyAutoFade = () => minidaw.applyAutoFade();
 window.clearAllTracks = () => minidaw.clearAllTracks();

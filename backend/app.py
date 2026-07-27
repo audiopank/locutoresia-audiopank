@@ -1276,7 +1276,8 @@ def get_client_delivery_upload_url():
         # MiniDAW salvo (voz/trilha). Allowlist fechada (folder é do backend).
         kind = data.get('kind', 'entrega')
         pasta = {'amostra': 'amostras', 'analise': 'analises',
-                 'final': 'finais', 'projeto': 'projetos'}.get(kind, 'entregas')
+                 'final': 'finais', 'projeto': 'projetos',
+                 'pacote': 'pacotes'}.get(kind, 'entregas')
 
         import uuid
         file_extension = os.path.splitext(filename)[1]
@@ -1297,6 +1298,44 @@ def get_client_delivery_upload_url():
         print(f"Erro ao gerar signed upload URL de entrega: {e}")
         import traceback
         traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/stems/share-link', methods=['POST', 'OPTIONS'])
+def get_stems_share_link():
+    """Link direto de 7 dias pro Pacote de Stems que a MiniDAW acabou de subir.
+
+    É pra colar no WhatsApp do cliente sem passar pelo fluxo de aprovação — o
+    pacote FINAL, quando já foi combinado. A entrega com aprovação/pagamento
+    continua sendo /api/client-deliveries; aqui é só um link temporário.
+    Só assina caminho dentro de pacotes/ — não vira leitor genérico do bucket.
+    """
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Supabase Storage não configurado"}), 500
+
+        path = (request.get_json() or {}).get('path', '')
+        if not path.startswith('pacotes/') or '..' in path:
+            return jsonify({"success": False, "error": "Caminho inválido"}), 400
+
+        SETE_DIAS = 7 * 24 * 3600
+        signed = supabase_manager.newpost_manager_client.storage \
+            .from_(CLIENT_DELIVERIES_BUCKET).create_signed_url(path, SETE_DIAS)
+
+        # A lib já devolveu chaves diferentes entre versões — aceita as duas.
+        url = signed.get('signedURL') or signed.get('signedUrl') or signed.get('signed_url')
+        if not url:
+            return jsonify({"success": False, "error": "Storage não devolveu a URL"}), 500
+
+        return jsonify({"success": True, "url": url, "expira_em_dias": 7})
+    except Exception as e:
+        print(f"Erro ao gerar link do pacote: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/client-deliveries', methods=['POST', 'OPTIONS'])
