@@ -940,6 +940,25 @@
             const r = data.resumo || {};
             const resumoEl = document.getElementById('triagem-resumo');
             resumoEl.classList.remove('d-none');
+
+            // Se a IA não respondeu, TUDO cai em "revisar" — e isso parecia rigor
+            // editorial. Aqui a tela diz a verdade em vez de deixar você achar
+            // que a IA reprovou os 59.
+            if (data.ia_ok === false) {
+                resumoEl.innerHTML =
+                    `<div style="padding:.5rem .75rem;border-radius:8px;background:rgba(248,113,113,.12);
+                                 border:1px solid #f87171;color:#fca5a5;">
+                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        <strong>A IA não respondeu agora</strong> — por isso tudo caiu em "revisar".
+                        <span style="opacity:.8">Não é reprovação: ela nem chegou a ler.</span><br>
+                        <span style="font-size:.75rem;opacity:.7">Só as regras rodaram (conteúdo sensível, duplicado, texto curto).
+                        Motivo técnico: ${escHtml(data.ia_erro || 'desconhecido')}</span>
+                    </div>`;
+                document.getElementById('btn-aprovar-lote').classList.add('d-none');
+                renderPosts(allPosts);
+                return;
+            }
+
             resumoEl.innerHTML =
                 `<i class="fas fa-brain me-1"></i>Li ${data.total} rascunhos: ` +
                 `<strong style="color:#22c55e">${r.aprovar || 0} pra aprovar</strong> · ` +

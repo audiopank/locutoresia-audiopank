@@ -5060,9 +5060,12 @@ def api_social_posts_triage():
             restantes.append({"id": pid, "titulo": titulo[:160], "texto": texto[:400]})
 
         # ── IA: julga o VALOR EDITORIAL do que passou pelas regras ──
+        ia_erro = ''
         if restantes:
             api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
             julgado = {}
+            if not api_key:
+                ia_erro = 'GEMINI_API_KEY não configurada'
             if api_key:
                 lista = "\n".join(
                     f'{i}. TÍTULO: {r["titulo"]}\n   TEXTO: {r["texto"]}'
@@ -5094,12 +5097,15 @@ Devolva SOMENTE um array JSON, um objeto por rascunho, sem markdown:
                                 "motivo": str(item.get('m', ''))[:120] or 'Avaliação da IA'
                             }
                 except Exception as ia_err:
+                    # Sem isso, "tudo virou revisar" parecia rigor editorial da IA
+                    # quando na verdade ela nem respondeu. O erro sobe pra tela.
+                    ia_erro = str(ia_err)[:200]
                     print(f"Triagem: IA falhou ({ia_err}) — o lote fica como 'revisar'")
 
             for r in restantes:
                 sugestoes[r['id']] = julgado.get(r['id'], {
                     "rec": "revisar", "fonte": "regra",
-                    "motivo": "IA não avaliou este — confira na mão"
+                    "motivo": "IA fora do ar — não avaliada" if ia_erro else "IA não avaliou este — confira na mão"
                 })
 
         resumo = {"aprovar": 0, "rejeitar": 0, "revisar": 0}
@@ -5107,7 +5113,8 @@ Devolva SOMENTE um array JSON, um objeto por rascunho, sem markdown:
             resumo[s["rec"]] = resumo.get(s["rec"], 0) + 1
 
         return jsonify({"success": True, "sugestoes": sugestoes,
-                        "resumo": resumo, "total": len(sugestoes)})
+                        "resumo": resumo, "total": len(sugestoes),
+                        "ia_ok": not ia_erro, "ia_erro": ia_erro})
     except Exception as e:
         print(f"Erro na triagem de rascunhos: {e}")
         import traceback
