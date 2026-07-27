@@ -982,6 +982,25 @@
             // Se a IA não respondeu, TUDO cai em "revisar" — e isso parecia rigor
             // editorial. Aqui a tela diz a verdade em vez de deixar você achar
             // que a IA reprovou os 59.
+            // 429 = cota da API do Gemini estourada. Merece mensagem própria:
+            // "a IA não respondeu" faz pensar em bug; cota é outra conversa
+            // (esperar a virada do dia ou ativar billing na chave).
+            const ehCota = /429|RESOURCE_EXHAUSTED|quota/i.test(data.ia_erro || '');
+            if (data.ia_ok === false && ehCota) {
+                resumoEl.innerHTML =
+                    `<div style="padding:.5rem .75rem;border-radius:8px;background:rgba(251,191,36,.12);
+                                 border:1px solid #fbbf24;color:#fcd34d;">
+                        <i class="fas fa-hourglass-half me-1"></i>
+                        <strong>Cota da IA (Gemini) esgotada</strong> — ela avaliou ${data.ia_julgados} de ${data.ia_pedidos} e parou.
+                        O resto entrou como "revisar" por falta de resposta, <u>não</u> por reprovação.<br>
+                        <span style="font-size:.75rem;opacity:.8">As regras continuam valendo (conteúdo sensível, duplicado, texto curto).
+                        A cota volta sozinha — tente mais tarde, ou ative o faturamento na chave do Gemini.
+                        Isso afeta o app todo: Receita da IA e legendas também caem no modo padrão.</span>
+                    </div>`;
+                document.getElementById('btn-aprovar-lote').classList.add('d-none');
+                renderPosts(allPosts);
+                return;
+            }
             if (data.ia_ok === false) {
                 resumoEl.innerHTML =
                     `<div style="padding:.5rem .75rem;border-radius:8px;background:rgba(248,113,113,.12);
