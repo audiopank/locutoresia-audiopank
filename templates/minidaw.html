@@ -661,6 +661,19 @@
                 <i class="fas fa-wave-square me-1"></i>
                 Auto Fade
             </button>
+            <!-- BRIEFING pra IA: sem isso a receita decide quase às cegas (só sabe
+                 "1 voz + 1 trilha") e cai sempre nos mesmos números. Com uma linha
+                 de contexto ela adapta — spot animado pede trilha mais presente,
+                 institucional pede trilha mais discreta. O roteiro, quando o áudio
+                 veio do Studio, vai junto automaticamente. -->
+            <div class="quick-action-btn" style="display:flex;align-items:center;gap:6px;cursor:default;flex:1;min-width:260px;">
+                <i class="fas fa-lightbulb" style="color:#f59e0b;"></i>
+                <span>Briefing</span>
+                <input type="text" id="briefingIA" maxlength="200"
+                       placeholder="ex: promoção de padaria, animado"
+                       style="flex:1;min-width:140px;padding:2px 8px;border-radius:6px;border:1px solid #2a3350;background:#0e1424;color:#e6e8f0;"
+                       title="Uma linha sobre o trabalho. A Receita da IA usa isso pra decidir a mixagem.">
+            </div>
             <!-- ENCURTAR PAUSAS: aperta o silêncio entre as falas da voz. O input
                  é a pausa MÁXIMA que fica (segundos) — maior = mais respiro, não
                  sufoca. Aplica sempre a partir do original; Desfazer volta 100%. -->
@@ -847,7 +860,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=1"></script>
-    <script src="/static/minidaw.js?v=8"></script>
+    <script src="/static/minidaw.js?v=9"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

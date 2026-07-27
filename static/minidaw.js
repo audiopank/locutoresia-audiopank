@@ -2980,8 +2980,21 @@ window.incorporarReceitaIA = async () => {
     const original = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Montando receita...'; }
     try {
+        // CONTEXTO: sem isto a IA decidia quase às cegas (só o tipo e a duração
+        // das faixas) e a receita caía sempre nos mesmos números. Agora vai o
+        // briefing digitado + o roteiro, quando o áudio veio do Studio.
+        const briefing = (document.getElementById('briefingIA')?.value || '').trim();
+        if (briefing) localStorage.setItem('minidaw_briefing', briefing);   // não some ao recarregar
+        const roteiro = (localStorage.getItem('minidaw_pending_roteiro') || '').trim();
+
+        const contexto = [
+            briefing ? `Briefing: ${briefing}` : '',
+            roteiro ? `Roteiro da locução: ${roteiro.slice(0, 700)}` : ''
+        ].filter(Boolean).join('\n');
+
         const payload = {
-            tracks: comAudio.map(t => ({ type: t.type, name: t.name, duration: t.duration || 0 }))
+            tracks: comAudio.map(t => ({ type: t.type, name: t.name, duration: t.duration || 0 })),
+            contexto
         };
         const resp = await fetch(window.location.origin + '/api/voxcraft/mix-recipe', {
             method: 'POST',
@@ -3018,7 +3031,14 @@ window.incorporarReceitaIA = async () => {
         });
 
         if (typeof minidaw.saveToLocalStorage === 'function') minidaw.saveToLocalStorage();
-        alert('🎚️ Receita aplicada em ' + aplicadas + ' faixa(s)!\n\n' + (result.resumo || '') + '\n\nÉ só dar play e refinar o que quiser.');
+
+        // Diz de onde veio a receita: 'ia' = o Gemini decidiu; 'base' = a receita
+        // padrão (IA fora do ar ou sem chave). Antes não dava pra saber.
+        const origem = result.fonte === 'ia'
+            ? (contexto ? '🧠 IA, com o seu contexto' : '🧠 IA (sem briefing — dica: preencha o Briefing)')
+            : '⚙️ Receita padrão (a IA não respondeu agora)';
+        alert('🎚️ Receita aplicada em ' + aplicadas + ' faixa(s)!\n' + origem + '\n\n' +
+              (result.resumo || '') + '\n\nÉ só dar play e refinar o que quiser.');
     } catch (error) {
         console.error('Erro ao incorporar receita:', error);
         alert('Erro ao montar a receita: ' + error.message);
@@ -3026,6 +3046,14 @@ window.incorporarReceitaIA = async () => {
         if (btn) { btn.disabled = false; btn.innerHTML = original; }
     }
 };
+
+// Devolve o briefing digitado da última vez — recarregar a página não apaga o
+// contexto do trabalho em andamento.
+document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('briefingIA');
+    const salvo = localStorage.getItem('minidaw_briefing');
+    if (el && salvo && !el.value) el.value = salvo;
+});
 
 // 🧹 Helper para limpar cache e resetar MiniDAW (use se der erro)
 window.resetMiniDAW = () => {

@@ -455,6 +455,10 @@ function sendToMiniDAW() {
     }
     localStorage.setItem('minidaw_pending_audio', audioPlayer.src);
     localStorage.setItem('minidaw_pending_timestamp', Date.now().toString());
+    // Leva o roteiro junto: é o que faz a Receita da IA na MiniDAW entender o
+    // trabalho (spot animado x institucional) em vez de decidir às cegas.
+    const roteiro = (document.getElementById('textInput')?.value || '').trim();
+    if (roteiro) localStorage.setItem('minidaw_pending_roteiro', roteiro.slice(0, 900));
     window.open('/minidaw', '_blank');
 }
 

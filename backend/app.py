@@ -1049,6 +1049,7 @@ Faixas carregadas no projeto:
 {faixas_txt}
 
 Contexto do projeto (se houver): {contexto or 'não informado'}
+Se vier um roteiro acima, DEDUZA dele a energia do spot (varejo/promoção = animado, trilha mais presente e fade curto; institucional/saúde/jurídico = sóbrio, trilha mais discreta; narração longa = trilha bem baixa). O "motivo" e o "resumo" devem citar essa leitura, não repetir regra genérica.
 
 Devolva SOMENTE um JSON válido (sem markdown) nesta estrutura:
 {{
