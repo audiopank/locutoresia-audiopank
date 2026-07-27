@@ -5351,6 +5351,26 @@ def api_publish_social_post(post_id):
             content_local = strip_html(local_post.get('content') or local_post.get('caption') or '')
             now_iso = datetime.now(timezone.utc).isoformat()
 
+            # PORTÃO DE CONTEÚDO SENSÍVEL — última barreira deste caminho. Mesmo
+            # APROVADO na curadoria, crime/violência não vai pro feed: a regra é
+            # do produto, não da opinião de quem aprovou. Fail-closed: filtro
+            # fora do ar = não publica. (Este botão estava sem portão.)
+            try:
+                from core.content_filter import blocked_reason
+                _motivo_pub = blocked_reason(
+                    local_post.get('title', ''),
+                    local_post.get('content') or local_post.get('caption') or ''
+                )
+            except Exception as _filtro_err:
+                print(f"[filtro] indisponível no publish da curadoria: {_filtro_err}")
+                return jsonify({"success": False, "blocked": True,
+                                "error": "Filtro de conteúdo indisponível — publicação bloqueada por segurança."}), 200
+            if _motivo_pub:
+                print(f"[filtro] BLOQUEADO no publish da curadoria ({_motivo_pub}): {str(local_post.get('title'))[:80]}")
+                return jsonify({"success": False, "blocked": True,
+                                "error": f"Bloqueado pelo filtro de conteúdo sensível (padrão: {_motivo_pub}). "
+                                         f"Este post não vai para o feed, mesmo aprovado."}), 200
+
             # Antes de inserir, evitar duplicata: procurar post existente pelo título
             titulo = local_post.get('title', '')[:50]
             if titulo:
