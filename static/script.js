@@ -383,7 +383,12 @@ async function generateAudio() {
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Erro ao gerar áudio');
-        
+
+        // Guarda o roteiro pra Receita da IA da MiniDAW ASSIM QUE a locução é
+        // gerada. Antes só ia se você clicasse "Enviar para MiniDAW" — quem abria
+        // a MiniDAW pelo menu lateral chegava lá sem roteiro nenhum.
+        try { localStorage.setItem('minidaw_pending_roteiro', text.slice(0, 900)); } catch (_) {}
+
         const audioUrl = result.download_url + '?t=' + Date.now();
         const audioPlayer = document.getElementById('generatedAudio');
         

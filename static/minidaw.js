@@ -3053,7 +3053,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('briefingIA');
     const salvo = localStorage.getItem('minidaw_briefing');
     if (el && salvo && !el.value) el.value = salvo;
+    window.atualizarChipRoteiro();
 });
+
+// Mostra na tela se o roteiro do Studio chegou junto. Antes o contexto ia (ou
+// não ia) em silêncio e não havia como conferir.
+window.atualizarChipRoteiro = () => {
+    const chip = document.getElementById('roteiroChip');
+    if (!chip) return;
+    const r = (localStorage.getItem('minidaw_pending_roteiro') || '').trim();
+    if (!r) { chip.style.display = 'none'; return; }
+    chip.style.display = '';
+    chip.textContent = '';                       // textContent: nada de HTML do roteiro
+    const txt = document.createElement('span');
+    txt.textContent = `📄 Roteiro do Studio (${r.length} car.)`;
+    const x = document.createElement('a');
+    x.href = '#';
+    x.textContent = ' ✕';
+    x.style.cssText = 'color:#4ade80;text-decoration:none;font-weight:700;';
+    x.title = 'Descartar este roteiro';
+    x.onclick = (e) => { e.preventDefault(); window.limparRoteiroIA(); };
+    chip.appendChild(txt);
+    chip.appendChild(x);
+    chip.title = r.slice(0, 300);                // passa o mouse e vê o começo
+};
+
+window.limparRoteiroIA = () => {
+    localStorage.removeItem('minidaw_pending_roteiro');
+    window.atualizarChipRoteiro();
+};
 
 // 🧹 Helper para limpar cache e resetar MiniDAW (use se der erro)
 window.resetMiniDAW = () => {
