@@ -505,10 +505,22 @@
                 <i class="fas fa-exclamation-triangle me-1"></i>Erros
             </button>
         </div>
-        <button class="btn btn-outline-danger btn-sm" onclick="deleteAllRejectedPosts()">
-            <i class="fas fa-trash-alt me-1"></i>Remover todos os rejeitados
-        </button>
+        <div class="d-flex gap-2 flex-wrap">
+            <!-- PRÉ-CLASSIFICAÇÃO: a IA opina, você bate o martelo. Não muda nada
+                 no banco — só pinta um selo em cada card com a recomendação. -->
+            <button class="btn btn-sm" id="btn-triagem" onclick="preClassificar()"
+                    style="background:#7C3AED;color:#fff;font-weight:600;">
+                <i class="fas fa-brain me-1"></i>Pré-classificar com IA
+            </button>
+            <button class="btn btn-success btn-sm d-none" id="btn-aprovar-lote" onclick="aprovarRecomendados()">
+                <i class="fas fa-check-double me-1"></i>Aprovar recomendados
+            </button>
+            <button class="btn btn-outline-danger btn-sm" onclick="deleteAllRejectedPosts()">
+                <i class="fas fa-trash-alt me-1"></i>Remover todos os rejeitados
+            </button>
+        </div>
     </div>
+    <div id="triagem-resumo" class="mb-3 d-none" style="font-size:.85rem;color:#a5b4fc;"></div>
 
     <!-- LISTA DE POSTS -->
     <div id="posts-loading" class="text-center py-5">
@@ -821,6 +833,7 @@
                         <h6 class="post-title">${escHtml(post.title)}</h6>
                         ${statusBadge(post.status)}
                     </div>
+                    ${seloTriagem(post.id)}
                     <div class="post-caption">${escHtml(post.caption || '(sem legenda)')}</div>
                     <div class="px-3 pb-2">${hashtagHtml}</div>
                     <div class="post-meta">
@@ -870,7 +883,111 @@
 
     function escHtml(str) {
         if (!str) return '';
-        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        // Escapa aspas SIMPLES também: este texto às vezes vai parar dentro de
+        // atributo HTML, e sem isso um apóstrofo quebra (ou abre) o atributo.
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // ============================================================
+    // PRÉ-CLASSIFICAÇÃO (IA sugere, o gestor decide)
+    // ============================================================
+    let triagem = {};   // { postId: {rec, motivo, fonte} }
+
+    const TRIAGEM_ESTILO = {
+        aprovar:  { cor: '#22c55e', fundo: 'rgba(34,197,94,.12)',  icone: 'fa-thumbs-up',   texto: 'Recomendo aprovar' },
+        rejeitar: { cor: '#f87171', fundo: 'rgba(248,113,113,.12)', icone: 'fa-ban',         texto: 'Recomendo rejeitar' },
+        revisar:  { cor: '#fbbf24', fundo: 'rgba(251,191,36,.12)',  icone: 'fa-pen-to-square', texto: 'Precisa revisar' }
+    };
+
+    function seloTriagem(postId) {
+        const s = triagem[postId];
+        if (!s) return '';
+        const e = TRIAGEM_ESTILO[s.rec] || TRIAGEM_ESTILO.revisar;
+        const marca = s.fonte === 'regra' ? 'regra' : 'IA';
+        return `<div style="margin:0 1rem .5rem;padding:.35rem .6rem;border-radius:8px;
+                     background:${e.fundo};border:1px solid ${e.cor};color:${e.cor};font-size:.75rem;">
+                    <i class="fas ${e.icone} me-1"></i><strong>${e.texto}</strong>
+                    <span style="opacity:.75;">(${marca})</span> — ${escHtml(s.motivo || '')}
+                </div>`;
+    }
+
+    async function preClassificar() {
+        const btn = document.getElementById('btn-triagem');
+        // Só faz sentido opinar sobre o que ainda não foi decidido.
+        const pendentes = allPosts.filter(p => p.status === 'rascunho');
+        if (pendentes.length === 0) {
+            showToast('Nenhum rascunho pra classificar.', 'error');
+            return;
+        }
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>Lendo ${pendentes.length} rascunhos...`;
+        try {
+            const res = await fetch('/api/social/posts/triage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    posts: pendentes.map(p => ({
+                        id: p.id, title: p.title || '', caption: p.caption || ''
+                    }))
+                })
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Falha na triagem');
+
+            triagem = data.sugestoes || {};
+            const r = data.resumo || {};
+            const resumoEl = document.getElementById('triagem-resumo');
+            resumoEl.classList.remove('d-none');
+            resumoEl.innerHTML =
+                `<i class="fas fa-brain me-1"></i>Li ${data.total} rascunhos: ` +
+                `<strong style="color:#22c55e">${r.aprovar || 0} pra aprovar</strong> · ` +
+                `<strong style="color:#f87171">${r.rejeitar || 0} pra rejeitar</strong> · ` +
+                `<strong style="color:#fbbf24">${r.revisar || 0} pra revisar</strong>. ` +
+                `<span style="opacity:.7">É sugestão — nada foi alterado.</span>`;
+
+            const btnLote = document.getElementById('btn-aprovar-lote');
+            const n = r.aprovar || 0;
+            btnLote.classList.toggle('d-none', n === 0);
+            btnLote.innerHTML = `<i class="fas fa-check-double me-1"></i>Aprovar os ${n} recomendados`;
+
+            renderPosts(allPosts);
+        } catch (e) {
+            showToast('Erro na triagem: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    }
+
+    async function aprovarRecomendados() {
+        const ids = Object.keys(triagem).filter(id => triagem[id].rec === 'aprovar');
+        if (ids.length === 0) return;
+        if (!confirm(`Aprovar ${ids.length} rascunho(s) de uma vez?\n\nEles ficam prontos pra publicar — a publicação continua sendo um clique seu, post a post.`)) return;
+
+        const btn = document.getElementById('btn-aprovar-lote');
+        btn.disabled = true;
+        let ok = 0, falhou = 0;
+        for (let i = 0; i < ids.length; i++) {
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>Aprovando ${i + 1}/${ids.length}...`;
+            try {
+                const res = await fetch(`/api/social/posts/${ids[i]}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ approved_by: 'gestor (triagem IA)' })
+                });
+                const d = await res.json();
+                d.success ? ok++ : falhou++;
+            } catch (_) { falhou++; }
+        }
+        showToast(`${ok} aprovado(s)` + (falhou ? `, ${falhou} falhou(ram)` : '') + ' ✅',
+                  falhou ? 'error' : 'success');
+        triagem = {};
+        document.getElementById('triagem-resumo').classList.add('d-none');
+        btn.classList.add('d-none');
+        btn.disabled = false;
+        refreshPosts();
     }
 
     // ============================================================

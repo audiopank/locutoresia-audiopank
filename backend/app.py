@@ -4995,6 +4995,135 @@ def api_update_social_post(post_id):
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/social/posts/triage', methods=['POST', 'OPTIONS'])
+def api_social_posts_triage():
+    """PRÉ-CLASSIFICAÇÃO da curadoria: olha os rascunhos e SUGERE
+    aprovar/rejeitar/revisar, com o motivo. NÃO altera nada no banco — quem bate
+    o martelo continua sendo o gestor. Existe porque a esteira enche mais rápido
+    do que a curadoria vaza (29 rascunhos parados x 0 aprovados em 27/07).
+
+    Ordem de julgamento (barato e determinístico primeiro, IA só no resto):
+      1. filtro de conteúdo sensível  -> rejeitar (regra, não opinião)
+      2. título repetido no lote      -> rejeitar (duplicado)
+      3. texto curto demais           -> revisar
+      4. o que sobrou                 -> UMA chamada de IA pro lote inteiro
+    """
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        posts = data.get('posts') if isinstance(data.get('posts'), list) else []
+        posts = posts[:60]
+        if not posts:
+            return jsonify({"success": False, "error": "Nenhum rascunho enviado"}), 400
+
+        sugestoes = {}
+        restantes = []
+        vistos = {}
+
+        try:
+            from core.content_filter import blocked_reason
+        except Exception:
+            blocked_reason = lambda *a: ""
+
+        for p in posts:
+            pid = str(p.get('id') or '')
+            if not pid:
+                continue
+            titulo = str(p.get('title') or '').strip()
+            texto = str(p.get('caption') or '').strip()
+
+            motivo_sensivel = blocked_reason(titulo, texto)
+            if motivo_sensivel:
+                sugestoes[pid] = {"rec": "rejeitar", "fonte": "regra",
+                                  "motivo": f"Conteúdo sensível ({motivo_sensivel})"}
+                continue
+
+            chave = _normalizar_titulo(titulo)
+            if chave and chave in vistos:
+                sugestoes[pid] = {"rec": "rejeitar", "fonte": "regra",
+                                  "motivo": "Título repetido de outro rascunho do lote"}
+                continue
+            if chave:
+                vistos[chave] = pid
+
+            if len(texto) < 120:
+                sugestoes[pid] = {"rec": "revisar", "fonte": "regra",
+                                  "motivo": f"Texto curto ({len(texto)} caracteres) — pode ter vindo cortado"}
+                continue
+
+            restantes.append({"id": pid, "titulo": titulo[:160], "texto": texto[:400]})
+
+        # ── IA: julga o VALOR EDITORIAL do que passou pelas regras ──
+        if restantes:
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+            julgado = {}
+            if api_key:
+                lista = "\n".join(
+                    f'{i}. TÍTULO: {r["titulo"]}\n   TEXTO: {r["texto"]}'
+                    for i, r in enumerate(restantes)
+                )
+                prompt = f"""Você é o editor-chefe de um feed de notícias brasileiro de interesse geral. Avalie cada rascunho e diga se vale publicar.
+
+APROVAR quando: é notícia de fato, interessa a um público amplo, o texto está completo e compreensível sozinho.
+REJEITAR quando: é publieditorial/propaganda disfarçada, clickbait sem conteúdo, fofoca irrelevante, texto truncado ou incompreensível, ou puro serviço de outro veículo ("assista no canal X").
+REVISAR quando: o assunto presta mas o texto precisa de conserto (frase cortada, resto de menu do site, promessa de vídeo).
+
+RASCUNHOS:
+{lista}
+
+Devolva SOMENTE um array JSON, um objeto por rascunho, sem markdown:
+[{{"i": <número do rascunho>, "r": "aprovar|rejeitar|revisar", "m": "motivo em no máximo 12 palavras"}}]"""
+                try:
+                    from google import genai
+                    client = genai.Client(api_key=api_key)
+                    gem = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+                    txt = (gem.text or '').replace('```json', '').replace('```', '').strip()
+                    import json as _json
+                    for item in _json.loads(txt):
+                        idx = int(item.get('i', -1))
+                        rec = str(item.get('r', '')).lower().strip()
+                        if 0 <= idx < len(restantes) and rec in ('aprovar', 'rejeitar', 'revisar'):
+                            julgado[restantes[idx]['id']] = {
+                                "rec": rec, "fonte": "ia",
+                                "motivo": str(item.get('m', ''))[:120] or 'Avaliação da IA'
+                            }
+                except Exception as ia_err:
+                    print(f"Triagem: IA falhou ({ia_err}) — o lote fica como 'revisar'")
+
+            for r in restantes:
+                sugestoes[r['id']] = julgado.get(r['id'], {
+                    "rec": "revisar", "fonte": "regra",
+                    "motivo": "IA não avaliou este — confira na mão"
+                })
+
+        resumo = {"aprovar": 0, "rejeitar": 0, "revisar": 0}
+        for s in sugestoes.values():
+            resumo[s["rec"]] = resumo.get(s["rec"], 0) + 1
+
+        return jsonify({"success": True, "sugestoes": sugestoes,
+                        "resumo": resumo, "total": len(sugestoes)})
+    except Exception as e:
+        print(f"Erro na triagem de rascunhos: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+def _normalizar_titulo(t):
+    """Título sem acento, sem pontuação e sem caixa — pra pegar o mesmo assunto
+    republicado com pontuação diferente."""
+    import unicodedata as _u
+    t = _u.normalize('NFKD', str(t or ''))
+    t = ''.join(c for c in t if not _u.combining(c)).lower()
+    return re.sub(r'[^a-z0-9 ]+', '', t).strip()
+
+
 @app.route('/api/social/posts/<post_id>/approve', methods=['POST'])
 def api_approve_social_post(post_id):
     """Aprova um SocialPost (usa armazenamento local, fallback para Supabase)"""
