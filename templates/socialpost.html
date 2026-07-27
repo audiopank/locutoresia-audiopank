@@ -922,22 +922,60 @@
         }
         const original = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>Lendo ${pendentes.length} rascunhos...`;
         try {
-            const res = await fetch('/api/social/posts/triage', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    posts: pendentes.map(p => ({
-                        id: p.id, title: p.title || '', caption: p.caption || ''
-                    }))
-                })
-            });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.error || 'Falha na triagem');
+            // EM BLOCOS DE 10. Mandar 60 de uma vez ia num prompt gigante: ou o
+            // serverless estourava o tempo, ou a resposta da IA voltava sem casar
+            // e TUDO caía em "revisar". Em blocos, uma falha só atinge 10 — o
+            // resto continua avaliado de verdade.
+            const LOTE = 10;
+            const blocos = [];
+            for (let i = 0; i < pendentes.length; i += LOTE) blocos.push(pendentes.slice(i, i + LOTE));
 
-            triagem = data.sugestoes || {};
-            const r = data.resumo || {};
+            triagem = {};
+            const r = { aprovar: 0, rejeitar: 0, revisar: 0 };
+            let total = 0, iaJulgados = 0, iaPedidos = 0, ultimoErro = '';
+
+            for (let b = 0; b < blocos.length; b++) {
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>Lendo ${Math.min((b + 1) * LOTE, pendentes.length)}/${pendentes.length}...`;
+                let data;
+                try {
+                    const res = await fetch('/api/social/posts/triage', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            posts: blocos[b].map(p => ({
+                                id: p.id, title: p.title || '', caption: p.caption || ''
+                            }))
+                        })
+                    });
+                    data = await res.json();
+                } catch (errBloco) {
+                    ultimoErro = errBloco.message;
+                    continue;              // um bloco que falha não derruba os outros
+                }
+                if (!data.success) { ultimoErro = data.error || 'falha no bloco'; continue; }
+
+                Object.assign(triagem, data.sugestoes || {});
+                const rb = data.resumo || {};
+                r.aprovar += rb.aprovar || 0;
+                r.rejeitar += rb.rejeitar || 0;
+                r.revisar += rb.revisar || 0;
+                total += data.total || 0;
+                iaJulgados += data.ia_julgados || 0;
+                iaPedidos += data.ia_pedidos || 0;
+                if (data.ia_erro) ultimoErro = data.ia_erro;
+
+                renderPosts(allPosts);     // vai pintando os selos conforme chega
+            }
+
+            const data = {
+                success: true, total: total, resumo: r,
+                // Só considero a IA "ok" se ela avaliou a maioria do que foi pedido.
+                ia_ok: iaPedidos === 0 || iaJulgados >= Math.ceil(iaPedidos * 0.5),
+                ia_erro: ultimoErro, ia_julgados: iaJulgados, ia_pedidos: iaPedidos
+            };
+            if (!data.success) throw new Error('Falha na triagem');
+
             const resumoEl = document.getElementById('triagem-resumo');
             resumoEl.classList.remove('d-none');
 
@@ -949,10 +987,10 @@
                     `<div style="padding:.5rem .75rem;border-radius:8px;background:rgba(248,113,113,.12);
                                  border:1px solid #f87171;color:#fca5a5;">
                         <i class="fas fa-triangle-exclamation me-1"></i>
-                        <strong>A IA não respondeu agora</strong> — por isso tudo caiu em "revisar".
-                        <span style="opacity:.8">Não é reprovação: ela nem chegou a ler.</span><br>
-                        <span style="font-size:.75rem;opacity:.7">Só as regras rodaram (conteúdo sensível, duplicado, texto curto).
-                        Motivo técnico: ${escHtml(data.ia_erro || 'desconhecido')}</span>
+                        <strong>A IA quase não respondeu</strong> — avaliou ${data.ia_julgados} de ${data.ia_pedidos}.
+                        O resto caiu em "revisar" por falta de resposta, <u>não</u> por reprovação.<br>
+                        <span style="font-size:.75rem;opacity:.7">As regras rodaram normalmente (conteúdo sensível, duplicado, texto curto).
+                        Tente de novo em alguns minutos. Motivo técnico: ${escHtml(data.ia_erro || 'sem detalhe')}</span>
                     </div>`;
                 document.getElementById('btn-aprovar-lote').classList.add('d-none');
                 renderPosts(allPosts);
@@ -964,7 +1002,10 @@
                 `<strong style="color:#22c55e">${r.aprovar || 0} pra aprovar</strong> · ` +
                 `<strong style="color:#f87171">${r.rejeitar || 0} pra rejeitar</strong> · ` +
                 `<strong style="color:#fbbf24">${r.revisar || 0} pra revisar</strong>. ` +
-                `<span style="opacity:.7">É sugestão — nada foi alterado.</span>`;
+                `<span style="opacity:.7">É sugestão — nada foi alterado.</span>` +
+                (data.ia_julgados < data.ia_pedidos
+                    ? `<br><span style="font-size:.75rem;color:#fbbf24">⚠️ ${data.ia_pedidos - data.ia_julgados} ficaram sem avaliação da IA (entraram como "revisar").</span>`
+                    : '');
 
             const btnLote = document.getElementById('btn-aprovar-lote');
             const n = r.aprovar || 0;

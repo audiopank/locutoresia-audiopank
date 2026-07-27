@@ -5112,9 +5112,14 @@ Devolva SOMENTE um array JSON, um objeto por rascunho, sem markdown:
         for s in sugestoes.values():
             resumo[s["rec"]] = resumo.get(s["rec"], 0) + 1
 
+        # ia_julgados: quantos a IA REALMENTE avaliou. Serve pra distinguir
+        # "a IA caiu" (exceção) de "a IA respondeu mas a resposta não casou"
+        # — os dois davam a mesma tela de 'tudo em revisar'.
+        julgados_ia = sum(1 for s in sugestoes.values() if s.get("fonte") == "ia")
         return jsonify({"success": True, "sugestoes": sugestoes,
                         "resumo": resumo, "total": len(sugestoes),
-                        "ia_ok": not ia_erro, "ia_erro": ia_erro})
+                        "ia_ok": not ia_erro, "ia_erro": ia_erro,
+                        "ia_julgados": julgados_ia, "ia_pedidos": len(restantes)})
     except Exception as e:
         print(f"Erro na triagem de rascunhos: {e}")
         import traceback
