@@ -28,6 +28,17 @@ SENSITIVE_PATTERNS = [
     # Morte / homicídio
     r"\bmatou\b", r"\bmatar\b", r"\bmataram\b", r"\bmatador\w*",
     r"\bmort[ao]s?\b", r"\bmorte[s]?\b", r"\bmorreu\b", r"\bmorrer\w*",
+    # ⚠️ 27/07/2026: faltavam as formas do PRESENTE — e "Morre fulano" / "morre
+    # afogado" é o formato mais comum de manchete de morte no Brasil. Passavam
+    # batido ("Jovem de 26 anos morre afogado..." virou rascunho). NÃO usar
+    # \bmorr\w* aqui: pegaria "morro"/"morrinho" (bairro, relevo).
+    r"\bmorre\b", r"\bmorrem\b",
+    r"\bfalec\w*",             # faleceu, falecimento
+    r"\bobito\w*",             # óbito (texto vem sem acento)
+    r"\bafogad\w*", r"\bafogament\w*",
+    r"\batropel\w*",           # atropelado, atropelamento
+    r"\bsoterrad\w*",
+    r"\bvitima fatal\b", r"\bacidente fatal\b", r"\bqueda fatal\b",
     r"\bassassin\w*",          # assassinato, assassino, assassinada
     r"\bhomicidio\w*",
     r"\bfeminicidio\w*",
