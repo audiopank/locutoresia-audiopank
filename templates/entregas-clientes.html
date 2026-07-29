@@ -80,6 +80,61 @@
         .badge-pedido-aguardando_aprovacao { background: #3b82f6; }
         .badge-pedido-concluido { background: #22c55e; }
         .badge-pedido-cancelado { background: #64748b; }
+        /* ══ KANBAN (aba nova; a lista acima continua exatamente como era) ══
+           Serve pra enxergar o gargalo de relance — com promessa de "prévia no
+           mesmo dia", saber quantos estão parados em cada etapa É a operação. */
+        .kb-abas { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+        .kb-aba {
+            background: rgba(30,41,59,.7); border: 1px solid var(--border-color);
+            color: var(--text-secondary); padding: 7px 18px; border-radius: 999px;
+            font-size: .85rem; font-weight: 600; cursor: pointer; transition: all .2s;
+        }
+        .kb-aba:hover { color: var(--text-primary); border-color: #64748b; }
+        .kb-aba.ativa { background: rgba(139,92,246,.18); border-color: #8b5cf6; color: #c4b5fd; }
+
+        .kb-board {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+            gap: 14px; align-items: start;
+        }
+        .kb-col {
+            background: rgba(15,23,42,.55); border: 1px solid var(--border-color);
+            border-radius: 14px; padding: 14px; min-height: 120px;
+        }
+        .kb-col-topo {
+            display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+            padding-bottom: 10px; border-bottom: 1px solid var(--border-color);
+        }
+        .kb-col-nome { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+        .kb-col-qtd {
+            margin-left: auto; background: rgba(100,116,139,.3); color: #cbd5e1;
+            border-radius: 999px; padding: 1px 9px; font-size: .72rem; font-weight: 700;
+        }
+        .kb-card {
+            background: #1a2337; border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 12px; margin-bottom: 10px;
+        }
+        .kb-card:hover { border-color: #64748b; }
+        .kb-cliente { font-weight: 700; font-size: .92rem; display: flex; align-items: center; gap: 7px; }
+        .kb-linha { font-size: .76rem; color: var(--text-secondary); margin-top: 3px; }
+        .kb-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+        .kb-badge { font-size: .68rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+        .kb-b-valor { background: rgba(52,211,153,.16); color: #34d399; }
+        .kb-b-voz   { background: rgba(96,165,250,.16); color: #60a5fa; }
+        .kb-b-plano { background: rgba(148,163,184,.16); color: #cbd5e1; }
+        /* Farol de espera: calculado pelo tempo parado, sem coluna nova no banco */
+        .kb-farol { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+        .kb-f-verde    { background: #4ade80; }
+        .kb-f-amarelo  { background: #facc15; }
+        .kb-f-vermelho { background: #ef4444; box-shadow: 0 0 7px rgba(239,68,68,.6); }
+        .kb-acoes { margin-top: 9px; display: flex; gap: 6px; flex-wrap: wrap; }
+        .kb-acoes .btn { font-size: .74rem; padding: 4px 10px; }
+        .kb-vazio { color: #64748b; font-size: .76rem; text-align: center; padding: 12px 0; }
+        .kb-alerta {
+            background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.4);
+            color: #fca5a5; border-radius: 10px; padding: .55rem .8rem;
+            font-size: .82rem; margin-bottom: 12px;
+        }
+
         .pedido-roteiro {
             background: rgba(30, 41, 59, 0.7);
             border: 1px solid var(--border-color);
@@ -113,7 +168,18 @@
                 </button>
             </div>
             <p class="text-secondary" style="font-size:.85rem;">Divulgue o link do formulário no WhatsApp/Instagram — os pedidos dos clientes caem aqui.</p>
+            <!-- ABAS: a Lista é a de sempre; o Kanban é visão nova sobre os
+                 MESMOS dados (nada foi alterado no fluxo nem no banco). -->
+            <div class="kb-abas">
+                <button class="kb-aba ativa" id="kbAbaLista" onclick="verPedidos('lista')">
+                    <i class="fas fa-list me-1"></i>Lista
+                </button>
+                <button class="kb-aba" id="kbAbaKanban" onclick="verPedidos('kanban')">
+                    <i class="fas fa-table-columns me-1"></i>Kanban
+                </button>
+            </div>
             <div id="pedidosList"><p class="text-secondary">Carregando...</p></div>
+            <div id="pedidosKanban" style="display:none;"></div>
         </div>
 
         <div class="section-card">
@@ -669,8 +735,148 @@
             }
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // KANBAN DE PRODUÇÃO — visão nova sobre os MESMOS pedidos.
+        //
+        // Nada aqui altera o fluxo: as transições continuam sendo as que já
+        // existiam. Só duas são manuais (Iniciar produção / Criar entrega); as
+        // outras acontecem sozinhas — criar a entrega joga o pedido em
+        // "aguardando aprovação" e o ACEITE DO CLIENTE conclui. E 'pago' não é
+        // status, é um campo booleano vindo do webhook da Kiwify (ou do botão
+        // manual da lista) — por isso NÃO existe botão de "avançar para pago".
+        // ═══════════════════════════════════════════════════════════════════
+        const KB_COLUNAS = [
+            { id: 'novo',        nome: '🟡 Novo',                  cor: '#eab308',
+              filtro: p => p.status === 'novo' },
+            { id: 'em_producao', nome: '🔵 Em produção',           cor: '#f97316',
+              filtro: p => p.status === 'em_producao' },
+            { id: 'aguardando',  nome: '🟠 Aguardando aprovação',  cor: '#3b82f6',
+              filtro: p => p.status === 'aguardando_aprovacao' },
+            // Aprovado mas ainda não pago = dinheiro na mesa. Merece coluna só dele.
+            { id: 'a_receber',   nome: '✅ Concluído · a receber',  cor: '#22c55e',
+              filtro: p => p.status === 'concluido' && !p.pago },
+            { id: 'pago',        nome: '💰 Pago',                   cor: '#059669',
+              filtro: p => !!p.pago },
+            { id: 'cancelado',   nome: '⚫ Cancelado',              cor: '#64748b',
+              filtro: p => p.status === 'cancelado' },
+        ];
+
+        // Farol de espera SEM coluna nova no banco: conta as horas paradas.
+        // Com promessa de "prévia no mesmo dia", passar de 24h é vermelho.
+        function kbFarol(p) {
+            if (['concluido', 'cancelado'].includes(p.status) || p.pago) return null;
+            const ref = new Date(p.updated_at || p.created_at);
+            if (isNaN(ref)) return null;
+            const horas = (Date.now() - ref.getTime()) / 36e5;
+            if (horas >= 24) return { classe: 'kb-f-vermelho', texto: `parado há ${Math.floor(horas / 24)}d` };
+            if (horas >= 8)  return { classe: 'kb-f-amarelo',  texto: `há ${Math.floor(horas)}h` };
+            return { classe: 'kb-f-verde', texto: `há ${Math.max(1, Math.floor(horas))}h` };
+        }
+
+        function kbAcoes(p) {
+            // Reusa EXATAMENTE as funções que a lista já usa.
+            if (p.status === 'novo') {
+                return `<button class="btn btn-sm btn-warning" onclick="mudarStatusPedido('${p.id}', 'em_producao')">
+                            <i class="fas fa-play me-1"></i>Produzir</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="cancelarPedido('${p.id}')">Cancelar</button>`;
+            }
+            if (p.status === 'em_producao') {
+                return `<button class="btn btn-sm btn-primary" onclick="criarEntregaDoPedido('${p.id}')">
+                            <i class="fas fa-microphone me-1"></i>Criar entrega</button>`;
+            }
+            if (p.status === 'concluido' && p.valor && !p.pago) {
+                return `<button class="btn btn-sm btn-success" onclick="marcarPago('${p.id}', true)">
+                            <i class="fas fa-dollar-sign me-1"></i>Marcar pago</button>`;
+            }
+            return '';
+        }
+
+        function renderKanban() {
+            const alvo = document.getElementById('pedidosKanban');
+            if (!alvo) return;
+            const pedidos = Object.values(pedidosCache || {});
+            if (pedidos.length === 0) {
+                alvo.innerHTML = '<p class="text-secondary mb-0">Nenhum pedido ainda.</p>';
+                return;
+            }
+
+            // Destaque do que está travado: é o que a tela existia pra mostrar.
+            const atrasados = pedidos.filter(p => {
+                const f = kbFarol(p);
+                return f && f.classe === 'kb-f-vermelho';
+            }).length;
+            const aReceber = pedidos.filter(p => p.status === 'concluido' && !p.pago);
+            const somaReceber = aReceber.reduce((s, p) => s + (parseFloat(p.valor) || 0), 0);
+
+            let alertas = '';
+            if (atrasados > 0) {
+                alertas += `<div class="kb-alerta"><i class="fas fa-triangle-exclamation me-1"></i>
+                    <strong>${atrasados}</strong> pedido(s) parado(s) há mais de 24h.</div>`;
+            }
+            if (aReceber.length > 0 && somaReceber > 0) {
+                alertas += `<div class="kb-alerta" style="background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.4);color:#6ee7b7;">
+                    <i class="fas fa-hand-holding-dollar me-1"></i>
+                    <strong>${aReceber.length}</strong> aprovado(s) sem pagamento — ${formatBRL(somaReceber)} a receber.</div>`;
+            }
+
+            const colunas = KB_COLUNAS.map(col => {
+                const doGrupo = pedidos.filter(col.filtro);
+                const cards = doGrupo.map(p => {
+                    const plano = PLANO_LABELS[p.plano] || TIPO_LABELS[p.tipo] || 'Orçamento';
+                    const farol = kbFarol(p);
+                    const acoes = kbAcoes(p);
+                    return `
+                        <div class="kb-card">
+                            <div class="kb-cliente">
+                                ${farol ? `<span class="kb-farol ${farol.classe}" title="${farol.texto}"></span>` : ''}
+                                ${escapeHtml(p.cliente_nome || 'Sem nome')}
+                            </div>
+                            <div class="kb-linha">${formatDateBr(p.created_at)}${farol ? ' · ' + farol.texto : ''}</div>
+                            <div class="kb-badges">
+                                <span class="kb-badge kb-b-plano">${escapeHtml(plano)}</span>
+                                ${p.valor ? `<span class="kb-badge kb-b-valor">${formatBRL(p.valor)}</span>` : ''}
+                                ${p.estilo_voz ? `<span class="kb-badge kb-b-voz">🎙 ${escapeHtml(String(p.estilo_voz).slice(0, 26))}</span>` : ''}
+                            </div>
+                            ${acoes ? `<div class="kb-acoes">${acoes}</div>` : ''}
+                        </div>`;
+                }).join('');
+
+                return `
+                    <div class="kb-col" style="border-top:3px solid ${col.cor};">
+                        <div class="kb-col-topo">
+                            <span class="kb-col-nome" style="color:${col.cor};">${col.nome}</span>
+                            <span class="kb-col-qtd">${doGrupo.length}</span>
+                        </div>
+                        ${cards || '<div class="kb-vazio">vazio</div>'}
+                    </div>`;
+            }).join('');
+
+            alvo.innerHTML = alertas + `<div class="kb-board">${colunas}</div>`;
+        }
+
+        function verPedidos(aba) {
+            const ehKanban = aba === 'kanban';
+            document.getElementById('pedidosList').style.display = ehKanban ? 'none' : '';
+            document.getElementById('pedidosKanban').style.display = ehKanban ? '' : 'none';
+            document.getElementById('kbAbaLista').classList.toggle('ativa', !ehKanban);
+            document.getElementById('kbAbaKanban').classList.toggle('ativa', ehKanban);
+            localStorage.setItem('pedidos_aba', aba);   // lembra a preferência
+            if (ehKanban) renderKanban();
+        }
+
+        // Embrulha o loadPedidos ORIGINAL em vez de editá-lo: quando ele termina
+        // de atualizar o cache, o kanban se redesenha se estiver aberto. Assim
+        // nenhuma linha do que já funcionava foi tocada.
+        const _loadPedidosOriginal = loadPedidos;
+        loadPedidos = async function () {
+            await _loadPedidosOriginal.apply(this, arguments);
+            if (document.getElementById('pedidosKanban')?.style.display !== 'none') renderKanban();
+        };
+
         loadDeliveries();
-        loadPedidos();
+        loadPedidos().then(() => {
+            if (localStorage.getItem('pedidos_aba') === 'kanban') verPedidos('kanban');
+        });
     </script>
 </body>
 </html>
