@@ -18,6 +18,16 @@ import mimetypes
 import os
 import struct
 import sys
+
+# Este arquivo imprime emoji nos logs (✅, 🎙️). No console do Windows (cp1252)
+# isso levanta UnicodeEncodeError e derruba a geração ANTES de sintetizar
+# qualquer coisa — o TTSGenerator nem chega a ser construído no dev local.
+# Forçar UTF-8 na saída resolve; no Linux/Vercel já é UTF-8 e nada muda.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
 from typing import Literal
 
 # EdgeTTS (Gratuito e padrão)
