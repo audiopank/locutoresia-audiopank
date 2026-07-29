@@ -468,8 +468,12 @@ function sendToMiniDAW() {
 }
 
 function updateStats() {
+    // O contador saiu do herói (virou promessa de oferta) e passou a viver na
+    // faixa acima do catálogo — pode não existir na página. Sem esta guarda,
+    // gerar áudio estourava TypeError e derrubava o resto do fluxo.
     const el = document.getElementById('audiosCount');
-    const n = parseInt(el.textContent.replace(/\D/g, ''));
+    if (!el) return;
+    const n = parseInt(el.textContent.replace(/\D/g, '')) || 0;
     el.textContent = (n + 1) + '+';
 }
 
