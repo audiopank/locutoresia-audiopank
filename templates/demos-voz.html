@@ -184,14 +184,27 @@
 
     // Trocar o nome NÃO exige reenviar o áudio: é o texto que o cliente lê
     // na vitrine, então mudar de ideia tem que ser barato.
+    // Ordem igual à do <select> de publicação — o número que o usuário digita
+    // vira a chave que o backend espera.
+    const CATS = ['institucional', 'varejo', 'jovem', 'nordeste', 'outro'];
+
     async function renomear(id) {
         const novo = prompt('Novo nome da amostra (é o que o cliente lê):');
         if (novo === null) return;
         if (!novo.trim()) { alert('O nome não pode ficar vazio.'); return; }
         const desc = prompt('Descrição curta (deixe como está ou reescreva):', '');
+        // Faltava trocar a CATEGORIA: uma voz com sotaque publicada em
+        // "Institucional" deixa a categoria certa vazia — e categoria vazia
+        // nem aparece na vitrine.
+        const cat = prompt(
+            'Categoria (digite o número, ou deixe vazio pra manter):\n\n' +
+            '1 - Institucional padrão\n2 - Varejo animado\n3 - Jovem — festas e promoções\n' +
+            '4 - Sotaque nordestino\n5 - Outros estilos');
         try {
             const corpo = { nome: novo.trim() };
             if (desc !== null && desc.trim()) corpo.descricao = desc.trim();
+            const i = parseInt(cat, 10);
+            if (i >= 1 && i <= CATS.length) corpo.categoria = CATS[i - 1];
             const r = await fetch('/api/voice-demos/' + id, {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(corpo)
