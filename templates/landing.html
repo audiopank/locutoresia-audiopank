@@ -120,7 +120,51 @@
         footer a { color: var(--txt2); }
         footer a:hover { color: var(--txt); }
 
+        /* ── Modal de amostras de voz ─────────────────────────────────────
+           O cliente ouve peças JÁ FINALIZADAS e escolhe a voz ANTES de
+           preencher o briefing. Mata o "não era essa voz" depois de pronto. */
+        .modal-fundo {
+            display: none; position: fixed; inset: 0; z-index: 1000;
+            background: rgba(0,0,0,.8); padding: 20px;
+            align-items: center; justify-content: center;
+        }
+        .modal-fundo.aberto { display: flex; }
+        .modal-caixa {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 18px; width: 100%; max-width: 720px;
+            max-height: 88vh; overflow-y: auto; padding: 30px;
+        }
+        .modal-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 6px; }
+        .modal-topo h2 { font-size: 1.5rem; font-weight: 700; }
+        .modal-fechar { background: none; border: none; color: var(--txt2); font-size: 1.6rem; cursor: pointer; line-height: 1; }
+        .modal-fechar:hover { color: var(--txt); }
+        .modal-sub { color: var(--txt2); font-size: .92rem; margin-bottom: 24px; }
+
+        .cat-titulo { font-size: 1.02rem; font-weight: 700; margin: 22px 0 4px; }
+        .cat-desc { font-size: .82rem; color: var(--txt2); margin-bottom: 12px; }
+
+        .demo {
+            display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+            background: rgba(15,23,42,.6); border: 1px solid var(--border);
+            border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+        }
+        .demo-info { flex: 1; min-width: 170px; }
+        .demo-info strong { display: block; font-size: .95rem; }
+        .demo-info span { font-size: .8rem; color: var(--txt2); }
+        .demo audio { height: 36px; max-width: 220px; }
+        .demo .btn-escolher {
+            padding: 9px 18px; border-radius: 999px; font-weight: 600; font-size: .85rem;
+            background: rgba(99,102,241,.15); color: #c4b5fd; border: 1px solid var(--primary);
+        }
+        .demo .btn-escolher:hover { background: var(--primary); color: #fff; }
+        .modal-rodape { margin-top: 26px; text-align: center; }
+        .modal-rodape a { color: var(--txt2); font-size: .88rem; text-decoration: underline; }
+        .modal-rodape a:hover { color: var(--txt); }
+        .modal-vazio { text-align: center; color: var(--txt2); padding: 26px 0; }
+
         @media (max-width: 768px) {
+            .modal-caixa { padding: 22px 18px; }
+            .demo audio { max-width: 100%; width: 100%; }
             .topo { padding: 14px 20px; }
             .topo .btn { display: none; }
             .heroi { padding: 50px 20px; }
@@ -268,6 +312,101 @@
         Locutores IA · Áudio Pank Produtora — locução publicitária com inteligência artificial.<br>
         <a href="/contato">Contato</a>
     </footer>
+
+    <!-- AMOSTRAS DE VOZ: abre antes do formulário. O cliente escolhe a voz
+         ouvindo peça pronta, e a escolha vai junto pro briefing. -->
+    <div class="modal-fundo" id="modalVozes" role="dialog" aria-modal="true" aria-labelledby="modalVozesTitulo">
+        <div class="modal-caixa">
+            <div class="modal-topo">
+                <h2 id="modalVozesTitulo">Qual voz combina com o seu anúncio?</h2>
+                <button class="modal-fechar" onclick="fecharVozes()" aria-label="Fechar">&times;</button>
+            </div>
+            <p class="modal-sub">
+                Ouça as amostras abaixo e escolha. A gente já produz na voz que você marcar —
+                e se preferir, é só pular e deixar a escolha com a gente.
+            </p>
+            <div id="listaVozes">
+                <p class="modal-vazio"><i class="fas fa-spinner fa-spin"></i> Carregando amostras...</p>
+            </div>
+            <div class="modal-rodape">
+                <a href="/solicitar">Prefiro que vocês escolham a voz por mim →</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const modal = document.getElementById('modalVozes');
+        let vozesCarregadas = false;
+
+        function abrirVozes(ev) {
+            if (ev) ev.preventDefault();
+            modal.classList.add('aberto');
+            document.body.style.overflow = 'hidden';
+            if (!vozesCarregadas) { carregarVozes(); vozesCarregadas = true; }
+        }
+        function fecharVozes() {
+            modal.classList.remove('aberto');
+            document.body.style.overflow = '';
+            // Pausa qualquer amostra tocando — senão continua no escuro.
+            modal.querySelectorAll('audio').forEach(a => a.pause());
+        }
+        modal.addEventListener('click', e => { if (e.target === modal) fecharVozes(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharVozes(); });
+
+        function esc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        async function carregarVozes() {
+            const alvo = document.getElementById('listaVozes');
+            try {
+                const r = await fetch('/api/voice-demos');
+                const d = await r.json();
+                const cats = (d && d.categorias) || [];
+                if (!cats.length) {
+                    // Sem amostras ainda: não trava o cliente, manda pro briefing.
+                    alvo.innerHTML = '<p class="modal-vazio">Ainda não temos amostras publicadas aqui.<br>' +
+                        'Descreva no formulário a voz que você imagina — a gente acerta na prévia.</p>';
+                    return;
+                }
+                alvo.innerHTML = cats.map(c => `
+                    <div>
+                        <h3 class="cat-titulo">${esc(c.nome)}</h3>
+                        ${c.desc ? `<p class="cat-desc">${esc(c.desc)}</p>` : ''}
+                        ${c.demos.map(dm => `
+                            <div class="demo">
+                                <div class="demo-info">
+                                    <strong>${esc(dm.nome)}</strong>
+                                    ${dm.descricao ? `<span>${esc(dm.descricao)}</span>` : ''}
+                                </div>
+                                <audio controls preload="none" src="${esc(dm.audio_url)}"></audio>
+                                <a class="btn-escolher"
+                                   href="/solicitar?voz=${encodeURIComponent(c.nome + ' — ' + dm.nome)}">
+                                   Quero esta voz
+                                </a>
+                            </div>`).join('')}
+                    </div>`).join('');
+
+                // Uma amostra por vez: tocar a próxima pausa a anterior.
+                const audios = alvo.querySelectorAll('audio');
+                audios.forEach(a => a.addEventListener('play', () => {
+                    audios.forEach(o => { if (o !== a) o.pause(); });
+                }));
+            } catch (e) {
+                alvo.innerHTML = '<p class="modal-vazio">Não consegui carregar as amostras agora.<br>' +
+                    '<a href="/solicitar" style="color:#c4b5fd">Seguir para o formulário →</a></p>';
+            }
+        }
+
+        // Todo caminho que levava direto ao formulário passa a ouvir as vozes
+        // antes — menos o link "prefiro que vocês escolham".
+        document.querySelectorAll('a[href="/solicitar"]').forEach(a => {
+            if (a.closest('.modal-rodape')) return;
+            a.addEventListener('click', abrirVozes);
+        });
+    </script>
 
 </body>
 </html>

@@ -96,7 +96,7 @@
                     <p class="mb-0 text-muted">Todos os roteiros salvos</p>
                 </div>
                 <div class="col-md-6 text-md-end">
-                    <a href="/studio" class="btn btn-secondary">
+                    <a href="/" class="btn btn-secondary">
                         <i class="fas fa-arrow-left me-1"></i>
                         Voltar ao Início
                     </a>
@@ -281,14 +281,14 @@
             const script = SCRIPTS.find(function(s) { return s.id === scriptId; });
             if (!script) return;
             localStorage.setItem('pendingScriptContent', script.content);
-            window.location.href = '/studio';
+            window.location.href = '/';
         }
 
         function useForVoice(scriptId) {
             const script = SCRIPTS.find(function(s) { return s.id === scriptId; });
             if (!script) return;
             localStorage.setItem('pendingVoiceText', script.content);
-            window.location.href = '/studio';
+            window.location.href = '/';
         }
 
         function escapeHtml(text) {

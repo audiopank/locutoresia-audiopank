@@ -698,23 +698,37 @@ except ImportError as e:
 
 @app.route('/')
 def index():
-    """VITRINE PÚBLICA — é o que o cliente vê.
+    """A PLATAFORMA — home de trabalho, com todos os menus e agentes.
 
-    O modelo do negócio é produtora, não plataforma self-service: o cliente
-    manda o briefing e RECEBE o spot pronto; ele nunca entra na ferramenta.
-    Por isso a home não tem barra lateral nem menu interno. O caminho dele é
-    esta página -> /solicitar -> link da prévia (/aprovacao/<id>) -> pagamento.
-
-    O estúdio (catálogo de vozes, MiniDAW, agentes, entregas) mudou para
-    /studio — mesma página de antes, só saiu da porta da frente.
+    Já tentei colocar a vitrine do cliente aqui e foi ERRADO: escondeu a
+    estrutura de trabalho (agentes de notícias, automação NewPost-IA, MiniDAW,
+    entregas) atrás de outra URL. A vitrine tem endereço PRÓPRIO: /vitrine.
+    Não mover esta rota de novo.
     """
-    return render_template('landing.html')
+    return render_template('index.html')
 
 
 @app.route('/studio')
 def studio():
-    """Cabine de comando interna (era a antiga home '/')."""
+    """Apelido de '/' — mantido só pra não quebrar link já compartilhado."""
     return render_template('index.html')
+
+
+@app.route('/vitrine')
+def vitrine():
+    """VITRINE DO CLIENTE — página pública, sem menu interno.
+
+    É o link que se manda pro cliente e se usa em anúncio. O caminho dele é:
+    /vitrine -> /solicitar -> link da prévia (/aprovacao/<id>) -> pagamento.
+    Fica FORA da '/' de propósito: a home é a bancada de trabalho.
+    """
+    return render_template('landing.html')
+
+
+@app.route('/demos-voz')
+def demos_voz_page():
+    """Onde você publica as amostras de voz que aparecem no modal da vitrine."""
+    return render_template('demos-voz.html')
 
 @app.route('/agent-army')
 def agent_army():
@@ -759,8 +773,12 @@ def get_tracks():
                 response = supabase_manager.newpost_manager_client.table('music_tracks') \
                     .select('*') \
                     .eq('is_active', True) \
+                    .neq('genre', 'demo_voz') \
                     .order('created_at', desc=True) \
                     .execute()
+                # .neq('genre','demo_voz'): as demos de VOZ moram nesta mesma
+                # tabela (ver /api/voice-demos). Sem este filtro elas apareceriam
+                # como trilha de fundo na Biblioteca da MiniDAW.
                 return jsonify({
                     "success": True,
                     "tracks": response.data
@@ -791,6 +809,114 @@ def get_tracks():
             "success": True,
             "tracks": filtered_default_tracks + local_uploaded_tracks
         }), 200
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# DEMOS DE VOZ — peças JÁ FINALIZADAS que o cliente ouve ANTES de pedir, pra
+# escolher a voz certa. Some com o vaivém "não era essa voz" depois de pronto.
+#
+# Ficam na tabela music_tracks marcadas com genre='demo_voz' (e a categoria em
+# 'mood'). Escolha deliberada: assim a feature sobe HOJE, sem exigir SQL novo
+# no Supabase. Em troca, /api/tracks precisa FILTRAR essas linhas — senão um
+# demo de voz apareceria como trilha de fundo na Biblioteca da MiniDAW.
+# ══════════════════════════════════════════════════════════════════════════
+DEMO_VOZ_MARCADOR = 'demo_voz'
+
+CATEGORIAS_DEMO_VOZ = [
+    {"id": "institucional", "nome": "Institucional padrão",
+     "desc": "Sóbria e confiável. Empresa, clínica, escritório."},
+    {"id": "varejo", "nome": "Varejo animado",
+     "desc": "Energia de oferta. Loja, supermercado, farmácia."},
+    {"id": "jovem", "nome": "Jovem — festas e promoções",
+     "desc": "Solta e descontraída. Evento, balada, campanha jovem."},
+    {"id": "nordeste", "nome": "Sotaque nordestino",
+     "desc": "Voz com a fala da região, pra falar de igual pra igual."},
+    {"id": "outro", "nome": "Outros estilos", "desc": ""},
+]
+
+
+@app.route('/api/voice-demos', methods=['GET'])
+def listar_demos_voz():
+    """Lista as demos agrupadas por categoria. Público: alimenta o modal da
+    vitrine, então nunca exige credencial do cliente."""
+    try:
+        itens = []
+        if supabase_manager and supabase_manager.newpost_manager_client:
+            try:
+                resp = supabase_manager.newpost_manager_client.table('music_tracks') \
+                    .select('*').eq('is_active', True).eq('genre', DEMO_VOZ_MARCADOR) \
+                    .order('created_at', desc=True).execute()
+                itens = resp.data or []
+            except Exception as e:
+                print(f"Erro ao buscar demos de voz: {e}")
+
+        por_categoria = []
+        for cat in CATEGORIAS_DEMO_VOZ:
+            demos = [{
+                "id": i.get('id'),
+                "nome": i.get('name') or 'Demo',
+                "descricao": i.get('description') or '',
+                "audio_url": i.get('file_url'),
+                "duracao": i.get('duration') or 0,
+            } for i in itens if (i.get('mood') or 'outro') == cat['id']]
+            if demos:
+                por_categoria.append({**cat, "demos": demos})
+
+        return jsonify({"success": True, "categorias": por_categoria,
+                        "total": len(itens)})
+    except Exception as e:
+        print(f"Erro em /api/voice-demos: {e}")
+        return jsonify({"success": False, "error": str(e), "categorias": []}), 500
+
+
+@app.route('/api/voice-demos', methods=['POST', 'OPTIONS'])
+def salvar_demo_voz():
+    """Grava a demo depois que o áudio já subiu pelo /api/tracks/upload-url."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        file_url = (data.get('file_url') or '').strip()
+        nome = (data.get('nome') or '').strip()
+        if not file_url or not nome:
+            return jsonify({"success": False, "error": "Nome e arquivo são obrigatórios"}), 400
+
+        categoria = (data.get('categoria') or 'outro').strip()
+        validas = {c['id'] for c in CATEGORIAS_DEMO_VOZ}
+        if categoria not in validas:
+            categoria = 'outro'
+
+        registro = {
+            "name": nome[:120],
+            "artist": "Locutores IA",
+            "genre": DEMO_VOZ_MARCADOR,      # marcador que separa demo de trilha
+            "mood": categoria,               # categoria da demo
+            "duration": int(data.get('duracao', 0) or 0),
+            "bpm": 0,
+            "description": (data.get('descricao') or '')[:300],
+            "file_url": file_url,
+            "file_size": int(data.get('file_size', 0) or 0),
+            "mime_type": data.get('mime_type', 'audio/mpeg'),
+            "is_active": True,
+        }
+
+        if not (supabase_manager and supabase_manager.newpost_manager_client):
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        resp = supabase_manager.newpost_manager_client.table('music_tracks') \
+            .insert(registro).execute()
+        registro['id'] = resp.data[0]['id'] if resp.data else None
+        return jsonify({"success": True, "demo": registro}), 201
+    except Exception as e:
+        print(f"Erro ao salvar demo de voz: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/api/voxcraft/recommend-tracks', methods=['POST', 'OPTIONS'])

@@ -254,6 +254,23 @@
         }
 
         carregarPlanos();
+
+        // VOZ ESCOLHIDA NA VITRINE: o cliente ouviu as amostras e clicou em
+        // "Quero esta voz" — chega aqui em ?voz=. Preenche o campo e avisa que
+        // a escolha foi registrada, pra ele não achar que se perdeu.
+        (function preencherVozEscolhida() {
+            const voz = new URLSearchParams(location.search).get('voz');
+            if (!voz) return;
+            const campo = document.getElementById('estiloVoz');
+            if (!campo) return;
+            campo.value = voz.slice(0, 300);
+
+            const aviso = document.createElement('div');
+            aviso.style.cssText = 'margin-top:.4rem;font-size:.83rem;color:#4ade80;';
+            // textContent (não innerHTML): o valor vem da URL, não pode virar HTML.
+            aviso.textContent = '✓ Voz escolhida por você nas amostras. Pode trocar se quiser.';
+            campo.insertAdjacentElement('afterend', aviso);
+        })();
     </script>
 </body>
 </html>
