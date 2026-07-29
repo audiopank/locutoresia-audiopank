@@ -973,11 +973,18 @@
                                 
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Estilo de Fala</label>
+                                    <!-- Os valores aqui têm que existir em STYLE_MAP/EDGE_STYLE_MAP
+                                         (core/tts_generator.py). Até 27/07/2026, "excited", "calm" e
+                                         "professional" NÃO existiam lá e caíam em "normal" caladas. -->
                                     <select class="form-select" id="styleSelect">
                                         <option value="normal">Normal</option>
-                                        <option value="excited">Animado</option>
+                                        <option value="excited">Animado (varejo/promoção)</option>
+                                        <option value="cheerful">Alegre / festivo</option>
                                         <option value="calm">Calmo</option>
                                         <option value="professional">Profissional</option>
+                                        <option value="serious">Sério / formal</option>
+                                        <option value="fast">Rápido</option>
+                                        <option value="slow">Lento / pausado</option>
                                     </select>
                                 </div>
                                 

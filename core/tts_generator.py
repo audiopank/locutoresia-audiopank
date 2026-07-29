@@ -99,12 +99,47 @@ EDGE_VOICE_MAP = {
 }
 
 # Mapeamento de estilos para EdgeTTS
+# ⚠️ 27/07/2026: o seletor do Studio manda "excited"/"calm"/"professional", que
+# NÃO existiam aqui. O .get(style, normal) engolia em silêncio e 3 das 4 opções
+# da tela não faziam absolutamente nada. Agora cada opção da UI tem entrada real.
 EDGE_STYLE_MAP = {
-    "normal":   {"rate": "+0%",  "pitch": "+0Hz"},
-    "fast":     {"rate": "+30%", "pitch": "+0Hz"},
-    "slow":     {"rate": "-25%", "pitch": "-5Hz"},
-    "cheerful": {"rate": "+10%", "pitch": "+10Hz"},
-    "serious":  {"rate": "-10%", "pitch": "-10Hz"},
+    "normal":       {"rate": "+0%",  "pitch": "+0Hz"},
+    "fast":         {"rate": "+30%", "pitch": "+0Hz"},
+    "slow":         {"rate": "-25%", "pitch": "-5Hz"},
+    "cheerful":     {"rate": "+10%", "pitch": "+10Hz"},
+    "serious":      {"rate": "-10%", "pitch": "-10Hz"},
+    # Os que a tela realmente oferece:
+    "excited":      {"rate": "+18%", "pitch": "+12Hz"},   # animado (varejo/promo)
+    "calm":         {"rate": "-12%", "pitch": "-3Hz"},    # calmo, sem arrastar
+    "professional": {"rate": "-3%",  "pitch": "-2Hz"},    # institucional, sóbrio
+}
+
+# Sinônimos aceitos → nome canônico. Serve pra UI em português e pra quem chama
+# a API com outro nome. O que não cair aqui vira AVISO no log (não silêncio).
+STYLE_ALIASES = {
+    "animado": "excited", "energetico": "excited", "energético": "excited",
+    "alegre": "cheerful", "feliz": "cheerful",
+    "calmo": "calm", "tranquilo": "calm", "suave": "calm",
+    "profissional": "professional", "institucional": "professional",
+    "serio": "serious", "sério": "serious", "grave": "serious",
+    "rapido": "fast", "rápido": "fast",
+    "lento": "slow", "pausado": "slow",
+    "padrao": "normal", "padrão": "normal",
+}
+
+# INSTRUÇÃO DE TOM pro Gemini (controllable TTS). O Gemini NÃO muda o tom por
+# temperature — ele obedece a uma instrução em linguagem natural na PRIMEIRA
+# linha, em caixa alta, com o texto logo abaixo (formato validado em
+# gemini_tts_fixed.py). Sem isso, todos os estilos soavam iguais nele.
+STYLE_INSTRUCTIONS = {
+    "excited":      "FALE EM TOM ANIMADO, ENERGICO E ALTO ASTRAL",
+    "cheerful":     "FALE EM TOM ALEGRE E FESTIVO",
+    "calm":         "FALE EM TOM CALMO, SUAVE E ACOLHEDOR",
+    "professional": "FALE EM TOM PROFISSIONAL, CLARO E CONFIANTE",
+    "serious":      "FALE EM TOM SERIO E FORMAL",
+    "fast":         "FALE DE FORMA AGIL E DINAMICA, SEM ATROPELAR AS PALAVRAS",
+    "slow":         "FALE DE FORMA LENTA E PAUSADA, COM CALMA",
+    # "normal" fica de fora de propósito: sem instrução = voz natural.
 }
 
 # ============================================================================
@@ -187,12 +222,53 @@ ELEVENLABS_VOICE_MAP = {
 # ============================================================================
 
 STYLE_MAP = {
-    "normal":   {"temperature": 1.0,    "stability": 0.5},
-    "fast":     {"temperature": 0.8,    "stability": 0.7},
-    "slow":     {"temperature": 1.2,    "stability": 0.4},
-    "cheerful": {"temperature": 1.3,    "stability": 0.5},
-    "serious":  {"temperature": 0.7,    "stability": 0.8},
+    "normal":       {"temperature": 1.0, "stability": 0.5},
+    "fast":         {"temperature": 0.8, "stability": 0.7},
+    "slow":         {"temperature": 1.2, "stability": 0.4},
+    "cheerful":     {"temperature": 1.3, "stability": 0.5},
+    "serious":      {"temperature": 0.7, "stability": 0.8},
+    # Faltavam (ver comentário no EDGE_STYLE_MAP). No ElevenLabs, stability
+    # baixa = mais expressivo/variado; alta = mais contido e previsível.
+    "excited":      {"temperature": 1.35, "stability": 0.40},
+    "calm":         {"temperature": 0.85, "stability": 0.75},
+    "professional": {"temperature": 0.75, "stability": 0.85},
 }
+
+
+def normalizar_estilo(style: str) -> str:
+    """Resolve sinônimos e AVISA quando o estilo não existe.
+
+    O bug que isso mata: antes, `.get(style, normal)` transformava qualquer
+    nome desconhecido em "normal" sem dizer nada — a tela oferecia 4 estilos e
+    3 não faziam efeito nenhum. Agora um nome estranho aparece no log.
+    """
+    s = (style or "normal").strip().lower()
+    s = STYLE_ALIASES.get(s, s)
+    if s not in STYLE_MAP:
+        # ASCII puro de proposito: o console do Windows (cp1252) estoura com
+        # emoji e derrubaria a geracao no dev local.
+        print(f"[TTS][AVISO] Estilo desconhecido '{style}' - usando 'normal'. "
+              f"Validos: {', '.join(sorted(STYLE_MAP))}")
+        return "normal"
+    return s
+
+
+def aplicar_instrucao_de_tom(text: str, style: str) -> str:
+    """Prefixa a instrução de tom pro Gemini (controllable TTS).
+
+    Não prefixa quando: estilo é 'normal', não há instrução pro estilo, ou o
+    texto JÁ começa com uma instrução escrita pelo usuário — senão teríamos
+    duas ordens de tom brigando no mesmo prompt.
+    """
+    instrucao = STYLE_INSTRUCTIONS.get(style)
+    if not instrucao:
+        return text
+    primeira = (text or "").lstrip().split("\n", 1)[0].strip()
+    ja_tem = primeira.startswith("[") or primeira.upper().startswith(("FALE ", "DIGA ", "NARRE "))
+    if ja_tem:
+        print("[TTS] O texto ja traz instrucao de tom - mantendo a do usuario.")
+        return text
+    return f"{instrucao}\n{text}"
 
 
 # ============================================================================
@@ -372,7 +448,7 @@ class TTSGenerator:
     ) -> bytes:
         """Gera áudio com EdgeTTS (gratuita!)."""
         voice = EDGE_VOICE_MAP.get(voice_model, EDGE_VOICE_MAP["default"])
-        style_params = EDGE_STYLE_MAP.get(style, EDGE_STYLE_MAP["normal"])
+        style_params = EDGE_STYLE_MAP[normalizar_estilo(style)]
         
         # Ajustar voz por idioma
         if language.startswith("en") and voice not in ["en-US-GuyNeural", "en-US-JennyNeural"]:
@@ -408,8 +484,13 @@ class TTSGenerator:
     ) -> bytes:
         """Gera áudio com Google Gemini TTS."""
         voice = GOOGLE_VOICE_MAP.get(voice_model, GOOGLE_VOICE_MAP["default"])
-        style_params = STYLE_MAP.get(style, STYLE_MAP["normal"])
+        style = normalizar_estilo(style)
+        style_params = STYLE_MAP[style]
         temperature = style_params["temperature"]
+
+        # O QUE FALTAVA: só a temperature não muda o tom do Gemini (ela mexe na
+        # variação, não no jeito de falar). O tom vem da instrução no prompt.
+        text = aplicar_instrucao_de_tom(text, style)
 
         audio_bytes = self._synthesize_google(text, voice, temperature, language)
         print(f"✅ Áudio gerado ({len(audio_bytes)} bytes)")
@@ -478,7 +559,7 @@ class TTSGenerator:
             voice_id = voice_model
         else:
             voice_id = ELEVENLABS_VOICE_MAP.get(voice_model, ELEVENLABS_VOICE_MAP["default"])
-        style_params = STYLE_MAP.get(style, STYLE_MAP["normal"])
+        style_params = STYLE_MAP[normalizar_estilo(style)]
 
         try:
             # Gerar áudio com ElevenLabs
