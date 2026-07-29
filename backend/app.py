@@ -2671,6 +2671,150 @@ def kiwify_webhook(token):
         # 200 mesmo em erro pra o Kiwify não ficar reenviando em loop.
         return jsonify({"success": False}), 200
 
+# ══════════════════════════════════════════════════════════════════════════
+# CHECAGEM ANTES DE ENTREGAR — duração fora do plano vendido e frase legal
+# faltando no roteiro. Tudo determinístico (regex + aritmética): NÃO usa IA,
+# então não cai junto quando a cota do Gemini estoura.
+# ══════════════════════════════════════════════════════════════════════════
+
+# Faixa de duração por plano. Rádio é rígida: spot fora da grade é recusado
+# pela emissora, e "30-45s" é o que o cliente comprou.
+DURACAO_POR_PLANO = {
+    'teaser_5s':  (3, 8),
+    'spot_30_45': (30, 45),
+    'spot_60_90': (60, 90),
+    # jingle e 'outro' não têm grade fixa — só informamos a duração medida.
+}
+
+# Setores regulados: se o roteiro fala disso e não traz a frase, avisa.
+# ⚠️ É LEMBRETE, não parecer jurídico — a redação final é do cliente/agência.
+REGRAS_DISCLAIMER = [
+    {
+        'setor': 'Medicamento / farmácia',
+        'gatilhos': [r'\bfarmacia\b', r'\bdrogaria\b', r'\bremedio?s?\b', r'\bmedicament\w*',
+                     r'\bcomprimido\w*', r'\bxarope\w*', r'\banalgesic\w*', r'\bantigripal\w*',
+                     r'\bpomada\w*', r'\bantiinflamatori\w*', r'\banti-inflamatori\w*'],
+        'exigido': [r'persistirem os sintomas'],
+        'frase': 'SE PERSISTIREM OS SINTOMAS, O MÉDICO DEVERÁ SER CONSULTADO.',
+    },
+    {
+        'setor': 'Bebida alcoólica',
+        'gatilhos': [r'\bcerveja\w*', r'\bchopp?\b', r'\bvodka\b', r'\bwhisk\w*', r'\bcachaca\b',
+                     r'\bdestilad\w*', r'\bvinho\w*', r'\bdrink\w*', r'\baperitiv\w*'],
+        'exigido': [r'beba com moderacao', r'nao beba'],
+        'frase': 'BEBA COM MODERAÇÃO. (e "Se for dirigir, não beba")',
+    },
+    {
+        'setor': 'Crédito / financiamento',
+        'gatilhos': [r'\bemprestim\w*', r'\bfinanciament\w*', r'\bconsignad\w*',
+                     r'\bcredito\b', r'\bjuros\b', r'\bparcel\w* em ate\b'],
+        'exigido': [r'\bcet\b', r'custo efetivo total'],
+        'frase': 'Informar o CET (Custo Efetivo Total), taxa e nº de parcelas.',
+    },
+    {
+        'setor': 'Suplemento alimentar',
+        'gatilhos': [r'\bsuplement\w*', r'\bwhey\b', r'\bemagrec\w*', r'\btermogenic\w*'],
+        'exigido': [r'nao e um medicamento', r'nao e medicamento'],
+        'frase': 'ESTE PRODUTO NÃO É UM MEDICAMENTO.',
+    },
+    {
+        'setor': 'Sorteio / promoção comercial',
+        'gatilhos': [r'\bsorteio\w*', r'\bconcurso cultural\b', r'\bpremiac\w*', r'\bvale-premio\b'],
+        'exigido': [r'certificado de autorizac', r'\bautorizacao secap\b', r'\bsecap\b'],
+        'frase': 'Nº do Certificado de Autorização (SECAP/ME).',
+    },
+]
+
+
+def _sem_acento(t):
+    import unicodedata as _u
+    t = _u.normalize('NFKD', str(t or ''))
+    return ''.join(c for c in t if not _u.combining(c)).lower()
+
+
+@app.route('/api/qualidade/checar', methods=['POST', 'OPTIONS'])
+def checar_qualidade():
+    """Confere a peça ANTES de mandar pro cliente: duração dentro do plano
+    vendido e frase legal obrigatória presente quando o setor exige."""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        plano = str(data.get('plano') or 'outro')
+        roteiro = str(data.get('roteiro') or '')
+        try:
+            duracao = float(data.get('duracao_segundos') or 0)
+        except (TypeError, ValueError):
+            duracao = 0.0
+
+        avisos = []
+
+        # ── 1. DURAÇÃO ────────────────────────────────────────────────────
+        faixa = DURACAO_POR_PLANO.get(plano)
+        if duracao <= 0:
+            avisos.append({'nivel': 'atencao', 'titulo': 'Duração não medida',
+                           'detalhe': 'Não consegui ler a duração do arquivo.'})
+        elif not faixa:
+            avisos.append({'nivel': 'ok', 'titulo': f'Duração: {duracao:.1f}s',
+                           'detalhe': 'Este plano não tem grade fixa de tempo.'})
+        else:
+            minimo, maximo = faixa
+            if duracao < minimo:
+                falta = minimo - duracao
+                avisos.append({'nivel': 'erro',
+                               'titulo': f'Curto demais: {duracao:.1f}s',
+                               'detalhe': f'O plano vendido é de {minimo} a {maximo}s. '
+                                          f'Faltam {falta:.1f}s.'})
+            elif duracao > maximo:
+                sobra = duracao - maximo
+                avisos.append({'nivel': 'erro',
+                               'titulo': f'Longo demais: {duracao:.1f}s',
+                               'detalhe': f'O plano vendido é de {minimo} a {maximo}s. '
+                                          f'Sobram {sobra:.1f}s — emissora recusa fora da grade.'})
+            else:
+                avisos.append({'nivel': 'ok', 'titulo': f'Duração OK: {duracao:.1f}s',
+                               'detalhe': f'Dentro da faixa de {minimo} a {maximo}s.'})
+
+        # ── 2. FRASE LEGAL ────────────────────────────────────────────────
+        texto = _sem_acento(roteiro)
+        if not texto.strip():
+            avisos.append({'nivel': 'atencao', 'titulo': 'Roteiro vazio',
+                           'detalhe': 'Sem o texto não dá pra conferir frase legal.'})
+        else:
+            achou_setor = False
+            for regra in REGRAS_DISCLAIMER:
+                if not any(re.search(g, texto) for g in regra['gatilhos']):
+                    continue
+                achou_setor = True
+                tem = any(re.search(e, texto) for e in regra['exigido'])
+                if tem:
+                    avisos.append({'nivel': 'ok',
+                                   'titulo': f'{regra["setor"]}: frase presente',
+                                   'detalhe': 'O roteiro já traz o aviso exigido.'})
+                else:
+                    avisos.append({'nivel': 'erro',
+                                   'titulo': f'{regra["setor"]}: falta o aviso legal',
+                                   'detalhe': f'Costuma ser exigido: "{regra["frase"]}" '
+                                              f'Confirme com o cliente antes de entregar.'})
+            if not achou_setor:
+                avisos.append({'nivel': 'ok', 'titulo': 'Sem setor regulado no roteiro',
+                               'detalhe': 'Não encontrei tema que exija frase legal.'})
+
+        erros = [a for a in avisos if a['nivel'] == 'erro']
+        return jsonify({'success': True, 'ok': len(erros) == 0,
+                        'total_erros': len(erros), 'avisos': avisos})
+    except Exception as e:
+        print(f"Erro na checagem de qualidade: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/planos', methods=['GET'])
 def list_planos():
     """Planos + preços pro formulário público (só o que o cliente precisa ver)."""
