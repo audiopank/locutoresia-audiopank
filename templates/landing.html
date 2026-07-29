@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="Locução publicitária pronta no mesmo dia. Você manda o briefing, nossa equipe produz o roteiro e a locução, e você recebe uma prévia para aprovar. Spot, teaser e jingle.">
+    <title>Locutores IA — Sua locução publicitária pronta hoje mesmo</title>
+
+    <!-- VITRINE PÚBLICA. Página separada do app de propósito: o cliente NÃO
+         entra na plataforma nem escolhe voz — ele manda o briefing e recebe o
+         spot pronto. Por isso aqui não existe barra lateral, menu interno nem
+         nada do estúdio. O caminho dele é: esta página -> /solicitar ->
+         link da prévia (/aprovacao/<id>) -> pagamento. Só isso. -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #6366f1; --secondary: #8b5cf6; --accent: #ec4899;
+            --bg: #0f172a; --card: #1e293b; --txt: #f1f5f9; --txt2: #94a3b8;
+            --border: #334155;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg); color: var(--txt); line-height: 1.6;
+            overflow-x: hidden;
+        }
+        a { text-decoration: none; }
+
+        .topo {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 40px; border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; background: rgba(15, 23, 42, .92);
+            backdrop-filter: blur(10px); z-index: 100;
+        }
+        .marca { display: flex; align-items: center; gap: 12px; color: var(--txt); font-weight: 700; font-size: 1.25rem; }
+        .marca i {
+            font-size: 1.6rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .marca small { display: block; font-size: .72rem; font-weight: 500; color: var(--txt2); letter-spacing: .5px; }
+
+        .btn {
+            display: inline-flex; align-items: center; gap: 10px;
+            padding: 14px 30px; border-radius: 999px; font-weight: 700;
+            border: none; cursor: pointer; transition: transform .2s, box-shadow .2s;
+        }
+        .btn-principal {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: #fff; box-shadow: 0 8px 24px rgba(139, 92, 246, .35);
+        }
+        .btn-principal:hover { transform: translateY(-2px); color: #fff; box-shadow: 0 12px 30px rgba(139, 92, 246, .5); }
+        .btn-fantasma { background: transparent; color: var(--txt); border: 1px solid var(--border); }
+        .btn-fantasma:hover { border-color: var(--primary); }
+        .btn-pequeno { padding: 10px 22px; font-size: .92rem; }
+
+        .heroi {
+            background: linear-gradient(135deg, var(--bg) 0%, #1e1b4b 50%, var(--bg) 100%);
+            padding: 76px 40px 66px; text-align: center; border-bottom: 1px solid var(--border);
+        }
+        .heroi h1 {
+            font-size: 2.7rem; font-weight: 800; margin-bottom: 18px; line-height: 1.2;
+            background: linear-gradient(135deg, #fff, #a78bfa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .heroi > p { font-size: 1.12rem; color: var(--txt2); max-width: 720px; margin: 0 auto; }
+        .ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin: 30px 0 36px; }
+
+        .promessas { display: flex; justify-content: center; gap: 46px; flex-wrap: wrap; }
+        .promessa { text-align: center; max-width: 215px; }
+        .promessa i { font-size: 1.6rem; color: var(--primary); display: block; margin-bottom: 8px; }
+        .promessa strong { display: block; font-size: 1rem; }
+        .promessa span { font-size: .84rem; color: var(--txt2); }
+
+        section { padding: 60px 40px; border-bottom: 1px solid var(--border); }
+        .titulo { text-align: center; font-size: 1.95rem; font-weight: 700; margin-bottom: 10px; }
+        .sub { text-align: center; color: var(--txt2); margin-bottom: 42px; }
+
+        .grade { display: grid; gap: 20px; max-width: 1100px; margin: 0 auto; }
+        .passos { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+        .precos { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); }
+
+        .passo, .preco {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 16px; padding: 26px 22px; position: relative;
+        }
+        .passo-num {
+            position: absolute; top: -14px; left: 22px; width: 30px; height: 30px;
+            border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff; font-weight: 700; font-size: .9rem;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .passo-icone { font-size: 1.7rem; display: block; margin: 6px 0 12px; }
+        .passo h3, .preco h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+        .passo p { font-size: .88rem; color: var(--txt2); }
+
+        .preco { text-align: center; display: flex; flex-direction: column; }
+        .preco.destaque { border-color: var(--primary); box-shadow: 0 8px 30px rgba(99, 102, 241, .2); }
+        .preco-tag {
+            font-size: .7rem; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+            color: var(--accent); margin-bottom: 6px; min-height: 1em;
+        }
+        .preco-dur { font-size: .82rem; color: var(--txt2); margin-bottom: 16px; }
+        .preco-valor { font-size: 2rem; font-weight: 800; }
+        .preco-valor small { font-size: .95rem; font-weight: 600; color: var(--txt2); }
+        .preco-obs { font-size: .78rem; color: var(--txt2); margin: 14px 0 18px; flex: 1; }
+        .btn-preco {
+            display: block; padding: 11px; border-radius: 10px; font-weight: 600;
+            background: rgba(99, 102, 241, .15); color: #c4b5fd; border: 1px solid var(--primary);
+        }
+        .btn-preco:hover { background: var(--primary); color: #fff; }
+        .rodape-precos { text-align: center; color: var(--txt2); font-size: .85rem; margin-top: 28px; }
+
+        .fechamento { text-align: center; background: linear-gradient(135deg, #1e1b4b, var(--bg)); }
+        .fechamento h2 { font-size: 1.9rem; font-weight: 700; margin-bottom: 12px; }
+        .fechamento p { color: var(--txt2); margin-bottom: 28px; }
+
+        footer { padding: 30px 40px; text-align: center; color: var(--txt2); font-size: .85rem; }
+        footer a { color: var(--txt2); }
+        footer a:hover { color: var(--txt); }
+
+        @media (max-width: 768px) {
+            .topo { padding: 14px 20px; }
+            .topo .btn { display: none; }
+            .heroi { padding: 50px 20px; }
+            .heroi h1 { font-size: 1.9rem; }
+            section { padding: 44px 20px; }
+            .promessas { gap: 26px; }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="topo">
+        <a href="/" class="marca">
+            <i class="fas fa-microphone-lines"></i>
+            <span>Locutores IA<small>ÁUDIO PANK PRODUTORA</small></span>
+        </a>
+        <a href="/solicitar" class="btn btn-principal btn-pequeno">Pedir minha locução</a>
+    </header>
+
+    <section class="heroi">
+        <h1>Sua locução publicitária pronta hoje mesmo</h1>
+        <p>
+            Você manda o briefing. Nossa equipe e nossos superagentes de IA escrevem o roteiro,
+            produzem a locução e te enviam uma prévia.
+            Você só aprova — e recebe o áudio pronto pra ir ao ar.
+        </p>
+
+        <div class="ctas">
+            <a href="/solicitar" class="btn btn-principal">
+                <i class="fas fa-microphone-lines"></i> Pedir minha locução
+            </a>
+            <a href="#precos" class="btn btn-fantasma">
+                <i class="fas fa-tag"></i> Ver preços
+            </a>
+        </div>
+
+        <div class="promessas">
+            <div class="promessa">
+                <i class="fas fa-bolt"></i>
+                <strong>Prévia no mesmo dia</strong>
+                <span>Pediu de manhã, ouve ainda hoje.</span>
+            </div>
+            <div class="promessa">
+                <i class="fas fa-rotate"></i>
+                <strong>Ajustes até aprovar</strong>
+                <span>Mexemos quantas vezes precisar no mesmo roteiro.</span>
+            </div>
+            <div class="promessa">
+                <i class="fas fa-file-audio"></i>
+                <strong>MP3 + WAV + WhatsApp</strong>
+                <span>Pronto pra rádio, vídeo e pra mandar no zap.</span>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="titulo">Como funciona</h2>
+        <p class="sub">Do briefing ao áudio no ar, sem você precisar mexer em nada.</p>
+        <div class="grade passos">
+            <div class="passo">
+                <div class="passo-num">1</div>
+                <span class="passo-icone">📝</span>
+                <h3>Você preenche o briefing</h3>
+                <p>Um formulário rápido: o que é o negócio, o que quer anunciar, o tom e a duração (30s, 45s ou 60s).</p>
+            </div>
+            <div class="passo">
+                <div class="passo-num">2</div>
+                <span class="passo-icone">🤖</span>
+                <h3>Nossa equipe produz</h3>
+                <p>Escrevemos o roteiro, escolhemos a voz e o tom, gravamos e sonorizamos com trilha.</p>
+            </div>
+            <div class="passo">
+                <div class="passo-num">3</div>
+                <span class="passo-icone">🎧</span>
+                <h3>Você ouve a prévia</h3>
+                <p>Chega um link com o spot finalizado, com uma marca de demonstração. Peça ajustes quantas vezes precisar.</p>
+            </div>
+            <div class="passo">
+                <div class="passo-num">4</div>
+                <span class="passo-icone">✅</span>
+                <h3>Aprova, paga e recebe</h3>
+                <p>Ao aprovar, aparece o botão de pagamento. Pagou, liberamos os arquivos finais sem marca nenhuma.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="precos">
+        <h2 class="titulo">Quanto custa</h2>
+        <p class="sub">Preço fechado, sem surpresa. Você só paga depois de aprovar.</p>
+        <div class="grade precos">
+            <div class="preco">
+                <div class="preco-tag">Pra experimentar</div>
+                <h3>Teaser</h3>
+                <div class="preco-dur">5 segundos · voz masculina ou feminina</div>
+                <div class="preco-valor"><small>R$</small> 25</div>
+                <p class="preco-obs">Aquela chamada curta pro story, pro status ou pra abrir um vídeo.</p>
+                <a href="/solicitar" class="btn-preco">Pedir teaser</a>
+            </div>
+            <div class="preco destaque">
+                <div class="preco-tag">Mais pedido</div>
+                <h3>Spot 30 a 45s</h3>
+                <div class="preco-dur">com trilha e sonorização</div>
+                <div class="preco-valor"><small>R$</small> 127</div>
+                <p class="preco-obs">O tamanho clássico de anúncio de loja, farmácia, supermercado e rádio.</p>
+                <a href="/solicitar" class="btn-preco">Pedir spot</a>
+            </div>
+            <div class="preco">
+                <div class="preco-tag">&nbsp;</div>
+                <h3>Spot 60 a 90s</h3>
+                <div class="preco-dur">com trilha e sonorização</div>
+                <div class="preco-valor"><small>R$</small> 157</div>
+                <p class="preco-obs">Quando tem mais o que contar: institucional, lançamento, lista de ofertas.</p>
+                <a href="/solicitar" class="btn-preco">Pedir spot longo</a>
+            </div>
+            <div class="preco">
+                <div class="preco-tag">Sob medida</div>
+                <h3>Jingle</h3>
+                <div class="preco-dur">música original + gravação</div>
+                <div class="preco-valor"><small>R$</small> 1.507</div>
+                <p class="preco-obs">Melodia própria, com a marca cantada. Prazo combinado no briefing — jingle não sai no mesmo dia.</p>
+                <a href="/solicitar" class="btn-preco">Falar sobre jingle</a>
+            </div>
+        </div>
+        <p class="rodape-precos">
+            Todo pedido inclui <strong>ajustes até você aprovar</strong> (mesmo roteiro) e entrega em
+            <strong>MP3, WAV e versão leve pro WhatsApp</strong>.
+        </p>
+    </section>
+
+    <section class="fechamento">
+        <h2>Conta o que você precisa anunciar</h2>
+        <p>Leva dois minutos pra pedir. A prévia chega hoje.</p>
+        <div class="ctas">
+            <a href="/solicitar" class="btn btn-principal">
+                <i class="fas fa-microphone-lines"></i> Pedir minha locução
+            </a>
+            <a href="https://wa.me/5585992262297?text=Ol%C3%A1!%20Quero%20encomendar%20uma%20locu%C3%A7%C3%A3o%20personalizada."
+               target="_blank" rel="noopener" class="btn btn-fantasma">
+                <i class="fab fa-whatsapp"></i> Tirar uma dúvida no WhatsApp
+            </a>
+        </div>
+    </section>
+
+    <footer>
+        Locutores IA · Áudio Pank Produtora — locução publicitária com inteligência artificial.<br>
+        <a href="/contato">Contato</a>
+    </footer>
+
+</body>
+</html>

@@ -698,6 +698,22 @@ except ImportError as e:
 
 @app.route('/')
 def index():
+    """VITRINE PÚBLICA — é o que o cliente vê.
+
+    O modelo do negócio é produtora, não plataforma self-service: o cliente
+    manda o briefing e RECEBE o spot pronto; ele nunca entra na ferramenta.
+    Por isso a home não tem barra lateral nem menu interno. O caminho dele é
+    esta página -> /solicitar -> link da prévia (/aprovacao/<id>) -> pagamento.
+
+    O estúdio (catálogo de vozes, MiniDAW, agentes, entregas) mudou para
+    /studio — mesma página de antes, só saiu da porta da frente.
+    """
+    return render_template('landing.html')
+
+
+@app.route('/studio')
+def studio():
+    """Cabine de comando interna (era a antiga home '/')."""
     return render_template('index.html')
 
 @app.route('/agent-army')
