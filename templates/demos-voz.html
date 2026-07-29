@@ -103,9 +103,16 @@
                                 <div>${esc(dm.nome)}</div>
                                 <small class="text-secondary">${esc(dm.descricao || '')}</small>
                             </div>
-                            <audio controls preload="none" src="${esc(dm.audio_url)}"></audio>
+                            <!-- preload=metadata (nao none): so o cabecalho, ~poucos KB, mas o
+     player ja mostra a DURACAO. Com none aparecia 0:00 / 0:00 e o
+     cliente achava que o audio estava quebrado. -->
+                                <audio controls preload="metadata" src="${esc(dm.audio_url)}"></audio>
+                            <button class="btn btn-outline-light btn-sm"
+                                    onclick="renomear('${esc(dm.id)}')" title="Renomear (sem reenviar o áudio)">
+                                <i class="fas fa-pen"></i>
+                            </button>
                             <button class="btn btn-outline-danger btn-sm"
-                                    onclick="remover('${esc(dm.id)}')">
+                                    onclick="remover('${esc(dm.id)}')" title="Tirar da vitrine">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>`).join('')}
@@ -173,6 +180,26 @@
         } finally {
             btn.disabled = false;
         }
+    }
+
+    // Trocar o nome NÃO exige reenviar o áudio: é o texto que o cliente lê
+    // na vitrine, então mudar de ideia tem que ser barato.
+    async function renomear(id) {
+        const novo = prompt('Novo nome da amostra (é o que o cliente lê):');
+        if (novo === null) return;
+        if (!novo.trim()) { alert('O nome não pode ficar vazio.'); return; }
+        const desc = prompt('Descrição curta (deixe como está ou reescreva):', '');
+        try {
+            const corpo = { nome: novo.trim() };
+            if (desc !== null && desc.trim()) corpo.descricao = desc.trim();
+            const r = await fetch('/api/voice-demos/' + id, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(corpo)
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'Falha ao renomear');
+            carregar();
+        } catch (e) { alert('Erro: ' + e.message); }
     }
 
     async function remover(id) {

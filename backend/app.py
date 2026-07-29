@@ -919,6 +919,49 @@ def salvar_demo_voz():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route('/api/voice-demos/<demo_id>', methods=['PATCH', 'OPTIONS'])
+def renomear_demo_voz(demo_id):
+    """Renomeia/recategoriza a amostra SEM reenviar o áudio.
+
+    O nome é o que o cliente lê na vitrine — "Masculina grave, institucional"
+    vende; "VOZ Zephyr" fala do nosso sistema e não diz nada pra ele. Trocar
+    isso não pode custar um upload novo.
+    """
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'PATCH, OPTIONS')
+        return response
+
+    try:
+        if not (supabase_manager and supabase_manager.newpost_manager_client):
+            return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+
+        data = request.get_json() or {}
+        campos = {}
+        if data.get('nome'):
+            campos['name'] = str(data['nome'])[:120]
+        if 'descricao' in data:
+            campos['description'] = str(data.get('descricao') or '')[:300]
+        if data.get('categoria'):
+            validas = {c['id'] for c in CATEGORIAS_DEMO_VOZ}
+            campos['mood'] = data['categoria'] if data['categoria'] in validas else 'outro'
+        if not campos:
+            return jsonify({"success": False, "error": "Nada para atualizar"}), 400
+
+        # eq('genre', DEMO_VOZ_MARCADOR): trava pra este endpoint NÃO conseguir
+        # renomear uma trilha de fundo da Biblioteca por engano.
+        r = supabase_manager.newpost_manager_client.table('music_tracks') \
+            .update(campos).eq('id', demo_id).eq('genre', DEMO_VOZ_MARCADOR).execute()
+        if not r.data:
+            return jsonify({"success": False, "error": "Amostra não encontrada"}), 404
+        return jsonify({"success": True, "demo": r.data[0]})
+    except Exception as e:
+        print(f"Erro ao renomear demo de voz: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/api/voxcraft/recommend-tracks', methods=['POST', 'OPTIONS'])
 def voxcraft_recommend_tracks():
     """VoxCraft robusto: lê o roteiro/descrição do projeto + o ACERVO REAL de

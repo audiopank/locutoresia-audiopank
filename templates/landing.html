@@ -360,7 +360,10 @@
                                     <strong>${escAmostra(dm.nome)}</strong>
                                     ${dm.descricao ? `<span>${escAmostra(dm.descricao)}</span>` : ''}
                                 </div>
-                                <audio controls preload="none" src="${escAmostra(dm.audio_url)}"></audio>
+                                <!-- preload=metadata (nao none): so o cabecalho, ~poucos KB, mas o
+     player ja mostra a DURACAO. Com none aparecia 0:00 / 0:00 e o
+     cliente achava que o audio estava quebrado. -->
+                                <audio controls preload="metadata" src="${escAmostra(dm.audio_url)}"></audio>
                                 <button type="button" class="btn-escolher"
                                         data-voz="${escAmostra(c.nome + ' — ' + dm.nome)}">
                                     Quero esta voz
