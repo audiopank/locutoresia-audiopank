@@ -349,6 +349,58 @@
             color: #1B4332;
         }
 
+        /* ── Mini cards da coluna esquerda (abaixo do WhatsApp) ───────────
+           1) Vitrine: atalho pra página que o cliente vê.
+           2) Números reais do sistema (vêm de /api/stats). */
+        .mini-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 18px;
+            margin-top: 16px;
+        }
+        .mini-card-vitrine {
+            display: block;
+            text-decoration: none;
+            background: linear-gradient(135deg, rgba(99,102,241,.16), rgba(236,72,153,.14));
+            border-color: rgba(139,92,246,.5);
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .mini-card-vitrine:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 22px rgba(139,92,246,.28);
+            border-color: #8b5cf6;
+        }
+        .mini-card-titulo {
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: .98rem;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin-bottom: 6px;
+        }
+        .mini-card-titulo i { color: #c4b5fd; }
+        .mini-card-texto {
+            color: var(--text-secondary);
+            font-size: .82rem;
+            margin: 0;
+            line-height: 1.5;
+        }
+        .mini-card-seta { margin-left: auto; color: #c4b5fd; font-size: .85rem; }
+
+        .mini-stats { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+        .mini-stat {
+            display: flex; align-items: baseline; gap: 10px;
+            padding-bottom: 10px; border-bottom: 1px solid var(--border-color);
+        }
+        .mini-stats .mini-stat:last-child { border-bottom: none; padding-bottom: 0; }
+        .mini-stat-num {
+            font-size: 1.45rem; font-weight: 800; color: var(--primary-color);
+            min-width: 62px;
+        }
+        .mini-stat-lbl { font-size: .8rem; color: var(--text-secondary); }
+
         @media (max-width: 991.98px) {
             .filters-sticky-wrapper {
                 position: static;
@@ -893,6 +945,43 @@
                                    target="_blank" rel="noopener noreferrer" class="encomenda-cta-btn">
                                     <i class="fab fa-whatsapp"></i> Falar no WhatsApp
                                 </a>
+                            </div>
+
+                            <!-- VITRINE: atalho pra página que o CLIENTE vê
+                                 (sem menu interno). É o link de divulgação. -->
+                            <a href="/vitrine" class="mini-card mini-card-vitrine">
+                                <div class="mini-card-titulo">
+                                    <i class="fas fa-store"></i>
+                                    Vitrine
+                                    <span class="mini-card-seta"><i class="fas fa-arrow-right"></i></span>
+                                </div>
+                                <p class="mini-card-texto">
+                                    A página que o cliente vê: oferta, preços e o botão de pedir.
+                                </p>
+                            </a>
+
+                            <!-- NÚMEROS REAIS: preenchidos por /api/stats logo
+                                 abaixo. Os valores no HTML são só o estado
+                                 inicial enquanto a chamada não volta. -->
+                            <div class="mini-card">
+                                <div class="mini-card-titulo">
+                                    <i class="fas fa-chart-simple"></i>
+                                    Números do sistema
+                                </div>
+                                <div class="mini-stats">
+                                    <div class="mini-stat">
+                                        <span class="mini-stat-num" id="voicesCount">50+</span>
+                                        <span class="mini-stat-lbl">vozes disponíveis</span>
+                                    </div>
+                                    <div class="mini-stat">
+                                        <span class="mini-stat-num" id="audiosCount">1.000+</span>
+                                        <span class="mini-stat-lbl">áudios gerados</span>
+                                    </div>
+                                    <div class="mini-stat">
+                                        <span class="mini-stat-num" id="projectsCount">500+</span>
+                                        <span class="mini-stat-lbl">projetos</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
