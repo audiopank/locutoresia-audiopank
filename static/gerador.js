@@ -198,6 +198,68 @@
         return { blob: blob, duracao: buffer.duration };
     }
 
+    // Guarda o spot no Storage assim que ele fica pronto, ANTES de qualquer
+    // decisão de enviar. O áudio nascia só na memória do navegador: fechar a
+    // aba jogava fora o spot e o TTS já gasto nele.
+    //
+    // Falha aqui NUNCA interrompe — o produtor tem o áudio tocando na tela e o
+    // botão de Download. Só avisa que a cópia de segurança não subiu.
+    async function guardarRascunho() {
+        if (!estado.mixBlob) return;
+        try {
+            const nome = nomeArquivo();
+            const ru = await fetch('/api/client-deliveries/upload-url', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: nome, kind: 'rascunho' })
+            });
+            const u = await ru.json();
+            if (!u.success) throw new Error(u.error || 'sem URL de upload');
+
+            const fd = new FormData();
+            fd.append('file', estado.mixBlob, nome);
+            const up = await fetch(u.upload_url, {
+                method: 'PUT',
+                headers: { 'apikey': u.apikey, 'Authorization': `Bearer ${u.apikey}` },
+                body: fd
+            });
+            if (!up.ok) throw new Error('falha no envio pro Storage');
+
+            avisar('💾 Spot guardado — some da tela, mas não do Storage.', 'ok');
+            carregarRascunhos();
+        } catch (e) {
+            avisar('Não consegui guardar a cópia deste spot (' + e.message +
+                   '). Use o Download pra não perder.', 'atencao');
+        }
+    }
+
+    // Lista os spots já produzidos, pra achar o de ontem sem depender da aba
+    // continuar aberta.
+    async function carregarRascunhos() {
+        const box = document.getElementById('listaRascunhos');
+        if (!box) return;
+        try {
+            const r = await fetch('/api/gerador/rascunhos?limite=12');
+            const d = await r.json();
+            const itens = (d.rascunhos || []).filter(x => x.url);
+            if (!itens.length) {
+                box.innerHTML = '<div class="hint">Nada guardado ainda — o primeiro spot que você gerar aparece aqui.</div>';
+                return;
+            }
+            box.innerHTML = itens.map(x => `
+                <div class="rascunho-item">
+                    <div class="rascunho-nome">
+                        ${esc(x.titulo)}
+                        <span class="hint ms-2">${esc(x.quando)}</span>
+                    </div>
+                    <audio controls preload="none" src="${esc(x.url)}"></audio>
+                    <a class="btn btn-sm btn-outline-light" download="${esc(x.titulo)}.mp3"
+                       href="${esc(x.url)}"><i class="fas fa-download"></i></a>
+                </div>`).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="hint">Não consegui carregar os spots guardados.</div>';
+        }
+    }
+
     function mostrarResultado(duracao) {
         document.getElementById('playerResultado').src = URL.createObjectURL(estado.mixBlob);
         document.getElementById('barraResultado').style.display = 'flex';
@@ -349,6 +411,7 @@
 
             mostrarResultado(r.duracao);
             passo(0, TOTAL, '✅ Pronto — ouça antes de enviar.');
+            guardarRascunho();   // copia de seguranca, sem travar a tela
 
         } catch (e) {
             passo(0, TOTAL, '❌ ' + e.message);
@@ -379,6 +442,7 @@
             estado.mixBlob = r.blob;
             mostrarResultado(r.duracao);
             passo(0, 2, '✅ Locução trocada.');
+            guardarRascunho();
         } catch (e) {
             passo(0, 2, '❌ ' + e.message);
         } finally {
@@ -414,6 +478,7 @@
         document.getElementById('selectModo').addEventListener('change', aplicarFiltroDeVozes);
 
         await Promise.all([carregarPedidos(), carregarVozes(), carregarTrilhas()]);
+        carregarRascunhos();
 
         document.getElementById('btnGerar').onclick = gerarAnuncio;
         document.getElementById('btnRegerarVoz').onclick = regerarVoz;

@@ -95,6 +95,21 @@
         }
         #barraResultado audio { flex: 1 1 320px; min-width: 260px; height: 40px; }
         .resultado-nome { font-weight: 600; font-size: .9rem; }
+
+        /* Spots guardados — a rede de segurança contra fechar a aba */
+        .rascunho-item {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            flex-wrap: wrap;
+            padding: .6rem .75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: .5rem;
+            background: rgba(15, 23, 42, 0.5);
+        }
+        .rascunho-nome { font-size: .85rem; flex: 1 1 220px; min-width: 0; }
+        .rascunho-item audio { height: 34px; flex: 1 1 260px; }
     </style>
 </head>
 <body>
@@ -178,6 +193,20 @@
                     <div class="info-mix" id="infoMix" style="display:none;"></div>
                 </div>
             </div>
+        </div>
+
+        <!-- Spots guardados: todo áudio pronto sobe pro Storage na hora, tenha
+             ido pro cliente ou não. É o que salva o trabalho de fechar a aba. -->
+        <div class="section-card">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <h6 class="mb-0"><i class="fas fa-box-archive me-2"></i>Spots guardados</h6>
+                <a href="/entregas-clientes" class="hint">Entregas do cliente →</a>
+            </div>
+            <div class="hint mb-3">
+                Tudo que o Gerador produziu fica aqui, mesmo sem enviar. Para o que já
+                foi ao cliente (com link e aprovação), veja Entregas de Clientes.
+            </div>
+            <div id="listaRascunhos"></div>
         </div>
     </div>
 

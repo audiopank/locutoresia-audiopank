@@ -1129,6 +1129,67 @@ def renomear_demo_voz(demo_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route('/api/gerador/rascunhos', methods=['GET'])
+def gerador_rascunhos():
+    """Spots que o Gerador produziu, tenham sido enviados ao cliente ou não.
+
+    Existe por causa de um buraco real: o áudio nascia no navegador e só
+    sobrevivia se o produtor clicasse em "Enviar". Fechar a aba jogava fora o
+    spot E o TTS já gasto nele. Agora todo spot pronto sobe pra pasta
+    `rascunhos/` na hora, e esta rota é como se acha ele depois.
+
+    Não confundir com /entregas-clientes: lá estão os trabalhos que foram AO
+    CLIENTE (com cadastro, link de aprovação e status). Aqui é a bancada.
+    """
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Storage não configurado"}), 500
+
+        limite = min(int(request.args.get('limite', 20) or 20), 100)
+        storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+
+        arquivos = storage.list('rascunhos', {
+            "limit": limite,
+            "sortBy": {"column": "created_at", "order": "desc"}
+        }) or []
+
+        SETE_DIAS = 7 * 24 * 3600
+        itens = []
+        for a in arquivos:
+            nome_arq = a.get('name') or ''
+            if not nome_arq or nome_arq.startswith('.'):
+                continue        # o Supabase devolve um placeholder em pasta vazia
+            caminho = f"rascunhos/{nome_arq}"
+            try:
+                assinada = storage.create_signed_url(caminho, SETE_DIAS)
+                url = assinada.get('signedURL') or assinada.get('signedUrl')
+            except Exception:
+                url = None       # um arquivo problemático não derruba a lista
+
+            # "20260730-171203_spot-padaria.mp3" -> data legível + nome do spot
+            titulo, quando = nome_arq, ''
+            if '_' in nome_arq:
+                carimbo, _, resto = nome_arq.partition('_')
+                titulo = os.path.splitext(resto)[0]
+                try:
+                    dt = datetime.strptime(carimbo, '%Y%m%d-%H%M%S')
+                    quando = dt.strftime('%d/%m/%Y %H:%M')
+                except ValueError:
+                    quando = ''
+
+            meta = a.get('metadata') or {}
+            itens.append({
+                "path": caminho, "arquivo": nome_arq,
+                "titulo": titulo, "quando": quando,
+                "tamanho": meta.get('size'), "url": url
+            })
+
+        return jsonify({"success": True, "rascunhos": itens})
+    except Exception as e:
+        print(f"Erro ao listar rascunhos do Gerador: {e}", flush=True)
+        return jsonify({"success": False, "error": "Não consegui listar os spots guardados."}), 500
+
+
 @app.route('/api/voxcraft/recommend-tracks', methods=['POST', 'OPTIONS'])
 def voxcraft_recommend_tracks():
     """VoxCraft robusto: lê o roteiro/descrição do projeto + o ACERVO REAL de
@@ -1690,11 +1751,20 @@ def get_client_delivery_upload_url():
         kind = data.get('kind', 'entrega')
         pasta = {'amostra': 'amostras', 'analise': 'analises',
                  'final': 'finais', 'projeto': 'projetos',
-                 'pacote': 'pacotes'}.get(kind, 'entregas')
+                 'pacote': 'pacotes', 'rascunho': 'rascunhos'}.get(kind, 'entregas')
 
         import uuid
         file_extension = os.path.splitext(filename)[1]
-        storage_path = f"{pasta}/{uuid.uuid4()}{file_extension}"
+        if kind == 'rascunho':
+            # Rascunho do Gerador guarda o NOME no caminho: essa pasta é listada
+            # pra tela ("gerados recentemente") e uuid puro não diz nada de quem
+            # é o spot. Sanitiza duro — o nome vem do navegador e vai virar
+            # caminho no Storage.
+            base = re.sub(r'[^\w\-]+', '-', os.path.splitext(filename)[0])[:60].strip('-') or 'spot'
+            carimbo = datetime.now().strftime('%Y%m%d-%H%M%S')
+            storage_path = f"{pasta}/{carimbo}_{base}{file_extension}"
+        else:
+            storage_path = f"{pasta}/{uuid.uuid4()}{file_extension}"
 
         signed = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET) \
             .create_signed_upload_url(storage_path)
