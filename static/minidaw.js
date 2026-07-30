@@ -539,7 +539,11 @@ class MiniDAW {
         delayNode.connect(delayFeedback);
         delayFeedback.connect(delayNode);     // eco que repete e vai morrendo
         delayNode.connect(delayMix);
-        delayMix.connect(panNode);
+        // Entra no gainNode (volume da faixa), NÃO direto no pan: assim o eco
+        // acompanha o slider de volume. Ligado no pan, abaixar a faixa deixava
+        // o delay no mesmo nível e ele ia ficando desproporcional. O export já
+        // liga no trackGain — as duas pontas precisam bater.
+        delayMix.connect(gainNode);
         gainNode.connect(panNode);
         panNode.connect(this.masterGain);
         
@@ -625,7 +629,7 @@ class MiniDAW {
 
         // Delay (o botão existia sem nenhum efeito por trás até agora)
         if (nodes.delayMix) {
-            nodes.delayMix.gain.value = track.effects.delay ? 0.20 : 0;
+            nodes.delayMix.gain.value = track.effects.delay ? 0.35 : 0;
         }
     }
 

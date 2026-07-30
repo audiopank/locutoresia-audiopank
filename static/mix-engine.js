@@ -308,14 +308,14 @@
                 reverbGain.gain.value = track.effects.reverb ? 0.3 : 0;
 
                 // 7. Delay — MESMOS valores do playback (280ms, feedback 0.28,
-                // mix 0.20). Se divergirem, o que se ouve na prévia não é o que
+                // mix 0.35). Se divergirem, o que se ouve na prévia não é o que
                 // sai no arquivo, que é o pior tipo de bug de mixagem.
                 const delayNode = offlineContext.createDelay(2.0);
                 delayNode.delayTime.value = 0.28;
                 const delayFeedback = offlineContext.createGain();
                 delayFeedback.gain.value = 0.28;
                 const delayMix = offlineContext.createGain();
-                delayMix.gain.value = track.effects.delay ? 0.20 : 0;
+                delayMix.gain.value = track.effects.delay ? 0.35 : 0;
 
                 const trackGain = offlineContext.createGain();
                 trackGain.gain.value = track.volume / 100;
