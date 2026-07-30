@@ -756,6 +756,35 @@ def scripts_library_page():
     return render_template('scripts_library.html')
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# GERADOR DE ANÚNCIOS — o roteiro publicitário por IA.
+# Determinístico primeiro: as duas funções abaixo não usam IA, então continuam
+# funcionando quando a cota do Gemini estoura (que falha em ~0,4s e em silêncio).
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Locução comercial roda por volta de 2,5 palavras por segundo. Não é exato —
+# voz mais pausada baixa isso — mas serve pra IA escrever no tamanho certo em
+# vez de entregar um texto de 60s pra um spot de 30s.
+PALAVRAS_POR_SEGUNDO = 2.5
+
+
+def estimar_duracao_locucao(texto):
+    """Segundos estimados de locução para um texto. Só conta palavras."""
+    palavras = [p for p in re.split(r'\s+', str(texto or '').strip()) if p]
+    if not palavras:
+        return 0.0
+    return round(len(palavras) / PALAVRAS_POR_SEGUNDO, 1)
+
+
+def duracao_alvo_do_plano(plano):
+    """Faixa (min, max) em segundos do plano vendido, ou None se não tem grade.
+
+    jingle e 'outro' NÃO têm grade fixa — devolve None de propósito, pra o
+    gerador não inventar um alvo que o cliente não comprou.
+    """
+    return DURACAO_POR_PLANO.get(str(plano or ''))
+
+
 # ===========================================
 # API de Trilhas Sonoras
 # ===========================================

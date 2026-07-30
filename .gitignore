@@ -101,6 +101,8 @@ locutoresia2026/
 .env*.local
 locutoresia_operations.json
 test_*.py
+# ...mas a pasta tests/ é suíte de verdade (pytest), não script ad-hoc da raiz.
+!tests/test_*.py
 append_*.py
 cleanup_*.py
 capacitor.config.json
