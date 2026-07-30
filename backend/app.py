@@ -785,6 +785,101 @@ def duracao_alvo_do_plano(plano):
     return DURACAO_POR_PLANO.get(str(plano or ''))
 
 
+@app.route('/api/gerador/roteiro', methods=['POST', 'OPTIONS'])
+def gerador_roteiro():
+    """Briefing do cliente -> roteiro de spot pronto pra locução.
+
+    É o único passo do pipeline do Gerador que não existia. Segue o mesmo
+    contrato defensivo do /api/voxcraft/mix-recipe: se a IA não responder
+    (sem chave, cota estourada, JSON quebrado), devolve fonte='base' com o
+    briefing limpo em vez de falhar — o produtor edita na tela e segue.
+    """
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
+    try:
+        data = request.get_json() or {}
+        briefing = (data.get('briefing') or '').strip()[:3000]
+        if not briefing:
+            return jsonify({"success": False, "error": "Sem briefing não dá pra escrever o roteiro."}), 400
+
+        plano = str(data.get('plano') or 'outro')
+        tipo = str(data.get('tipo') or '')[:80]
+        estilo_voz = str(data.get('estilo_voz') or '')[:300]
+        faixa = duracao_alvo_do_plano(plano)
+
+        def responder_base():
+            # Fallback: o briefing vira o roteiro. Não é bonito, mas é honesto —
+            # e não queima o pipeline inteiro por causa de uma cota estourada.
+            return jsonify({
+                "success": True, "fonte": "base", "roteiro": briefing,
+                "tempo_leitura_estimado": estimar_duracao_locucao(briefing),
+                "faixa_alvo": list(faixa) if faixa else None,
+                "aviso": "A IA não respondeu agora — este é o briefing do cliente como veio. Edite antes de aprovar."
+            })
+
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+        if not api_key:
+            return responder_base()
+
+        if faixa:
+            alvo_txt = (f"O spot precisa durar entre {faixa[0]} e {faixa[1]} segundos falados. "
+                        f"Isso significa aproximadamente {int(faixa[0] * PALAVRAS_POR_SEGUNDO)} a "
+                        f"{int(faixa[1] * PALAVRAS_POR_SEGUNDO)} palavras. Respeite esse tamanho.")
+        else:
+            alvo_txt = "Não há duração fixa contratada — escreva no tamanho que o conteúdo pedir."
+
+        prompt = f"""Você é redator publicitário de rádio no Brasil. Escreva o TEXTO FALADO de um spot comercial.
+
+BRIEFING DO CLIENTE:
+{briefing}
+
+Tipo de peça: {tipo or 'não informado'}
+Estilo de voz pedido: {estilo_voz or 'não informado'}
+{alvo_txt}
+
+REGRAS:
+- Escreva APENAS o que o locutor fala. Nada de rubrica, marcação de trilha, "LOCUTOR:", colchetes ou instrução de produção.
+- Português do Brasil, falado, natural na boca. Frases curtas.
+- Comece com um gancho e termine com chamada pra ação (endereço, telefone ou "procure já").
+- Números e siglas por extenso, como se fala (ex: "vinte e quatro horas", não "24h").
+- Não invente preço, endereço, telefone ou prazo que não estejam no briefing.
+
+Devolva SOMENTE um JSON válido, sem markdown:
+{{"roteiro": "o texto falado", "resumo": "1 frase sobre a escolha criativa"}}"""
+
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            gem = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+            texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
+            parsed = json.loads(texto)
+            roteiro = (parsed.get('roteiro') or '').strip()
+            if not roteiro:
+                raise ValueError("IA devolveu roteiro vazio")
+        except Exception as ia_err:
+            print(f"IA de roteiro falhou, usando base: {ia_err}")
+            return responder_base()
+
+        return jsonify({
+            "success": True, "fonte": "ia",
+            "roteiro": roteiro[:5000],
+            "resumo": (parsed.get('resumo') or '').strip()[:300],
+            "tempo_leitura_estimado": estimar_duracao_locucao(roteiro),
+            "faixa_alvo": list(faixa) if faixa else None
+        })
+
+    except Exception as e:
+        print(f"Erro no roteiro do Gerador: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Não consegui escrever o roteiro agora."}), 500
+
+
 # ===========================================
 # API de Trilhas Sonoras
 # ===========================================
