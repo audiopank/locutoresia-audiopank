@@ -1876,6 +1876,97 @@ class MiniDAW {
     }
 
     // Import from TTS
+    // Diálogo de escolha dos áudios do TTS. Devolve a lista escolhida, ou []
+    // se cancelar. O mais recente vem marcado — é quase sempre o que se acabou
+    // de gerar no Studio, então o caso comum é abrir e confirmar.
+    //
+    // Monta os nós com textContent (nunca innerHTML com dado de fora): nome de
+    // arquivo entra literal aqui e innerHTML abriria buraco de injeção.
+    escolherAudiosDoTTS(files) {
+        return new Promise((resolve) => {
+            const fundo = document.createElement('div');
+            fundo.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.7);' +
+                'display:flex;align-items:center;justify-content:center;padding:1rem;';
+
+            const caixa = document.createElement('div');
+            caixa.style.cssText = 'background:#141a2e;color:#e6e8f0;border:1px solid #2a3350;' +
+                'border-radius:14px;max-width:560px;width:100%;padding:1.25rem;max-height:85vh;' +
+                'display:flex;flex-direction:column;font-family:inherit;';
+
+            const titulo = document.createElement('h5');
+            titulo.textContent = 'Importar do TTS';
+            titulo.style.cssText = 'margin:0 0 .25rem;';
+            caixa.appendChild(titulo);
+
+            const sub = document.createElement('p');
+            sub.textContent = 'Escolha quais áudios entram no projeto. Cada um vira uma faixa.';
+            sub.style.cssText = 'font-size:.85rem;opacity:.7;margin:0 0 1rem;';
+            caixa.appendChild(sub);
+
+            const lista = document.createElement('div');
+            lista.style.cssText = 'overflow:auto;flex:1;margin-bottom:1rem;';
+
+            files.forEach((f, i) => {
+                const linha = document.createElement('label');
+                linha.style.cssText = 'display:flex;gap:.6rem;align-items:center;padding:.5rem .6rem;' +
+                    'border:1px solid #2a3350;border-radius:8px;margin-bottom:.4rem;cursor:pointer;';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = String(i);
+                cb.checked = (i === 0);   // o mais recente já vem marcado
+                linha.appendChild(cb);
+
+                const txt = document.createElement('div');
+                txt.style.cssText = 'min-width:0;';
+                const nome = document.createElement('div');
+                nome.textContent = f.filename;
+                nome.style.cssText = 'font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                const meta = document.createElement('div');
+                const kb = f.size ? Math.round(f.size / 1024) + ' KB' : '';
+                meta.textContent = [f.modified, kb].filter(Boolean).join(' · ');
+                meta.style.cssText = 'font-size:.75rem;opacity:.6;';
+                txt.appendChild(nome);
+                txt.appendChild(meta);
+                linha.appendChild(txt);
+                lista.appendChild(linha);
+            });
+            caixa.appendChild(lista);
+
+            const acoes = document.createElement('div');
+            acoes.style.cssText = 'display:flex;gap:.5rem;justify-content:flex-end;';
+
+            const btnCancelar = document.createElement('button');
+            btnCancelar.textContent = 'Cancelar';
+            btnCancelar.style.cssText = 'padding:.5rem 1rem;border-radius:8px;background:#2a3350;' +
+                'color:#e6e8f0;border:none;cursor:pointer;';
+
+            const btnOk = document.createElement('button');
+            btnOk.textContent = 'Importar';
+            btnOk.style.cssText = 'padding:.5rem 1rem;border-radius:8px;background:#22c55e;' +
+                'color:#052e16;border:none;font-weight:600;cursor:pointer;';
+
+            acoes.appendChild(btnCancelar);
+            acoes.appendChild(btnOk);
+            caixa.appendChild(acoes);
+            fundo.appendChild(caixa);
+            document.body.appendChild(fundo);
+
+            const fechar = (resultado) => {
+                document.body.removeChild(fundo);
+                resolve(resultado);
+            };
+            btnCancelar.onclick = () => fechar([]);
+            btnOk.onclick = () => {
+                const marcados = Array.from(lista.querySelectorAll('input:checked'))
+                    .map(cb => files[parseInt(cb.value, 10)]);
+                fechar(marcados);
+            };
+            // Clicar fora cancela — mas só no fundo, não dentro da caixa.
+            fundo.onclick = (e) => { if (e.target === fundo) fechar([]); };
+        });
+    }
+
     async importFromTTS() {
         try {
             this.showNotification('Buscando áudios recentes...', 'info');
@@ -1904,29 +1995,47 @@ class MiniDAW {
                 return;
             }
 
-            // Create selection dialog
-            const selectedFiles = files.slice(0, 5); // Limit to 5 most recent
+            // ANTES: `files.slice(0, 5)` e importava os cinco de uma vez. O
+            // comentário aqui dizia "Create selection dialog", mas o diálogo
+            // nunca foi escrito — então todo import enchia o projeto com 5
+            // faixas e não dava pra mixar UM spot: o export levava tudo junto.
+            const selectedFiles = await this.escolherAudiosDoTTS(files);
+            if (!selectedFiles || selectedFiles.length === 0) return;   // cancelou
             let loadedCount = 0;
-            
+
+            const falhas = [];
             for (const fileInfo of selectedFiles) {
+                let trackId = null;
                 try {
                     const audioResponse = await fetch(`/api/download/${fileInfo.filename}`);
                     if (!audioResponse.ok) {
                         throw new Error(`Failed to download ${fileInfo.filename}`);
                     }
-                    
+
                     const blob = await audioResponse.blob();
                     this.addTrack('voice');
-                    const trackId = this.tracks[this.tracks.length - 1].id;
+                    trackId = this.tracks[this.tracks.length - 1].id;
                     const file = new File([blob], fileInfo.filename, { type: 'audio/wav' });
                     await this.loadAudioFile(file, trackId);
                     loadedCount++;
                 } catch (error) {
                     console.error(`Error loading ${fileInfo.filename}:`, error);
+                    // A faixa já tinha sido criada quando o carregamento falhou:
+                    // deixá-la aí é o que produzia as "Voz 3", "Voz 5" mudas no
+                    // projeto. Faixa sem áudio não toca nem exporta — é só lixo
+                    // na tela, e o erro morria calado no console.
+                    if (trackId) this.removeTrack(trackId);
+                    falhas.push(fileInfo.filename);
                 }
             }
 
-            this.showNotification(`${loadedCount} de ${selectedFiles.length} áudios importados do TTS`, loadedCount > 0 ? 'success' : 'warning');
+            if (falhas.length) {
+                this.showNotification(
+                    `${loadedCount} importado(s). Falhou: ${falhas.join(', ')} — o arquivo pode ter expirado no servidor.`,
+                    loadedCount > 0 ? 'warning' : 'error');
+            } else {
+                this.showNotification(`${loadedCount} áudio(s) importado(s) do TTS`, 'success');
+            }
         } catch (error) {
             console.error('Error importing from TTS:', error);
             if (error.name === 'AbortError') {
