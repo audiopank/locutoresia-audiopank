@@ -584,37 +584,75 @@ class MiniDAW {
         nodes.reverbGain.gain.value = track.effects.reverb ? 0.3 : 0;
     }
 
+    // ── FORMA DE ONDA ────────────────────────────────────────────────────
+    // O produtor precisa ENXERGAR o que tem na faixa: sem isso a Tesoura vira
+    // chute, porque não dá pra marcar início e fim de corte às cegas.
+    //
+    // ANTES: um lineTo() por AMOSTRA de áudio. Numa trilha de 104s a 44.1kHz
+    // são 4,6 MILHÕES de pontos num canvas de ~1000px — o navegador engasgava
+    // e saía uma mancha, ou nada (aí aparecia só o gradiente do CSS, que é o
+    // "fundo liso" que parecia faixa vazia).
+    //
+    // AGORA: envelope min/max por COLUNA DE PIXEL, que é como todo editor de
+    // áudio desenha. Mil colunas em vez de milhões de pontos, e a silhueta
+    // mostra de verdade onde a fala entra e onde ela para.
     drawWaveform(track) {
         const canvas = document.getElementById(`waveform_${track.id}`);
         if (!canvas || !track.audioBuffer) return;
-        
+
+        const width = Math.floor(canvas.offsetWidth);
+        const height = Math.floor(canvas.offsetHeight);
+
+        // Canvas ainda sem layout (faixa recém-criada, aba oculta): desenhar
+        // agora pintaria num canvas 0x0 e a faixa ficaria muda pra sempre.
+        // Tenta de novo no próximo quadro, uma vez só.
+        if (!width || !height) {
+            if (!track._waveformRetry) {
+                track._waveformRetry = true;
+                requestAnimationFrame(() => {
+                    track._waveformRetry = false;
+                    this.drawWaveform(track);
+                });
+            }
+            return;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
         const ctx = canvas.getContext('2d');
         const data = track.audioBuffer.getChannelData(0);
-        const width = canvas.width = canvas.offsetWidth;
-        const height = canvas.height = canvas.offsetHeight;
-        
         ctx.clearRect(0, 0, width, height);
-        ctx.strokeStyle = track.color;
-        ctx.lineWidth = 2;
-        
-        const sliceWidth = width / data.length;
-        let x = 0;
-        
-        ctx.beginPath();
-        for (let i = 0; i < data.length; i++) {
-            const v = data[i];
-            const y = (v + 1) / 2 * height;
-            
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
+
+        const meio = height / 2;
+
+        // Linha de silêncio, pra dar referência visual do zero.
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+        ctx.fillRect(0, Math.round(meio), width, 1);
+
+        // Branco quase sólido: o fundo do .waveform é um gradiente azul/roxo e
+        // a cor da faixa (azul na voz, roxo na trilha) sumia em cima dele.
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+
+        const amostrasPorPixel = data.length / width;
+        for (let px = 0; px < width; px++) {
+            const ini = Math.floor(px * amostrasPorPixel);
+            const fim = Math.min(Math.floor((px + 1) * amostrasPorPixel), data.length);
+            if (fim <= ini) continue;
+
+            let min = 1.0, max = -1.0;
+            for (let i = ini; i < fim; i++) {
+                const v = data[i];
+                if (v < min) min = v;
+                if (v > max) max = v;
             }
-            
-            x += sliceWidth;
+
+            const topo = meio - max * meio;
+            // Altura mínima de 1px: trecho em silêncio ainda marca a linha,
+            // senão o silêncio vira buraco e parece faixa cortada.
+            const altura = Math.max(1, (max - min) * meio);
+            ctx.fillRect(px, topo, 1, altura);
         }
-        
-        ctx.stroke();
     }
 
     updateTrackName(trackId, name) {
