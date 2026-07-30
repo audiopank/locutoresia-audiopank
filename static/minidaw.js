@@ -14,6 +14,8 @@ class MiniDAW {
         
         // Novas funcionalidades
         this.scissorMode = false;
+        this.trackTesoura = null;   // qual faixa está com a tesoura armada
+        this.selecoes = {};         // trackId -> {ini, fim} em segundos
         this.globalZoom = 1;
         this.autoFadeEnabled = true;
         // ⚠️ autoFadeDuration NÃO está ligado em nada — o código usa 1.05 fixo em
@@ -117,24 +119,10 @@ class MiniDAW {
             }
         });
 
-        // Waveform click handler para tesoura
-        document.addEventListener('click', (e) => {
-            if (this.scissorMode && e.target.closest('.waveform-container')) {
-                const waveformContainer = e.target.closest('.track-card');
-                if (waveformContainer) {
-                    const trackId = waveformContainer.id.replace('track_', '');
-                    const rect = e.target.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const width = rect.width;
-                    const track = this.tracks.find(t => t.id === trackId);
-                    
-                    if (track && track.audioBuffer) {
-                        const cutTime = (x / width) * track.duration;
-                        this.cutTrackAtTime(trackId, cutTime);
-                    }
-                }
-            }
-        });
+        // O handler de clique que cortava a faixa saiu daqui: agora quem trata
+        // é o onmousedown do próprio .waveform-container (iniciarSelecao), que
+        // suporta arrastar pra marcar início e fim. Manter os dois faria o
+        // clique cortar a faixa no meio do arrasto.
     }
 
     addTrack(type = 'voice') {
@@ -234,8 +222,28 @@ class MiniDAW {
                     </button>
                 </div>
             ` : `
-                <div class="waveform-container">
+                <div class="waveform-container" id="wfbox_${track.id}"
+                     onmousedown="minidaw.iniciarSelecao(event, '${track.id}')">
                     <canvas id="waveform_${track.id}" class="waveform"></canvas>
+                    <!-- Guia do corte: região destacada + as duas hastes -->
+                    <div class="sel-regiao" id="selreg_${track.id}"></div>
+                    <div class="sel-haste sel-haste-ini" id="selini_${track.id}"></div>
+                    <div class="sel-haste sel-haste-fim" id="selfim_${track.id}"></div>
+                </div>
+                <div class="barra-corte" id="barracorte_${track.id}">
+                    <span class="corte-info" id="corteinfo_${track.id}"></span>
+                    <button class="btn btn-sm btn-danger" onclick="minidaw.aplicarCorte('${track.id}', 'remover')">
+                        <i class="fas fa-eraser me-1"></i>Remover trecho
+                    </button>
+                    <button class="btn btn-sm btn-primary" onclick="minidaw.aplicarCorte('${track.id}', 'manter')">
+                        <i class="fas fa-crop me-1"></i>Manter só isto
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="minidaw.aplicarCorte('${track.id}', 'dividir')">
+                        <i class="fas fa-scissors me-1"></i>Dividir no início
+                    </button>
+                    <button class="btn btn-sm btn-outline-light" onclick="minidaw.cancelarSelecao('${track.id}')">
+                        Cancelar
+                    </button>
                 </div>
                 <div class="controls-panel">
                     <div class="control-group">
@@ -267,7 +275,9 @@ class MiniDAW {
                             <button class="effect-btn" onclick="window.open('https://app.lmnt.com/', '_blank')" title="LMNT Studio">
                                 <i class="fas fa-external-link-alt"></i> LMNT
                             </button>
-                            <button class="effect-btn" onclick="minidaw.toggleScissorMode()" title="Tesoura">
+                            <button class="effect-btn ${this.trackTesoura === track.id ? 'active' : ''}"
+                                    id="btntesoura_${track.id}"
+                                    onclick="minidaw.toggleScissorMode('${track.id}')" title="Tesoura">
                                 <i class="fas fa-cut"></i> Tesoura
                             </button>
                             <button class="effect-btn" onclick="minidaw.normalizeVolumes()" title="Normalizar">
@@ -2128,23 +2138,201 @@ class MiniDAW {
     }
 
     // Novas funcionalidades
-    toggleScissorMode() {
-        this.scissorMode = !this.scissorMode;
-        const scissorBtn = document.getElementById('scissorBtn');
-        if (scissorBtn) {
-            scissorBtn.classList.toggle('active', this.scissorMode);
-            scissorBtn.classList.toggle('scissor-mode', this.scissorMode);
+    // ── TESOURA ──────────────────────────────────────────────────────────
+    // O botão nunca acendia: toggleScissorMode procurava getElementById
+    // ('scissorBtn'), elemento que não existe — o botão do card não tem id.
+    // E o corte era "clicou, partiu em duas": não dava pra marcar início e fim
+    // de um trecho, que é o que se precisa pra tirar um respiro ou um erro.
+    //
+    // Agora a tesoura é POR FAIXA: liga naquela faixa, você arrasta em cima da
+    // onda pra marcar o trecho, e escolhe o que fazer com ele.
+    toggleScissorMode(trackId) {
+        // Sem argumento (atalho C) mira na faixa que já está armada, ou na
+        // primeira que tenha áudio — assim a tecla continua útil.
+        if (!trackId) {
+            trackId = this.trackTesoura ||
+                (this.tracks.find(t => t.audioBuffer) || {}).id;
+            if (!trackId) {
+                this.showNotification('Nenhuma faixa com áudio pra cortar', 'warning');
+                return;
+            }
         }
-        
-        // Update cursor on all waveforms
-        document.querySelectorAll('.waveform-container').forEach(waveform => {
-            waveform.style.cursor = this.scissorMode ? 'crosshair' : 'default';
+
+        const ligando = this.trackTesoura !== trackId;
+        // Só uma faixa armada por vez: duas seleções ao mesmo tempo só
+        // confundem na hora de decidir onde o corte vai cair.
+        const anterior = this.trackTesoura;
+        this.trackTesoura = ligando ? trackId : null;
+        this.scissorMode = ligando;
+
+        if (anterior && anterior !== trackId) this.cancelarSelecao(anterior);
+        if (!ligando) this.cancelarSelecao(trackId);
+
+        this.tracks.forEach(t => {
+            const btn = document.getElementById(`btntesoura_${t.id}`);
+            if (btn) btn.classList.toggle('active', this.trackTesoura === t.id);
+            const box = document.getElementById(`wfbox_${t.id}`);
+            if (box) box.style.cursor = (this.trackTesoura === t.id) ? 'crosshair' : 'default';
         });
-        
+
         this.showNotification(
-            this.scissorMode ? 'Modo tesoura ativado (C para desativar)' : 'Modo tesoura desativado',
-            this.scissorMode ? 'info' : 'success'
-        );
+            ligando ? 'Tesoura ligada — arraste em cima da onda pra marcar o trecho'
+                    : 'Tesoura desligada',
+            ligando ? 'info' : 'success');
+    }
+
+    _tempoNoPonto(ev, track) {
+        const box = document.getElementById(`wfbox_${track.id}`);
+        const r = box.getBoundingClientRect();
+        const frac = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+        return frac * track.duration;
+    }
+
+    iniciarSelecao(ev, trackId) {
+        if (this.trackTesoura !== trackId) return;      // tesoura desligada nesta faixa
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.audioBuffer) return;
+        ev.preventDefault();
+
+        const t0 = this._tempoNoPonto(ev, track);
+        this.selecoes = this.selecoes || {};
+        this.selecoes[trackId] = { ini: t0, fim: t0 };
+
+        const mover = (e) => {
+            const t = this._tempoNoPonto(e, track);
+            const s = this.selecoes[trackId];
+            // Arrastar pra trás é válido: normaliza na hora de desenhar.
+            s.ini = Math.min(t0, t);
+            s.fim = Math.max(t0, t);
+            this.desenharSelecao(trackId);
+        };
+        const soltar = () => {
+            document.removeEventListener('mousemove', mover);
+            document.removeEventListener('mouseup', soltar);
+            const s = this.selecoes[trackId];
+            // Clique seco (sem arrastar) marca um ponto — serve pra "Dividir".
+            if (s && s.fim - s.ini < 0.01) { s.fim = s.ini; }
+            this.desenharSelecao(trackId);
+        };
+        document.addEventListener('mousemove', mover);
+        document.addEventListener('mouseup', soltar);
+        this.desenharSelecao(trackId);
+    }
+
+    desenharSelecao(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        const s = (this.selecoes || {})[trackId];
+        const reg = document.getElementById(`selreg_${trackId}`);
+        const hIni = document.getElementById(`selini_${trackId}`);
+        const hFim = document.getElementById(`selfim_${trackId}`);
+        const barra = document.getElementById(`barracorte_${trackId}`);
+        const info = document.getElementById(`corteinfo_${trackId}`);
+        if (!track || !reg || !hIni || !hFim || !barra) return;
+
+        if (!s || !track.duration) {
+            reg.style.display = hIni.style.display = hFim.style.display = 'none';
+            barra.classList.remove('ativa');
+            return;
+        }
+
+        const pIni = (s.ini / track.duration) * 100;
+        const pFim = (s.fim / track.duration) * 100;
+        reg.style.display = (s.fim > s.ini) ? 'block' : 'none';
+        reg.style.left = pIni + '%';
+        reg.style.width = (pFim - pIni) + '%';
+        hIni.style.display = hFim.style.display = 'block';
+        hIni.style.left = pIni + '%';
+        hFim.style.left = pFim + '%';
+
+        barra.classList.add('ativa');
+        const fmt = (t) => {
+            const m = Math.floor(t / 60);
+            const seg = (t % 60).toFixed(2).padStart(5, '0');
+            return `${m}:${seg}`;
+        };
+        info.textContent = (s.fim > s.ini)
+            ? `trecho ${fmt(s.ini)} → ${fmt(s.fim)}  (${(s.fim - s.ini).toFixed(2)}s)`
+            : `ponto ${fmt(s.ini)}`;
+    }
+
+    cancelarSelecao(trackId) {
+        if (this.selecoes) delete this.selecoes[trackId];
+        this.desenharSelecao(trackId);
+    }
+
+    // modo: 'remover' (tira o trecho), 'manter' (fica só o trecho),
+    //       'dividir' (parte a faixa no início da marcação)
+    async aplicarCorte(trackId, modo) {
+        const track = this.tracks.find(t => t.id === trackId);
+        const s = (this.selecoes || {})[trackId];
+        if (!track || !track.audioBuffer || !s) return;
+
+        const sr = track.audioBuffer.sampleRate;
+        const total = track.audioBuffer.length;
+        const aIni = Math.max(0, Math.min(total, Math.floor(s.ini * sr)));
+        const aFim = Math.max(0, Math.min(total, Math.floor(s.fim * sr)));
+
+        if (modo !== 'dividir' && aFim - aIni < 1) {
+            this.showNotification('Arraste sobre a onda pra marcar o trecho primeiro', 'warning');
+            return;
+        }
+        if (modo === 'dividir') {
+            this.cancelarSelecao(trackId);
+            return this.cutTrackAtTime(trackId, s.ini);
+        }
+
+        // Guarda o original UMA vez, pra "Restaurar voz" continuar valendo
+        // depois de cortar (mesma rede de segurança do Encurtar Pausas).
+        // O Map é criado sob demanda no resto do arquivo — sem este `if` o
+        // corte feito antes de "Encurtar Pausas" ficaria sem volta.
+        if (!this.vozOriginais) this.vozOriginais = new Map();
+        if (track.type === 'voice' && !this.vozOriginais.has(track.id)) {
+            this.vozOriginais.set(track.id, track.audioBuffer);
+        }
+
+        const nch = track.audioBuffer.numberOfChannels;
+        const novoTam = (modo === 'manter') ? (aFim - aIni) : (total - (aFim - aIni));
+        if (novoTam < 1) {
+            this.showNotification('Isso apagaria a faixa inteira', 'warning');
+            return;
+        }
+
+        const novo = this.audioContext.createBuffer(nch, novoTam, sr);
+        // Fade de 5ms na emenda: corte seco no meio da onda estala.
+        const XF = Math.min(Math.round(0.005 * sr), Math.floor(novoTam / 2));
+
+        for (let ch = 0; ch < nch; ch++) {
+            const orig = track.audioBuffer.getChannelData(ch);
+            const dest = novo.getChannelData(ch);
+            if (modo === 'manter') {
+                for (let i = 0; i < novoTam; i++) dest[i] = orig[aIni + i];
+            } else {
+                for (let i = 0; i < aIni; i++) dest[i] = orig[i];
+                for (let i = aFim; i < total; i++) dest[aIni + (i - aFim)] = orig[i];
+            }
+            // Suaviza as bordas do que sobrou
+            for (let i = 0; i < XF; i++) {
+                const g = i / XF;
+                dest[i] *= g;
+                dest[novoTam - 1 - i] *= g;
+            }
+        }
+
+        track.audioBuffer = novo;
+        track.duration = novo.length / sr;
+        track.audioUrl = URL.createObjectURL(this.bufferToWav(novo));
+        this.cancelarSelecao(trackId);
+        this.drawWaveform(track);
+        this.updateTrackUI(track);
+        this.duration = Math.max(0, ...this.tracks.filter(t => t.audioBuffer).map(t => t.duration));
+        this.updateDuration();
+        this.saveToLocalStorage();
+
+        this.showNotification(
+            modo === 'manter'
+                ? `Ficou só o trecho marcado (${track.duration.toFixed(2)}s)`
+                : `Trecho removido — a faixa agora tem ${track.duration.toFixed(2)}s`,
+            'success');
     }
 
     stopPlayback() {
