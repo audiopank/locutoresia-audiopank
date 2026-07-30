@@ -951,7 +951,15 @@ class MiniDAW {
     }
 
     playTrack(track) {
-        const nodes = this.trackNodes.get(track.id);
+        let nodes = this.trackNodes.get(track.id);
+        // Faixa com áudio mas sem cadeia de efeitos ficava MUDA no play, e o
+        // return calado não deixava pista nenhuma. Se o áudio está aí, remonta
+        // a cadeia em vez de desistir.
+        if (!nodes && track.audioBuffer) {
+            this.createTrackNodes(track);
+            if (typeof this.applyEffectStates === 'function') this.applyEffectStates(track);
+            nodes = this.trackNodes.get(track.id);
+        }
         if (!nodes || !track.audioBuffer) return;
 
         // Create source node
@@ -1106,22 +1114,10 @@ class MiniDAW {
         this.showNotification('Volumes normalizados', 'success');
     }
 
-    applyAutoFade() {
-        const voiceTracks = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
-        const musicTracks = this.tracks.filter(t => t.type === 'music' && t.audioBuffer);
-
-        if (voiceTracks.length === 0 || musicTracks.length === 0) {
-            this.showNotification('Adicione pelo menos uma voz e uma trilha', 'warning');
-            return;
-        }
-
-        // Apply fade out to music tracks (1.05 seconds before voice ends)
-        musicTracks.forEach(track => {
-            this.updateTrackFadeOut(track.id, 1.05);
-        });
-
-        this.showNotification('Auto fade aplicado (1.05s)', 'success');
-    }
+    // (Havia um segundo applyAutoFade idêntico aqui. Em JS a definição de
+    //  baixo sobrescreve a de cima, então esta versão nunca rodava — ler o
+    //  arquivo dava a impressão errada de qual código estava valendo. A que
+    //  vale é a de baixo, que também liga o autoFadeEnabled.)
 
     clearAllTracks(skipConfirm = false) {
         if (this.tracks.length === 0) return;
@@ -1830,24 +1826,37 @@ class MiniDAW {
         }
     }
 
+    // Recria o card da faixa NO MESMO LUGAR e religa os efeitos.
+    //
+    // Duas coisas quebravam aqui e apareciam como "perdeu os efeitos":
+    //
+    // 1) createTrackUI faz container.appendChild(), então toda recriação
+    //    jogava a faixa pro FIM da lista. Cortar ou trocar o tipo embaralhava
+    //    a ordem sozinho — parecia que "a ordem" causava o problema.
+    // 2) O card voltava com os botões certos, mas a CADEIA DE ÁUDIO ficava
+    //    com o estado antigo: sem applyEffectStates, o que se vê aceso na
+    //    tela não é o que está ligado no som.
     updateTrackUI(track) {
-        const trackCard = document.getElementById(`track_${track.id}`);
-        if (!trackCard) return;
+        const cardAntigo = document.getElementById(`track_${track.id}`);
+        if (!cardAntigo) return;
 
-        // Recreate the track card with audio loaded
-        const newCard = document.createElement('div');
-        newCard.className = 'track-card';
-        newCard.id = `track_${track.id}`;
-        
-        // This would recreate the track UI with the audio loaded
-        // For simplicity, we'll just update the existing card
-        this.createTrackUI(track);
-        
-        // Remove old card
-        const oldCard = document.getElementById(`track_${track.id}`);
-        if (oldCard && oldCard !== newCard) {
-            oldCard.remove();
+        const container = cardAntigo.parentNode;
+        const ancora = cardAntigo.nextSibling;   // vizinho de baixo, pra voltar no lugar
+        cardAntigo.remove();
+
+        this.createTrackUI(track);               // entra no fim...
+        const cardNovo = document.getElementById(`track_${track.id}`);
+        if (cardNovo && container) {
+            container.insertBefore(cardNovo, ancora);   // ...e volta pra posição original
         }
+
+        // Sem nós de áudio a faixa fica muda no play (playTrack sai calado se
+        // não achar a entrada no Map). Corte e troca de tipo passam por aqui.
+        if (!this.trackNodes.get(track.id) && track.audioBuffer) {
+            this.createTrackNodes(track);
+        }
+        if (typeof this.applyEffectStates === 'function') this.applyEffectStates(track);
+        if (typeof this.updateEffectsUI === 'function') this.updateEffectsUI(track);
     }
 
     // File handling
