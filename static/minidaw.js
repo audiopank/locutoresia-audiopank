@@ -188,7 +188,11 @@ class MiniDAW {
                     </button>
                 </div>
                 <div class="d-flex align-items-center gap-3">
-                    <div class="track-type ${track.type}">${track.type === 'voice' ? 'Voz' : 'Trilha'}</div>
+                    <div class="track-type ${track.type}" onclick="minidaw.alternarTipoFaixa('${track.id}')"
+                         title="Clique para trocar entre Voz e Trilha. Isto NÃO é só um rótulo: só faixa de Voz aciona o ducking e o auto fade-out da trilha.">
+                        ${track.type === 'voice' ? 'Voz' : 'Trilha'}
+                        <i class="fas fa-repeat ms-1" style="font-size:.7em;opacity:.7;"></i>
+                    </div>
                     <input type="text" class="form-control form-control-sm" value="${track.name}" 
                            onchange="minidaw.updateTrackName('${track.id}', this.value)" style="max-width: 200px;">
                 </div>
@@ -1359,6 +1363,22 @@ class MiniDAW {
             return;
         }
 
+        // Trilha sem nenhuma faixa de Voz: o motor não aplica ducking nem o
+        // fade final, e a duração do mix vira a da trilha inteira. Isso sai
+        // como spot errado e só se percebe ouvindo o arquivo pronto — melhor
+        // perguntar antes de gastar a exportação.
+        const temVoz = tracksWithAudio.some(t => t.type === 'voice');
+        const temTrilha = tracksWithAudio.some(t => t.type === 'music');
+        if (temTrilha && !temVoz) {
+            const segue = confirm(
+                'Nenhuma faixa está marcada como VOZ neste projeto.\n\n' +
+                'Sem isso a trilha não abaixa embaixo da locução, não some no fim, ' +
+                'e o mix vai durar a trilha inteira em vez de acabar com a fala.\n\n' +
+                'Se uma dessas faixas é a locução, cancele e clique na etiqueta ' +
+                '"TRILHA" dela pra virar "VOZ".\n\nExportar assim mesmo?');
+            if (!segue) return;
+        }
+
         this.showMixingStatus(true);
         this.updateMixingProgress(0, 'Preparando mixagem...');
 
@@ -2183,6 +2203,38 @@ class MiniDAW {
             ligando ? 'Tesoura ligada — arraste em cima da onda pra marcar o trecho'
                     : 'Tesoura desligada',
             ligando ? 'info' : 'success');
+    }
+
+    // Troca Voz <-> Trilha. Não é cosmético: o motor de mixagem decide o
+    // ducking, o auto fade-out e ATÉ A DURAÇÃO DO MIX pelo tipo da faixa
+    //
+    //     const voiceTracks = tracks.filter(t => t.type === 'voice');
+    //     if (track.type === 'music' && voiceTracks.length > 0) { ...ducking... }
+    //
+    // Uma locução rotulada como Trilha deixa o projeto sem nenhuma faixa de
+    // voz: a trilha nunca abaixa, nunca some no fim, e o mix passa a durar a
+    // trilha inteira em vez de acabar junto com a fala. Até aqui não havia como
+    // corrigir isso pela tela — a etiqueta era decidida na criação e ponto.
+    alternarTipoFaixa(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+
+        track.type = (track.type === 'voice') ? 'music' : 'voice';
+        track.color = (track.type === 'voice') ? '#3b82f6' : '#a855f7';
+
+        this.updateTrackUI(track);
+        requestAnimationFrame(() => this.drawWaveform(track));
+        this.saveToLocalStorage();
+
+        const temVoz = this.tracks.some(t => t.audioBuffer && t.type === 'voice');
+        const temTrilha = this.tracks.some(t => t.audioBuffer && t.type === 'music');
+        let recado = track.type === 'voice'
+            ? `"${track.name}" agora é VOZ — a trilha vai abaixar embaixo dela e sumir no fim.`
+            : `"${track.name}" agora é TRILHA.`;
+        if (temTrilha && !temVoz) {
+            recado += ' ⚠️ Nenhuma faixa de Voz no projeto: sem ducking e sem fade automático.';
+        }
+        this.showNotification(recado, temTrilha && !temVoz ? 'warning' : 'success');
     }
 
     // Salva SÓ esta faixa, no estado em que ela está (já cortada/editada).

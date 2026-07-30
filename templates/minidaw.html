@@ -68,7 +68,14 @@
             font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
+            /* Clicável: troca Voz <-> Trilha, e isso muda a MIXAGEM
+               (ducking, fade final e duração do mix), não só o rótulo. */
+            cursor: pointer;
+            user-select: none;
+            transition: filter 0.2s ease;
         }
+
+        .track-type:hover { filter: brightness(1.35); }
 
         .track-type.voice {
             background: rgba(59, 130, 246, 0.2);
@@ -947,7 +954,7 @@
     <script src="/static/enviar-entrega.js?v=1"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
     <script src="/static/mix-engine.js?v=1"></script>
-    <script src="/static/minidaw.js?v=16"></script>
+    <script src="/static/minidaw.js?v=17"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
