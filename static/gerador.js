@@ -269,8 +269,15 @@
                         avisar('Biblioteca de trilhas vazia — seguindo com locução seca.', 'atencao');
                     } else if (dTr.success && dTr.tracks && dTr.tracks.length) {
                         estado.trilha = dTr.tracks[0];
+                        // fonte 'base' = veio do acervo por ordem, não escolhida
+                        // pela IA. O spot sai com trilha do mesmo jeito, mas o
+                        // produtor precisa saber que a escolha não foi pensada.
+                        if (dTr.fonte === 'base') {
+                            avisar('⚙️ ' + (dTr.resumo || 'Trilha tirada do acervo, sem escolha da IA.')
+                                   + ' Confira se combina com o spot.', 'atencao');
+                        }
                     } else {
-                        avisar('A IA não recomendou trilha desta vez — seguindo com locução seca.', 'atencao');
+                        avisar('Não veio trilha nenhuma desta vez — seguindo com locução seca.', 'atencao');
                     }
                 } else {
                     const rT = await fetch('/api/tracks');

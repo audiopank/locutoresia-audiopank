@@ -1172,9 +1172,33 @@ def voxcraft_recommend_tracks():
         )
 
         n_alvo = min(3, len(acervo))
+
+        def responder_do_acervo(motivo):
+            """Escolhe do acervo SEM IA e devolve 200.
+
+            Antes, IA fora do ar aqui virava 500 e o Gerador de Anúncios
+            entregava locução seca. Trilha escolhida por ordem é pior que a
+            escolhida pela IA, mas é MUITO melhor que spot sem trilha — e o
+            produtor troca em dois cliques. O fallback do acervo já existia
+            logo abaixo, só estava depois da chamada do Gemini: se ela
+            estourasse (cota, rede), a exceção pulava direto pro except geral
+            e ninguém chegava nele.
+            """
+            return jsonify({
+                "success": True, "status": "ok", "fonte": "base",
+                "resumo": motivo,
+                "tracks": [{
+                    "id": t['id'], "name": t.get('name'), "artist": t.get('artist'),
+                    "genre": t.get('genre'), "mood": t.get('mood'),
+                    "bpm": t.get('bpm'), "duration": t.get('duration'),
+                    "file_url": t.get('file_url'),
+                    "motivo": "Escolha direta do acervo (a IA não respondeu agora)."
+                } for t in acervo[:n_alvo]]
+            })
+
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
         if not api_key:
-            return jsonify({"success": False, "error": "IA não configurada (falta GEMINI_API_KEY)."}), 500
+            return responder_do_acervo("Trilhas do acervo — IA não configurada.")
 
         prompt = f"""Você é um engenheiro de áudio de um estúdio de locução. O cliente descreveu um projeto e você precisa escolher, do ACERVO REAL abaixo, EXATAMENTE {n_alvo} trilha(s) que combinam melhor — ordenadas da melhor pra menos boa.
 
@@ -1192,16 +1216,32 @@ ACERVO DE TRILHAS (escolha só destes):
 {catalogo}
 """
 
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        gem = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-        texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
-
         import json as _json
         try:
+            from google import genai
+            from google.genai import types as genai_types
+            client = genai.Client(api_key=api_key)
+            # thinking desligado: mesma medição feita no endpoint de roteiro —
+            # o modelo gastava mais tokens deliberando do que respondendo, e
+            # aqui a tarefa é escolher 3 ids de uma lista, não filosofar.
+            gem = client.models.generate_content(
+                model='gemini-2.5-flash', contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    thinking_config=genai_types.ThinkingConfig(thinking_budget=0)
+                )
+            )
+            texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
             parsed = _json.loads(texto)
-        except Exception:
-            parsed = {"resumo": "", "recomendacoes": []}
+        except Exception as ia_err:
+            # 429 = cota diária do free tier (20 req/dia no gemini-2.5-flash).
+            # Nomear isso importa: "a IA não recomendou" faz parecer critério
+            # editorial, quando na verdade a cota acabou.
+            erro_txt = str(ia_err)
+            estourou = '429' in erro_txt or 'RESOURCE_EXHAUSTED' in erro_txt
+            print(f'IA de trilhas falhou, usando acervo: {erro_txt[:200]}', flush=True)
+            return responder_do_acervo(
+                'Trilhas do acervo — a cota diária do Gemini estourou.' if estourou
+                else 'Trilhas do acervo — a IA não respondeu agora.')
 
         # Remonta com as trilhas reais, na ordem da IA, ignorando ids inventados/repetidos.
         vistos = set()
