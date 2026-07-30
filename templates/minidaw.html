@@ -92,16 +92,30 @@
             margin: 1rem 0;
         }
 
+        /* O gradiente decorativo saiu do canvas e virou fundo do container.
+           Antes ele ficava NO canvas junto com um opacity:0.3 — então a forma
+           de onda desenhada saía com 30% de opacidade, quase invisível, e a
+           faixa parecia vazia mesmo tendo áudio. Aqui o gradiente fica atrás e
+           esmaecido; a onda vai por cima, opaca e legível. */
+        .waveform-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg,
+                transparent 0%,
+                var(--primary-color) 10%,
+                var(--secondary-color) 50%,
+                var(--accent-color) 90%,
+                transparent 100%);
+            opacity: 0.16;
+            pointer-events: none;
+        }
+
         .waveform {
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, 
-                transparent 0%, 
-                var(--primary-color) 10%, 
-                var(--secondary-color) 50%, 
-                var(--accent-color) 90%, 
-                transparent 100%);
-            opacity: 0.3;
+            display: block;
+            position: relative;   /* acima do ::before */
         }
 
         .controls-panel {
