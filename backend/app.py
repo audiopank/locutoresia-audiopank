@@ -823,19 +823,25 @@ def gerador_roteiro():
         estilo_voz = str(data.get('estilo_voz') or '')[:300]
         faixa = duracao_alvo_do_plano(plano)
 
-        def responder_base():
+        def responder_base(motivo=''):
             # Fallback: o briefing vira o roteiro. Não é bonito, mas é honesto —
             # e não queima o pipeline inteiro por causa de uma cota estourada.
+            #
+            # O `motivo` volta pro navegador de propósito: sem ele, "a IA não
+            # respondeu" é um beco sem saída — não dá pra saber se foi cota,
+            # rede ou resposta malformada, e o produtor conclui que a
+            # ferramenta piorou.
             return jsonify({
                 "success": True, "fonte": "base", "roteiro": briefing,
                 "tempo_leitura_estimado": estimar_duracao_locucao(briefing),
                 "faixa_alvo": list(faixa) if faixa else None,
+                "erro_ia": motivo,
                 "aviso": "A IA não respondeu agora — este é o briefing do cliente como veio. Edite antes de aprovar."
             })
 
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
         if not api_key:
-            return responder_base()
+            return responder_base('sem GEMINI_API_KEY configurada')
 
         if faixa:
             alvo_txt = (f"O spot precisa durar entre {faixa[0]} e {faixa[1]} segundos falados. "
@@ -863,18 +869,44 @@ REGRAS:
 Devolva SOMENTE um JSON válido, sem markdown:
 {{"roteiro": "o texto falado", "resumo": "1 frase sobre a escolha criativa"}}"""
 
-        try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
-            gem = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-            texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
-            parsed = json.loads(texto)
-            roteiro = (parsed.get('roteiro') or '').strip()
-            if not roteiro:
-                raise ValueError("IA devolveu roteiro vazio")
-        except Exception as ia_err:
-            print(f"IA de roteiro falhou, usando base: {ia_err}")
-            return responder_base()
+        # THINKING DESLIGADO. Medido neste prompt: o modelo gastava 978-1969
+        # tokens "pensando" pra 172-197 tokens de roteiro — 90% do tempo era
+        # deliberação. Além de lento, é o que arrisca truncar a resposta: quanto
+        # mais ele pensa, mais perto do teto de saída chega, e JSON cortado no
+        # meio não parseia (foi o que jogou o primeiro spot real no fallback).
+        # Sem thinking a mesma chamada caiu de 7.7s pra 2.9s.
+        parsed = None
+        ultimo_erro = ''
+        # Duas tentativas: resposta malformada do modelo costuma ser sorte, não
+        # regra. Repetir uma vez sai bem mais barato que entregar briefing cru.
+        for tentativa in (1, 2):
+            try:
+                from google import genai
+                from google.genai import types as genai_types
+                client = genai.Client(api_key=api_key)
+                gem = client.models.generate_content(
+                    model='gemini-2.5-flash', contents=prompt,
+                    config=genai_types.GenerateContentConfig(
+                        thinking_config=genai_types.ThinkingConfig(thinking_budget=0)
+                    )
+                )
+                texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
+                if not texto:
+                    raise ValueError('resposta vazia do modelo')
+                candidato = json.loads(texto)
+                if not (candidato.get('roteiro') or '').strip():
+                    raise ValueError('JSON sem o campo roteiro')
+                parsed = candidato
+                break
+            except Exception as ia_err:
+                ultimo_erro = f'{type(ia_err).__name__}: {ia_err}'
+                # flush=True: sem isso o print fica preso no buffer do stdout e
+                # o log do servidor não mostra nada quando dá errado.
+                print(f'IA de roteiro falhou (tentativa {tentativa}/2): {ultimo_erro}', flush=True)
+
+        if parsed is None:
+            return responder_base(ultimo_erro)
+        roteiro = parsed['roteiro'].strip()
 
         return jsonify({
             "success": True, "fonte": "ia",

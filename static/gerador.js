@@ -240,7 +240,10 @@
             document.getElementById('textoComercial').value = estado.roteiro;
             atualizarContador();
             if (dRot.fonte === 'base') {
-                avisar('⚙️ Roteiro veio do briefing do cliente — a IA não respondeu agora. Revise o texto.', 'atencao');
+                // O motivo vem junto: sem ele não dá pra distinguir cota estourada
+                // de resposta malformada, e os dois pedem reação diferente.
+                avisar('⚙️ Roteiro veio do briefing do cliente — a IA não respondeu agora. Revise o texto.'
+                       + (dRot.erro_ia ? ' (motivo: ' + dRot.erro_ia + ')' : ''), 'atencao');
             }
 
             // [2] VOZ — sem locução não há spot: o único passo que interrompe.
