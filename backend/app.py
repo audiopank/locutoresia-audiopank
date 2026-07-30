@@ -756,6 +756,17 @@ def scripts_library_page():
     return render_template('scripts_library.html')
 
 
+@app.route('/gerador')
+def gerador_page():
+    """Gerador de Anúncios — briefing do pedido vira spot mixado em 1 clique.
+
+    Rota PRÓPRIA de propósito: não desloca '/', '/studio' nem as MiniDAWs.
+    A mixagem roda no navegador (Web Audio) — ffmpeg/numpy não existem na
+    Vercel, então não há como produzir isto no servidor.
+    """
+    return render_template('gerador.html')
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # GERADOR DE ANÚNCIOS — o roteiro publicitário por IA.
 # Determinístico primeiro: as duas funções abaixo não usam IA, então continuam
