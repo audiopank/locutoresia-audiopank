@@ -495,6 +495,16 @@ class MiniDAW {
         const reverbGain = this.audioContext.createGain();
         reverbGain.gain.value = 0.3;
 
+        // Delay: 280ms com realimentação curta. Em spot isso é efeito de
+        // destaque (chamada, assinatura), não ambiente — por isso tempo curto
+        // e feedback baixo, senão vira eco de caverna por cima da locução.
+        const delayNode = this.audioContext.createDelay(2.0);
+        delayNode.delayTime.value = 0.28;
+        const delayFeedback = this.audioContext.createGain();
+        delayFeedback.gain.value = 0.28;
+        const delayMix = this.audioContext.createGain();
+        delayMix.gain.value = 0;      // desligado até o botão pedir
+
         // Create analyser for silence detection
         const analyser = this.audioContext.createAnalyser();
         analyser.fftSize = 2048;
@@ -521,6 +531,15 @@ class MiniDAW {
         limiterNode.connect(reverbNode);
         reverbNode.connect(reverbGain);
         reverbGain.connect(panNode);
+        // DELAY — existia como botão desde sempre, mas sem nó nenhum: clicar
+        // só virava a flag `effects.delay`, que ninguém lia (nem o playback,
+        // nem o export). Agora é um envio paralelo igual ao reverb, com
+        // realimentação pra dar as repetições.
+        limiterNode.connect(delayNode);
+        delayNode.connect(delayFeedback);
+        delayFeedback.connect(delayNode);     // eco que repete e vai morrendo
+        delayNode.connect(delayMix);
+        delayMix.connect(panNode);
         gainNode.connect(panNode);
         panNode.connect(this.masterGain);
         
@@ -538,6 +557,9 @@ class MiniDAW {
             analyser,
             reverbNode,
             reverbGain,
+            delayNode,
+            delayFeedback,
+            delayMix,
             gainNode,
             panNode,
             sourceNode: null
@@ -600,6 +622,11 @@ class MiniDAW {
 
         // Reverb
         nodes.reverbGain.gain.value = track.effects.reverb ? 0.3 : 0;
+
+        // Delay (o botão existia sem nenhum efeito por trás até agora)
+        if (nodes.delayMix) {
+            nodes.delayMix.gain.value = track.effects.delay ? 0.20 : 0;
+        }
     }
 
     // ── FORMA DE ONDA ────────────────────────────────────────────────────
