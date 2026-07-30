@@ -199,6 +199,10 @@ class MiniDAW {
                     <button class="btn btn-sm btn-outline-info ${track.solo ? 'active' : ''}" onclick="toggleSolo('${track.id}')" title="Solo">
                         <i class="fas fa-headphones"></i>
                     </button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="minidaw.baixarFaixa('${track.id}')"
+                            title="Salvar esta faixa (baixa o áudio como está, já editado)">
+                        <i class="fas fa-floppy-disk"></i>
+                    </button>
                     <button class="btn btn-sm btn-outline-danger" onclick="removeTrack('${track.id}')" title="Remover Track">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -1531,7 +1535,7 @@ class MiniDAW {
     _slugArquivo(s) {
         // ̀-ͯ = marcas de acento que o NFD separa da letra.
         return String(s || 'faixa')
-            .normalize('NFD').replace(/[̀-ͯ]/g, '')   // tira acento
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // tira acento
             .replace(/[^a-zA-Z0-9]+/g, '-')
             .replace(/^-+|-+$/g, '')
             .toLowerCase() || 'faixa';
@@ -2181,6 +2185,28 @@ class MiniDAW {
             ligando ? 'info' : 'success');
     }
 
+    // Salva SÓ esta faixa, no estado em que ela está (já cortada/editada).
+    // O "Salvar Projeto" guarda a mixagem inteira no Supabase; isto aqui é a
+    // rede de segurança da faixa em si — corte bom não se perde por causa de
+    // um F5 ou de um clique errado depois.
+    baixarFaixa(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.audioBuffer) {
+            this.showNotification('Esta faixa ainda não tem áudio', 'warning');
+            return;
+        }
+        const blob = this.bufferToWav(track.audioBuffer);
+        const nome = String(track.name || 'faixa')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^\w\-]+/g, '-').replace(/^-|-$/g, '') || 'faixa';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${nome}.wav`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        this.showNotification(`"${track.name}" salva (${track.duration.toFixed(2)}s)`, 'success');
+    }
+
     _tempoNoPonto(ev, track) {
         const box = document.getElementById(`wfbox_${track.id}`);
         const r = box.getBoundingClientRect();
@@ -2322,16 +2348,22 @@ class MiniDAW {
         track.duration = novo.length / sr;
         track.audioUrl = URL.createObjectURL(this.bufferToWav(novo));
         this.cancelarSelecao(trackId);
-        this.drawWaveform(track);
+        // updateTrackUI RECRIA o card (createTrackUI + remove o antigo), então
+        // ele tem que vir ANTES: desenhar primeiro pintava num canvas que era
+        // jogado fora em seguida, e a faixa cortada aparecia sem onda.
         this.updateTrackUI(track);
+        // E no quadro seguinte, pra o canvas novo já ter largura — recém
+        // inserido no DOM ele mede 0 e o desenho sairia vazio.
+        requestAnimationFrame(() => this.drawWaveform(track));
         this.duration = Math.max(0, ...this.tracks.filter(t => t.audioBuffer).map(t => t.duration));
         this.updateDuration();
         this.saveToLocalStorage();
 
         this.showNotification(
-            modo === 'manter'
+            (modo === 'manter'
                 ? `Ficou só o trecho marcado (${track.duration.toFixed(2)}s)`
-                : `Trecho removido — a faixa agora tem ${track.duration.toFixed(2)}s`,
+                : `Trecho removido — a faixa agora tem ${track.duration.toFixed(2)}s`)
+            + ' · 💾 no topo da faixa salva esta versão',
             'success');
     }
 
@@ -2895,8 +2927,18 @@ class MiniDAW {
             this.tracks.push(newTrack);
             this.createTrackNodes(newTrack);
 
-            // Atualiza UI
+            // createTrackNodes monta só os nós de ÁUDIO. Sem createTrackUI a
+            // Parte 2 nascia sem card nenhum na tela — existia no projeto e
+            // entrava no export, mas invisível pra quem estava editando.
+            this.createTrackUI(newTrack);
+            this.updateTrackUI(track);     // a Parte 1 encurtou: recria o card
             this.updateUI();
+            requestAnimationFrame(() => {
+                this.drawWaveform(track);
+                this.drawWaveform(newTrack);
+            });
+            this.duration = Math.max(0, ...this.tracks.filter(t => t.audioBuffer).map(t => t.duration));
+            this.updateDuration();
             this.showNotification(`Track "${track.name}" cortado em ${cutTime.toFixed(2)}s`, 'success');
 
         } catch (error) {
