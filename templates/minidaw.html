@@ -871,9 +871,82 @@
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
+        // PROJETO VINDO DO GERADOR DE ANÚNCIOS (/gerador)
+        // Monta voz e trilha em faixas SEPARADAS e reaplica a receita de
+        // mixagem que a IA definiu lá. Mandar o mix já renderizado seria
+        // inútil aqui: arquivo achatado não deixa mexer em nada, e é
+        // justamente pra mexer que se abre a MiniDAW.
+        async function carregarProjetoDoGerador() {
+            const bruto = localStorage.getItem('minidaw_projeto_gerador');
+            if (!bruto || !window.minidaw) return false;
+            localStorage.removeItem('minidaw_projeto_gerador');   // consome uma vez só
+
+            let p;
+            try { p = JSON.parse(bruto); } catch (e) { return false; }
+
+            try {
+                // 1. Voz — chega em base64 porque o áudio foi gerado no navegador.
+                const blob = await (await fetch(p.voz.base64)).blob();
+                const file = new File([blob], p.voz.nome || 'locucao.wav', { type: 'audio/wav' });
+                minidaw.addTrack('voice');
+                const idVoz = minidaw.tracks[minidaw.tracks.length - 1].id;
+                await minidaw.loadAudioFile(file, idVoz);
+                const tVoz = minidaw.tracks.find(t => t.id === idVoz);
+                if (tVoz) { tVoz.name = 'Locução'; minidaw.updateTrackUI(tVoz); }
+
+                // 2. Trilha — vai por URL, não por base64: o localStorage tem
+                //    teto de ~5MB e trilha inteira estoura fácil.
+                let idTrilha = null;
+                if (p.trilha && p.trilha.url) {
+                    minidaw.addTrack('music');
+                    idTrilha = minidaw.tracks[minidaw.tracks.length - 1].id;
+                    await minidaw.loadAudioFromUrl(p.trilha.url, idTrilha, p.trilha.nome || 'Trilha');
+                }
+
+                // 3. Receita — mesmos setters que o botão "Incorporar Receita da IA"
+                //    usa, pra o que você ouve aqui bater com o que ouviu no Gerador.
+                if (p.receita) {
+                    const aplicar = (trackId, r) => {
+                        if (!trackId || !r) return;
+                        const track = minidaw.tracks.find(t => t.id === trackId);
+                        if (!track) return;
+                        if (r.volume != null) minidaw.updateTrackVolume(trackId, r.volume);
+                        if (r.pan != null) minidaw.updateTrackPan(trackId, r.pan);
+                        if (r.fade_in != null) minidaw.updateTrackFadeIn(trackId, r.fade_in);
+                        if (r.fade_out != null) minidaw.updateTrackFadeOut(trackId, r.fade_out);
+                        if (r.effects && track.effects) {
+                            Object.keys(track.effects).forEach(fx => {
+                                if (r.effects[fx] !== undefined) track.effects[fx] = !!r.effects[fx];
+                            });
+                            if (typeof minidaw.applyEffectStates === 'function') minidaw.applyEffectStates(track);
+                        }
+                        if (typeof minidaw.updateTrackUI === 'function') minidaw.updateTrackUI(track);
+                        if (typeof minidaw.updateEffectsUI === 'function') minidaw.updateEffectsUI(track);
+                    };
+                    aplicar(idVoz, p.receita.voz);
+                    aplicar(idTrilha, p.receita.trilha);
+                }
+
+                // Roteiro alimenta o Briefing, pra a Receita da IA daqui ter contexto.
+                if (p.roteiro) localStorage.setItem('minidaw_pending_roteiro', p.roteiro);
+
+                minidaw.showNotification(
+                    'Projeto do Gerador aberto' + (idTrilha ? ' (voz + trilha)' : ' (voz)') +
+                    ' — ajuste e use Salvar Projeto.', 'success');
+                return true;
+            } catch (e) {
+                console.error('Erro ao abrir o projeto do Gerador:', e);
+                minidaw.showNotification('Não consegui abrir o projeto do Gerador: ' + e.message, 'error');
+                return true;   // consumiu: não cai nos handlers antigos
+            }
+        }
+
         // Verifica se há áudio pendente do localStorage ou trilha da biblioteca
         window.addEventListener('load', function() {
-            setTimeout(function() {
+            setTimeout(async function() {
+                // O projeto do Gerador vem primeiro: é o mais específico.
+                if (await carregarProjetoDoGerador()) return;
+
                 // Primeiro, verifica se há trilha selecionada da biblioteca
                 const selectedTrackUrl = localStorage.getItem('selectedTrackUrl');
                 const selectedTrackName = localStorage.getItem('selectedTrackName');

@@ -426,17 +426,40 @@
         };
 
         // Escape hatch: ajuste fino manual na MiniDAW completa.
+        //
+        // Manda as faixas SEPARADAS (voz + trilha + receita), não o mix pronto.
+        // Mix renderizado é arquivo achatado: não dá pra mexer no volume da
+        // trilha, trocar efeito nem salvar projeto de verdade — e é exatamente
+        // pra isso que se abre a MiniDAW.
         document.getElementById('btnAbrirMiniDAW').onclick = () => {
-            if (!exigeAudio()) return;
+            if (!estado.vozBuffer) { alert('Gere o anúncio primeiro.'); return; }
+
+            // A voz vai como WAV (é o AudioBuffer que temos em mãos); a trilha
+            // vai como URL, porque o localStorage tem teto de ~5MB e trilha
+            // inteira em base64 estoura fácil.
+            const vozBlob = MixEngine.bufferToWav(estado.vozBuffer);
+            const base = (document.getElementById('inputNome').value || 'spot').trim()
+                .replace(/[^\w\-]+/g, '-') || 'spot';
+
             const fr = new FileReader();
             fr.onloadend = () => {
-                localStorage.setItem('minidaw_pending_audio', fr.result);
-                localStorage.setItem('minidaw_pending_filename', nomeArquivo());
-                localStorage.setItem('minidaw_pending_timestamp', Date.now());
-                localStorage.setItem('minidaw_pending_roteiro', estado.roteiro.slice(0, 900));
-                window.open('/minidaw', '_blank');
+                try {
+                    localStorage.setItem('minidaw_projeto_gerador', JSON.stringify({
+                        voz: { base64: fr.result, nome: base + '-voz.wav' },
+                        trilha: estado.trilha
+                            ? { url: estado.trilha.file_url, nome: estado.trilha.name }
+                            : null,
+                        receita: estado.receita || null,
+                        roteiro: (estado.roteiro || '').slice(0, 900)
+                    }));
+                    window.open('/minidaw', '_blank');
+                } catch (e) {
+                    // QuotaExceededError: locução longa demais pro localStorage.
+                    alert('A locução ficou grande demais pra passar por aqui. '
+                        + 'Use o Download e arraste o arquivo dentro da MiniDAW.');
+                }
             };
-            fr.readAsDataURL(estado.mixBlob);
+            fr.readAsDataURL(vozBlob);
         };
 
         document.getElementById('textoComercial').addEventListener('input', atualizarContador);
