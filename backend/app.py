@@ -1146,6 +1146,41 @@ def renomear_demo_voz(demo_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route('/api/carimbo', methods=['GET'])
+def carimbo_atual():
+    """A voz de carimbo que marca as prévias — gravada uma vez, vale pra todas.
+
+    O produtor gravava o spot DUAS vezes (uma limpa, uma carimbada) e ainda
+    precisava lembrar de anexar a definitiva na entrega. Com esta voz guardada,
+    ele produz só a limpa: o navegador sobrepõe o carimbo na hora de enviar.
+
+    Devolve o arquivo MAIS RECENTE da pasta — regravar é só subir por cima,
+    sem precisar apagar o anterior.
+    """
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Storage não configurado"}), 500
+
+        storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+        arquivos = storage.list('carimbo', {
+            "limit": 20, "sortBy": {"column": "created_at", "order": "desc"}
+        }) or []
+        # Pasta vazia no Supabase devolve um placeholder que começa com ponto.
+        reais = [a for a in arquivos if (a.get('name') or '') and not a['name'].startswith('.')]
+        if not reais:
+            return jsonify({"success": True, "tem_carimbo": False})
+
+        nome = reais[0]['name']
+        assinada = storage.create_signed_url(f"carimbo/{nome}", 7 * 24 * 3600)
+        return jsonify({
+            "success": True, "tem_carimbo": True, "arquivo": nome,
+            "url": assinada.get('signedURL') or assinada.get('signedUrl')
+        })
+    except Exception as e:
+        print(f"Erro ao buscar a voz de carimbo: {e}", flush=True)
+        return jsonify({"success": False, "error": "Não consegui buscar a voz de carimbo."}), 500
+
+
 @app.route('/api/gerador/rascunhos', methods=['GET'])
 def gerador_rascunhos():
     """Spots que o Gerador produziu, tenham sido enviados ao cliente ou não.
@@ -1768,7 +1803,8 @@ def get_client_delivery_upload_url():
         kind = data.get('kind', 'entrega')
         pasta = {'amostra': 'amostras', 'analise': 'analises',
                  'final': 'finais', 'projeto': 'projetos',
-                 'pacote': 'pacotes', 'rascunho': 'rascunhos'}.get(kind, 'entregas')
+                 'pacote': 'pacotes', 'rascunho': 'rascunhos',
+                 'carimbo': 'carimbo'}.get(kind, 'entregas')
 
         import uuid
         file_extension = os.path.splitext(filename)[1]

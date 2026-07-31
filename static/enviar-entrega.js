@@ -100,6 +100,125 @@
         }
     }
 
+    // ── CARIMBO NA PRÉVIA ────────────────────────────────────────────────
+    // O produtor gravava o spot DUAS vezes: uma limpa e uma com a voz de
+    // "amostra" por cima. E ainda precisava lembrar de anexar a limpa depois
+    // do pagamento — se esquecesse, o arquivo bom não ficava em lugar nenhum.
+    //
+    // Agora ele produz só a limpa. Aqui a gente sobrepõe a voz de carimbo
+    // (gravada uma vez, guardada no Storage) e sobe as duas: a carimbada como
+    // prévia e a limpa como definitiva, que o backend já mantém travada até o
+    // pedido constar como pago.
+    const CARIMBO_INTERVALO = 8;    // segundos entre as marcações
+    const CARIMBO_VOLUME = 0.55;    // audível sem cobrir a locução
+    const CARIMBO_INICIO = 2.5;     // deixa o spot abrir limpo antes da 1a marca
+
+    async function buscarVozDeCarimbo(ctx) {
+        const r = await fetch('/api/carimbo');
+        const d = await r.json();
+        if (!d.success || !d.tem_carimbo || !d.url) return null;
+        const resp = await fetch(d.url);
+        if (!resp.ok) return null;
+        return await ctx.decodeAudioData(await resp.arrayBuffer());
+    }
+
+    // Devolve um Blob WAV do spot com a voz de carimbo repetida por cima.
+    async function carimbar(blobLimpo) {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+            const spot = await ctx.decodeAudioData(await blobLimpo.arrayBuffer());
+            const carimbo = await buscarVozDeCarimbo(ctx);
+            if (!carimbo) return null;   // sem voz gravada: quem chama decide
+
+            const off = new OfflineAudioContext(
+                Math.min(2, spot.numberOfChannels) || 2,
+                spot.length, spot.sampleRate);
+
+            const fonteSpot = off.createBufferSource();
+            fonteSpot.buffer = spot;
+            fonteSpot.connect(off.destination);
+            fonteSpot.start(0);
+
+            // Onde começa a primeira marca. O normal é deixar o spot abrir
+            // limpo por 2,5s — MAS num teaser de 5s a frase de ~4s não cabe
+            // depois disso e a prévia sairia sem marcação nenhuma. Nesses
+            // casos a marca começa em 0: teaser curto é justamente o que mais
+            // se perde se for usado sem pagar.
+            const cabeComFolga = CARIMBO_INICIO + carimbo.duration <= spot.duration;
+            const inicio = cabeComFolga ? CARIMBO_INICIO : 0;
+
+            let marcas = 0;
+            for (let t = inicio; t + carimbo.duration <= spot.duration;
+                 t += CARIMBO_INTERVALO + carimbo.duration) {
+                const src = off.createBufferSource();
+                src.buffer = carimbo;
+                const g = off.createGain();
+                g.gain.value = CARIMBO_VOLUME;
+                src.connect(g);
+                g.connect(off.destination);
+                src.start(t);
+                marcas++;
+            }
+
+            // Carimbo mais longo que o próprio spot: não dá pra marcar sem
+            // cortar a frase no meio. Devolve null pra quem chama avisar, em
+            // vez de mandar uma "prévia" idêntica ao arquivo pago.
+            if (marcas === 0) return null;
+
+            const renderizado = await off.startRendering();
+            return bufferParaWav(renderizado);
+        } finally {
+            if (ctx.close) ctx.close();
+        }
+    }
+
+    // WAV de 16 bits — mesmo formato do bufferToWav do mix-engine, repetido
+    // aqui porque este arquivo é carregado em telas que não têm o motor.
+    function bufferParaWav(buffer) {
+        const nch = buffer.numberOfChannels;
+        const tamanho = buffer.length * nch * 2;
+        const ab = new ArrayBuffer(44 + tamanho);
+        const view = new DataView(ab);
+        let pos = 0;
+        const u16 = (v) => { view.setUint16(pos, v, true); pos += 2; };
+        const u32 = (v) => { view.setUint32(pos, v, true); pos += 4; };
+        u32(0x46464952); u32(36 + tamanho); u32(0x45564157); u32(0x20746d66);
+        u32(16); u16(1); u16(nch); u32(buffer.sampleRate);
+        u32(buffer.sampleRate * nch * 2); u16(nch * 2); u16(16);
+        u32(0x61746164); u32(tamanho);
+        const canais = [];
+        for (let i = 0; i < nch; i++) canais.push(buffer.getChannelData(i));
+        for (let i = 0; i < buffer.length; i++) {
+            for (let c = 0; c < nch; c++) {
+                let s = Math.max(-1, Math.min(1, canais[c][i]));
+                view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                pos += 2;
+            }
+        }
+        return new Blob([ab], { type: 'audio/wav' });
+    }
+
+    // Sobe um blob e devolve o caminho no Storage.
+    async function subirArquivo(blob, nome, kind) {
+        const ru = await fetch('/api/client-deliveries/upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: nome, kind: kind })
+        });
+        const u = await ru.json();
+        if (!u.success) throw new Error(u.error || 'Falha ao preparar o envio');
+
+        const fd = new FormData();
+        fd.append('file', blob, nome);
+        const up = await fetch(u.upload_url, {
+            method: 'PUT',
+            headers: { 'apikey': u.apikey, 'Authorization': `Bearer ${u.apikey}` },
+            body: fd
+        });
+        if (!up.ok) throw new Error('Falha ao enviar o áudio para o armazenamento');
+        return u.path;
+    }
+
     window.enviarParaEntrega = function (blob, nomeArquivo) {
         if (!blob) { alert('Nenhum áudio para enviar. Gere ou exporte primeiro.'); return; }
 
@@ -133,25 +252,40 @@
             btn.disabled = true;
             status.style.color = '#93c5fd';
             try {
-                status.textContent = 'Enviando o áudio...';
                 const nome = nomeArquivo || `locucao-${Date.now()}.mp3`;
 
-                const ru = await fetch('/api/client-deliveries/upload-url', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename: nome, kind: 'entrega' })
-                });
-                const u = await ru.json();
-                if (!u.success) throw new Error(u.error || 'Falha ao preparar o envio');
+                // O áudio que chega aqui é o LIMPO. Tenta gerar a versão
+                // carimbada; se não houver voz de carimbo gravada, segue como
+                // era antes (a prévia vai limpa e o produtor decide o que fazer).
+                status.textContent = 'Aplicando o carimbo na prévia...';
+                let carimbado = null;
+                try {
+                    carimbado = await carimbar(blob);
+                } catch (e) {
+                    console.warn('[carimbo] não consegui carimbar:', e);
+                }
 
-                const fd = new FormData();
-                fd.append('file', blob, nome);
-                const up = await fetch(u.upload_url, {
-                    method: 'PUT',
-                    headers: { 'apikey': u.apikey, 'Authorization': `Bearer ${u.apikey}` },
-                    body: fd
-                });
-                if (!up.ok) throw new Error('Falha ao enviar o áudio para o armazenamento');
+                let caminhoPrevia, caminhoFinal = '';
+                if (carimbado) {
+                    // Limpo vai como DEFINITIVO — travado até o pedido ser pago.
+                    status.textContent = 'Guardando o arquivo definitivo...';
+                    caminhoFinal = await subirArquivo(
+                        blob, nome.replace(/(\.\w+)?$/, '-final$1'), 'final');
+
+                    status.textContent = 'Enviando a prévia carimbada...';
+                    caminhoPrevia = await subirArquivo(
+                        carimbado, nome.replace(/(\.\w+)?$/, '-previa.wav'), 'entrega');
+                } else {
+                    // Sem voz de carimbo gravada, ou spot curto demais pra
+                    // caber a frase. Segue como antes — mas AVISA, senão o
+                    // produtor manda uma "prévia" que é o arquivo pago.
+                    status.style.color = '#fbbf24';
+                    status.textContent = '⚠️ Prévia vai SEM carimbo (sem voz gravada ' +
+                        'ou spot curto demais). Enviando...';
+                    caminhoPrevia = await subirArquivo(blob, nome, 'entrega');
+                    status.style.color = '#93c5fd';
+                }
+                const u = { path: caminhoPrevia };
 
                 status.textContent = 'Cadastrando a entrega...';
                 const rc = await fetch('/api/client-deliveries', {
@@ -162,6 +296,7 @@
                         client_contact: document.getElementById('eeContato').value.trim(),
                         request_description: document.getElementById('eeDescricao').value.trim(),
                         storage_path: u.path,
+                        final_path: caminhoFinal,
                         file_size: blob.size,
                         mime_type: blob.type || 'audio/mpeg',
                         pedido_id: sel.value || ''
@@ -171,7 +306,9 @@
                 if (!c.success) throw new Error(c.error || 'Falha ao cadastrar a entrega');
 
                 status.style.color = '#4ade80';
-                status.textContent = '✅ Entrega criada! Abrindo o painel...';
+                status.textContent = caminhoFinal
+                    ? '✅ Entrega criada — prévia carimbada e definitivo já guardado. Abrindo o painel...'
+                    : '✅ Entrega criada! Abrindo o painel...';
                 setTimeout(() => { window.location.href = '/entregas-clientes'; }, 900);
             } catch (e) {
                 status.style.color = '#f87171';

@@ -213,6 +213,44 @@
             <div id="qcResultado" class="mt-3"></div>
         </div>
 
+        <!-- Voz do carimbo: grava/gera UMA vez e vale pra todas as entregas.
+             É o que permite produzir o spot uma vez só — o carimbo entra
+             sozinho na prévia e o arquivo limpo já fica guardado como
+             definitivo, travado até o pedido constar como pago. -->
+        <div class="section-card">
+            <h5 class="mb-1"><i class="fas fa-stamp me-2"></i>Voz do carimbo</h5>
+            <p class="text-secondary mb-3" style="font-size:.85rem;">
+                Grave ou gere uma vez. A partir daí você produz o spot <strong>limpo</strong>:
+                ao enviar, esta voz entra sozinha na prévia (a cada 8s) e o arquivo sem
+                carimbo já fica guardado como definitivo.
+            </p>
+
+            <div class="row g-3 align-items-end">
+                <div class="col-md-7">
+                    <label class="form-label" for="carimboTexto">Frase do carimbo</label>
+                    <input type="text" class="form-control" id="carimboTexto"
+                           value="Esta é uma prévia da sua produção. Locutores I A."
+                           placeholder="Esta é uma prévia da sua produção. Locutores IA.">
+                    <div class="text-secondary mt-1" style="font-size:.78rem;">
+                        "I A" separado sai falado como as letras; "IA" junto o TTS lê como "ia".
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <button class="btn btn-primary w-100" id="btnGerarCarimbo">
+                        <i class="fas fa-wand-magic-sparkles me-1"></i>Gerar com IA
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <label class="form-label">Ou envie uma gravação sua</label>
+                <input type="file" class="form-control" id="carimboArquivo" accept="audio/*">
+            </div>
+
+            <div id="carimboStatus" class="mt-2" style="font-size:.85rem;min-height:1.2em;"></div>
+            <div id="carimboAtual" class="mt-2"></div>
+        </div>
+
         <div class="section-card">
             <h5 class="mb-3">Cadastrar nova entrega</h5>
             <div id="pedidoVinculadoNote" class="pedido-note" style="display:none;"></div>
@@ -982,6 +1020,103 @@
             }
         }
 
+        // ── VOZ DO CARIMBO ───────────────────────────────────────────────
+        // Grava/gera uma vez e vale pra todas as prévias. Sem isto, o produtor
+        // tinha que produzir o spot duas vezes (limpo e carimbado) e lembrar de
+        // anexar o limpo depois do pagamento.
+        function carimboAviso(texto, cor) {
+            const el = document.getElementById('carimboStatus');
+            el.style.color = cor || '#93c5fd';
+            el.textContent = texto;
+        }
+
+        async function carregarCarimboAtual() {
+            const box = document.getElementById('carimboAtual');
+            try {
+                const r = await fetch('/api/carimbo');
+                const d = await r.json();
+                if (!d.success || !d.tem_carimbo) {
+                    box.innerHTML = '<span class="text-secondary" style="font-size:.85rem;">' +
+                        'Nenhuma voz de carimbo ainda — a prévia vai sair sem marcação.</span>';
+                    return;
+                }
+                box.innerHTML =
+                    '<div class="d-flex align-items-center gap-2 flex-wrap">' +
+                    '<span style="font-size:.85rem;color:#4ade80;">' +
+                    '<i class="fas fa-check me-1"></i>Carimbo ativo</span>' +
+                    '<audio controls preload="none" style="height:34px;flex:1 1 260px;" src="' +
+                    d.url.replace(/"/g, '&quot;') + '"></audio></div>';
+            } catch (e) {
+                box.innerHTML = '<span class="text-secondary" style="font-size:.85rem;">' +
+                    'Não consegui verificar o carimbo.</span>';
+            }
+        }
+
+        async function subirCarimbo(blob, nomeArquivo) {
+            const ru = await fetch('/api/client-deliveries/upload-url', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: nomeArquivo, kind: 'carimbo' })
+            });
+            const u = await ru.json();
+            if (!u.success) throw new Error(u.error || 'Falha ao preparar o envio');
+            const fd = new FormData();
+            fd.append('file', blob, nomeArquivo);
+            const up = await fetch(u.upload_url, {
+                method: 'PUT',
+                headers: { 'apikey': u.apikey, 'Authorization': `Bearer ${u.apikey}` },
+                body: fd
+            });
+            if (!up.ok) throw new Error('Falha ao enviar pro armazenamento');
+        }
+
+        document.getElementById('btnGerarCarimbo').onclick = async function () {
+            const btn = this;
+            const texto = document.getElementById('carimboTexto').value.trim();
+            if (!texto) { carimboAviso('Escreva a frase do carimbo.', '#f87171'); return; }
+
+            btn.disabled = true;
+            const original = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Gerando...';
+            try {
+                // Reusa o TTS do app — a mesma voz que produz as locuções.
+                carimboAviso('Gerando a voz (leva uns 40s no Gemini)...');
+                const r = await fetch('/api/generate-audio', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: texto, voice: 'Zephyr',
+                                           api: 'google', language: 'pt-BR' })
+                });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || 'Falha ao gerar a voz');
+
+                carimboAviso('Guardando o carimbo...');
+                const audio = await (await fetch(d.download_url)).blob();
+                await subirCarimbo(audio, `carimbo-${Date.now()}.wav`);
+                carimboAviso('✅ Carimbo pronto. Novas prévias já saem marcadas.', '#4ade80');
+                carregarCarimboAtual();
+            } catch (e) {
+                carimboAviso('❌ ' + e.message, '#f87171');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        };
+
+        document.getElementById('carimboArquivo').onchange = async function () {
+            const arq = this.files && this.files[0];
+            if (!arq) return;
+            try {
+                carimboAviso('Enviando sua gravação...');
+                await subirCarimbo(arq, `carimbo-${Date.now()}-${arq.name}`);
+                carimboAviso('✅ Carimbo atualizado com a sua gravação.', '#4ade80');
+                carregarCarimboAtual();
+            } catch (e) {
+                carimboAviso('❌ ' + e.message, '#f87171');
+            } finally {
+                this.value = '';
+            }
+        };
+
+        carregarCarimboAtual();
         loadDeliveries();
         loadPedidos().then(() => {
             qcPreencherPedidos();
