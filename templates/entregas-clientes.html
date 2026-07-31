@@ -267,17 +267,12 @@
                 <textarea class="form-control" id="requestDescription" rows="2" placeholder="Ex: Spot 30s pra loja de roupas, tom energético"></textarea>
             </div>
             <div class="mb-3">
-                <label class="form-label">Prévia (com carimbo) — é o que o cliente ouve</label>
+                <label class="form-label">Áudio do spot <strong>(limpo, sem carimbo)</strong></label>
                 <input type="file" class="form-control" id="audioFile" accept="audio/*">
-            </div>
-            <div class="mb-3">
-                <label class="form-label">
-                    Arquivo definitivo <span class="text-secondary">(sem carimbo, opcional)</span>
-                </label>
-                <input type="file" class="form-control" id="finalFile" accept="audio/*">
                 <small class="text-secondary">
-                    Fica travado até o pedido constar como pago. Aí o cliente baixa sozinho
-                    pelo mesmo link de aprovação — sem você mandar no WhatsApp.
+                    Anexe só o arquivo bom. A prévia carimbada sai daqui automaticamente, e
+                    este arquivo fica guardado como definitivo — travado até o pedido constar
+                    como pago. Aí o cliente baixa sozinho pelo link de aprovação.
                 </small>
             </div>
             <button class="btn btn-primary" id="uploadBtn" onclick="uploadDelivery()">
@@ -297,6 +292,10 @@
         <input type="file" id="finalInput" accept="audio/*" style="display: none;" onchange="uploadDefinitivo()">
     </div>
 
+    <!-- Traz o carimbarPrevia(): o cadastro manual usa a MESMA lógica do
+         botão "Enviar" do Gerador/MiniDAW, pra os dois caminhos se
+         comportarem igual e nenhum spot limpo escapar como prévia. -->
+    <script src="/static/enviar-entrega.js?v=2"></script>
     <script>
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -563,17 +562,43 @@
             uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
 
             try {
-                const urlResult = await uploadAudioFile(file, 'entrega');
+                // MESMA regra do botão "Enviar" do Gerador/MiniDAW: o arquivo
+                // anexado é o LIMPO. Carimba aqui e sobe os dois — antes este
+                // formulário mandava o que viesse como prévia, então cadastrar
+                // com o arquivo bom entregava o spot sem carimbo pro cliente.
+                uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Aplicando o carimbo...';
+                let carimbado = null;
+                try {
+                    if (typeof window.carimbarPrevia === 'function') {
+                        carimbado = await window.carimbarPrevia(file);
+                    }
+                } catch (e) {
+                    console.warn('[carimbo] não consegui carimbar:', e);
+                }
 
-                // Definitivo é opcional: sobe pra pasta 'finais' e só é liberado
-                // pro cliente quando o pedido estiver pago.
-                let finalPath = '';
-                const finalInput = document.getElementById('finalFile');
-                const finalFile = finalInput ? finalInput.files[0] : null;
-                if (finalFile) {
-                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando definitivo...';
-                    const finalResult = await uploadAudioFile(finalFile, 'final');
-                    finalPath = finalResult.path;
+                let urlResult, finalPath = '';
+                if (carimbado) {
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando o definitivo...';
+                    const rFinal = await uploadAudioFile(file, 'final');
+                    finalPath = rFinal.path;
+
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando a prévia...';
+                    // uploadAudioFile espera algo com .name — Blob não tem.
+                    const arqPrevia = new File([carimbado],
+                        file.name.replace(/(\.\w+)?$/, '-previa.wav'), { type: 'audio/wav' });
+                    urlResult = await uploadAudioFile(arqPrevia, 'entrega');
+                } else {
+                    // Sem voz de carimbo gravada, ou spot curto demais. Vai como
+                    // antes, mas o produtor precisa SABER que foi sem carimbo.
+                    if (!confirm('Não consegui carimbar (sem voz de carimbo gravada, ou spot curto demais).\n\n' +
+                                 'A prévia vai SEM carimbo — o cliente recebe o arquivo do jeito que está.\n\n' +
+                                 'Continuar mesmo assim?')) {
+                        uploadBtn.disabled = false;
+                        uploadBtn.innerHTML = '<i class="fas fa-upload me-2"></i>Cadastrar Entrega';
+                        return;
+                    }
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
+                    urlResult = await uploadAudioFile(file, 'entrega');
                 }
 
                 const createResponse = await fetch('/api/client-deliveries', {

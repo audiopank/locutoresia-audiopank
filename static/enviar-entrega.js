@@ -198,6 +198,13 @@
         return new Blob([ab], { type: 'audio/wav' });
     }
 
+    // Exposto porque o formulário manual de /entregas-clientes usa a MESMA
+    // lógica. Sem isso, cadastrar pelo formulário mandaria o arquivo limpo
+    // como prévia — o cliente receberia o spot sem carimbo antes de pagar.
+    // Devolve null quando não há voz de carimbo gravada ou quando o spot é
+    // curto demais pra caber a frase.
+    window.carimbarPrevia = carimbar;
+
     // Sobe um blob e devolve o caminho no Storage.
     async function subirArquivo(blob, nome, kind) {
         const ru = await fetch('/api/client-deliveries/upload-url', {
