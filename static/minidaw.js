@@ -670,7 +670,7 @@ class MiniDAW {
 
         // Delay (o botão existia sem nenhum efeito por trás até agora)
         if (nodes.delayMix) {
-            nodes.delayMix.gain.value = track.effects.delay ? 0.22 : 0;
+            nodes.delayMix.gain.value = track.effects.delay ? 0.12 : 0;
         }
 
         // GATE — desligar tem que APAGAR a automação já agendada, senão a
