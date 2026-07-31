@@ -273,6 +273,23 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS')
+
+    # HTML nunca vai pro cache do navegador.
+    #
+    # As páginas versionam o JS na query (minidaw.js?v=23) pra furar o cache
+    # dos estáticos. Só que o HTML TAMBÉM era cacheado, e aí o navegador servia
+    # uma página velha que ainda pedia ?v=20 — o arquivo novo nem chegava a ser
+    # solicitado. Ctrl+Shift+R não resolvia: ele recarrega a página, mas a
+    # página recarregada já era a errada. Custou uma manhã de "o botão não
+    # aparece" com o código certo o tempo todo.
+    #
+    # Vale só pro HTML: /static continua cacheável, que é o que faz o app
+    # carregar rápido. E as páginas daqui são todas dinâmicas — não há nada a
+    # ganhar guardando elas.
+    if response.mimetype == 'text/html':
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
     return response
 
 # Configurações de upload - usar /tmp no Vercel
