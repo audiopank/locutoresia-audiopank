@@ -270,13 +270,28 @@ def aplicar_instrucao_de_tom(text: str, style: str) -> str:
     texto JÁ começa com uma instrução escrita pelo usuário — senão teríamos
     duas ordens de tom brigando no mesmo prompt.
     """
-    instrucao = STYLE_INSTRUCTIONS.get(style)
-    if not instrucao:
-        return text
     primeira = (text or "").lstrip().split("\n", 1)[0].strip()
-    ja_tem = primeira.startswith("[") or primeira.upper().startswith(("FALE ", "DIGA ", "NARRE "))
+    ja_tem = primeira.startswith("[") or primeira.upper().startswith(("FALE ", "DIGA ", "NARRE ", "LEIA "))
     if ja_tem:
         print("[TTS] O texto ja traz instrucao de tom - mantendo a do usuario.")
+        return text
+
+    instrucao = STYLE_INSTRUCTIONS.get(style)
+    if not instrucao:
+        # SEM instrução, texto curto quebra. O Gemini TTS responde:
+        #   400 "Model tried to generate text, but it should only be used for
+        #    TTS. Make sure your instructions are clear to only generate audio
+        #    from a given text transcript."
+        # Ou seja: com pouca coisa pra locutar, ele acha que está numa conversa
+        # e tenta RESPONDER em vez de ler. Roteiro longo tem cara de roteiro e
+        # passa; frase solta (o carimbo, um teaser de 5s) não passa.
+        #
+        # A instrução vai só nesses casos, pra não mexer no que já funciona.
+        # Fica antes de dois-pontos de propósito: é assim que o modelo entende
+        # "isto é ordem, não texto pra falar".
+        palavras = len([p for p in (text or "").split() if p])
+        if palavras and palavras <= 25:
+            return f"Leia em voz alta, exatamente como está escrito: {text}"
         return text
     return f"{instrucao}\n{text}"
 
