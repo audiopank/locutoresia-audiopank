@@ -183,6 +183,28 @@
             margin-right: auto;
         }
 
+        /* Painel do Gate — só aparece com o gate ligado, igual ao do EQ. */
+        .gate-panel {
+            display: none;
+            margin-top: 1rem;
+            padding: 0.85rem 1rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+        .gate-panel.ativo { display: block; }
+        .gate-panel .effect-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+        }
+        .gate-panel .effect-label strong {
+            color: var(--accent-color);
+            font-variant-numeric: tabular-nums;
+            margin-left: 0.25rem;
+        }
+        .gate-panel small { color: var(--text-secondary); font-size: 0.75rem; }
+
         /* Tesoura armada: o botão precisa ACENDER. Antes o código procurava
            um #scissorBtn que não existe, então ele nunca mudava de estado. */
         .effect-btn.active {
@@ -953,8 +975,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=1"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
-    <script src="/static/mix-engine.js?v=3"></script>
-    <script src="/static/minidaw.js?v=20"></script>
+    <script src="/static/mix-engine.js?v=4"></script>
+    <script src="/static/minidaw.js?v=21"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

@@ -38,9 +38,14 @@
     // Detecta fala de verdade (RMS por janela) em vez de simplesmente abaixar do
     // início ao fim: nas respiradas entre frases a trilha sobe, que é o movimento
     // que dá vida ao spot.
-    function detectarTrechosDeVoz(voiceTracks, hold) {
+    // `limiarPct` (0.01..0.30) é o quanto do pico conta como "tem voz". O gate
+    // usa isso como sensibilidade: quanto MAIOR, mais coisa vira pausa — e
+    // respiração some junto. O ducking não passa esse parâmetro e fica no 8%
+    // de sempre.
+    function detectarTrechosDeVoz(voiceTracks, hold, limiarPct) {
         const JANELA = 0.03;      // 30ms — resolução da análise
         const HOLD = hold != null ? hold : DUCK_PADRAO.hold; // junta trechos separados por menos que isso
+        const PCT = Math.min(0.30, Math.max(0.01, limiarPct != null ? limiarPct : 0.08));
         const segmentos = [];
 
         for (const track of voiceTracks) {
@@ -69,7 +74,7 @@
             // 0.003 ≈ -50 dBFS: bem abaixo de qualquer locução real.
             if (pico < 0.003) continue;
 
-            const limiar = pico * 0.08;              // 8% do pico = tem voz
+            const limiar = pico * PCT;               // acima disso = tem voz
             let inicio = null;
             for (let k = 0; k < rms.length; k++) {
                 const temVoz = rms[k] >= limiar;
@@ -126,6 +131,46 @@
             // pra cheia de uma vez (clique). Deixando passar, ela sobe suave e o
             // fade final leva a zero por cima.
             gainParam.linearRampToValueAtTime(nivel, off + t1 + RELEASE);
+        }
+        return true;
+    }
+
+    // ── GATE (silenciador de respiração) ─────────────────────────────────
+    // Voz de IA respira alto: entre uma frase e outra fica um chiado de ar que
+    // some no fone mas aparece no rádio, ainda mais depois do limiter puxar
+    // tudo pra cima. O gate abaixa a faixa nos trechos SEM fala e devolve o
+    // volume quando ela volta.
+    //
+    // Reusa o detectarTrechosDeVoz do ducking — a mesma análise que já sabe
+    // onde tem fala serve pra saber onde NÃO tem.
+    //
+    // Não zera: piso de -24dB (0.06). Silêncio absoluto entre frases soa
+    // artificial, como se a gravação tivesse buracos; o que se quer é a
+    // respiração sumir por baixo, não o ambiente desaparecer.
+    const GATE_PADRAO = {
+        piso: 0.06,        // -24dB nas pausas
+        attack: 0.02,      // abre 20ms ANTES da palavra (não come o começo)
+        release: 0.12      // fecha suave, pra não cortar a cauda da fala
+    };
+
+    function aplicarGate(gainParam, trechos, duracao, offset, opcoes) {
+        if (!trechos || !trechos.length) return false;
+        const o = opcoes || {};
+        const piso = o.piso != null ? o.piso : GATE_PADRAO.piso;
+        const ATTACK = o.attack != null ? o.attack : GATE_PADRAO.attack;
+        const RELEASE = o.release != null ? o.release : GATE_PADRAO.release;
+        const off = offset || 0;
+
+        // Começa fechado: quase todo spot tem um respiro antes da primeira palavra.
+        gainParam.setValueAtTime(piso, off);
+
+        for (const [ini, fim] of trechos) {
+            const abre = Math.max(0, ini - ATTACK);
+            gainParam.setValueAtTime(piso, off + abre);
+            gainParam.linearRampToValueAtTime(1, off + ini);
+            gainParam.setValueAtTime(1, off + fim);
+            gainParam.linearRampToValueAtTime(
+                piso, off + Math.min(duracao, fim + RELEASE));
         }
         return true;
     }
@@ -313,9 +358,21 @@
                 const delayNode = offlineContext.createDelay(2.0);
                 delayNode.delayTime.value = 0.28;
                 const delayFeedback = offlineContext.createGain();
-                delayFeedback.gain.value = 0.28;
+                delayFeedback.gain.value = 0.15;
                 const delayMix = offlineContext.createGain();
                 delayMix.gain.value = track.effects.delay ? 0.35 : 0;
+
+                // GATE — nó próprio, antes do volume. Não dá pra usar o
+                // trackGain: ele já carrega volume, fades e ducking, e as duas
+                // automações brigariam no mesmo AudioParam.
+                const gateGain = offlineContext.createGain();
+                gateGain.gain.value = 1;
+                if (track.effects.gate) {
+                    const g = track.gateSettings || {};
+                    const sens = (g.sensibilidade != null ? g.sensibilidade : 12) / 100;
+                    const trechosDaFaixa = detectarTrechosDeVoz([track], 0.25, sens);
+                    aplicarGate(gateGain.gain, trechosDaFaixa, track.duration, 0, g);
+                }
 
                 const trackGain = offlineContext.createGain();
                 trackGain.gain.value = track.volume / 100;
@@ -378,7 +435,8 @@
                 eqAirNode.connect(presenceNode);
                 presenceNode.connect(compressorNode);
                 compressorNode.connect(limiterNode);
-                limiterNode.connect(trackGain);
+                limiterNode.connect(gateGain);
+                gateGain.connect(trackGain);
                 limiterNode.connect(reverbNode);
                 reverbNode.connect(reverbGain);
                 reverbGain.connect(trackGain);
@@ -510,6 +568,7 @@
 
     global.MixEngine = {
         renderizarMix, masterizarBuffer, bufferToWav, bufferToMp3,
-        detectarTrechosDeVoz, aplicarDucking, DUCK_PADRAO
+        detectarTrechosDeVoz, aplicarDucking, aplicarGate,
+        DUCK_PADRAO, GATE_PADRAO
     };
 })(window);

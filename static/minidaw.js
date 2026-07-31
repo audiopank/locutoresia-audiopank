@@ -150,8 +150,13 @@ class MiniDAW {
                 eq: false,
                 hpf: true,
                 presence: false,
-                limiter: true
+                limiter: true,
+                gate: false
             },
+            // Sensibilidade do gate em % do pico: quanto MAIOR, mais coisa
+            // vira pausa e mais respiração some — mas passar do ponto começa
+            // a comer o comecinho das palavras. Acha-se de ouvido.
+            gateSettings: { sensibilidade: 12 },
             color: type === 'voice' ? '#3b82f6' : '#a855f7'
         };
 
@@ -312,7 +317,12 @@ class MiniDAW {
                                 <i class="fas fa-sliders-h"></i> EQ
                             </button>
                             ${track.type === 'voice' ? `
-                                <button class="effect-btn ${track.effects.hpf ? 'active' : ''}" 
+                                <button class="effect-btn ${track.effects.gate ? 'active' : ''}"
+                                        onclick="minidaw.toggleEffect('${track.id}', 'gate')"
+                                        title="Gate: abaixa a faixa entre as falas — é onde mora a respiração da voz de IA">
+                                    <i class="fas fa-door-closed"></i> Gate
+                                </button>
+                                <button class="effect-btn ${track.effects.hpf ? 'active' : ''}"
                                         onclick="minidaw.toggleEffect('${track.id}', 'hpf')">
                                     <i class="fas fa-filter"></i> HPF
                                 </button>
@@ -326,6 +336,21 @@ class MiniDAW {
                                 </button>
                             ` : ''}
                         </div>
+                ${track.type === 'voice' ? `
+                <div class="gate-panel ${track.effects.gate ? 'ativo' : ''}" id="gatepanel_${track.id}">
+                    <div class="effect-label">
+                        Gate — sensibilidade
+                        <strong id="gateval_${track.id}">${(track.gateSettings?.sensibilidade ?? 12).toFixed(1)}</strong>
+                    </div>
+                    <input type="range" class="form-range" min="1" max="30" step="0.1"
+                           value="${track.gateSettings?.sensibilidade ?? 12}"
+                           oninput="minidaw.updateGateSensibilidade('${track.id}', this.value)"
+                           title="Sobe = corta mais respiração. Passou do ponto, começa a comer o início das palavras.">
+                    <small>
+                        Dê play e vá subindo até a respiração sumir. Se a fala começar
+                        cortada, volte um pouco.
+                    </small>
+                </div>` : ''}
                 <div class="effects-panel ${track.effects.eq ? 'active' : ''}" id="effects_${track.id}">
                     <div class="effect-control">
                         <div class="effect-label">Equalizador</div>
@@ -501,9 +526,15 @@ class MiniDAW {
         const delayNode = this.audioContext.createDelay(2.0);
         delayNode.delayTime.value = 0.28;
         const delayFeedback = this.audioContext.createGain();
-        delayFeedback.gain.value = 0.28;
+        delayFeedback.gain.value = 0.15;
         const delayMix = this.audioContext.createGain();
         delayMix.gain.value = 0;      // desligado até o botão pedir
+
+        // GATE — nó próprio, antes do volume. Não dá pra reusar o gainNode:
+        // ele já carrega volume, fade e ducking, e duas automações no mesmo
+        // AudioParam brigam.
+        const gateGain = this.audioContext.createGain();
+        gateGain.gain.value = 1;
 
         // Create analyser for silence detection
         const analyser = this.audioContext.createAnalyser();
@@ -526,7 +557,8 @@ class MiniDAW {
         eqAirNode.connect(presenceNode);
         presenceNode.connect(compressorNode);
         compressorNode.connect(limiterNode);
-        limiterNode.connect(analyser);
+        limiterNode.connect(gateGain);
+        gateGain.connect(analyser);
         analyser.connect(gainNode);
         limiterNode.connect(reverbNode);
         reverbNode.connect(reverbGain);
@@ -558,6 +590,7 @@ class MiniDAW {
             presenceNode,
             compressorNode,
             limiterNode,
+            gateGain,
             analyser,
             reverbNode,
             reverbGain,
@@ -631,6 +664,51 @@ class MiniDAW {
         if (nodes.delayMix) {
             nodes.delayMix.gain.value = track.effects.delay ? 0.35 : 0;
         }
+
+        // GATE — desligar tem que APAGAR a automação já agendada, senão a
+        // faixa continua abrindo e fechando sozinha até a última marcação.
+        // Quem liga é o playTrack, que sabe o instante em que o som começa.
+        if (nodes.gateGain) {
+            if (!track.effects.gate) {
+                nodes.gateGain.gain.cancelScheduledValues(this.audioContext.currentTime);
+                nodes.gateGain.gain.setValueAtTime(1, this.audioContext.currentTime);
+            }
+        }
+    }
+
+    // Recalcula o gate desta faixa e devolve quantos trechos de fala achou.
+    // Chamado pelo playTrack (com o instante do play) e pela prévia.
+    agendarGate(track, nodes, quando) {
+        if (!nodes || !nodes.gateGain || !track.audioBuffer) return 0;
+        const param = nodes.gateGain.gain;
+        param.cancelScheduledValues(quando);
+        if (!track.effects.gate) {
+            param.setValueAtTime(1, quando);
+            return 0;
+        }
+        const g = track.gateSettings || {};
+        const sens = (g.sensibilidade != null ? g.sensibilidade : 12) / 100;
+        // hold 0.25s: pausa entre frases é curta; o 0.70 do ducking juntaria
+        // tudo num bloco só e o gate não fecharia em lugar nenhum.
+        const trechos = MixEngine.detectarTrechosDeVoz([track], 0.25, sens);
+        MixEngine.aplicarGate(param, trechos, track.duration, quando, g);
+        return trechos.length;
+    }
+
+    // Slider de sensibilidade. Reagenda na hora pra dar pra ajustar ouvindo.
+    updateGateSensibilidade(trackId, valor) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        track.gateSettings = track.gateSettings || {};
+        track.gateSettings.sensibilidade = Math.min(30, Math.max(1, parseFloat(valor) || 12));
+
+        const rotulo = document.getElementById(`gateval_${trackId}`);
+        if (rotulo) rotulo.textContent = track.gateSettings.sensibilidade.toFixed(1);
+
+        const nodes = this.trackNodes.get(trackId);
+        if (nodes && this.isPlaying) this.agendarGate(track, nodes, this.audioContext.currentTime);
+        clearTimeout(this._gateSaveTimer);
+        this._gateSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
     // ── FORMA DE ONDA ────────────────────────────────────────────────────
@@ -827,6 +905,12 @@ class MiniDAW {
         if (effectsPanel) {
             effectsPanel.classList.toggle('active', track.effects.eq);
         }
+
+        // O slider do gate só aparece com o gate ligado — igual ao EQ.
+        const gatePanel = trackCard.querySelector('.gate-panel');
+        if (gatePanel) {
+            gatePanel.classList.toggle('ativo', !!track.effects.gate);
+        }
     }
 
     updateEQ(trackId, band, value) {
@@ -996,6 +1080,10 @@ class MiniDAW {
         // Create source node
         const sourceNode = this.audioContext.createBufferSource();
         sourceNode.buffer = track.audioBuffer;
+
+        // Gate: a automação é agendada AQUI porque depende do instante em que
+        // o som começa a tocar (mesma razão do offset no ducking).
+        this.agendarGate(track, nodes, this.audioContext.currentTime);
         
         // Apply fade in
         if (track.fadeIn > 0) {
