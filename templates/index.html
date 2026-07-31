@@ -308,46 +308,7 @@
             top: 20px;
         }
 
-        .encomenda-cta {
-            background: #1B4332;
-            color: #F5F0DC;
-            border-radius: 16px;
-            padding: 24px;
-            margin-top: 16px;
-        }
-
-        .encomenda-cta-title {
-            color: #F5F0DC;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
-
-        .encomenda-cta-text {
-            color: #F5F0DC;
-            opacity: 0.9;
-            font-size: 0.9rem;
-            margin-bottom: 16px;
-        }
-
-        .encomenda-cta-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: #F2C94C;
-            color: #1B4332;
-            font-weight: 600;
-            border-radius: 8px;
-            padding: 10px 16px;
-            text-decoration: none;
-            width: 100%;
-            justify-content: center;
-            transition: background 0.2s ease;
-        }
-
-        .encomenda-cta-btn:hover {
-            background: #E6BE45;
-            color: #1B4332;
-        }
+        /* (o CSS do card .encomenda-cta saiu junto com o card) */
 
         /* ── Mini cards da coluna esquerda (abaixo do WhatsApp) ───────────
            1) Vitrine: atalho pra página que o cliente vê.
@@ -943,17 +904,13 @@
                                 </button>
                             </div>
 
-                            <div class="encomenda-cta">
-                                <h6 class="encomenda-cta-title">Não quer mexer em nada?</h6>
-                                <p class="encomenda-cta-text">
-                                    Nossa equipe cria sua locução do zero — roteiro, voz e áudio
-                                    pronto pra usar, direto no seu WhatsApp.
-                                </p>
-                                <a href="https://wa.me/5585992262297?text=Ol%C3%A1!%20Quero%20encomendar%20uma%20locu%C3%A7%C3%A3o%20personalizada."
-                                   target="_blank" rel="noopener noreferrer" class="encomenda-cta-btn">
-                                    <i class="fab fa-whatsapp"></i> Falar no WhatsApp
-                                </a>
-                            </div>
+                            <!-- O card "Não quer mexer em nada? / Falar no
+                                 WhatsApp" saiu daqui: era oferta de serviço pro
+                                 CLIENTE, mostrada na bancada do produtor. Ele
+                                 não vai encomendar locução de si mesmo — e com
+                                 o login, cliente nenhum passa por esta tela.
+                                 A oferta vive na /vitrine, que é onde o cliente
+                                 entra. Ver o atalho logo abaixo. -->
 
                             <!-- VITRINE: atalho pra página que o CLIENTE vê
                                  (sem menu interno). É o link de divulgação. -->
