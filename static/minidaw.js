@@ -1,3 +1,11 @@
+// Marcador de versão. Existe por um motivo prático: quando um controle novo
+// "não aparece", a primeira pergunta é sempre se o navegador está rodando o
+// arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
+// Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
+const MINIDAW_VERSAO = 23;
+console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
+            'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
+
 class MiniDAW {
     constructor() {
         this.tracks = [];
