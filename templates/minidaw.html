@@ -205,13 +205,8 @@
         }
         .gate-panel small { color: var(--text-secondary); font-size: 0.75rem; }
 
-        /* Tesoura armada: o botão precisa ACENDER. Antes o código procurava
-           um #scissorBtn que não existe, então ele nunca mudava de estado. */
-        .effect-btn.active {
-            background: var(--accent-color);
-            border-color: var(--accent-color);
-            color: #fff;
-        }
+        /* (a regra .effect-btn.active já existe mais abaixo neste arquivo —
+           eu tinha duplicado aqui sem necessidade. Removida.) */
 
         .controls-panel {
             display: flex;
@@ -975,8 +970,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=1"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
-    <script src="/static/mix-engine.js?v=4"></script>
-    <script src="/static/minidaw.js?v=21"></script>
+    <script src="/static/mix-engine.js?v=5"></script>
+    <script src="/static/minidaw.js?v=22"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

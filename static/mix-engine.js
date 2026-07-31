@@ -358,9 +358,9 @@
                 const delayNode = offlineContext.createDelay(2.0);
                 delayNode.delayTime.value = 0.28;
                 const delayFeedback = offlineContext.createGain();
-                delayFeedback.gain.value = 0.15;
+                delayFeedback.gain.value = 0.06;
                 const delayMix = offlineContext.createGain();
-                delayMix.gain.value = track.effects.delay ? 0.35 : 0;
+                delayMix.gain.value = track.effects.delay ? 0.22 : 0;
 
                 // GATE — nó próprio, antes do volume. Não dá pra usar o
                 // trackGain: ele já carrega volume, fades e ducking, e as duas

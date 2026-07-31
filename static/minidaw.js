@@ -526,7 +526,7 @@ class MiniDAW {
         const delayNode = this.audioContext.createDelay(2.0);
         delayNode.delayTime.value = 0.28;
         const delayFeedback = this.audioContext.createGain();
-        delayFeedback.gain.value = 0.15;
+        delayFeedback.gain.value = 0.06;
         const delayMix = this.audioContext.createGain();
         delayMix.gain.value = 0;      // desligado até o botão pedir
 
@@ -662,7 +662,7 @@ class MiniDAW {
 
         // Delay (o botão existia sem nenhum efeito por trás até agora)
         if (nodes.delayMix) {
-            nodes.delayMix.gain.value = track.effects.delay ? 0.35 : 0;
+            nodes.delayMix.gain.value = track.effects.delay ? 0.22 : 0;
         }
 
         // GATE — desligar tem que APAGAR a automação já agendada, senão a
