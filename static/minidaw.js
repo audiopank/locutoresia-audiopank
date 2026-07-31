@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 23;
+const MINIDAW_VERSAO = 24;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -2733,7 +2733,8 @@ class MiniDAW {
                         fadeIn: track.fadeIn,
                         fadeOut: track.fadeOut,
                         effects: track.effects,
-                        eqSettings: track.eqSettings
+                        eqSettings: track.eqSettings,
+                        gateSettings: track.gateSettings
                     });
 
                     project.audioData[track.id] = base64;
@@ -2847,7 +2848,8 @@ class MiniDAW {
                     name: t.name, type: t.type,
                     volume: t.volume, pan: t.pan,
                     fadeIn: t.fadeIn, fadeOut: t.fadeOut,
-                    effects: t.effects, eqSettings: t.eqSettings
+                    effects: t.effects, eqSettings: t.eqSettings,
+                    gateSettings: t.gateSettings
                 };
                 if (t.audioUrl && /^https?:/i.test(t.audioUrl)) {
                     // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
@@ -2962,6 +2964,7 @@ class MiniDAW {
                 track.fadeOut   = (td.fadeOut   != null) ? td.fadeOut   : 0;
                 track.effects   = td.effects    || track.effects;
                 track.eqSettings= td.eqSettings || track.eqSettings;
+                track.gateSettings = td.gateSettings || track.gateSettings;
                 if (td.audio_url) {
                     await this.loadAudioFromUrl(td.audio_url, track.id, td.name);
                 }
