@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, make_response, redirect
+from flask import Flask, render_template, request, jsonify, send_file, make_response, redirect, session, url_for
 import hashlib
 import os
 import sys
@@ -268,6 +268,103 @@ except Exception as e:
     print(f"❌ Erro na validação do Supabase: {e}")
 
 # Configurar CORS manualmente
+# ═══════════════════════════════════════════════════════════════════════════
+# PORTÃO DE ACESSO
+#
+# O app nasceu aberto: qualquer um com o link entrava e gerava locução — na
+# conta de API do dono. Cada spot de um estranho queima cota do Gemini e
+# crédito do ElevenLabs. O link vazou, daí este portão.
+#
+# A lista abaixo é ALLOWLIST: tudo é privado por padrão e só passa o que está
+# aqui. O contrário (bloquear uma lista) deixaria qualquer rota nova nascer
+# aberta — e a que mais dói é justamente a que ainda não existe.
+#
+# O que PRECISA continuar público, porque é o cliente quem usa:
+#   /vitrine, /solicitar  -> onde ele conhece e pede
+#   /aprovacao/<id>       -> onde ele ouve e aprova
+#   /contato              -> página de contato
+#   webhook do Kiwify     -> quem chama é a Kiwify, não tem sessão
+#   /api/cron/*           -> quem chama é o agendador da Vercel
+# ═══════════════════════════════════════════════════════════════════════════
+app.secret_key = os.getenv('FLASK_SECRET_KEY') or os.getenv('ADMIN_SENHA') or 'locutores-ia-dev'
+
+ROTAS_PUBLICAS = {
+    'vitrine', 'solicitar_page', 'contato',
+    'client_delivery_approval_page',      # /aprovacao/<id>
+    'login_page', 'fazer_login', 'logout',
+    'kiwify_webhook', 'api_cron_publish_news',
+    'create_pedido',                      # POST do formulário público
+    'list_planos',                        # preços na vitrine
+    'listar_demos_voz',                   # amostras de voz na vitrine
+    'respond_client_delivery',            # cliente aprova / pede ajuste
+    'get_client_delivery_upload_url',     # cliente anexa amostra no ajuste
+}
+
+
+def _rota_pertence_ao_cliente():
+    """True se o request pode passar sem sessão."""
+    ep = request.endpoint or ''
+    if ep in ROTAS_PUBLICAS or ep == 'static':
+        return True
+    # OPTIONS é o preflight do CORS: barrar aqui quebra chamada legítima.
+    if request.method == 'OPTIONS':
+        return True
+    # Webhook e cron por caminho também, caso o endpoint mude de nome.
+    p = request.path or ''
+    return p.startswith('/api/webhooks/') or p.startswith('/api/cron/')
+
+
+@app.before_request
+def exigir_login():
+    if _rota_pertence_ao_cliente():
+        return None
+    if session.get('admin'):
+        return None
+
+    # Sem senha configurada o portão não tranca — senão um deploy sem a
+    # variável deixaria o dono do lado de fora do próprio estúdio. A tela de
+    # login avisa o que fazer.
+    if not os.getenv('ADMIN_SENHA'):
+        return None
+
+    # API responde JSON; página redireciona pro login.
+    if (request.path or '').startswith('/api/'):
+        return jsonify({"success": False, "error": "Acesso restrito. Faça login."}), 401
+    return redirect(url_for('login_page', proxima=request.path))
+
+
+@app.route('/login')
+def login_page():
+    return render_template('login.html',
+                           sem_senha=not os.getenv('ADMIN_SENHA'),
+                           erro=request.args.get('erro'),
+                           proxima=request.args.get('proxima', '/'))
+
+
+@app.route('/login', methods=['POST'])
+def fazer_login():
+    senha_certa = os.getenv('ADMIN_SENHA') or ''
+    enviada = (request.form.get('senha') or '')
+    proxima = request.form.get('proxima') or '/'
+    # Comparação em tempo constante: com == dá pra descobrir a senha medindo
+    # quanto tempo cada tentativa leva.
+    import hmac
+    if senha_certa and hmac.compare_digest(enviada, senha_certa):
+        session['admin'] = True
+        session.permanent = True
+        # Só caminho interno do próprio site — sem isso dava pra mandar um link
+        # de login que joga o usuário logado num site de fora.
+        destino = proxima if proxima.startswith('/') and not proxima.startswith('//') else '/'
+        return redirect(destino)
+    return redirect(url_for('login_page', erro='1', proxima=proxima))
+
+
+@app.route('/logout')
+def logout():
+    session.pop('admin', None)
+    return redirect(url_for('login_page'))
+
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')

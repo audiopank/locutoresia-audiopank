@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entrar — Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            padding: 1rem;
+        }
+        .caixa {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 2rem;
+            max-width: 400px;
+            width: 100%;
+        }
+        .marca { font-size: 1.4rem; font-weight: 700; margin-bottom: .25rem; }
+        .marca i { color: var(--primary-color); }
+        .hint { color: var(--text-secondary); font-size: .85rem; }
+        .form-control {
+            background: rgba(15, 23, 42, .6);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        .form-control:focus {
+            background: rgba(15, 23, 42, .8);
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+            box-shadow: none;
+        }
+        .aviso {
+            border-radius: 8px;
+            padding: .6rem .8rem;
+            font-size: .85rem;
+            margin-bottom: 1rem;
+        }
+        .aviso-erro { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.35); color: #fca5a5; }
+        .aviso-config { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35); color: #fde68a; }
+    </style>
+</head>
+<body>
+    <div class="caixa">
+        <div class="marca"><i class="fas fa-microphone-lines me-2"></i>Locutores IA</div>
+        <p class="hint mb-4">Estúdio interno. Só quem produz entra aqui.</p>
+
+        {% if sem_senha %}
+        <div class="aviso aviso-config">
+            <strong>⚠️ Sem senha configurada.</strong> O estúdio está aberto a quem tiver o link.
+            Defina a variável <code>ADMIN_SENHA</code> nas Environment Variables da Vercel
+            e refaça o deploy — a partir daí só você entra.
+        </div>
+        {% endif %}
+
+        {% if erro %}
+        <div class="aviso aviso-erro">Senha incorreta.</div>
+        {% endif %}
+
+        <form method="POST" action="/login">
+            <input type="hidden" name="proxima" value="{{ proxima }}">
+            <label class="hint" for="senha">Senha</label>
+            <input type="password" class="form-control mb-3" id="senha" name="senha"
+                   autofocus autocomplete="current-password" required>
+            <button class="btn btn-primary w-100 py-2" type="submit">
+                <i class="fas fa-right-to-bracket me-2"></i>Entrar
+            </button>
+        </form>
+
+        <p class="hint mt-4 mb-0">
+            É cliente? A página pra ouvir amostras e pedir sua locução é a
+            <a href="/vitrine" style="color: var(--primary-color);">vitrine</a>.
+        </p>
+    </div>
+</body>
+</html>
