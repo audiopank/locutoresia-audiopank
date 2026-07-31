@@ -256,6 +256,24 @@
             const cliente = document.getElementById('eeCliente').value.trim();
             if (!cliente) { status.style.color = '#f87171'; status.textContent = 'Informe o nome do cliente.'; return; }
 
+            // Sem pedido vinculado a entrega nasce sem plano e sem valor. Aí o
+            // cliente não vê "Pagar", você não vê "Confirmar pagamento", e o
+            // definitivo nunca libera — a trava do servidor exige pedido.pago.
+            //
+            // Isso já era avisado, mas só DEPOIS, num texto vermelho na lista
+            // de entregas. Tarde demais: o link já tinha ido pro cliente.
+            if (!sel.value) {
+                const segue = confirm(
+                    'Nenhum pedido vinculado a esta entrega.\n\n' +
+                    'Sem pedido não há plano nem valor, então:\n' +
+                    '  • o cliente NÃO vê o botão de pagar\n' +
+                    '  • você NÃO vê "confirmar pagamento"\n' +
+                    '  • o arquivo definitivo nunca é liberado\n\n' +
+                    'Serve pra amostra ou cortesia. Para cobrar, cancele e ' +
+                    'escolha o pedido no campo acima.\n\nContinuar assim mesmo?');
+                if (!segue) return;
+            }
+
             btn.disabled = true;
             status.style.color = '#93c5fd';
             try {
