@@ -77,7 +77,16 @@
         {% else %}
             <h4 class="mb-1">{{ delivery.client_name }}</h4>
             <p class="text-secondary">{{ delivery.request_description }}</p>
-            <audio id="player" controls class="w-100 mt-3" src="{{ playback_url }}"></audio>
+            <!-- controlsList/nodownload tira o "Baixar" do menu de três pontos
+                 do player nativo. O cliente conseguia baixar a prévia por ali,
+                 sem passar por aprovação nem pagamento.
+                 Não é tranca: quem abrir o DevTools acha a URL do mesmo jeito.
+                 A proteção de verdade continua sendo o CARIMBO na prévia e o
+                 definitivo travado no servidor até o pedido constar como pago.
+                 Isto aqui fecha o caminho fácil, que é por onde todo mundo vai. -->
+            <audio id="player" controls controlsList="nodownload noplaybackrate"
+                   disablePictureInPicture oncontextmenu="return false;"
+                   class="w-100 mt-3" src="{{ playback_url }}"></audio>
 
             <div id="responseArea">
                 {% if delivery.status == 'pendente' %}
