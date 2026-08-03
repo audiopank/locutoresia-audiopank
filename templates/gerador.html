@@ -171,6 +171,25 @@
                         A IA não escolhe a voz — escolha aqui antes de gerar.
                     </div>
 
+                    <label class="form-label" for="selectEstilo">Estilo de fala</label>
+                    <!-- Mesmos valores do Studio: têm que existir em STYLE_MAP /
+                         EDGE_STYLE_MAP (core/tts_generator.py). Valor fora dos
+                         mapas cai em "normal" calado — foi bug real em 27/07. -->
+                    <select id="selectEstilo" class="form-select mb-1">
+                        <option value="normal">Normal</option>
+                        <option value="excited">Animado (varejo/promoção)</option>
+                        <option value="cheerful">Alegre / festivo</option>
+                        <option value="calm">Calmo</option>
+                        <option value="professional">Profissional</option>
+                        <option value="serious">Sério / formal</option>
+                        <option value="fast">Rápido</option>
+                        <option value="slow">Lento / pausado</option>
+                    </select>
+                    <div class="hint mb-3">
+                        É a interpretação do locutor — "Animado" pra promoção,
+                        "Sério" pra institucional. Vale também no "Regerar só a voz".
+                    </div>
+
                     <label class="form-label" for="selectTrilha">Trilha de fundo</label>
                     <select id="selectTrilha" class="form-select mb-3">
                         <option value="auto" selected>Deixar a IA escolher</option>

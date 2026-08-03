@@ -168,6 +168,10 @@
                 text: texto,
                 voice: document.getElementById('selectVoz').value,
                 api: providerDaVoz(),
+                // Estilo = interpretação (o "Pacing/Smile in voice" que faltava
+                // aqui e já existia no Studio). No Gemini vira instrução de tom
+                // no prompt; no edge/eleven, parâmetros do provider.
+                style: document.getElementById('selectEstilo').value,
                 language: 'pt-BR'
             })
         });
