@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 24;
+const MINIDAW_VERSAO = 25;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -24,6 +24,7 @@ class MiniDAW {
         this.scissorMode = false;
         this.trackTesoura = null;   // qual faixa está com a tesoura armada
         this.selecoes = {};         // trackId -> {ini, fim} em segundos
+        this.playbackBase = null;   // t=0 do projeto no relógio do AudioContext (null = parado)
         this.globalZoom = 1;
         this.autoFadeEnabled = true;
         // ⚠️ autoFadeDuration NÃO está ligado em nada — o código usa 1.05 fixo em
@@ -714,7 +715,7 @@ class MiniDAW {
         if (rotulo) rotulo.textContent = track.gateSettings.sensibilidade.toFixed(1);
 
         const nodes = this.trackNodes.get(trackId);
-        if (nodes && this.isPlaying) this.agendarGate(track, nodes, this.audioContext.currentTime);
+        if (nodes && this.isPlaying && this.playbackBase != null) this.agendarGate(track, nodes, this.playbackBase);
         clearTimeout(this._gateSaveTimer);
         this._gateSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
@@ -802,10 +803,7 @@ class MiniDAW {
         const track = this.tracks.find(t => t.id === trackId);
         if (track) {
             track.muted = !track.muted;
-            const nodes = this.trackNodes.get(trackId);
-            if (nodes && nodes.gainNode) {
-                nodes.gainNode.gain.value = track.muted ? 0 : track.volume / 100;
-            }
+            this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
             this.updateTrackUI(track);
             this.saveToLocalStorage();
         }
@@ -815,16 +813,11 @@ class MiniDAW {
         const track = this.tracks.find(t => t.id === trackId);
         if (track) {
             track.solo = !track.solo;
-            const hasSolo = this.tracks.some(t => t.solo);
+            // Solo e mute passam pela MESMA agenda central do volume: durante
+            // o play, setar .value com ducking marcado não segura — o próximo
+            // evento desfaz. aplicarVolumeAgora decide certo nos dois estados.
             this.tracks.forEach(t => {
-                const nodes = this.trackNodes.get(t.id);
-                if (nodes && nodes.gainNode) {
-                    if (hasSolo) {
-                        nodes.gainNode.gain.value = t.solo ? t.volume / 100 : 0;
-                    } else {
-                        nodes.gainNode.gain.value = t.muted ? 0 : t.volume / 100;
-                    }
-                }
+                this.aplicarVolumeAgora(t, this.trackNodes.get(t.id));
             });
             this.updateTrackUI(track);
             this.saveToLocalStorage();
@@ -835,10 +828,9 @@ class MiniDAW {
         const track = this.tracks.find(t => t.id === trackId);
         if (track) {
             track.volume = volume;
-            const nodes = this.trackNodes.get(trackId);
-            if (nodes && nodes.gainNode) {
-                nodes.gainNode.gain.value = volume / 100;
-            }
+            // Durante o play, mexer direto no .value era briga perdida: o
+            // próximo evento agendado do ducking puxava o ganho de volta.
+            this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
             this.updateVolumeLabel(trackId, volume);
             this.saveToLocalStorage();
         }
@@ -1073,6 +1065,72 @@ class MiniDAW {
         }, 100);
     }
 
+    // ── AGENDA DE VOLUME (fades + ducking) DE UMA FAIXA ────────────────────
+    // Centralizada e começando SEMPRE por cancelScheduledValues: era daqui
+    // que vinham os "altos e baixos" do preview — cada play empilhava uma
+    // agenda nova de ducking por cima da anterior, e eventos antigos com
+    // horário ainda no futuro disparavam no meio da execução seguinte.
+    //
+    // `base` = instante, no relógio do AudioContext, em que o t=0 do projeto
+    // aconteceu. Eventos com horário no passado o navegador executa na hora,
+    // em ordem — reagendar tudo pela mesma base "avança o filme" e cai no
+    // estado certo, inclusive retomando do meio.
+    agendarVolumeDaFaixa(track, nodes, base) {
+        // Relógio do AudioContext não aceita tempo negativo. Contexto
+        // recém-criado retomando do meio cairia aí — clampa (desvio raro e
+        // inofensivo: só atrasa eventos que já passaram).
+        base = Math.max(0, base);
+
+        const g = nodes.gainNode.gain;
+        g.cancelScheduledValues(0);
+
+        const haSolo = this.tracks.some(t => t.solo);
+        if (track.muted || (haSolo && !track.solo)) {
+            g.setValueAtTime(0, this.audioContext.currentTime);
+            return;
+        }
+
+        const nivel = track.volume / 100;
+        if (track.fadeIn > 0) {
+            g.setValueAtTime(0, base);
+            g.linearRampToValueAtTime(nivel, base + track.fadeIn);
+        } else {
+            g.setValueAtTime(nivel, base);
+        }
+
+        const voiceTracks = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
+        if (track.type === 'music' && voiceTracks.length > 0) {
+            const maxVoiceDuration = Math.max(...voiceTracks.map(t => t.duration), 0);
+            const trechosDeVoz = this.detectarTrechosDeVoz(voiceTracks);
+            const ducou = this.aplicarDucking(g, trechosDeVoz, nivel, maxVoiceDuration, base);
+            if (!ducou) {
+                g.linearRampToValueAtTime(nivel, base + maxVoiceDuration);
+            }
+            // Fade final: some 1.05s depois do fim da voz (igual ao export).
+            g.linearRampToValueAtTime(0, base + maxVoiceDuration + 1.05);
+        } else if (track.fadeOut > 0) {
+            const fadeOutStart = track.duration - track.fadeOut;
+            g.linearRampToValueAtTime(nivel, base + fadeOutStart);
+            g.linearRampToValueAtTime(0, base + track.duration);
+        }
+    }
+
+    // Aplica o estado de volume de UMA faixa do jeito certo pro momento:
+    // tocando -> reagenda tudo com o nível novo; parado -> limpa sobras de
+    // agenda e seta direto (sem limpar, evento esquecido da sessão anterior
+    // desfazia o ajuste do slider).
+    aplicarVolumeAgora(track, nodes) {
+        if (!nodes || !nodes.gainNode) return;
+        if (this.isPlaying && this.playbackBase != null) {
+            this.agendarVolumeDaFaixa(track, nodes, this.playbackBase);
+        } else {
+            const haSolo = this.tracks.some(t => t.solo);
+            const silenciada = track.muted || (haSolo && !track.solo);
+            nodes.gainNode.gain.cancelScheduledValues(0);
+            nodes.gainNode.gain.value = silenciada ? 0 : track.volume / 100;
+        }
+    }
+
     playTrack(track) {
         let nodes = this.trackNodes.get(track.id);
         // Faixa com áudio mas sem cadeia de efeitos ficava MUDA no play, e o
@@ -1089,58 +1147,18 @@ class MiniDAW {
         const sourceNode = this.audioContext.createBufferSource();
         sourceNode.buffer = track.audioBuffer;
 
-        // Gate: a automação é agendada AQUI porque depende do instante em que
-        // o som começa a tocar (mesma razão do offset no ducking).
-        this.agendarGate(track, nodes, this.audioContext.currentTime);
-        
-        // Apply fade in
-        if (track.fadeIn > 0) {
-            nodes.gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
-            nodes.gainNode.gain.linearRampToValueAtTime(
-                track.volume / 100, 
-                this.audioContext.currentTime + track.fadeIn
-            );
-        } else {
-            nodes.gainNode.gain.setValueAtTime(track.volume / 100, this.audioContext.currentTime);
-        }
+        // Base de tempo: o instante (no relógio do AudioContext) em que o t=0
+        // do PROJETO aconteceu. this.currentTime é a posição no projeto (0 do
+        // início; >0 retomando do meio) — sem esse desconto, retomar do meio
+        // agendava o ducking como se a música partisse do zero, e a trilha
+        // abaixava nos momentos errados.
+        const base = this.audioContext.currentTime - (this.currentTime || 0);
+        this.playbackBase = base;
 
-        // Apply fade out (manual) or auto fade out for music tracks
-        const voiceTracks = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
-        if (track.type === 'music' && voiceTracks.length > 0) {
-            // Auto fade-out for music tracks
-            const maxVoiceDuration = Math.max(...voiceTracks.map(t => t.duration), 0);
-            // DUCKING NO PREVIEW: mesma automação do export, mas deslocada pra
-            // base de tempo do playback. Sem isto o ducking só aparecia no arquivo
-            // exportado e não dava pra ajustar de ouvido antes de renderizar.
-            const trechosDeVoz = this.detectarTrechosDeVoz(voiceTracks);
-            const ducou = this.aplicarDucking(
-                nodes.gainNode.gain, trechosDeVoz, track.volume / 100,
-                maxVoiceDuration, this.audioContext.currentTime
-            );
-            if (!ducou) {
-                nodes.gainNode.gain.linearRampToValueAtTime(
-                    track.volume / 100,
-                    this.audioContext.currentTime + maxVoiceDuration
-                );
-            }
-            nodes.gainNode.gain.linearRampToValueAtTime(
-                0,
-                this.audioContext.currentTime + maxVoiceDuration + 1.05
-            );
-        } else {
-            // Manual fade out
-            if (track.fadeOut > 0) {
-                const fadeOutStart = track.duration - track.fadeOut;
-                nodes.gainNode.gain.linearRampToValueAtTime(
-                    track.volume / 100,
-                    this.audioContext.currentTime + fadeOutStart
-                );
-                nodes.gainNode.gain.linearRampToValueAtTime(
-                    0,
-                    this.audioContext.currentTime + track.duration
-                );
-            }
-        }
+        // Gate e volume/ducking: agendas centralizadas — e as duas começam
+        // CANCELANDO a agenda anterior (ver agendarVolumeDaFaixa).
+        this.agendarGate(track, nodes, base);
+        this.agendarVolumeDaFaixa(track, nodes, base);
 
         // Connect to effect chain: source -> EQ -> Compressor -> ...
         sourceNode.connect(nodes.inputNode);
@@ -1181,6 +1199,22 @@ class MiniDAW {
                     // Already stopped
                 }
                 nodes.sourceNode = null;
+            }
+        });
+
+        // Zera a base e limpa TODA agenda de ganho: sobra de automação de uma
+        // sessão disparava na seguinte — era a fonte dos altos e baixos.
+        this.playbackBase = null;
+        this.tracks.forEach(t => {
+            const n = this.trackNodes.get(t.id);
+            if (!n) return;
+            if (n.gainNode) {
+                n.gainNode.gain.cancelScheduledValues(0);
+                n.gainNode.gain.value = t.muted ? 0 : t.volume / 100;
+            }
+            if (n.gateGain) {
+                n.gateGain.gain.cancelScheduledValues(0);
+                n.gateGain.gain.value = 1;
             }
         });
 
