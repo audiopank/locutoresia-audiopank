@@ -903,6 +903,58 @@
             return '';
         }
 
+        // ── FOLLOW-UP DE 1 CLIQUE ────────────────────────────────────────
+        // O farol já mostra quem está parado; isto transforma o diagnóstico em
+        // ação: um clique abre o WhatsApp com a mensagem certa pro momento do
+        // pedido. Sem e-mail automatizado de propósito — o lead daqui é
+        // comércio local, mora no WhatsApp, e o atendimento pessoal é parte
+        // do produto (produtora, não plataforma).
+        function kbFollowUp(p, farol) {
+            const contato = (p.whatsapp || p.email || '').trim();
+            if (!contato) return '';
+
+            const nome = (p.cliente_nome || '').split(' ')[0] || 'tudo bem';
+            const plano = PLANO_LABELS[p.plano] || TIPO_LABELS[p.tipo] || 'sua locução';
+            const parado = farol && (farol.classe === 'kb-f-amarelo' || farol.classe === 'kb-f-vermelho');
+
+            // Cobrança gentil: aprovado sem pagamento é dinheiro na mesa —
+            // aparece sempre, independente do farol.
+            let msg = '';
+            if (p.status === 'concluido' && p.valor && !p.pago) {
+                msg = `Olá, ${nome}! Que bom que você aprovou seu ${plano} 🎉 ` +
+                      `Assim que o pagamento for confirmado, eu libero seus arquivos finais ` +
+                      `em MP3 e WAV, sem a marca de demonstração. Qualquer dúvida, é só falar!`;
+            } else if (!parado) {
+                return '';   // andando no prazo: não enche o card de botão
+            } else if (p.status === 'novo') {
+                msg = `Olá, ${nome}! Aqui é da Locutores IA 🎙️ Recebemos seu pedido de ${plano} ` +
+                      `e ele já está na fila de produção. Se quiser acrescentar algum detalhe, ` +
+                      `é só responder por aqui!`;
+            } else if (p.status === 'em_producao') {
+                msg = `Olá, ${nome}! Seu ${plano} está em produção aqui na Locutores IA 🎙️ ` +
+                      `Está saindo do forno — te aviso assim que a prévia estiver pronta pra você ouvir!`;
+            } else if (p.status === 'aguardando_aprovacao') {
+                msg = `Olá, ${nome}! Sua prévia do ${plano} está pronta te esperando 🎧 ` +
+                      `Conseguiu ouvir? Qualquer ajuste é só me falar — a gente mexe até você aprovar.`;
+            } else {
+                return '';
+            }
+
+            if (contato.includes('@')) {
+                const mailto = `mailto:${encodeURIComponent(contato)}` +
+                    `?subject=${encodeURIComponent('Seu pedido na Locutores IA')}` +
+                    `&body=${encodeURIComponent(msg)}`;
+                return `<a href="${mailto}" class="btn btn-sm btn-outline-info">
+                            <i class="fas fa-envelope me-1"></i>Follow-up</a>`;
+            }
+            let digits = contato.replace(/\D/g, '');
+            if (!digits) return '';
+            if (!digits.startsWith('55')) digits = '55' + digits;
+            return `<a href="https://wa.me/${digits}?text=${encodeURIComponent(msg)}"
+                       target="_blank" rel="noopener" class="btn btn-sm btn-whatsapp">
+                        <i class="fab fa-whatsapp me-1"></i>Follow-up</a>`;
+        }
+
         function renderKanban() {
             const alvo = document.getElementById('pedidosKanban');
             if (!alvo) return;
@@ -936,7 +988,7 @@
                 const cards = doGrupo.map(p => {
                     const plano = PLANO_LABELS[p.plano] || TIPO_LABELS[p.tipo] || 'Orçamento';
                     const farol = kbFarol(p);
-                    const acoes = kbAcoes(p);
+                    const acoes = kbAcoes(p) + kbFollowUp(p, farol);
                     return `
                         <div class="kb-card">
                             <div class="kb-cliente">
