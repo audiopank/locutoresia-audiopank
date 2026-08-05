@@ -1578,6 +1578,10 @@ class MiniDAW {
     // os stems somam de volta no mix final — é isso que faz stem ser stem.
     // ═══════════════════════════════════════════════════════════════════
     async _renderizarParaExport(tracksParaRenderizar, aoProgredir) {
+        // Clips podem estar OBSOLETOS se o buffer trocou depois do último play
+        // (Encurtar Pausas, corte): a migração preguiçosa só roda na leitura.
+        // Refresca aqui pra o export nunca renderizar áudio velho (prévia = arquivo).
+        this.tracks.forEach(t => this._clipsDaFaixa(t));
         return MixEngine.renderizarMix({
             tracks: tracksParaRenderizar,
             todasAsTracks: this.tracks,

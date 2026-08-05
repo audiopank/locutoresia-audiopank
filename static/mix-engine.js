@@ -308,6 +308,9 @@
                 : [{ buffer: t.audioBuffer, inicio: 0, offset: 0,
                      duracao: t.audioBuffer.duration,
                      fadeIn: t.fadeIn || 0, fadeOut: t.fadeOut || 0 }];
+            // Espelhos de ClipModel.fimDoClip/fimDaFaixa (aqui não dá pra usar o
+            // módulo direto porque roda dentro do OfflineAudioContext) — mudou
+            // lá, muda aqui também.
             const fimDoClip = (c) => c.inicio + c.duracao;
             const fimDosClips = (cs) => cs.reduce((m, c) => Math.max(m, fimDoClip(c)), 0);
 
