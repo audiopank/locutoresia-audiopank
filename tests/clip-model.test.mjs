@@ -23,12 +23,12 @@ test('fimDoClip e fimDaFaixa', () => {
     assert.equal(CM.fimDaFaixa([]), 0);
 });
 
-test('duracaoDoProjeto: fim do último clip de VOZ + 1.05', () => {
+test('duracaoDoProjeto: fim do último clip de VOZ + 2.02 (fade final de ouvido)', () => {
     const faixas = [
         { type: 'voice', clips: [{ inicio: 1, duracao: 4 }] },      // fim 5
         { type: 'music', clips: [{ inicio: 0, duracao: 60 }] },
     ];
-    assert.ok(Math.abs(CM.duracaoDoProjeto(faixas) - 6.05) < 1e-9);
+    assert.ok(Math.abs(CM.duracaoDoProjeto(faixas) - 7.02) < 1e-9);
 });
 
 test('duracaoDoProjeto sem voz: maior fim de clip', () => {

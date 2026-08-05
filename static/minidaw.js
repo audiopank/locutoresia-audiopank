@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 35;
+const MINIDAW_VERSAO = 36;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -41,7 +41,7 @@ class MiniDAW {
         this.redoClips = [];
         this.globalZoom = 1;
         this.autoFadeEnabled = true;
-        // ⚠️ autoFadeDuration NÃO está ligado em nada — o código usa 1.05 fixo em
+        // ⚠️ autoFadeDuration NÃO está ligado em nada — o código usa 2.02 fixo em
         // todos os pontos (playback, export, botão de auto-fade). Mudar aqui não
         // muda o áudio. Mantido pra não quebrar quem lê, mas não confie nele.
         this.autoFadeDuration = 1.10;
@@ -1618,8 +1618,9 @@ class MiniDAW {
             if (!ducou) {
                 g.linearRampToValueAtTime(nivel, base + fimDaVoz);
             }
-            // Fade final: some 1.05s depois do fim da voz (igual ao export).
-            g.linearRampToValueAtTime(0, base + fimDaVoz + 1.05);
+            // Fade final: desce ao zero em 2.02s depois do fim da voz (igual
+            // ao export — era 1.05s, apressado demais, ajustado de ouvido).
+            g.linearRampToValueAtTime(0, base + fimDaVoz + 2.02);
         }
     }
 
@@ -3216,9 +3217,9 @@ class MiniDAW {
 
         this.autoFadeEnabled = true;
         
-        // Aplica fade out de 1.05s nas trilhas musicais
+        // Aplica fade out de 2.02s nas trilhas musicais (mesma folga do motor)
         musicTracks.forEach(track => {
-            this.updateTrackFadeOut(track.id, 1.05);
+            this.updateTrackFadeOut(track.id, 2.02);
             
             // Mostra indicador
             const indicator = document.getElementById(`autoFade_${track.id}`);
@@ -3230,7 +3231,7 @@ class MiniDAW {
         // Inicia monitoramento de silêncio
         this.startSilenceDetection();
 
-        this.showNotification('Auto Fade ativado (1.05s)', 'success');
+        this.showNotification('Auto Fade ativado (2.02s)', 'success');
     }
 
     startSilenceDetection() {
@@ -3284,7 +3285,7 @@ class MiniDAW {
 
         const gainNode = nodes.gainNode;
         const currentGain = gainNode.gain.value;
-        const fadeSteps = 21; // 1.05s / 50ms
+        const fadeSteps = 40; // ~2.02s / 50ms (acompanha o fade final do motor)
         const fadeStep = currentGain / fadeSteps;
         let step = 0;
 

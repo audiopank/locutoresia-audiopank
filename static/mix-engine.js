@@ -321,7 +321,7 @@
             const fimDaVoz = fimDosClips(clipsDeVoz);
             let finalDuration = o.duration;
             if (clipsDeVoz.length > 0) {
-                finalDuration = fimDaVoz + 1.05;
+                finalDuration = fimDaVoz + 2.02;
             } else {
                 let fimTudo = 0;
                 for (const t of tracksWithAudio) fimTudo = Math.max(fimTudo, fimDosClips(clipsDe(t)));
@@ -492,8 +492,9 @@
                     if (!ducou) {
                         trackGain.gain.linearRampToValueAtTime(track.volume / 100, fimDaVoz);
                     }
-                    // Fade final continua igual: some 1.05s depois do fim da voz.
-                    trackGain.gain.linearRampToValueAtTime(0, fimDaVoz + 1.05);
+                    // Fade final: desce ao zero em 2.02s depois do fim da voz
+                    // (era 1.05s — apressado demais, ajustado de ouvido).
+                    trackGain.gain.linearRampToValueAtTime(0, fimDaVoz + 2.02);
                 }
 
                 // Connect the entire chain
