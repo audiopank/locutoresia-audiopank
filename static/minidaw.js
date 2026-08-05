@@ -3174,7 +3174,9 @@ class MiniDAW {
     updateZoomIndicator() {
         const indicator = document.getElementById('zoomIndicator');
         if (indicator) {
-            indicator.textContent = `${Math.round(this.globalZoom * 100)}%`;
+            // 100% = escala padrão da timeline (24 px/s); globalZoom morreu
+            // junto com o zoom por faixa e ficava travado em "100%".
+            indicator.textContent = `${Math.round((this.pxPorSegundo / 24) * 100)}%`;
         }
     }
 

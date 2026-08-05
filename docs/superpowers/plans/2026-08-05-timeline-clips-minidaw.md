@@ -1771,6 +1771,19 @@ Samplitude (screenshots com traços verticais e atalhos anotados):
   (Encurtar já tem o próprio Desfazer).
 - Versão 31 → 32.
 
+### Task 15: Delete + zoom ancorado no cursor (pedido do usuário, 05/08/2026 tarde)
+
+- **Delete/Backspace** apaga o clip sob a linha de corte (`cursorLane`/`cursorTempo`
+  + `clipNoPonto`), com snapshot de undo antes e `updateTrackUI` se a faixa esvaziar.
+  Guards: foco em input e gesto de mouse em andamento (mesmos do D/T).
+- **Zoom ancorado**: `zoomIn/zoomOut` mantêm parado na tela o ponto sob o mouse
+  (`cursorTempo`; fallback: centro da viewport). Implementação: captura âncora
+  (tempo + offset de tela) → muda `pxPorSegundo` → `_renderizarTimelineAgora()`
+  SÍNCRONO → aplica `scrollLeft` em todas as lanes + régua → reposiciona a linha
+  de corte. Corrige o sintoma reportado: "zoom− joga tudo pra esquerda e o cursor
+  se perde".
+- Versão 32 → 33.
+
 ## Riscos monitorados durante a execução
 
 1. **`updateTrackUI` recria o card** — `renderizarClips` roda de novo após
