@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 33;
+const MINIDAW_VERSAO = 34;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -210,6 +210,9 @@ class MiniDAW {
             // vira pausa e mais respiração some — mas passar do ponto começa
             // a comer o comecinho das palavras. Acha-se de ouvido.
             gateSettings: { sensibilidade: 12 },
+            // Modo compacto: recolhe sliders/efeitos e deixa só cabeçalho +
+            // timeline — com vários tracks é o único jeito de ver tudo de uma vez.
+            compacto: false,
             color: type === 'voice' ? '#3b82f6' : '#a855f7'
         };
 
@@ -228,7 +231,7 @@ class MiniDAW {
         }
 
         const trackCard = document.createElement('div');
-        trackCard.className = 'track-card';
+        trackCard.className = 'track-card' + (track.compacto ? ' compacta' : '');
         trackCard.id = `track_${track.id}`;
         
         trackCard.innerHTML = `
@@ -255,6 +258,10 @@ class MiniDAW {
                            onchange="minidaw.updateTrackName('${track.id}', this.value)" style="max-width: 200px;">
                 </div>
                 <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-light" onclick="minidaw.alternarCompacto('${track.id}')"
+                            title="${track.compacto ? 'Expandir efeitos' : 'Recolher efeitos (só timeline)'}">
+                        <i class="fas fa-chevron-${track.compacto ? 'down' : 'up'}"></i>
+                    </button>
                     <button class="btn btn-sm btn-outline-secondary ${track.muted ? 'active' : ''}" onclick="toggleMute('${track.id}')" title="Mudo">
                         <i class="fas fa-volume-mute"></i>
                     </button>
@@ -2951,6 +2958,16 @@ class MiniDAW {
             recado += ' ⚠️ Nenhuma faixa de Voz no projeto: sem ducking e sem fade automático.';
         }
         this.showNotification(recado, temTrilha && !temVoz ? 'warning' : 'success');
+    }
+
+    // Recolhe/expande a área de efeitos do card. O estado vive na FAIXA
+    // (não no DOM): updateTrackUI recria o card e a classe volta certa.
+    alternarCompacto(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        track.compacto = !track.compacto;
+        this.updateTrackUI(track);
+        this.saveToLocalStorage();
     }
 
     // Salva SÓ esta faixa, no estado em que ela está (já cortada/editada).
