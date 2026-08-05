@@ -8998,6 +8998,21 @@ def get_vip_project(project_id):
         # navegador baixa por ela e decodifica de volta pro buffer. Sem isto o
         # projeto reabria só com os ajustes, sem som (o furo que a gente conserta).
         for tr in (project.get('tracks') or []):
+            # Projeto novo (timeline de clips): cada faixa tem buffers[] com
+            # audio_path próprio — assina um a um, mesma regra do audio_path.
+            for b in (tr.get('buffers') or []):
+                b['audio_url'] = None
+                bpath = b.get('audio_path')
+                if bpath:
+                    try:
+                        signed_b = supabase_manager.newpost_manager_client.storage \
+                            .from_(CLIENT_DELIVERIES_BUCKET).create_signed_url(bpath, 3600)
+                        b['audio_url'] = signed_b.get('signedURL') or signed_b.get('signedUrl')
+                    except Exception as serr:
+                        print(f'[VIP] erro ao assinar buffer {bpath}: {serr}')
+                elif b.get('audio_url_direct'):
+                    b['audio_url'] = b['audio_url_direct']
+
             tr['audio_url'] = None
             path = tr.get('audio_path')
             if path:

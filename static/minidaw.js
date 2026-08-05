@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 34;
+const MINIDAW_VERSAO = 35;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -3444,28 +3444,44 @@ class MiniDAW {
             const tracks = [];
             for (let i = 0; i < comAudio.length; i++) {
                 const t = comAudio[i];
+                const clips = this._clipsDaFaixa(t);
                 const td = {
                     name: t.name, type: t.type,
                     volume: t.volume, pan: t.pan,
                     fadeIn: t.fadeIn, fadeOut: t.fadeOut,
                     effects: t.effects, eqSettings: t.eqSettings,
-                    gateSettings: t.gateSettings
+                    gateSettings: t.gateSettings,
+                    buffers: [], clips: []
                 };
-                if (t.audioUrl && /^https?:/i.test(t.audioUrl)) {
-                    // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
-                    // /object/public/...). NÃO reenvia — evita reupload de arquivo
-                    // grande (era o gargalo) e aponta direto pra URL pública.
-                    passo = `referenciar faixa ${i + 1} (${t.name}) — já no Storage`;
-                    console.log('[projeto] ' + passo);
-                    td.audio_url_direct = t.audioUrl;
-                } else {
-                    // Voz gerada / arquivo local (blob:) — sobe o WAV.
-                    passo = `converter faixa ${i + 1} (${t.name}) para WAV`;
-                    console.log('[projeto] ' + passo);
-                    const wav = this.bufferToWav(t.audioBuffer);
-                    passo = `enviar áudio da faixa ${i + 1} (${t.name}) — ${(wav.size / 1024 / 1024).toFixed(1)}MB`;
-                    console.log('[projeto] ' + passo);
-                    td.audio_path = await this._uploadAudioProjeto(wav);
+                // Um upload por BUFFER DISTINTO (clips de um corte compartilham
+                // o arquivo — subir por clip duplicaria áudio à toa).
+                const indicePorBuffer = new Map();
+                for (const c of clips) {
+                    if (!indicePorBuffer.has(c.buffer)) {
+                        const idx = td.buffers.length;
+                        indicePorBuffer.set(c.buffer, idx);
+                        if (c.buffer === t.audioBuffer && t.audioUrl && /^https?:/i.test(t.audioUrl)) {
+                            // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
+                            // /object/public/...). NÃO reenvia — evita reupload de arquivo
+                            // grande (era o gargalo) e aponta direto pra URL pública.
+                            passo = `referenciar faixa ${i + 1} (${t.name}) — já no Storage`;
+                            console.log('[projeto] ' + passo);
+                            td.buffers.push({ audio_url_direct: t.audioUrl });
+                        } else {
+                            // Voz gerada / arquivo local (blob:) / clip solto — sobe o WAV.
+                            passo = `converter áudio ${idx + 1} da faixa ${i + 1} (${t.name}) para WAV`;
+                            console.log('[projeto] ' + passo);
+                            const wav = this.bufferToWav(c.buffer);
+                            passo = `enviar áudio ${idx + 1} da faixa ${i + 1} — ${(wav.size / 1024 / 1024).toFixed(1)}MB`;
+                            console.log('[projeto] ' + passo);
+                            td.buffers.push({ audio_path: await this._uploadAudioProjeto(wav) });
+                        }
+                    }
+                    td.clips.push({
+                        buffer: indicePorBuffer.get(c.buffer),
+                        inicio: c.inicio, offset: c.offset, duracao: c.duracao,
+                        fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0
+                    });
                 }
                 tracks.push(td);
             }
@@ -3565,11 +3581,32 @@ class MiniDAW {
                 track.effects   = td.effects    || track.effects;
                 track.eqSettings= td.eqSettings || track.eqSettings;
                 track.gateSettings = td.gateSettings || track.gateSettings;
-                if (td.audio_url) {
+                if (td.clips && td.clips.length && td.buffers) {
+                    // Projeto novo: baixa cada buffer e reconstrói os clips
+                    // nas posições exatas em que foram salvos.
+                    const buffers = [];
+                    for (const b of td.buffers) {
+                        if (!b.audio_url) { buffers.push(null); continue; }
+                        const resp = await fetch(b.audio_url);
+                        const arr = await resp.arrayBuffer();
+                        buffers.push(await this.audioContext.decodeAudioData(arr));
+                    }
+                    track.clips = td.clips
+                        .filter(c => buffers[c.buffer])
+                        .map(c => ({
+                            id: ClipModel.novoId(), buffer: buffers[c.buffer],
+                            inicio: c.inicio, offset: c.offset, duracao: c.duracao,
+                            fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0
+                        }));
+                    this._sincronizarDerivados(track);
+                } else if (td.audio_url) {
+                    // Projeto antigo: 1 áudio por faixa → migração preguiçosa
+                    // vira 1 clip em 0:00 na primeira leitura. Nada quebra.
                     await this.loadAudioFromUrl(td.audio_url, track.id, td.name);
                 }
                 this.updateTrackUI(track);
             }
+            this.renderizarTimeline();
             this.projetoId = proj.id;
             this.projetoNome = proj.name;
             this.showNotification(`Projeto "${proj.name}" aberto com áudio e efeitos!`, 'success');
