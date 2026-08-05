@@ -40,10 +40,10 @@
         return fim;
     }
 
-    // Duração do projeto = fim do último clip de VOZ + 2.02s (regra da casa:
-    // a trilha "respira" 2.02s depois da última palavra e desce ao zero —
-    // era 1.05s e o produtor achou o final apressado demais, de ouvido,
-    // 05/08/2026). Sem voz nenhuma, vale o clip que termina mais tarde.
+    // Duração do projeto = fim do último clip de VOZ + 3.05s (regra da casa:
+    // a trilha "respira" 3.05s depois da última palavra e desce ao zero —
+    // valor calibrado pelo produtor comparando com o Samplitude, 05/08/2026;
+    // era 1.05s, depois 2.02s). Sem voz nenhuma, vale o clip mais tardio.
     // ⚠️ Espelhado em mix-engine.js (fade final) e minidaw.js (playback):
     // mudou aqui, muda LÁ — senão prévia e arquivo terminam em horas diferentes.
     function duracaoDoProjeto(faixas) {
@@ -53,7 +53,7 @@
             fimTudo = Math.max(fimTudo, fim);
             if (f.type === 'voice') fimVoz = Math.max(fimVoz, fim);
         }
-        return fimVoz > 0 ? fimVoz + 2.02 : fimTudo;
+        return fimVoz > 0 ? fimVoz + 3.05 : fimTudo;
     }
 
     function ordenarClips(clips) {

@@ -191,7 +191,7 @@
         }
         const buffer = await MixEngine.renderizarMix({
             tracks: tracks, todasAsTracks: tracks,
-            duration: estado.vozBuffer.duration + 2.02,   // mesma folga do motor
+            duration: estado.vozBuffer.duration + 3.05,   // mesma folga do motor
             sampleRate: ctx.sampleRate,
             aoProgredir: aoProgredir
         });
