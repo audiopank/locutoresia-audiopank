@@ -1742,6 +1742,35 @@ resultado da verificação de ouvido e o número de versão final.
 
 ---
 
+## ADITIVO — Entrega B.1 (pedido do usuário no teste de 05/08/2026)
+
+Testando a Entrega B em produção, o usuário pediu os gestos de PRECISÃO do
+Samplitude (screenshots com traços verticais e atalhos anotados):
+
+### Task 13: Linha de corte + atalhos D/T (dividir no ponto do mouse)
+
+- **Linha de corte vertical** seguindo o mouse por TODAS as lanes (não só a
+  atual) + etiqueta de tempo — o traço vermelho que ele desenhou nos prints.
+  Estado: `this.cursorTempo` (tempo do projeto sob o mouse) e
+  `this.cursorLane` (trackId sob o mouse), atualizados por mousemove nas lanes.
+- **Atalho D (e T como sinônimo)**: divide o clip sob o mouse no ponto exato
+  (`aplicarCorte(trackId, 'dividir')` com seleção pontual em `cursorTempo`).
+  Guard: não dispara com foco em input/textarea. Sem Tesoura armada — o atalho
+  é o caminho rápido; a Tesoura continua pros trechos (remover/manter).
+- Versão 30 → 31.
+
+### Task 14: Undo/Redo de clips (Ctrl+Z / Ctrl+Y)
+
+- Snapshot do estado de clips de TODAS as faixas no INÍCIO de cada gesto
+  mutador (drag commit, trim, aplicarCorte) — cópia rasa dos objetos clip
+  (buffers por referência, barato). Pilha de undo (cap 30) + pilha de redo.
+- Ctrl+Z restaura o snapshot (por trackId; faixa que não existe mais é
+  ignorada), Ctrl+Y / Ctrl+Shift+Z refaz. Restauração passa por
+  `_sincronizarDerivados` + `aposMudancaDeClips`.
+- Escopo: SÓ operações de clips. Efeitos/volume/Encurtar Pausas ficam fora
+  (Encurtar já tem o próprio Desfazer).
+- Versão 31 → 32.
+
 ## Riscos monitorados durante a execução
 
 1. **`updateTrackUI` recria o card** — `renderizarClips` roda de novo após
