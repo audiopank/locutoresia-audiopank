@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 32;
+const MINIDAW_VERSAO = 33;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -170,6 +170,10 @@ class MiniDAW {
             if ((k === 'd' || k === 't') && this.cursorLane != null && this.cursorTempo != null) {
                 e.preventDefault();
                 this.cutTrackAtTime(this.cursorLane, this.cursorTempo);
+            }
+            if ((e.key === 'Delete' || e.key === 'Backspace') && this.cursorLane != null && this.cursorTempo != null) {
+                e.preventDefault();
+                this.deletarClipNoPonto(this.cursorLane, this.cursorTempo);
             }
         });
     }
@@ -1171,6 +1175,28 @@ class MiniDAW {
         this.undoClips.push(this._snapshotClips());
         this._restaurarSnapshotClips(this.redoClips.pop());
         this.showNotification('Refeito', 'info');
+    }
+
+    // Delete/Backspace: apaga o clip sob a linha de corte. As "sobras" de
+    // edição (farelos de divisão, pedaços que não vão pro spot) saem com uma
+    // tecla — e Ctrl+Z desfaz, então não precisa de confirmação.
+    deletarClipNoPonto(trackId, tempo) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.audioBuffer) return;
+        const clips = this._clipsDaFaixa(track);
+        const clip = ClipModel.clipNoPonto(clips, tempo);
+        if (!clip) {
+            this.showNotification('Nenhum clip sob a linha de corte', 'info');
+            return;
+        }
+        this._guardarUndo(this._snapshotClips());
+        track.clips = clips.filter(c => c.id !== clip.id);
+        this._sincronizarDerivados(track);
+        // Faixa esvaziou: o card precisa virar drop-zone (mesma regra do
+        // cross-move e do undo).
+        if (!track.clips.length) this.updateTrackUI(track);
+        this.aposMudancaDeClips([track]);
+        this.showNotification('Clip removido — Ctrl+Z desfaz', 'success');
     }
 
     // Redesenha timeline inteira (régua + todas as lanes). Chamar depois de
@@ -3099,17 +3125,45 @@ class MiniDAW {
         this.updatePlaybackTime();
     }
 
-    // Zoom functions melhoradas
-    zoomIn() {
-        this.pxPorSegundo = Math.min(200, this.pxPorSegundo * 1.4);
-        this.renderizarTimeline();
+    // ── ZOOM ANCORADO ────────────────────────────────────────────────────
+    // O zoom acontece AO REDOR do ponto sob o mouse (linha de corte); sem
+    // mouse na timeline, ao redor do centro da vista. Sem âncora, o zoom
+    // jogava tudo pra esquerda e o produtor perdia o ponto que estava mirando.
+    _zoomAncorado(novoPx) {
+        const lane = document.querySelector('.clips-lane');
+        let anchorT = null, anchorX = 0;
+        if (lane) {
+            if (this.cursorTempo != null) {
+                anchorT = this.cursorTempo;
+                anchorX = anchorT * this.pxPorSegundo - lane.scrollLeft;
+            } else {
+                anchorX = lane.clientWidth / 2;
+                anchorT = (lane.scrollLeft + anchorX) / this.pxPorSegundo;
+            }
+        }
+        this.pxPorSegundo = novoPx;
+        // Síncrono de propósito: o scroll novo depende do layout novo — a
+        // versão coalescida (RAF) aplicaria o scroll antes do redesenho.
+        this._renderizarTimelineAgora();
+        if (anchorT != null) {
+            const scroll = Math.max(0, anchorT * this.pxPorSegundo - anchorX);
+            this._syncandoScroll = true;
+            document.querySelectorAll('.clips-lane').forEach(l => { l.scrollLeft = scroll; });
+            const regua = document.getElementById('timelineRegua');
+            if (regua) regua.scrollLeft = scroll;
+            this._syncandoScroll = false;
+        }
+        this.desenharLinhaDeCorte();
         this.updateZoomIndicator();
     }
 
+    // Zoom functions melhoradas
+    zoomIn() {
+        this._zoomAncorado(Math.min(200, this.pxPorSegundo * 1.4));
+    }
+
     zoomOut() {
-        this.pxPorSegundo = Math.max(6, this.pxPorSegundo / 1.4);
-        this.renderizarTimeline();
-        this.updateZoomIndicator();
+        this._zoomAncorado(Math.max(6, this.pxPorSegundo / 1.4));
     }
 
     // Zoom por faixa não existe mais: a timeline tem UMA escala (senão "10s"
