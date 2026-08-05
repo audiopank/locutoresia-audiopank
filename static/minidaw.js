@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 26;
+const MINIDAW_VERSAO = 27;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -25,6 +25,12 @@ class MiniDAW {
         this.trackTesoura = null;   // qual faixa está com a tesoura armada
         this.selecoes = {};         // trackId -> {ini, fim} em segundos
         this.playbackBase = null;   // t=0 do projeto no relógio do AudioContext (null = parado)
+        // ── TIMELINE ─────────────────────────────────────────────────────
+        // Escala ÚNICA de tempo (px por segundo) compartilhada por régua e
+        // todas as pistas — sem ela "10 segundos" teria tamanhos diferentes em
+        // cada faixa e arrastar entre faixas não teria sentido geométrico.
+        this.pxPorSegundo = 24;
+        this.clipDrag = null;     // estado do arrasto em andamento (Task 7)
         this.globalZoom = 1;
         this.autoFadeEnabled = true;
         // ⚠️ autoFadeDuration NÃO está ligado em nada — o código usa 1.05 fixo em
@@ -244,13 +250,13 @@ class MiniDAW {
                     </button>
                 </div>
             ` : `
-                <div class="waveform-container" id="wfbox_${track.id}"
-                     onmousedown="minidaw.iniciarSelecao(event, '${track.id}')">
-                    <canvas id="waveform_${track.id}" class="waveform"></canvas>
-                    <!-- Guia do corte: região destacada + as duas hastes -->
-                    <div class="sel-regiao" id="selreg_${track.id}"></div>
-                    <div class="sel-haste sel-haste-ini" id="selini_${track.id}"></div>
-                    <div class="sel-haste sel-haste-fim" id="selfim_${track.id}"></div>
+                <div class="clips-lane" id="lane_${track.id}">
+                    <div class="lane-conteudo">
+                        <!-- Guia do corte da Tesoura (agora dentro da lane) -->
+                        <div class="sel-regiao" id="selreg_${track.id}"></div>
+                        <div class="sel-haste sel-haste-ini" id="selini_${track.id}"></div>
+                        <div class="sel-haste sel-haste-fim" id="selfim_${track.id}"></div>
+                    </div>
                 </div>
                 <div class="barra-corte" id="barracorte_${track.id}">
                     <span class="corte-info" id="corteinfo_${track.id}"></span>
@@ -391,10 +397,14 @@ class MiniDAW {
         `;
         
         container.appendChild(trackCard);
-        
+
         if (track.audioUrl) {
             this.drawWaveform(track);
         }
+
+        // A lane nasce vazia; os blocos entram no próximo quadro (o canvas
+        // recém-inserido mede 0 agora — mesmo motivo do drawWaveform antigo).
+        if (track.audioBuffer) requestAnimationFrame(() => this.renderizarTimeline());
     }
 
     async loadAudioFile(file, trackId) {
@@ -723,6 +733,102 @@ class MiniDAW {
         this._gateSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
+    // ── TIMELINE: régua + blocos de clip ─────────────────────────────────
+    _larguraDaTimeline() {
+        // Sempre um respiro à direita pra ter onde soltar clip no fim.
+        return Math.max(60, (this.duration + 10) * this.pxPorSegundo);
+    }
+
+    desenharRegua() {
+        const regua = document.getElementById('timelineRegua');
+        if (!regua) return;
+        const largura = this._larguraDaTimeline();
+        // Marca a cada 5s (a cada 1s com zoom alto).
+        const passo = this.pxPorSegundo >= 60 ? 1 : 5;
+        let html = '';
+        for (let t = 0; t * this.pxPorSegundo <= largura; t += passo) {
+            html += `<div class="marca" style="left:${t * this.pxPorSegundo}px">${this.formatTime(t)}</div>`;
+        }
+        regua.innerHTML = html;
+    }
+
+    // Redesenha os blocos de clip de UMA faixa dentro da lane dela.
+    renderizarClips(track) {
+        const lane = document.getElementById(`lane_${track.id}`);
+        if (!lane) return;
+        const conteudo = lane.querySelector('.lane-conteudo');
+        if (!conteudo) return;
+        conteudo.style.width = this._larguraDaTimeline() + 'px';
+        // Remove só os blocos de clip — as guias da Tesoura (selreg_/selini_/
+        // selfim_) moram na mesma lane e precisam sobreviver ao redesenho.
+        conteudo.querySelectorAll('.clip-bloco').forEach(el => el.remove());
+        for (const clip of this._clipsDaFaixa(track)) {
+            const el = document.createElement('div');
+            el.className = 'clip-bloco';
+            el.id = `clip_el_${clip.id}`;
+            el.style.left = (clip.inicio * this.pxPorSegundo) + 'px';
+            el.style.width = Math.max(8, clip.duracao * this.pxPorSegundo) + 'px';
+            el.innerHTML = `
+                <canvas></canvas>
+                <span class="clip-nome">${track.name}</span>
+                <div class="clip-alca ini" data-borda="ini"></div>
+                <div class="clip-alca fim" data-borda="fim"></div>`;
+            el.addEventListener('mousedown', (ev) => this.mousedownClip(ev, track.id, clip.id));
+            conteudo.appendChild(el);
+            this.desenharOndaDoClip(track, clip, el.querySelector('canvas'));
+        }
+    }
+
+    // Waveform da JANELA do clip (offset..offset+duracao) — mesmo algoritmo
+    // de envelope min/max por coluna do drawWaveform clássico.
+    desenharOndaDoClip(track, clip, canvas) {
+        if (!canvas || !clip.buffer) return;
+        const width = Math.floor(canvas.offsetWidth);
+        const height = Math.floor(canvas.offsetHeight);
+        if (!width || !height) {
+            requestAnimationFrame(() => this.desenharOndaDoClip(track, clip, canvas));
+            return;
+        }
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        const dados = clip.buffer.getChannelData(0);
+        const sr = clip.buffer.sampleRate;
+        const a0 = Math.floor(clip.offset * sr);
+        const a1 = Math.min(dados.length, Math.floor((clip.offset + clip.duracao) * sr));
+        const meio = height / 2;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = 'rgba(255,255,255,.18)';
+        ctx.fillRect(0, Math.round(meio), width, 1);
+        ctx.fillStyle = 'rgba(255,255,255,.85)';
+        const amostrasPorPixel = (a1 - a0) / width;
+        for (let px = 0; px < width; px++) {
+            const ini = a0 + Math.floor(px * amostrasPorPixel);
+            const fim = Math.min(a0 + Math.floor((px + 1) * amostrasPorPixel), a1);
+            if (fim <= ini) continue;
+            let min = 1.0, max = -1.0;
+            for (let i = ini; i < fim; i++) {
+                const v = dados[i];
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            const topo = meio - max * meio;
+            ctx.fillRect(px, topo, 1, Math.max(1, (max - min) * meio));
+        }
+    }
+
+    // Placeholder até a Task 7: clique no clip ainda não arrasta.
+    mousedownClip(ev, trackId, clipId) { /* Task 7: arrasto */ }
+
+    // Redesenha timeline inteira (régua + todas as lanes). Chamar depois de
+    // qualquer mudança de clip, zoom ou duração.
+    renderizarTimeline() {
+        this.calculateDuration();
+        this.desenharRegua();
+        for (const t of this.tracks) {
+            if (t.audioBuffer) this.renderizarClips(t);
+        }
+    }
+
     // ── FORMA DE ONDA ────────────────────────────────────────────────────
     // O produtor precisa ENXERGAR o que tem na faixa: sem isso a Tesoura vira
     // chute, porque não dá pra marcar início e fim de corte às cegas.
@@ -736,62 +842,10 @@ class MiniDAW {
     // áudio desenha. Mil colunas em vez de milhões de pontos, e a silhueta
     // mostra de verdade onde a fala entra e onde ela para.
     drawWaveform(track) {
-        const canvas = document.getElementById(`waveform_${track.id}`);
-        if (!canvas || !track.audioBuffer) return;
-
-        const width = Math.floor(canvas.offsetWidth);
-        const height = Math.floor(canvas.offsetHeight);
-
-        // Canvas ainda sem layout (faixa recém-criada, aba oculta): desenhar
-        // agora pintaria num canvas 0x0 e a faixa ficaria muda pra sempre.
-        // Tenta de novo no próximo quadro, uma vez só.
-        if (!width || !height) {
-            if (!track._waveformRetry) {
-                track._waveformRetry = true;
-                requestAnimationFrame(() => {
-                    track._waveformRetry = false;
-                    this.drawWaveform(track);
-                });
-            }
-            return;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        const data = track.audioBuffer.getChannelData(0);
-        ctx.clearRect(0, 0, width, height);
-
-        const meio = height / 2;
-
-        // Linha de silêncio, pra dar referência visual do zero.
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
-        ctx.fillRect(0, Math.round(meio), width, 1);
-
-        // Branco quase sólido: o fundo do .waveform é um gradiente azul/roxo e
-        // a cor da faixa (azul na voz, roxo na trilha) sumia em cima dele.
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-
-        const amostrasPorPixel = data.length / width;
-        for (let px = 0; px < width; px++) {
-            const ini = Math.floor(px * amostrasPorPixel);
-            const fim = Math.min(Math.floor((px + 1) * amostrasPorPixel), data.length);
-            if (fim <= ini) continue;
-
-            let min = 1.0, max = -1.0;
-            for (let i = ini; i < fim; i++) {
-                const v = data[i];
-                if (v < min) min = v;
-                if (v > max) max = v;
-            }
-
-            const topo = meio - max * meio;
-            // Altura mínima de 1px: trecho em silêncio ainda marca a linha,
-            // senão o silêncio vira buraco e parece faixa cortada.
-            const altura = Math.max(1, (max - min) * meio);
-            ctx.fillRect(px, topo, 1, altura);
-        }
+        // A onda agora é desenhada POR CLIP na lane (desenharOndaDoClip).
+        // Mantido porque meia dúzia de pontos do arquivo chama drawWaveform
+        // depois de mexer no áudio — todos querem dizer "redesenha a faixa".
+        this.renderizarTimeline();
     }
 
     updateTrackName(trackId, name) {
@@ -2685,32 +2739,21 @@ class MiniDAW {
 
     // Zoom functions melhoradas
     zoomIn() {
-        this.globalZoom = Math.min(4, this.globalZoom + 0.25);
+        this.pxPorSegundo = Math.min(200, this.pxPorSegundo * 1.4);
+        this.renderizarTimeline();
         this.updateZoomIndicator();
-        this.applyZoomToAllTracks();
     }
 
     zoomOut() {
-        this.globalZoom = Math.max(0.5, this.globalZoom - 0.25);
+        this.pxPorSegundo = Math.max(6, this.pxPorSegundo / 1.4);
+        this.renderizarTimeline();
         this.updateZoomIndicator();
-        this.applyZoomToAllTracks();
     }
 
-    trackZoomIn(trackId) {
-        const track = this.tracks.find(t => t.id === trackId);
-        if (track) {
-            track.zoom = Math.min(4, track.zoom + 0.25);
-            this.updateTrackUI(track);
-        }
-    }
-
-    trackZoomOut(trackId) {
-        const track = this.tracks.find(t => t.id === trackId);
-        if (track) {
-            track.zoom = Math.max(0.5, track.zoom - 0.25);
-            this.updateTrackUI(track);
-        }
-    }
+    // Zoom por faixa não existe mais: a timeline tem UMA escala (senão "10s"
+    // teria tamanhos diferentes por faixa e arrastar entre elas não fecharia).
+    trackZoomIn() { this.zoomIn(); }
+    trackZoomOut() { this.zoomOut(); }
 
     updateZoomIndicator() {
         const indicator = document.getElementById('zoomIndicator');

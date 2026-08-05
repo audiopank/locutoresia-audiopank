@@ -692,6 +692,45 @@
                 gap: 1rem;
             }
         }
+
+        /* ── TIMELINE DE CLIPS ─────────────────────────────────────────────── */
+        .timeline-regua {
+            height: 26px; margin-bottom: 4px;
+            background: #0e1424; border: 1px solid #2a3350; border-radius: 6px;
+            position: relative; overflow: hidden;
+        }
+        .timeline-regua .marca {
+            position: absolute; top: 0; bottom: 0;
+            border-left: 1px solid rgba(255,255,255,.18);
+            color: #8b93a7; font-size: .62rem; padding-left: 3px;
+            pointer-events: none;
+        }
+        .clips-lane {
+            position: relative; height: 84px; overflow-x: auto; overflow-y: hidden;
+            background: linear-gradient(180deg, rgba(59,130,246,.08), rgba(168,85,247,.08));
+            border-radius: 6px;
+        }
+        .clips-lane .lane-conteudo { position: relative; height: 100%; }
+        .clip-bloco {
+            position: absolute; top: 4px; bottom: 4px;
+            border: 1px solid rgba(255,255,255,.35); border-radius: 5px;
+            background: rgba(20,26,46,.85); overflow: hidden;
+            cursor: grab; user-select: none;
+        }
+        .clip-bloco:active { cursor: grabbing; }
+        .clip-bloco.arrastando { opacity: .75; z-index: 10; box-shadow: 0 0 0 2px #ec4899; }
+        .clip-bloco canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+        .clip-alca {
+            position: absolute; top: 0; bottom: 0; width: 7px; z-index: 3;
+            cursor: ew-resize; background: rgba(236,72,153,0);
+        }
+        .clip-alca:hover { background: rgba(236,72,153,.55); }
+        .clip-alca.ini { left: 0; } .clip-alca.fim { right: 0; }
+        .clip-nome {
+            position: absolute; left: 8px; top: 2px; z-index: 2;
+            color: #e6e8f0; font-size: .6rem; pointer-events: none;
+            text-shadow: 0 1px 2px #000;
+        }
     </style>
 </head>
 <body>
@@ -862,6 +901,8 @@
             <input type="file" id="fileInput" multiple accept="audio/*" style="display: none;" onchange="handleFileSelect(event)">
         </div>
 
+        <div class="timeline-regua" id="timelineRegua"></div>
+
         <!-- Tracks Container -->
         <div id="tracksContainer">
             <!-- Tracks will be added here -->
@@ -972,7 +1013,7 @@
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/clip-model.js?v=1"></script>
-    <script src="/static/minidaw.js?v=26"></script>
+    <script src="/static/minidaw.js?v=27"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
