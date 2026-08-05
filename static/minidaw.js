@@ -2882,7 +2882,12 @@ class MiniDAW {
                 this.showNotification('Arraste sobre a onda pra marcar o trecho primeiro', 'warning');
                 return;
             }
-            track.clips = [ClipModel.manterTrecho(clip, s.ini, s.fim)];
+            // Escopo no CLIP alvo, não na faixa: os outros clips (vinheta,
+            // assinatura...) ficam onde estão — apagar tudo era o comportamento
+            // do mundo 1-faixa-1-arquivo e virou perda de dados no multi-clip.
+            track.clips = ClipModel.ordenarClips(
+                clips.filter(c => c.id !== clip.id)
+                     .concat([ClipModel.manterTrecho(clip, s.ini, s.fim)]));
         }
 
         this._sincronizarDerivados(track);
@@ -3370,7 +3375,7 @@ class MiniDAW {
     }
 
     // Cut track at position
-    async cutTrackAtTime(trackId, cutTime) {
+    cutTrackAtTime(trackId, cutTime) {
         // Legado: dividir criava outra FAIXA ("Parte 2"). No modelo de clips a
         // divisão acontece DENTRO da faixa — mesmo canal, dois objetos.
         this.selecoes = this.selecoes || {};
