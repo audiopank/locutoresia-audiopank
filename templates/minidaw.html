@@ -861,8 +861,23 @@
             </button>
         </div>
 
-        <!-- Timeline -->
-        <div class="timeline-container">
+        <!-- Drop Zone -->
+        <div class="drop-zone" id="dropZone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <h4>Arraste arquivos de áudio aqui</h4>
+            <p class="text-muted">MP3, WAV, OGG, M4A suportados</p>
+            <button class="btn btn-daw mt-3" onclick="document.getElementById('fileInput').click()">
+                <i class="fas fa-folder-open me-1"></i>
+                Escolher Arquivos
+            </button>
+            <input type="file" id="fileInput" multiple accept="audio/*" style="display: none;" onchange="handleFileSelect(event)">
+        </div>
+
+        <!-- Transporte COLADO nos tracks (pedido do produtor): contador de
+             tempo, zoom e salvar ficam logo acima da régua — antes moravam no
+             topo da página e com 2-3 faixas saíam da vista. Os divs legados
+             timeline-ruler/timelineTracks (nunca usados pelo JS) saíram junto. -->
+        <div class="timeline-container" style="margin-bottom: .5rem;">
             <div class="timeline-header">
                 <div class="playback-controls-enhanced">
                     <button class="control-btn" onclick="togglePlayback()" title="Play/Pause (Espaço)">
@@ -901,22 +916,6 @@
                     </button>
                 </div>
             </div>
-            <div class="timeline-ruler"></div>
-            <div class="timeline-tracks" id="timelineTracks">
-                <!-- Tracks will be added here -->
-            </div>
-        </div>
-
-        <!-- Drop Zone -->
-        <div class="drop-zone" id="dropZone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
-            <i class="fas fa-cloud-upload-alt"></i>
-            <h4>Arraste arquivos de áudio aqui</h4>
-            <p class="text-muted">MP3, WAV, OGG, M4A suportados</p>
-            <button class="btn btn-daw mt-3" onclick="document.getElementById('fileInput').click()">
-                <i class="fas fa-folder-open me-1"></i>
-                Escolher Arquivos
-            </button>
-            <input type="file" id="fileInput" multiple accept="audio/*" style="display: none;" onchange="handleFileSelect(event)">
         </div>
 
         <div class="timeline-regua" id="timelineRegua"></div>
