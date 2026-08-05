@@ -3357,10 +3357,8 @@ def noticias():
     """Página de Notícias"""
     return render_template('noticias.html')
 
-@app.route('/busca')
-def busca():
-    """Página de Busca"""
-    return render_template('busca.html')
+# Rota /busca removida (05/08/2026): a página era um mockup sem backend —
+# resultados fixos no HTML e busca que só fazia console.log.
 
 @app.route('/painel')
 def painel():
@@ -4259,7 +4257,6 @@ def test_routes():
     try:
         routes_status = {
             "/": {"status": "ok", "message": "Página principal funcionando"},
-            "/busca": {"status": "ok", "message": "Página de busca funcionando"},
             "/noticias": {"status": "ok", "message": "Página de notícias funcionando"},
             "/painel": {"status": "ok", "message": "Página do painel funcionando"},
             "/contato": {"status": "ok", "message": "Página de contato funcionando"},
