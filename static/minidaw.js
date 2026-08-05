@@ -3460,7 +3460,9 @@ class MiniDAW {
                     if (!indicePorBuffer.has(c.buffer)) {
                         const idx = td.buffers.length;
                         indicePorBuffer.set(c.buffer, idx);
-                        if (c.buffer === t.audioBuffer && t.audioUrl && /^https?:/i.test(t.audioUrl)) {
+                        const urlEstavel = t.audioUrl && /^https?:/i.test(t.audioUrl)
+                            && !/\/object\/sign\/|token=/i.test(t.audioUrl);   // signed URL de 1h NÃO é referência estável
+                        if (c.buffer === t.audioBuffer && urlEstavel) {
                             // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
                             // /object/public/...). NÃO reenvia — evita reupload de arquivo
                             // grande (era o gargalo) e aponta direto pra URL pública.
@@ -3567,6 +3569,10 @@ class MiniDAW {
             const proj = d.project;
 
             this.clearAllTracks(true);   // true = sem confirmação
+            // Snapshots apontam pra faixas que não existem mais — Ctrl+Z
+            // depois de abrir projeto diria "Desfeito" sem fazer nada.
+            this.undoClips = [];
+            this.redoClips = [];
 
             for (const td of (proj.tracks || [])) {
                 this.addTrack(td.type || 'music');
@@ -3588,8 +3594,14 @@ class MiniDAW {
                     for (const b of td.buffers) {
                         if (!b.audio_url) { buffers.push(null); continue; }
                         const resp = await fetch(b.audio_url);
+                        if (!resp.ok) { buffers.push(null); continue; }   // URL expirada/inválida — vira aviso abaixo, não EncodingError
                         const arr = await resp.arrayBuffer();
                         buffers.push(await this.audioContext.decodeAudioData(arr));
+                    }
+                    if (buffers.some(b => !b)) {
+                        // Clip sem áudio assinado seria descartado em silêncio e
+                        // um save em seguida tornaria a perda PERMANENTE — avisa.
+                        this.showNotification(`Atenção: parte do áudio de "${td.name}" não pôde ser baixada — NÃO salve por cima antes de conferir`, 'warning');
                     }
                     track.clips = td.clips
                         .filter(c => buffers[c.buffer])
