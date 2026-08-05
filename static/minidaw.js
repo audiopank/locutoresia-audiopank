@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 29;
+const MINIDAW_VERSAO = 30;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -920,6 +920,56 @@ class MiniDAW {
                 }
                 this.aposMudancaDeClips([track]);
             }
+        };
+        document.addEventListener('mousemove', mover);
+        document.addEventListener('mouseup', soltar);
+    }
+
+    // ── TRIM PELAS BORDAS (não-destrutivo) ───────────────────────────────
+    // Encurtar esconde áudio (offset/duracao); esticar de volta recupera —
+    // o arquivo nunca muda. A validação de vizinho usa temSobreposicao:
+    // borda não invade clip do lado.
+    iniciarTrim(ev, track, clip, borda) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (this.clipDrag) return;      // arrasto em andamento (mouseup perdido)
+        const el = document.getElementById(`clip_el_${clip.id}`);
+        if (!el) return;
+        const canvas = el.querySelector('canvas');
+
+        const mover = (e) => {
+            if (!(e.buttons & 1)) return soltar();   // mouseup fora da janela
+            const lane = document.getElementById(`lane_${track.id}`);
+            if (!lane) return;
+            const conteudo = lane.querySelector('.lane-conteudo');
+            if (!conteudo) return;
+            const r = conteudo.getBoundingClientRect();
+            const t = (e.clientX - r.left) / this.pxPorSegundo;
+
+            // Imã nas bordas dos outros clips + 0 + cursor de reprodução.
+            const alvos = [0, this.currentTime || 0];
+            for (const tr of this.tracks) {
+                for (const c of this._clipsDaFaixa(tr)) {
+                    if (c.id === clip.id) continue;
+                    alvos.push(c.inicio, ClipModel.fimDoClip(c));
+                }
+            }
+            const ajustado = ClipModel.calcularSnap(t, alvos, 8 / this.pxPorSegundo);
+
+            const novo = ClipModel.aplicarTrim(clip, borda, ajustado);
+            // Borda não pode invadir o clip vizinho.
+            if (ClipModel.temSobreposicao(this._clipsDaFaixa(track), Object.assign({}, novo, { id: clip.id }))) return;
+
+            Object.assign(clip, novo, { id: clip.id });   // muta in-place, id fica
+            el.style.left = (clip.inicio * this.pxPorSegundo) + 'px';
+            el.style.width = Math.max(8, clip.duracao * this.pxPorSegundo) + 'px';
+            this.desenharOndaDoClip(track, clip, canvas);
+        };
+        const soltar = () => {
+            document.removeEventListener('mousemove', mover);
+            document.removeEventListener('mouseup', soltar);
+            this._sincronizarDerivados(track);
+            this.aposMudancaDeClips([track]);
         };
         document.addEventListener('mousemove', mover);
         document.addEventListener('mouseup', soltar);
