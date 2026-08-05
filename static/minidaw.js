@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 30;
+const MINIDAW_VERSAO = 31;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -31,6 +31,8 @@ class MiniDAW {
         // cada faixa e arrastar entre faixas não teria sentido geométrico.
         this.pxPorSegundo = 24;
         this.clipDrag = null;     // estado do arrasto em andamento (Task 7)
+        this.cursorTempo = null;  // tempo do projeto sob o mouse (linha de corte)
+        this.cursorLane = null;   // trackId da lane sob o mouse
         this.globalZoom = 1;
         this.autoFadeEnabled = true;
         // ⚠️ autoFadeDuration NÃO está ligado em nada — o código usa 1.05 fixo em
@@ -138,6 +140,20 @@ class MiniDAW {
         // é o onmousedown do próprio .waveform-container (iniciarSelecao), que
         // suporta arrastar pra marcar início e fim. Manter os dois faria o
         // clique cortar a faixa no meio do arrasto.
+
+        // Atalhos de precisão (pedido do produtor, estilo Samplitude):
+        // D ou T = dividir o clip sob a linha de corte, no ponto exato.
+        // Não dispara digitando em campo de texto (nome da faixa, roteiro...).
+        document.addEventListener('keydown', (e) => {
+            const alvo = e.target;
+            if (alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const k = e.key.toLowerCase();
+            if ((k === 'd' || k === 't') && this.cursorLane != null && this.cursorTempo != null) {
+                e.preventDefault();
+                this.cutTrackAtTime(this.cursorLane, this.cursorTempo);
+            }
+        });
     }
 
     addTrack(type = 'voice') {
@@ -752,6 +768,19 @@ class MiniDAW {
         regua.innerHTML = html;
     }
 
+    // Posiciona a linha de corte em TODAS as lanes no tempo sob o mouse.
+    desenharLinhaDeCorte() {
+        const t = this.cursorTempo;
+        const px = (t != null) ? (t * this.pxPorSegundo) + 'px' : null;
+        document.querySelectorAll('.clips-lane .linha-corte').forEach(linha => {
+            if (px == null) { linha.style.display = 'none'; return; }
+            linha.style.display = 'block';
+            linha.style.left = px;
+            const rotulo = linha.querySelector('.linha-tempo');
+            if (rotulo) rotulo.textContent = t.toFixed(2) + 's';
+        });
+    }
+
     // Redesenha os blocos de clip de UMA faixa dentro da lane dela.
     renderizarClips(track) {
         const lane = document.getElementById(`lane_${track.id}`);
@@ -770,9 +799,32 @@ class MiniDAW {
                 this._syncandoScroll = false;
             });
         }
+        // Linha de corte: uma por lane, seguindo o mouse em TODAS as lanes ao
+        // mesmo tempo — o produtor enxerga o ponto exato antes do D/T dividir.
+        if (!lane._linhaCorte) {
+            lane._linhaCorte = true;
+            lane.addEventListener('mousemove', (e) => {
+                this.cursorTempo = this._tempoNoPonto(e, track);
+                this.cursorLane = track.id;
+                this.desenharLinhaDeCorte();
+            });
+            lane.addEventListener('mouseleave', () => {
+                if (this.cursorLane === track.id) {
+                    this.cursorTempo = null;
+                    this.cursorLane = null;
+                    this.desenharLinhaDeCorte();
+                }
+            });
+        }
         const conteudo = lane.querySelector('.lane-conteudo');
         if (!conteudo) return;
         conteudo.style.width = this._larguraDaTimeline() + 'px';
+        if (!conteudo.querySelector('.linha-corte')) {
+            const linha = document.createElement('div');
+            linha.className = 'linha-corte';
+            linha.innerHTML = '<span class="linha-tempo"></span>';
+            conteudo.appendChild(linha);
+        }
         // Remove só os blocos de clip — as guias da Tesoura (selreg_/selini_/
         // selfim_) moram na mesma lane e precisam sobreviver ao redesenho.
         conteudo.querySelectorAll('.clip-bloco').forEach(el => el.remove());
