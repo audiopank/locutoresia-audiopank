@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 25;
+const MINIDAW_VERSAO = 26;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -699,8 +699,11 @@ class MiniDAW {
         const sens = (g.sensibilidade != null ? g.sensibilidade : 12) / 100;
         // hold 0.25s: pausa entre frases é curta; o 0.70 do ducking juntaria
         // tudo num bloco só e o gate não fecharia em lugar nenhum.
-        const trechos = MixEngine.detectarTrechosDeVoz([track], 0.25, sens);
-        MixEngine.aplicarGate(param, trechos, track.duration, quando, g);
+        // Por CLIPS: os trechos saem já na posição do projeto, e o gate fecha
+        // também nos BURACOS entre clips (não tem fala lá mesmo).
+        const clips = this._clipsDaFaixa(track);
+        const trechos = MixEngine.detectarTrechosDeClips(clips, 0.25, sens);
+        MixEngine.aplicarGate(param, trechos, this._fimDaFaixa(track), quando, g);
         return trechos.length;
     }
 
@@ -852,6 +855,13 @@ class MiniDAW {
         const track = this.tracks.find(t => t.id === trackId);
         if (track) {
             track.fadeIn = parseFloat(fadeIn);
+            // Fades agora moram no CLIP: o slider da faixa controla o primeiro
+            // clip (fade de entrada) — comportamento idêntico com 1 clip.
+            const clips = this._clipsDaFaixa(track);
+            if (clips.length) {
+                ClipModel.ordenarClips(clips)[0].fadeIn = track.fadeIn;
+            }
+            if (this.isPlaying) { this.stop(); this.play(); }   // reagenda sources
             this.saveToLocalStorage();
         }
     }
@@ -860,6 +870,12 @@ class MiniDAW {
         const track = this.tracks.find(t => t.id === trackId);
         if (track) {
             track.fadeOut = parseFloat(fadeOut);
+            const clips = this._clipsDaFaixa(track);
+            if (clips.length) {
+                const ord = ClipModel.ordenarClips(clips);
+                ord[ord.length - 1].fadeOut = track.fadeOut;
+            }
+            if (this.isPlaying) { this.stop(); this.play(); }
             this.saveToLocalStorage();
         }
     }
@@ -1016,22 +1032,46 @@ class MiniDAW {
         }
     }
 
-    calculateDuration() {
-        const voiceTracks = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
-        const musicTracks = this.tracks.filter(t => t.type === 'music' && t.audioBuffer);
-        
-        let maxDuration = 0;
-        
-        if (voiceTracks.length > 0) {
-            // If there are voice tracks: max voice duration + 1.05s
-            const maxVoiceDuration = Math.max(...voiceTracks.map(t => t.duration), 0);
-            maxDuration = maxVoiceDuration + 1.05;
-        } else {
-            // Otherwise, just the max of all tracks
-            maxDuration = Math.max(...this.tracks.filter(t => t.audioBuffer).map(t => t.duration), 0);
+    // ── CLIPS DA FAIXA (migração preguiçosa) ─────────────────────────────
+    // O resto do arquivo seta track.audioBuffer em vários pontos (upload, TTS,
+    // biblioteca, projeto reaberto). Em vez de caçar todos, o modelo de clips
+    // nasce AQUI: na primeira leitura após o buffer mudar, vira 1 clip cobrindo
+    // o arquivo. Operações de timeline (dividir/mover/trim) gravam em
+    // track.clips e carimbam _clipsBuffer — enquanto o buffer não trocar de
+    // novo, os clips editados valem.
+    _clipsDaFaixa(track) {
+        if (!track.audioBuffer) { track.clips = []; return track.clips; }
+        if (!track.clips || !track.clips.length || track._clipsBuffer !== track.audioBuffer) {
+            const c = ClipModel.clipInteiro(track.audioBuffer);
+            c.fadeIn = track.fadeIn || 0;
+            c.fadeOut = track.fadeOut || 0;
+            track.clips = [c];
+            track._clipsBuffer = track.audioBuffer;
         }
-        
-        this.duration = maxDuration;
+        return track.clips;
+    }
+
+    // Fim da última posição de áudio da faixa (tempo do PROJETO). Substitui o
+    // track.duration "do arquivo" nos cálculos de duração/gate/fade.
+    _fimDaFaixa(track) {
+        return ClipModel.fimDaFaixa(this._clipsDaFaixa(track));
+    }
+
+    // Todos os clips de VOZ do projeto, no formato do detectarTrechosDeClips.
+    _clipsDeVoz() {
+        const clips = [];
+        for (const t of this.tracks) {
+            if (t.type !== 'voice' || !t.audioBuffer) continue;
+            for (const c of this._clipsDaFaixa(t)) clips.push(c);
+        }
+        return clips;
+    }
+
+    calculateDuration() {
+        const faixas = this.tracks
+            .filter(t => t.audioBuffer)
+            .map(t => ({ type: t.type, clips: this._clipsDaFaixa(t) }));
+        this.duration = ClipModel.duracaoDoProjeto(faixas);
         this.updateDuration();
     }
 
@@ -1091,27 +1131,21 @@ class MiniDAW {
         }
 
         const nivel = track.volume / 100;
-        if (track.fadeIn > 0) {
-            g.setValueAtTime(0, base);
-            g.linearRampToValueAtTime(nivel, base + track.fadeIn);
-        } else {
-            g.setValueAtTime(nivel, base);
-        }
+        // Fades agora são POR CLIP e vivem no clipGain de cada source (ver
+        // playTrack) — aqui fica só o nível da faixa + ducking + fade final.
+        g.setValueAtTime(nivel, base);
 
-        const voiceTracks = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
-        if (track.type === 'music' && voiceTracks.length > 0) {
-            const maxVoiceDuration = Math.max(...voiceTracks.map(t => t.duration), 0);
-            const trechosDeVoz = this.detectarTrechosDeVoz(voiceTracks);
-            const ducou = this.aplicarDucking(g, trechosDeVoz, nivel, maxVoiceDuration, base);
+        const haVoz = this.tracks.some(t => t.type === 'voice' && t.audioBuffer);
+        if (track.type === 'music' && haVoz) {
+            const clipsDeVoz = this._clipsDeVoz();
+            const fimDaVoz = ClipModel.fimDaFaixa(clipsDeVoz);
+            const trechosDeVoz = MixEngine.detectarTrechosDeClips(clipsDeVoz, this.duckHold);
+            const ducou = this.aplicarDucking(g, trechosDeVoz, nivel, fimDaVoz, base);
             if (!ducou) {
-                g.linearRampToValueAtTime(nivel, base + maxVoiceDuration);
+                g.linearRampToValueAtTime(nivel, base + fimDaVoz);
             }
             // Fade final: some 1.05s depois do fim da voz (igual ao export).
-            g.linearRampToValueAtTime(0, base + maxVoiceDuration + 1.05);
-        } else if (track.fadeOut > 0) {
-            const fadeOutStart = track.duration - track.fadeOut;
-            g.linearRampToValueAtTime(nivel, base + fadeOutStart);
-            g.linearRampToValueAtTime(0, base + track.duration);
+            g.linearRampToValueAtTime(0, base + fimDaVoz + 1.05);
         }
     }
 
@@ -1143,35 +1177,55 @@ class MiniDAW {
         }
         if (!nodes || !track.audioBuffer) return;
 
-        // Create source node
-        const sourceNode = this.audioContext.createBufferSource();
-        sourceNode.buffer = track.audioBuffer;
-
         // Base de tempo: o instante (no relógio do AudioContext) em que o t=0
-        // do PROJETO aconteceu. this.currentTime é a posição no projeto (0 do
-        // início; >0 retomando do meio) — sem esse desconto, retomar do meio
-        // agendava o ducking como se a música partisse do zero, e a trilha
-        // abaixava nos momentos errados.
+        // do PROJETO aconteceu (ver comentário do agendarVolumeDaFaixa).
         const base = this.audioContext.currentTime - (this.currentTime || 0);
         this.playbackBase = base;
+
+        // Um BufferSource POR CLIP, cada um com seu clipGain (fades do clip).
+        // O clipGain é separado do gainNode da faixa de propósito: fades de
+        // clip e ducking da faixa no MESMO AudioParam brigariam (regra da casa).
+        nodes.sourceNodes = nodes.sourceNodes || [];
+        const agora = this.currentTime || 0;
+        for (const clip of this._clipsDaFaixa(track)) {
+            const fimClip = ClipModel.fimDoClip(clip);
+            if (fimClip <= agora) continue;               // clip já passou
+
+            const source = this.audioContext.createBufferSource();
+            source.buffer = clip.buffer;
+
+            const clipGain = this.audioContext.createGain();
+            const g = clipGain.gain;
+            g.setValueAtTime(1, 0);
+            if (clip.fadeIn > 0) {
+                g.setValueAtTime(0, Math.max(0, base + clip.inicio));
+                g.linearRampToValueAtTime(1, base + clip.inicio + clip.fadeIn);
+            }
+            if (clip.fadeOut > 0) {
+                g.setValueAtTime(1, Math.max(0, base + fimClip - clip.fadeOut));
+                g.linearRampToValueAtTime(0, base + fimClip);
+            }
+
+            source.connect(clipGain);
+            clipGain.connect(nodes.inputNode);
+
+            if (agora > clip.inicio) {
+                // Retomando no meio do clip: entra já andado.
+                source.start(0, clip.offset + (agora - clip.inicio), fimClip - agora);
+            } else {
+                source.start(base + clip.inicio, clip.offset, clip.duracao);
+            }
+            nodes.sourceNodes.push(source);
+        }
 
         // Gate e volume/ducking: agendas centralizadas — e as duas começam
         // CANCELANDO a agenda anterior (ver agendarVolumeDaFaixa).
         this.agendarGate(track, nodes, base);
         this.agendarVolumeDaFaixa(track, nodes, base);
 
-        // Connect to effect chain: source -> EQ -> Compressor -> ...
-        sourceNode.connect(nodes.inputNode);
-        sourceNode.start(0, this.currentTime);
-        
-        nodes.sourceNode = sourceNode;
-
-        // Handle end
-        sourceNode.onended = () => {
-            if (this.isPlaying && this.currentTime >= this.duration) {
-                this.stop();
-            }
-        };
+        // O fim do playback é vigiado pelo updatePlaybackTime (currentTime >=
+        // duration) — onended por source não serve mais: cada clip acaba numa
+        // hora e o primeiro a acabar pararia o projeto inteiro.
     }
 
     // Mantém os dois botões de play (topo e o de baixo das faixas) no mesmo
@@ -1190,14 +1244,14 @@ class MiniDAW {
 
         this.setPlayIcon('fas fa-play');
 
-        // Stop all tracks
+        // Stop all clip sources
         this.trackNodes.forEach(nodes => {
-            if (nodes.sourceNode) {
-                try {
-                    nodes.sourceNode.stop();
-                } catch (e) {
-                    // Already stopped
-                }
+            for (const s of (nodes.sourceNodes || [])) {
+                try { s.stop(); } catch (e) { /* already stopped */ }
+            }
+            nodes.sourceNodes = [];
+            if (nodes.sourceNode) {           // legado (não deve existir mais)
+                try { nodes.sourceNode.stop(); } catch (e) { /* ok */ }
                 nodes.sourceNode = null;
             }
         });
