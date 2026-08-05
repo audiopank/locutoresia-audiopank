@@ -31,6 +31,7 @@ class MiniDAW {
         // cada faixa e arrastar entre faixas não teria sentido geométrico.
         this.pxPorSegundo = 24;
         this.clipDrag = null;     // estado do arrasto em andamento (Task 7)
+        this.clipTrim = false;    // trim em andamento (guard dos atalhos)
         this.cursorTempo = null;  // tempo do projeto sob o mouse (linha de corte)
         this.cursorLane = null;   // trackId da lane sob o mouse
         // Undo/redo de CLIPS (só posições/cortes/trims — efeitos ficam fora;
@@ -152,6 +153,9 @@ class MiniDAW {
         document.addEventListener('keydown', (e) => {
             const alvo = e.target;
             if (alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable)) return;
+            // Gesto de mouse em andamento: mexer nos clips por baixo dele
+            // cometeria um objeto órfão no soltar. Atalhos esperam.
+            if (this.clipDrag || this.clipTrim) return;
             const k = e.key.toLowerCase();
             // Ctrl+Z/Ctrl+Y (e Ctrl+Shift+Z) desfazem/refazem edições de clips.
             // Fica ANTES do guard geral de ctrl/meta/alt porque aquele guard
@@ -1003,6 +1007,7 @@ class MiniDAW {
         if (this.clipDrag) return;      // arrasto em andamento (mouseup perdido)
         const el = document.getElementById(`clip_el_${clip.id}`);
         if (!el) return;
+        this.clipTrim = true;
         const canvas = el.querySelector('canvas');
         let moveu = false;
         const snapshotPreTrim = this._snapshotClips();
@@ -1037,6 +1042,7 @@ class MiniDAW {
             this.desenharOndaDoClip(track, clip, canvas);
         };
         const soltar = () => {
+            this.clipTrim = false;
             document.removeEventListener('mousemove', mover);
             document.removeEventListener('mouseup', soltar);
             if (!moveu) return;      // clique seco: nada mudou, nada a fazer
@@ -1135,8 +1141,13 @@ class MiniDAW {
         for (const entrada of snap) {
             const track = this.tracks.find(t => t.id === entrada.trackId);
             if (!track) continue;   // faixa removida depois do snapshot: ignora
+            const tinhaLane = !!document.getElementById(`lane_${track.id}`);
             track.clips = entrada.clips.map(c => Object.assign({}, c));
             this._sincronizarDerivados(track);
+            // Card decide lane vs drop-zone no HTML estático do createTrackUI:
+            // se o restore mudou o estado (vazia↔com clips), reconstrói o card,
+            // senão o undo fica certo nos dados e invisível na tela.
+            if (tinhaLane !== (track.clips.length > 0)) this.updateTrackUI(track);
             afetadas.push(track);
         }
         this.aposMudancaDeClips(afetadas);
