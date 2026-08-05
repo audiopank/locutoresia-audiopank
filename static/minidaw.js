@@ -756,6 +756,20 @@ class MiniDAW {
     renderizarClips(track) {
         const lane = document.getElementById(`lane_${track.id}`);
         if (!lane) return;
+        if (!lane._scrollSync) {
+            lane._scrollSync = true;
+            // Timeline tem UMA escala; o scroll também precisa ser um só —
+            // lane rolada sozinha desalinha da régua e mata o arrasto entre faixas.
+            lane.addEventListener('scroll', () => {
+                if (this._syncandoScroll) return;
+                this._syncandoScroll = true;
+                const x = lane.scrollLeft;
+                document.querySelectorAll('.clips-lane').forEach(l => { if (l !== lane) l.scrollLeft = x; });
+                const regua = document.getElementById('timelineRegua');
+                if (regua) regua.scrollLeft = x;
+                this._syncandoScroll = false;
+            });
+        }
         const conteudo = lane.querySelector('.lane-conteudo');
         if (!conteudo) return;
         conteudo.style.width = this._larguraDaTimeline() + 'px';
@@ -770,9 +784,12 @@ class MiniDAW {
             el.style.width = Math.max(8, clip.duracao * this.pxPorSegundo) + 'px';
             el.innerHTML = `
                 <canvas></canvas>
-                <span class="clip-nome">${track.name}</span>
                 <div class="clip-alca ini" data-borda="ini"></div>
                 <div class="clip-alca fim" data-borda="fim"></div>`;
+            const nome = document.createElement('span');
+            nome.className = 'clip-nome';
+            nome.textContent = track.name;   // textContent: nome é DADO, não HTML (XSS recorrente da casa)
+            el.appendChild(nome);
             el.addEventListener('mousedown', (ev) => this.mousedownClip(ev, track.id, clip.id));
             conteudo.appendChild(el);
             this.desenharOndaDoClip(track, clip, el.querySelector('canvas'));
@@ -782,7 +799,9 @@ class MiniDAW {
     // Waveform da JANELA do clip (offset..offset+duracao) — mesmo algoritmo
     // de envelope min/max por coluna do drawWaveform clássico.
     desenharOndaDoClip(track, clip, canvas) {
-        if (!canvas || !clip.buffer) return;
+        // isConnected: o retry por RAF não pode continuar pra sempre se o
+        // bloco foi removido do DOM (renderizarClips recria tudo a cada redesenho).
+        if (!canvas || !canvas.isConnected || !clip.buffer) return;
         const width = Math.floor(canvas.offsetWidth);
         const height = Math.floor(canvas.offsetHeight);
         if (!width || !height) {
@@ -821,12 +840,24 @@ class MiniDAW {
 
     // Redesenha timeline inteira (régua + todas as lanes). Chamar depois de
     // qualquer mudança de clip, zoom ou duração.
-    renderizarTimeline() {
+    _renderizarTimelineAgora() {
         this.calculateDuration();
         this.desenharRegua();
         for (const t of this.tracks) {
             if (t.audioBuffer) this.renderizarClips(t);
         }
+    }
+
+    // Coalescência: várias chamadas no mesmo tick (import, updateTrackUI,
+    // drawWaveform legado) viram UM redesenho no próximo quadro — redesenhar a
+    // timeline inteira 3x por import era só desperdício.
+    renderizarTimeline() {
+        if (this._timelineAgendada) return;
+        this._timelineAgendada = true;
+        requestAnimationFrame(() => {
+            this._timelineAgendada = false;
+            this._renderizarTimelineAgora();
+        });
     }
 
     // ── FORMA DE ONDA ────────────────────────────────────────────────────
