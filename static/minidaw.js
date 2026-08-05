@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 31;
+const MINIDAW_VERSAO = 32;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -33,6 +33,11 @@ class MiniDAW {
         this.clipDrag = null;     // estado do arrasto em andamento (Task 7)
         this.cursorTempo = null;  // tempo do projeto sob o mouse (linha de corte)
         this.cursorLane = null;   // trackId da lane sob o mouse
+        // Undo/redo de CLIPS (só posições/cortes/trims — efeitos ficam fora;
+        // Encurtar Pausas tem o próprio Desfazer). Snapshots são baratos:
+        // cópia rasa dos objetos clip, buffers por referência.
+        this.undoClips = [];      // pilha de snapshots (cap 30)
+        this.redoClips = [];
         this.globalZoom = 1;
         this.autoFadeEnabled = true;
         // ⚠️ autoFadeDuration NÃO está ligado em nada — o código usa 1.05 fixo em
@@ -147,8 +152,17 @@ class MiniDAW {
         document.addEventListener('keydown', (e) => {
             const alvo = e.target;
             if (alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable)) return;
-            if (e.ctrlKey || e.metaKey || e.altKey) return;
             const k = e.key.toLowerCase();
+            // Ctrl+Z/Ctrl+Y (e Ctrl+Shift+Z) desfazem/refazem edições de clips.
+            // Fica ANTES do guard geral de ctrl/meta/alt porque aquele guard
+            // existe pra deixar D/T (sem modificador) passarem batido — aqui é
+            // o oposto: só entra quando HÁ ctrl/meta.
+            if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                if (k === 'z' && !e.shiftKey) { e.preventDefault(); this.desfazerClips(); return; }
+                if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); this.refazerClips(); return; }
+                return;   // outros Ctrl+... seguem pro navegador (ex.: Ctrl+C)
+            }
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
             if ((k === 'd' || k === 't') && this.cursorLane != null && this.cursorTempo != null) {
                 e.preventDefault();
                 this.cutTrackAtTime(this.cursorLane, this.cursorTempo);
@@ -910,6 +924,7 @@ class MiniDAW {
         if (!el) return;
         const x0 = ev.clientX, y0 = ev.clientY;
         const inicioOriginal = clip.inicio;
+        const snapshotPreDrag = this._snapshotClips();
         this.clipDrag = { track, clip, moveu: false };
         el.classList.add('arrastando');
 
@@ -960,6 +975,7 @@ class MiniDAW {
             document.querySelectorAll('.clips-lane').forEach(l => l.style.outline = '');
             const d = this.clipDrag; this.clipDrag = null;
             if (!d || !d.moveu) return;
+            this._guardarUndo(snapshotPreDrag);
 
             if (d.trackAlvoId && d.trackAlvoId !== track.id) {
                 this.moverClipParaFaixa(track, clip, d.trackAlvoId, inicioOriginal);
@@ -989,6 +1005,7 @@ class MiniDAW {
         if (!el) return;
         const canvas = el.querySelector('canvas');
         let moveu = false;
+        const snapshotPreTrim = this._snapshotClips();
 
         const mover = (e) => {
             if (!(e.buttons & 1)) return soltar();   // mouseup fora da janela
@@ -1023,6 +1040,7 @@ class MiniDAW {
             document.removeEventListener('mousemove', mover);
             document.removeEventListener('mouseup', soltar);
             if (!moveu) return;      // clique seco: nada mudou, nada a fazer
+            this._guardarUndo(snapshotPreTrim);
             this._sincronizarDerivados(track);
             this.aposMudancaDeClips([track]);
         };
@@ -1094,6 +1112,54 @@ class MiniDAW {
             }
         }
         this.saveToLocalStorage();
+    }
+
+    // ── UNDO/REDO DE CLIPS ───────────────────────────────────────────────
+    _snapshotClips() {
+        return this.tracks.map(t => ({
+            trackId: t.id,
+            clips: (t.clips || []).map(c => Object.assign({}, c))
+        }));
+    }
+
+    // Empilha um snapshot tirado ANTES da mutação. Sempre zera o redo:
+    // edição nova invalida o "refazer" (comportamento padrão de editor).
+    _guardarUndo(snapshot) {
+        this.undoClips.push(snapshot);
+        if (this.undoClips.length > 30) this.undoClips.shift();
+        this.redoClips = [];
+    }
+
+    _restaurarSnapshotClips(snap) {
+        const afetadas = [];
+        for (const entrada of snap) {
+            const track = this.tracks.find(t => t.id === entrada.trackId);
+            if (!track) continue;   // faixa removida depois do snapshot: ignora
+            track.clips = entrada.clips.map(c => Object.assign({}, c));
+            this._sincronizarDerivados(track);
+            afetadas.push(track);
+        }
+        this.aposMudancaDeClips(afetadas);
+    }
+
+    desfazerClips() {
+        if (!this.undoClips.length) {
+            this.showNotification('Nada para desfazer', 'info');
+            return;
+        }
+        this.redoClips.push(this._snapshotClips());
+        this._restaurarSnapshotClips(this.undoClips.pop());
+        this.showNotification('Desfeito', 'info');
+    }
+
+    refazerClips() {
+        if (!this.redoClips.length) {
+            this.showNotification('Nada para refazer', 'info');
+            return;
+        }
+        this.undoClips.push(this._snapshotClips());
+        this._restaurarSnapshotClips(this.redoClips.pop());
+        this.showNotification('Refeito', 'info');
     }
 
     // Redesenha timeline inteira (régua + todas as lanes). Chamar depois de
@@ -2967,6 +3033,7 @@ class MiniDAW {
         if (!track || !track.audioBuffer || !s) return;
 
         const clips = this._clipsDaFaixa(track);
+        const snapshotPreCorte = this._snapshotClips();
         const clip = ClipModel.clipNoPonto(clips, s.ini);
         if (!clip) {
             this.showNotification('Marque em cima de um clip (a marcação caiu num buraco)', 'warning');
@@ -2979,6 +3046,7 @@ class MiniDAW {
                 this.showNotification('Muito perto da borda pra dividir', 'warning');
                 return;
             }
+            this._guardarUndo(snapshotPreCorte);
             track.clips = ClipModel.ordenarClips(
                 clips.filter(c => c.id !== clip.id).concat(partes));
         } else if (modo === 'remover') {
@@ -2991,12 +3059,14 @@ class MiniDAW {
                 this.showNotification('Isso apagaria a faixa inteira', 'warning');
                 return;
             }
+            this._guardarUndo(snapshotPreCorte);
             track.clips = novos;
         } else {   // manter
             if (s.fim - s.ini < 0.01) {
                 this.showNotification('Arraste sobre a onda pra marcar o trecho primeiro', 'warning');
                 return;
             }
+            this._guardarUndo(snapshotPreCorte);
             // Escopo no CLIP alvo, não na faixa: os outros clips (vinheta,
             // assinatura...) ficam onde estão — apagar tudo era o comportamento
             // do mundo 1-faixa-1-arquivo e virou perda de dados no multi-clip.
