@@ -999,18 +999,23 @@ class MiniDAW {
         if (index !== -1) {
             const track = this.tracks[index];
             
-            // Stop audio if playing
+            // Stop audio if playing. Sources agora são POR CLIP (array
+            // sourceNodes) — parar só o sourceNode antigo deixava o áudio
+            // tocando até o fim do clip depois de remover a faixa.
             if (track.audioBuffer) {
                 const nodes = this.trackNodes.get(trackId);
-                if (nodes && nodes.sourceNode) {
-                    try {
-                        nodes.sourceNode.stop();
-                    } catch (e) {
-                        // Already stopped
+                if (nodes) {
+                    for (const s of (nodes.sourceNodes || [])) {
+                        try { s.stop(); } catch (e) { /* já parado */ }
+                    }
+                    nodes.sourceNodes = [];
+                    if (nodes.sourceNode) {
+                        try { nodes.sourceNode.stop(); } catch (e) { /* já parado */ }
+                        nodes.sourceNode = null;
                     }
                 }
             }
-            
+
             // Clean up nodes
             this.trackNodes.delete(trackId);
             
@@ -1346,18 +1351,23 @@ class MiniDAW {
         // Clear all tracks sem confirmacao
         const tracksToRemove = [...this.tracks];
         tracksToRemove.forEach(track => {
-            // Stop audio if playing
+            // Stop audio if playing. Sources agora são POR CLIP (array
+            // sourceNodes) — parar só o sourceNode antigo deixava o áudio
+            // tocando até o fim do clip depois de limpar tudo.
             if (track.audioBuffer) {
                 const nodes = this.trackNodes.get(track.id);
-                if (nodes && nodes.sourceNode) {
-                    try {
-                        nodes.sourceNode.stop();
-                    } catch (e) {
-                        // Already stopped
+                if (nodes) {
+                    for (const s of (nodes.sourceNodes || [])) {
+                        try { s.stop(); } catch (e) { /* já parado */ }
+                    }
+                    nodes.sourceNodes = [];
+                    if (nodes.sourceNode) {
+                        try { nodes.sourceNode.stop(); } catch (e) { /* já parado */ }
+                        nodes.sourceNode = null;
                     }
                 }
             }
-            
+
             // Clean up nodes
             this.trackNodes.delete(track.id);
             
