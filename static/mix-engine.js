@@ -301,14 +301,28 @@
 
         const tracksWithAudio = todasAsTracks.filter(t => t.audioBuffer);
         {
-            // Encontra a track de voz mais longa (sempre do projeto inteiro)
-            const voiceTracks = tracksWithAudio.filter(t => t.type === 'voice');
-            let maxVoiceDuration = 0;
-            let finalDuration = o.duration;
+            // Clips: faixa sem clips[] (chamador antigo, ex. Gerador) vira
+            // 1 clip cobrindo o arquivo — comportamento idêntico ao de sempre.
+            const clipsDe = (t) => (t.clips && t.clips.length)
+                ? t.clips
+                : [{ buffer: t.audioBuffer, inicio: 0, offset: 0,
+                     duracao: t.audioBuffer.duration,
+                     fadeIn: t.fadeIn || 0, fadeOut: t.fadeOut || 0 }];
+            const fimDoClip = (c) => c.inicio + c.duracao;
+            const fimDosClips = (cs) => cs.reduce((m, c) => Math.max(m, fimDoClip(c)), 0);
 
-            if (voiceTracks.length > 0) {
-                maxVoiceDuration = voiceTracks.reduce((max, track) => Math.max(max, track.duration), 0);
-                finalDuration = maxVoiceDuration + 1.05;
+            const voiceTracks = tracksWithAudio.filter(t => t.type === 'voice');
+            const clipsDeVoz = [];
+            for (const t of voiceTracks) for (const c of clipsDe(t)) clipsDeVoz.push(c);
+
+            const fimDaVoz = fimDosClips(clipsDeVoz);
+            let finalDuration = o.duration;
+            if (clipsDeVoz.length > 0) {
+                finalDuration = fimDaVoz + 1.05;
+            } else {
+                let fimTudo = 0;
+                for (const t of tracksWithAudio) fimTudo = Math.max(fimTudo, fimDosClips(clipsDe(t)));
+                if (fimTudo > 0) finalDuration = fimTudo;
             }
 
             // Create offline audio context for rendering
@@ -327,9 +341,27 @@
                 const track = tracksParaRenderizar[i];
                 if (aoProgredir) aoProgredir((i / tracksParaRenderizar.length) * 80, `Processando ${track.name}...`);
 
-                // Create source
-                const source = offlineContext.createBufferSource();
-                source.buffer = track.audioBuffer;
+                // Um BufferSource POR CLIP, cada um com clipGain de fades —
+                // espelho exato do playTrack (regra da casa: prévia = arquivo).
+                const clips = clipsDe(track);
+                const sources = [];
+                for (const clip of clips) {
+                    const source = offlineContext.createBufferSource();
+                    source.buffer = clip.buffer;
+                    const clipGain = offlineContext.createGain();
+                    const cg = clipGain.gain;
+                    cg.setValueAtTime(1, 0);
+                    if (clip.fadeIn > 0) {
+                        cg.setValueAtTime(0, clip.inicio);
+                        cg.linearRampToValueAtTime(1, clip.inicio + clip.fadeIn);
+                    }
+                    if (clip.fadeOut > 0) {
+                        cg.setValueAtTime(1, Math.max(clip.inicio, clip.inicio + clip.duracao - clip.fadeOut));
+                        cg.linearRampToValueAtTime(0, clip.inicio + clip.duracao);
+                    }
+                    source.connect(clipGain);
+                    sources.push({ source, clipGain, clip });
+                }
 
                 // Build effect chain
                 // 1. High-pass filter
@@ -432,8 +464,10 @@
                 if (track.effects.gate) {
                     const g = track.gateSettings || {};
                     const sens = (g.sensibilidade != null ? g.sensibilidade : 12) / 100;
-                    const trechosDaFaixa = detectarTrechosDeVoz([track], 0.25, sens);
-                    aplicarGate(gateGain.gain, trechosDaFaixa, track.duration, 0, g);
+                    const trechosDaFaixa = detectarTrechosDeClips(
+                        clips.map(c => ({ buffer: c.buffer, inicio: c.inicio, offset: c.offset, duracao: c.duracao })),
+                        0.25, sens);
+                    aplicarGate(gateGain.gain, trechosDaFaixa, fimDosClips(clips), 0, g);
                 }
 
                 const trackGain = offlineContext.createGain();
@@ -442,54 +476,25 @@
                 const pan = offlineContext.createStereoPanner();
                 pan.pan.value = track.pan;
 
-                // Apply fades
-                let currentTime = 0;
-                if (track.fadeIn > 0) {
-                    trackGain.gain.setValueAtTime(0, currentTime);
-                    trackGain.gain.linearRampToValueAtTime(track.volume / 100, track.fadeIn);
-                } else {
-                    trackGain.gain.setValueAtTime(track.volume / 100, currentTime);
-                }
+                // Nível da faixa (fades agora são por clip, no clipGain).
+                trackGain.gain.setValueAtTime(track.volume / 100, 0);
 
-                // Apply fade out (manual or auto)
-                if (track.type === 'music' && voiceTracks.length > 0) {
-                    // Auto fade-out for music tracks
-                    // DUCKING: abaixa a trilha nos trechos com voz e devolve o
-                    // volume nas pausas. Antes ficava no volume cheio a locução
-                    // inteira e só caía no fade final — voz e música competindo.
-                    const trechosDeVoz = detectarTrechosDeVoz(voiceTracks, duck.hold);
+                if (track.type === 'music' && clipsDeVoz.length > 0) {
+                    // DUCKING por posição: a trilha abaixa quando a voz ENTRA
+                    // de verdade na timeline, não a partir do zero.
+                    const trechosDeVoz = detectarTrechosDeClips(clipsDeVoz, duck.hold);
                     const ducou = aplicarDucking(
-                        trackGain.gain, trechosDeVoz, track.volume / 100, maxVoiceDuration, 0, duck
+                        trackGain.gain, trechosDeVoz, track.volume / 100, fimDaVoz, 0, duck
                     );
                     if (!ducou) {
-                        // Sem voz detectada (faixa muda?) — comportamento antigo.
-                        trackGain.gain.linearRampToValueAtTime(
-                            track.volume / 100,
-                            maxVoiceDuration
-                        );
+                        trackGain.gain.linearRampToValueAtTime(track.volume / 100, fimDaVoz);
                     }
                     // Fade final continua igual: some 1.05s depois do fim da voz.
-                    trackGain.gain.linearRampToValueAtTime(
-                        0,
-                        maxVoiceDuration + 1.05
-                    );
-                } else {
-                    // Manual fade out
-                    if (track.fadeOut > 0) {
-                        const fadeOutStart = track.duration - track.fadeOut;
-                        trackGain.gain.linearRampToValueAtTime(
-                            track.volume / 100,
-                            fadeOutStart
-                        );
-                        trackGain.gain.linearRampToValueAtTime(
-                            0,
-                            track.duration
-                        );
-                    }
+                    trackGain.gain.linearRampToValueAtTime(0, fimDaVoz + 1.05);
                 }
 
                 // Connect the entire chain
-                source.connect(hpfNode);
+                for (const s of sources) s.clipGain.connect(hpfNode);
                 hpfNode.connect(eqLowNode);
                 eqLowNode.connect(eqNode);
                 eqNode.connect(eqHighNode);
@@ -512,7 +517,7 @@
                 pan.connect(masterGain);
 
                 // Start source
-                source.start(0);
+                for (const s of sources) s.source.start(s.clip.inicio, s.clip.offset, s.clip.duracao);
             }
 
             if (aoProgredir) aoProgredir(90, 'Renderizando áudio...');
