@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 27;
+const MINIDAW_VERSAO = 28;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -835,17 +835,138 @@ class MiniDAW {
         }
     }
 
-    // Placeholder até a Task 7: clique no clip ainda não arrasta.
-    mousedownClip(ev, trackId, clipId) { /* Task 7: arrasto */ }
+    // ── ARRASTO DE CLIP (tempo + entre faixas) ───────────────────────────
+    // Um handler só decide o gesto pelo alvo: alça = trim (Task 9), corpo com
+    // Tesoura armada = seleção de corte, corpo normal = arrastar.
+    mousedownClip(ev, trackId, clipId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const clip = this._clipsDaFaixa(track).find(c => c.id === clipId);
+        if (!clip) return;
+
+        const borda = ev.target.dataset && ev.target.dataset.borda;
+        if (borda) {
+            // Alça de trim — Task 9 implementa; até lá, ignora o clique.
+            if (typeof this.iniciarTrim === 'function') this.iniciarTrim(ev, track, clip, borda);
+            return;
+        }
+        if (this.trackTesoura === trackId) return this.iniciarSelecao(ev, trackId);
+
+        ev.preventDefault();
+        const el = document.getElementById(`clip_el_${clip.id}`);
+        if (!el) return;
+        const x0 = ev.clientX, y0 = ev.clientY;
+        const inicioOriginal = clip.inicio;
+        this.clipDrag = { track, clip, moveu: false };
+        el.classList.add('arrastando');
+
+        const mover = (e) => {
+            const dx = e.clientX - x0;
+            if (!this.clipDrag.moveu && Math.abs(dx) < 3 && Math.abs(e.clientY - y0) < 3) return;
+            this.clipDrag.moveu = true;
+
+            // Alvos do imã: bordas dos OUTROS clips (todas as faixas), 0:00 e
+            // o cursor de reprodução — igual ao "Snap to objects" do Samplitude.
+            // Também as posições onde o FIM deste clip encosta numa borda.
+            const alvos = [0, this.currentTime || 0];
+            for (const t of this.tracks) {
+                for (const c of this._clipsDaFaixa(t)) {
+                    if (c.id === clip.id) continue;
+                    alvos.push(c.inicio, ClipModel.fimDoClip(c));
+                    alvos.push(c.inicio - clip.duracao, ClipModel.fimDoClip(c) - clip.duracao);
+                }
+            }
+            const tol = 8 / this.pxPorSegundo;    // 8px de imã, em segundos
+            let novoInicio = ClipModel.calcularSnap(
+                Math.max(0, inicioOriginal + dx / this.pxPorSegundo), alvos, tol);
+
+            // Faixa de destino: a lane sob o mouse (vertical).
+            const alvo = document.elementFromPoint(e.clientX, e.clientY);
+            const laneAlvo = alvo && alvo.closest ? alvo.closest('.clips-lane') : null;
+            const idAlvo = laneAlvo ? laneAlvo.id.replace('lane_', '') : track.id;
+            this.clipDrag.trackAlvoId = idAlvo;
+
+            const faixaAlvo = this.tracks.find(t => t.id === idAlvo) || track;
+            const clipsAlvo = (faixaAlvo === track)
+                ? this._clipsDaFaixa(track)
+                : this._clipsDaFaixa(faixaAlvo).concat([clip]);
+            novoInicio = ClipModel.moverClip(clipsAlvo, clip, novoInicio);
+
+            clip.inicio = novoInicio;
+            el.style.left = (novoInicio * this.pxPorSegundo) + 'px';
+            document.querySelectorAll('.clips-lane').forEach(l =>
+                l.style.outline = (l.id === `lane_${idAlvo}` && idAlvo !== track.id)
+                    ? '2px dashed #ec4899' : '');
+        };
+
+        const soltar = () => {
+            document.removeEventListener('mousemove', mover);
+            document.removeEventListener('mouseup', soltar);
+            el.classList.remove('arrastando');
+            document.querySelectorAll('.clips-lane').forEach(l => l.style.outline = '');
+            const d = this.clipDrag; this.clipDrag = null;
+            if (!d || !d.moveu) return;
+
+            if (d.trackAlvoId && d.trackAlvoId !== track.id) {
+                this.moverClipParaFaixa(track, clip, d.trackAlvoId);
+            } else {
+                track.clips = ClipModel.ordenarClips(this._clipsDaFaixa(track));
+                this.aposMudancaDeClips([track]);
+            }
+        };
+        document.addEventListener('mousemove', mover);
+        document.addEventListener('mouseup', soltar);
+    }
+
+    // Move o clip pra outra faixa. O clip HERDA o canal de destino: efeitos,
+    // volume e o TIPO (voz→trilha muda ducking) são da faixa, não do clip.
+    moverClipParaFaixa(origem, clip, destinoId) {
+        const destino = this.tracks.find(t => t.id === destinoId);
+        if (!destino) return;
+        origem.clips = this._clipsDaFaixa(origem).filter(c => c.id !== clip.id);
+        const clipsDestino = this._clipsDaFaixa(destino);
+        clip.inicio = ClipModel.moverClip(clipsDestino.concat([clip]), clip, clip.inicio);
+        destino.clips = ClipModel.ordenarClips(clipsDestino.concat([clip]));
+        // Sincroniza os campos derivados legados dos DOIS lados.
+        this._sincronizarDerivados(origem);
+        this._sincronizarDerivados(destino);
+        this.aposMudancaDeClips([origem, destino]);
+    }
+
+    // Campos legados derivados dos clips — o resto do arquivo (e o export)
+    // ainda lê audioBuffer/duration da faixa.
+    _sincronizarDerivados(track) {
+        const clips = track.clips || [];
+        track.audioBuffer = clips.length ? clips[0].buffer : null;
+        track._clipsBuffer = track.audioBuffer;
+        track.duration = ClipModel.fimDaFaixa(clips);
+        if (!clips.length) track.audioUrl = null;
+    }
+
+    // Pós-edição de clips: re-render + reagendamento se estiver tocando +
+    // persistência local. UMA porta de saída pra todos os gestos.
+    aposMudancaDeClips(faixas) {
+        this.renderizarTimeline();
+        if (this.isPlaying) { this.stop(); this.play(); }
+        else {
+            // Ducking/gate agendados mudaram de lugar — limpa pro próximo play.
+            for (const t of (faixas || [])) {
+                const nodes = this.trackNodes.get(t.id);
+                if (nodes) this.aplicarVolumeAgora(t, nodes);
+            }
+        }
+        this.saveToLocalStorage();
+    }
 
     // Redesenha timeline inteira (régua + todas as lanes). Chamar depois de
     // qualquer mudança de clip, zoom ou duração.
     _renderizarTimelineAgora() {
         this.calculateDuration();
         this.desenharRegua();
-        for (const t of this.tracks) {
-            if (t.audioBuffer) this.renderizarClips(t);
-        }
+        // TODAS as faixas, mesmo sem áudio: uma faixa que perdeu o último clip
+        // (arrasto pra outra faixa) precisa limpar os blocos velhos da lane —
+        // renderizarClips com _clipsDaFaixa vazio já remove sem desenhar nada.
+        for (const t of this.tracks) this.renderizarClips(t);
     }
 
     // Coalescência: várias chamadas no mesmo tick (import, updateTrackUI,
