@@ -103,6 +103,68 @@
         return unidos;
     }
 
+    // ── DETECÇÃO POR CLIPS POSICIONADOS ──────────────────────────────────
+    // Mesmo algoritmo do detectarTrechosDeVoz, mas por CLIP: analisa só a
+    // janela [offset, offset+duracao] do arquivo e desloca os trechos achados
+    // pra posição do clip na timeline (inicio). É o que faz a trilha abaixar
+    // quando a voz ENTRA DE VERDADE — e não a partir do zero do projeto.
+    // `clips` = [{buffer, inicio, offset, duracao}] (só os de faixas de VOZ).
+    function detectarTrechosDeClips(clips, hold, limiarPct) {
+        const JANELA = 0.03;
+        const HOLD = hold != null ? hold : DUCK_PADRAO.hold;
+        const PCT = Math.min(0.30, Math.max(0.01, limiarPct != null ? limiarPct : 0.08));
+        const segmentos = [];
+
+        for (const clip of (clips || [])) {
+            const buf = clip.buffer;
+            if (!buf) continue;
+            const sr = buf.sampleRate;
+            const passo = Math.max(1, Math.floor(JANELA * sr));
+            const dados = buf.getChannelData(0);
+            const a0 = Math.max(0, Math.floor((clip.offset || 0) * sr));
+            const a1 = Math.min(dados.length, Math.floor(((clip.offset || 0) + clip.duracao) * sr));
+
+            const rms = [];
+            let pico = 0;
+            for (let i = a0; i < a1; i += passo) {
+                let soma = 0;
+                const fim = Math.min(i + passo, a1);
+                for (let j = i; j < fim; j++) soma += dados[j] * dados[j];
+                const v = Math.sqrt(soma / Math.max(1, fim - i));
+                rms.push(v);
+                if (v > pico) pico = v;
+            }
+            // Piso absoluto: janela só com ruído de fundo não conta como voz
+            // (mesma proteção do detectarTrechosDeVoz — ver comentário lá).
+            if (pico < 0.003) continue;
+
+            const limiar = pico * PCT;
+            let inicio = null;
+            for (let k = 0; k < rms.length; k++) {
+                const temVoz = rms[k] >= limiar;
+                if (temVoz && inicio === null) inicio = k * JANELA;
+                if (!temVoz && inicio !== null) {
+                    segmentos.push([clip.inicio + inicio, clip.inicio + k * JANELA]);
+                    inicio = null;
+                }
+            }
+            if (inicio !== null) segmentos.push([clip.inicio + inicio, clip.inicio + rms.length * JANELA]);
+        }
+
+        if (!segmentos.length) return [];
+        segmentos.sort((a, b) => a[0] - b[0]);
+        const unidos = [segmentos[0].slice()];
+        for (let i = 1; i < segmentos.length; i++) {
+            const ult = unidos[unidos.length - 1];
+            if (segmentos[i][0] - ult[1] <= HOLD) {
+                ult[1] = Math.max(ult[1], segmentos[i][1]);
+            } else {
+                unidos.push(segmentos[i].slice());
+            }
+        }
+        return unidos;
+    }
+
     // Escreve a automação de ganho da trilha a partir dos trechos de voz.
     // `nivel` é o volume normal da faixa (0..1); devolve true se ducou algo.
     //
@@ -568,7 +630,7 @@
 
     global.MixEngine = {
         renderizarMix, masterizarBuffer, bufferToWav, bufferToMp3,
-        detectarTrechosDeVoz, aplicarDucking, aplicarGate,
+        detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
         DUCK_PADRAO, GATE_PADRAO
     };
 })(window);
