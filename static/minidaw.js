@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 28;
+const MINIDAW_VERSAO = 29;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -2692,8 +2692,9 @@ class MiniDAW {
         this.tracks.forEach(t => {
             const btn = document.getElementById(`btntesoura_${t.id}`);
             if (btn) btn.classList.toggle('active', this.trackTesoura === t.id);
-            const box = document.getElementById(`wfbox_${t.id}`);
-            if (box) box.style.cursor = (this.trackTesoura === t.id) ? 'crosshair' : 'default';
+            // A onda antiga sumiu; agora o cursor de mira vai na lane de clips.
+            const lane = document.getElementById(`lane_${t.id}`);
+            if (lane) lane.style.cursor = (this.trackTesoura === t.id) ? 'crosshair' : 'default';
         });
 
         this.showNotification(
@@ -2757,10 +2758,14 @@ class MiniDAW {
     }
 
     _tempoNoPonto(ev, track) {
-        const box = document.getElementById(`wfbox_${track.id}`);
-        const r = box.getBoundingClientRect();
-        const frac = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
-        return frac * track.duration;
+        // Tempo do PROJETO no ponto do mouse — a lane tem escala única, então
+        // é só posição/pxPorSegundo (antes era fração da duração da faixa).
+        const lane = document.getElementById(`lane_${track.id}`);
+        if (!lane) return 0;
+        const conteudo = lane.querySelector('.lane-conteudo');
+        if (!conteudo) return 0;
+        const r = conteudo.getBoundingClientRect();
+        return Math.max(0, (ev.clientX - r.left) / this.pxPorSegundo);
     }
 
     iniciarSelecao(ev, trackId) {
@@ -2804,20 +2809,21 @@ class MiniDAW {
         const info = document.getElementById(`corteinfo_${trackId}`);
         if (!track || !reg || !hIni || !hFim || !barra) return;
 
-        if (!s || !track.duration) {
+        if (!s || !track.audioBuffer) {
             reg.style.display = hIni.style.display = hFim.style.display = 'none';
             barra.classList.remove('ativa');
             return;
         }
 
-        const pIni = (s.ini / track.duration) * 100;
-        const pFim = (s.fim / track.duration) * 100;
+        // Escala única da timeline: posição absoluta em px, não % da faixa.
+        const pIni = s.ini * this.pxPorSegundo;
+        const pFim = s.fim * this.pxPorSegundo;
         reg.style.display = (s.fim > s.ini) ? 'block' : 'none';
-        reg.style.left = pIni + '%';
-        reg.style.width = (pFim - pIni) + '%';
+        reg.style.left = pIni + 'px';
+        reg.style.width = (pFim - pIni) + 'px';
         hIni.style.display = hFim.style.display = 'block';
-        hIni.style.left = pIni + '%';
-        hFim.style.left = pFim + '%';
+        hIni.style.left = pIni + 'px';
+        hFim.style.left = pFim + 'px';
 
         barra.classList.add('ativa');
         const fmt = (t) => {
@@ -2836,84 +2842,54 @@ class MiniDAW {
     }
 
     // modo: 'remover' (tira o trecho), 'manter' (fica só o trecho),
-    //       'dividir' (parte a faixa no início da marcação)
-    async aplicarCorte(trackId, modo) {
+    //       'dividir' (parte o clip no início da marcação)
+    // Agora NÃO-DESTRUTIVO: nada de copiar buffers — só matemática de clips
+    // (offset/duracao). "Restaurar" deixou de precisar de rede de segurança:
+    // esticar a borda de volta (trim) recupera o áudio.
+    aplicarCorte(trackId, modo) {
         const track = this.tracks.find(t => t.id === trackId);
         const s = (this.selecoes || {})[trackId];
         if (!track || !track.audioBuffer || !s) return;
 
-        const sr = track.audioBuffer.sampleRate;
-        const total = track.audioBuffer.length;
-        const aIni = Math.max(0, Math.min(total, Math.floor(s.ini * sr)));
-        const aFim = Math.max(0, Math.min(total, Math.floor(s.fim * sr)));
-
-        if (modo !== 'dividir' && aFim - aIni < 1) {
-            this.showNotification('Arraste sobre a onda pra marcar o trecho primeiro', 'warning');
+        const clips = this._clipsDaFaixa(track);
+        const clip = ClipModel.clipNoPonto(clips, s.ini);
+        if (!clip) {
+            this.showNotification('Marque em cima de um clip (a marcação caiu num buraco)', 'warning');
             return;
         }
+
         if (modo === 'dividir') {
-            this.cancelarSelecao(trackId);
-            return this.cutTrackAtTime(trackId, s.ini);
-        }
-
-        // Guarda o original UMA vez, pra "Restaurar voz" continuar valendo
-        // depois de cortar (mesma rede de segurança do Encurtar Pausas).
-        // O Map é criado sob demanda no resto do arquivo — sem este `if` o
-        // corte feito antes de "Encurtar Pausas" ficaria sem volta.
-        if (!this.vozOriginais) this.vozOriginais = new Map();
-        if (track.type === 'voice' && !this.vozOriginais.has(track.id)) {
-            this.vozOriginais.set(track.id, track.audioBuffer);
-        }
-
-        const nch = track.audioBuffer.numberOfChannels;
-        const novoTam = (modo === 'manter') ? (aFim - aIni) : (total - (aFim - aIni));
-        if (novoTam < 1) {
-            this.showNotification('Isso apagaria a faixa inteira', 'warning');
-            return;
-        }
-
-        const novo = this.audioContext.createBuffer(nch, novoTam, sr);
-        // Fade de 5ms na emenda: corte seco no meio da onda estala.
-        const XF = Math.min(Math.round(0.005 * sr), Math.floor(novoTam / 2));
-
-        for (let ch = 0; ch < nch; ch++) {
-            const orig = track.audioBuffer.getChannelData(ch);
-            const dest = novo.getChannelData(ch);
-            if (modo === 'manter') {
-                for (let i = 0; i < novoTam; i++) dest[i] = orig[aIni + i];
-            } else {
-                for (let i = 0; i < aIni; i++) dest[i] = orig[i];
-                for (let i = aFim; i < total; i++) dest[aIni + (i - aFim)] = orig[i];
+            const partes = ClipModel.dividirClip(clip, s.ini);
+            if (!partes) {
+                this.showNotification('Muito perto da borda pra dividir', 'warning');
+                return;
             }
-            // Suaviza as bordas do que sobrou
-            for (let i = 0; i < XF; i++) {
-                const g = i / XF;
-                dest[i] *= g;
-                dest[novoTam - 1 - i] *= g;
+            track.clips = ClipModel.ordenarClips(
+                clips.filter(c => c.id !== clip.id).concat(partes));
+        } else if (modo === 'remover') {
+            if (s.fim - s.ini < 0.01) {
+                this.showNotification('Arraste sobre a onda pra marcar o trecho primeiro', 'warning');
+                return;
             }
+            const novos = ClipModel.removerTrecho(clips, clip, s.ini, s.fim);
+            if (!novos.length) {
+                this.showNotification('Isso apagaria a faixa inteira', 'warning');
+                return;
+            }
+            track.clips = novos;
+        } else {   // manter
+            if (s.fim - s.ini < 0.01) {
+                this.showNotification('Arraste sobre a onda pra marcar o trecho primeiro', 'warning');
+                return;
+            }
+            track.clips = [ClipModel.manterTrecho(clip, s.ini, s.fim)];
         }
 
-        track.audioBuffer = novo;
-        track.duration = novo.length / sr;
-        track.audioUrl = URL.createObjectURL(this.bufferToWav(novo));
+        this._sincronizarDerivados(track);
         this.cancelarSelecao(trackId);
-        // updateTrackUI RECRIA o card (createTrackUI + remove o antigo), então
-        // ele tem que vir ANTES: desenhar primeiro pintava num canvas que era
-        // jogado fora em seguida, e a faixa cortada aparecia sem onda.
-        this.updateTrackUI(track);
-        // E no quadro seguinte, pra o canvas novo já ter largura — recém
-        // inserido no DOM ele mede 0 e o desenho sairia vazio.
-        requestAnimationFrame(() => this.drawWaveform(track));
-        this.duration = Math.max(0, ...this.tracks.filter(t => t.audioBuffer).map(t => t.duration));
-        this.updateDuration();
-        this.saveToLocalStorage();
-
-        this.showNotification(
-            (modo === 'manter'
-                ? `Ficou só o trecho marcado (${track.duration.toFixed(2)}s)`
-                : `Trecho removido — a faixa agora tem ${track.duration.toFixed(2)}s`)
-            + ' · 💾 no topo da faixa salva esta versão',
-            'success');
+        this.aposMudancaDeClips([track]);
+        const nomes = { dividir: 'Clip dividido em dois', remover: 'Trecho removido', manter: 'Ficou só o trecho marcado' };
+        this.showNotification(`${nomes[modo]} — arraste os clips como quiser`, 'success');
     }
 
     stopPlayback() {
@@ -3395,97 +3371,11 @@ class MiniDAW {
 
     // Cut track at position
     async cutTrackAtTime(trackId, cutTime) {
-        const track = this.tracks.find(t => t.id === trackId);
-        if (!track || !track.audioBuffer) {
-            this.showNotification('Track sem áudio para cortar', 'error');
-            return;
-        }
-
-        try {
-            const sampleRate = track.audioBuffer.sampleRate;
-            const cutSample = Math.floor(cutTime * sampleRate);
-
-            // Primeira parte
-            const firstBuffer = this.audioContext.createBuffer(
-                track.audioBuffer.numberOfChannels,
-                cutSample,
-                sampleRate
-            );
-
-            // Segunda parte
-            const secondLength = track.audioBuffer.length - cutSample;
-            const secondBuffer = this.audioContext.createBuffer(
-                track.audioBuffer.numberOfChannels,
-                secondLength,
-                sampleRate
-            );
-
-            // Copia dados
-            for (let channel = 0; channel < track.audioBuffer.numberOfChannels; channel++) {
-                const originalData = track.audioBuffer.getChannelData(channel);
-                
-                // Primeira parte
-                const firstData = firstBuffer.getChannelData(channel);
-                for (let i = 0; i < cutSample; i++) {
-                    firstData[i] = originalData[i];
-                }
-
-                // Segunda parte
-                const secondData = secondBuffer.getChannelData(channel);
-                for (let i = 0; i < secondLength; i++) {
-                    secondData[i] = originalData[cutSample + i];
-                }
-            }
-
-            // Converte para blobs
-            const firstBlob = this.bufferToWav(firstBuffer);
-            const secondBlob = this.bufferToWav(secondBuffer);
-
-            // Cria nova track para segunda parte
-            const newTrackId = 'track_' + Date.now();
-            const newTrack = {
-                id: newTrackId,
-                name: `${track.name} (Parte 2)`,
-                type: track.type,
-                audioUrl: URL.createObjectURL(secondBlob),
-                audioBuffer: secondBuffer,
-                duration: secondBuffer.length / sampleRate,
-                volume: track.volume,
-                pan: track.pan,
-                fadeIn: 0,
-                fadeOut: track.fadeOut,
-                effects: { ...track.effects },
-                color: track.color
-            };
-
-            // Atualiza track original
-            track.audioBuffer = firstBuffer;
-            track.audioUrl = URL.createObjectURL(firstBlob);
-            track.duration = firstBuffer.length / sampleRate;
-            track.fadeOut = 0;
-
-            // Adiciona nova track
-            this.tracks.push(newTrack);
-            this.createTrackNodes(newTrack);
-
-            // createTrackNodes monta só os nós de ÁUDIO. Sem createTrackUI a
-            // Parte 2 nascia sem card nenhum na tela — existia no projeto e
-            // entrava no export, mas invisível pra quem estava editando.
-            this.createTrackUI(newTrack);
-            this.updateTrackUI(track);     // a Parte 1 encurtou: recria o card
-            this.updateUI();
-            requestAnimationFrame(() => {
-                this.drawWaveform(track);
-                this.drawWaveform(newTrack);
-            });
-            this.duration = Math.max(0, ...this.tracks.filter(t => t.audioBuffer).map(t => t.duration));
-            this.updateDuration();
-            this.showNotification(`Track "${track.name}" cortado em ${cutTime.toFixed(2)}s`, 'success');
-
-        } catch (error) {
-            console.error('Erro ao cortar track:', error);
-            this.showNotification('Erro ao cortar track', 'error');
-        }
+        // Legado: dividir criava outra FAIXA ("Parte 2"). No modelo de clips a
+        // divisão acontece DENTRO da faixa — mesmo canal, dois objetos.
+        this.selecoes = this.selecoes || {};
+        this.selecoes[trackId] = { ini: cutTime, fim: cutTime };
+        this.aplicarCorte(trackId, 'dividir');
     }
 }
 
