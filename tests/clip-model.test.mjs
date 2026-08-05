@@ -115,6 +115,22 @@ test('moverClip clampa entre os vizinhos e no zero', () => {
     assert.equal(CM.moverClip([a, b, c], b, 3.5), 3.5);
 });
 
+test('moverClip com pedido sobrepondo vizinho ainda clampa (classificação por ponto médio)', () => {
+    const a = { id: 'a', inicio: 0, duracao: 3 };
+    const b = { id: 'b', inicio: 10, duracao: 2 };
+    // b arrastado pra CIMA de a (pedido 1, sobrepõe a): ponto médio de a (1.5)
+    // <= meio do pedido (2) → a limita por baixo: clampa em 3.
+    assert.equal(CM.moverClip([a, b], b, 1), 3);
+});
+
+test('temSobreposicao detecta invasão e ignora encostar', () => {
+    const a = { id: 'a', inicio: 0, duracao: 3 };
+    const b = { id: 'b', inicio: 3, duracao: 2 };     // encosta, não invade
+    const c = { id: 'c', inicio: 2, duracao: 2 };     // invade a
+    assert.equal(CM.temSobreposicao([a, b], b), false);
+    assert.equal(CM.temSobreposicao([a, c], c), true);
+});
+
 test('ordenarClips ordena por inicio sem mutar o array original', () => {
     const arr = [{ inicio: 5 }, { inicio: 1 }];
     const ord = CM.ordenarClips(arr);

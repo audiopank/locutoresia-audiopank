@@ -160,18 +160,34 @@
     // criaria dois áudios somados sem crossfade, que soa a erro, não a recurso).
     function moverClip(clips, clip, inicioPedido) {
         let minIni = 0, maxIni = Infinity;
+        // Classifica cada vizinho pelo PONTO MÉDIO contra a posição pedida:
+        // com bordas, vizinho sobreposto à posição atual não caía em ramo
+        // nenhum e era ignorado — o clip podia ser solto EM CIMA de outro.
+        const meio = inicioPedido + clip.duracao / 2;
         for (const c of (clips || [])) {
             if (c.id === clip.id) continue;
-            if (fimDoClip(c) <= clip.inicio + 1e-9) minIni = Math.max(minIni, fimDoClip(c));
-            else if (c.inicio >= fimDoClip(clip) - 1e-9) maxIni = Math.min(maxIni, c.inicio - clip.duracao);
+            if (c.inicio + c.duracao / 2 <= meio) minIni = Math.max(minIni, fimDoClip(c));
+            else maxIni = Math.min(maxIni, c.inicio - clip.duracao);
         }
         return Math.max(minIni, Math.min(inicioPedido, maxIni));
+    }
+
+    // true se `clip` invade qualquer outro clip da lista (invariante da v1:
+    // clips da mesma faixa não se sobrepõem — sobreposição = dois áudios
+    // somados sem crossfade, que soa a erro).
+    function temSobreposicao(clips, clip) {
+        for (const c of (clips || [])) {
+            if (c.id === clip.id) continue;
+            if (clip.inicio < fimDoClip(c) - 1e-9 && c.inicio < fimDoClip(clip) - 1e-9) return true;
+        }
+        return false;
     }
 
     const ClipModel = {
         DURACAO_MIN, novoId, clipInteiro, fimDoClip, fimDaFaixa,
         duracaoDoProjeto, ordenarClips, clipNoPonto, dividirClip,
-        removerTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip
+        removerTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip,
+        temSobreposicao
     };
 
     global.ClipModel = ClipModel;

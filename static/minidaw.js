@@ -839,6 +839,7 @@ class MiniDAW {
     // Um handler só decide o gesto pelo alvo: alça = trim (Task 9), corpo com
     // Tesoura armada = seleção de corte, corpo normal = arrastar.
     mousedownClip(ev, trackId, clipId) {
+        if (this.clipDrag) return;   // drag anterior ainda ativo (mouseup perdido)
         const track = this.tracks.find(t => t.id === trackId);
         if (!track) return;
         const clip = this._clipsDaFaixa(track).find(c => c.id === clipId);
@@ -861,6 +862,7 @@ class MiniDAW {
         el.classList.add('arrastando');
 
         const mover = (e) => {
+            if (!(e.buttons & 1)) return soltar();   // mouseup aconteceu fora da janela
             const dx = e.clientX - x0;
             if (!this.clipDrag.moveu && Math.abs(dx) < 3 && Math.abs(e.clientY - y0) < 3) return;
             this.clipDrag.moveu = true;
@@ -908,9 +910,14 @@ class MiniDAW {
             if (!d || !d.moveu) return;
 
             if (d.trackAlvoId && d.trackAlvoId !== track.id) {
-                this.moverClipParaFaixa(track, clip, d.trackAlvoId);
+                this.moverClipParaFaixa(track, clip, d.trackAlvoId, inicioOriginal);
             } else {
                 track.clips = ClipModel.ordenarClips(this._clipsDaFaixa(track));
+                if (ClipModel.temSobreposicao(track.clips, clip)) {
+                    // Vão menor que o clip: volta pra onde estava (não comete overlap).
+                    clip.inicio = inicioOriginal;
+                    track.clips = ClipModel.ordenarClips(track.clips);
+                }
                 this.aposMudancaDeClips([track]);
             }
         };
@@ -920,16 +927,32 @@ class MiniDAW {
 
     // Move o clip pra outra faixa. O clip HERDA o canal de destino: efeitos,
     // volume e o TIPO (voz→trilha muda ducking) são da faixa, não do clip.
-    moverClipParaFaixa(origem, clip, destinoId) {
+    // `inicioOriginal` é a posição de partida — se não couber no destino sem
+    // overlap, o clip devolve pra origem nessa posição em vez de commitar.
+    moverClipParaFaixa(origem, clip, destinoId, inicioOriginal) {
         const destino = this.tracks.find(t => t.id === destinoId);
         if (!destino) return;
-        origem.clips = this._clipsDaFaixa(origem).filter(c => c.id !== clip.id);
+        // Capturado ANTES de tocar em origem.clips: se precisar devolver, usa
+        // esta lista (sem o clip) em vez de reconsultar _clipsDaFaixa, que
+        // regeneraria um clip novo do buffer inteiro se origem tivesse ficado
+        // vazia (audioBuffer ainda não foi zerado neste ponto).
+        const origemSemClip = this._clipsDaFaixa(origem).filter(c => c.id !== clip.id);
         const clipsDestino = this._clipsDaFaixa(destino);
         clip.inicio = ClipModel.moverClip(clipsDestino.concat([clip]), clip, clip.inicio);
+        if (ClipModel.temSobreposicao(clipsDestino.concat([clip]), clip)) {
+            // Não coube no destino: devolve pra origem, na posição de partida.
+            clip.inicio = (inicioOriginal != null) ? inicioOriginal : 0;
+            origem.clips = ClipModel.ordenarClips(origemSemClip.concat([clip]));
+            this._sincronizarDerivados(origem);
+            this.aposMudancaDeClips([origem]);
+            return;
+        }
+        origem.clips = origemSemClip;
         destino.clips = ClipModel.ordenarClips(clipsDestino.concat([clip]));
         // Sincroniza os campos derivados legados dos DOIS lados.
         this._sincronizarDerivados(origem);
         this._sincronizarDerivados(destino);
+        if (!origem.clips.length) this.updateTrackUI(origem);   // vira drop-zone de verdade
         this.aposMudancaDeClips([origem, destino]);
     }
 
@@ -940,6 +963,10 @@ class MiniDAW {
         track.audioBuffer = clips.length ? clips[0].buffer : null;
         track._clipsBuffer = track.audioBuffer;
         track.duration = ClipModel.fimDaFaixa(clips);
+        // Card decide lane vs drop-zone pelo audioUrl: faixa que ganhou clip
+        // por arrasto precisa de um marcador truthy, senão Mute/Solo recriam o
+        // card como drop-zone com áudio dentro.
+        if (clips.length && !track.audioUrl) track.audioUrl = 'clips://local';
         if (!clips.length) track.audioUrl = null;
     }
 
@@ -947,8 +974,14 @@ class MiniDAW {
     // persistência local. UMA porta de saída pra todos os gestos.
     aposMudancaDeClips(faixas) {
         this.renderizarTimeline();
-        if (this.isPlaying) { this.stop(); this.play(); }
-        else {
+        if (this.isPlaying) {
+            // stop() zera currentTime; preserva a posição pra não jogar o
+            // produtor de volta pro início ao arrastar de ouvido.
+            const pos = this.currentTime;
+            this.stop();
+            this.currentTime = pos;
+            this.play();
+        } else {
             // Ducking/gate agendados mudaram de lugar — limpa pro próximo play.
             for (const t of (faixas || [])) {
                 const nodes = this.trackNodes.get(t.id);
