@@ -742,11 +742,13 @@
         }
 
         /* Modo compacto: só cabeçalho + lane — efeitos somem, timeline domina. */
+        /* .barra-corte fica FORA da lista: ela só aparece quando o produtor
+           marcou um trecho com a Tesoura — exatamente quando precisa dos
+           botões Remover/Manter, mesmo com a faixa compacta. */
         .track-card.compacta .controls-panel,
         .track-card.compacta .track-effects,
         .track-card.compacta .gate-panel,
-        .track-card.compacta .effects-panel,
-        .track-card.compacta .barra-corte { display: none !important; }
+        .track-card.compacta .effects-panel { display: none !important; }
     </style>
 </head>
 <body>

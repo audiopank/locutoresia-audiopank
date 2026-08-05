@@ -1784,6 +1784,15 @@ Samplitude (screenshots com traços verticais e atalhos anotados):
   se perde".
 - Versão 32 → 33.
 
+### Task 16: Modo compacto por faixa (pedido do usuário, 05/08/2026 — aprovando a B.1)
+
+- Botão de recolher/expandir no canto superior direito do card (junto de mute/solo):
+  recolhe volume/pan/fades, botões de efeito, painel do Gate e Equalizador —
+  sobra cabeçalho + lane, pra TODOS os tracks caberem na tela e a timeline
+  dominar a visão. `track.compacto` persiste no localStorage e sobrevive ao
+  `updateTrackUI` (classe CSS no card montada a partir do estado).
+- Versão 33 → 34.
+
 ## Riscos monitorados durante a execução
 
 1. **`updateTrackUI` recria o card** — `renderizarClips` roda de novo após
