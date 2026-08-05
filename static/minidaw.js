@@ -861,7 +861,14 @@ class MiniDAW {
             if (clips.length) {
                 ClipModel.ordenarClips(clips)[0].fadeIn = track.fadeIn;
             }
-            if (this.isPlaying) { this.stop(); this.play(); }   // reagenda sources
+            if (this.isPlaying) {
+                // stop() zera currentTime; preserva a posição pra não jogar o
+                // produtor de volta pro início ao ajustar de ouvido.
+                const pos = this.currentTime;
+                this.stop();
+                this.currentTime = pos;
+                this.play();
+            }
             this.saveToLocalStorage();
         }
     }
@@ -875,7 +882,14 @@ class MiniDAW {
                 const ord = ClipModel.ordenarClips(clips);
                 ord[ord.length - 1].fadeOut = track.fadeOut;
             }
-            if (this.isPlaying) { this.stop(); this.play(); }
+            if (this.isPlaying) {
+                // stop() zera currentTime; preserva a posição pra não jogar o
+                // produtor de volta pro início ao ajustar de ouvido.
+                const pos = this.currentTime;
+                this.stop();
+                this.currentTime = pos;
+                this.play();
+            }
             this.saveToLocalStorage();
         }
     }
@@ -1204,11 +1218,11 @@ class MiniDAW {
             g.setValueAtTime(1, 0);
             if (clip.fadeIn > 0) {
                 g.setValueAtTime(0, Math.max(0, base + clip.inicio));
-                g.linearRampToValueAtTime(1, base + clip.inicio + clip.fadeIn);
+                g.linearRampToValueAtTime(1, Math.max(0, base + clip.inicio + clip.fadeIn));
             }
             if (clip.fadeOut > 0) {
                 g.setValueAtTime(1, Math.max(0, base + fimClip - clip.fadeOut));
-                g.linearRampToValueAtTime(0, base + fimClip);
+                g.linearRampToValueAtTime(0, Math.max(0, base + fimClip));
             }
 
             source.connect(clipGain);
@@ -2358,7 +2372,13 @@ class MiniDAW {
             tracks: this.tracks.map(track => ({
                 ...track,
                 audioUrl: null, // Don't store audio URLs in localStorage
-                audioBuffer: null
+                audioBuffer: null,
+                // Clips carregam o AudioBuffer (viraria {} no JSON, lixo puro)
+                // e _clipsBuffer é só a referência de cache — nenhum dos dois
+                // sobrevive a um reload; a migração preguiçosa recria os clips
+                // a partir do audioBuffer restaurado.
+                clips: undefined,
+                _clipsBuffer: undefined
             })),
             exportFormat: this.exportFormat,
             mp3Bitrate: this.mp3Bitrate
