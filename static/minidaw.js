@@ -936,6 +936,7 @@ class MiniDAW {
         const el = document.getElementById(`clip_el_${clip.id}`);
         if (!el) return;
         const canvas = el.querySelector('canvas');
+        let moveu = false;
 
         const mover = (e) => {
             if (!(e.buttons & 1)) return soltar();   // mouseup fora da janela
@@ -960,6 +961,7 @@ class MiniDAW {
             // Borda não pode invadir o clip vizinho.
             if (ClipModel.temSobreposicao(this._clipsDaFaixa(track), Object.assign({}, novo, { id: clip.id }))) return;
 
+            moveu = true;
             Object.assign(clip, novo, { id: clip.id });   // muta in-place, id fica
             el.style.left = (clip.inicio * this.pxPorSegundo) + 'px';
             el.style.width = Math.max(8, clip.duracao * this.pxPorSegundo) + 'px';
@@ -968,6 +970,7 @@ class MiniDAW {
         const soltar = () => {
             document.removeEventListener('mousemove', mover);
             document.removeEventListener('mouseup', soltar);
+            if (!moveu) return;      // clique seco: nada mudou, nada a fazer
             this._sincronizarDerivados(track);
             this.aposMudancaDeClips([track]);
         };
@@ -1088,6 +1091,7 @@ class MiniDAW {
         if (track) {
             track.name = name;
             this.saveToLocalStorage();
+            this.renderizarTimeline();   // atualiza o nome já escrito nos .clip-nome
         }
     }
 
@@ -1813,6 +1817,15 @@ class MiniDAW {
         if (!this.vozOriginais) this.vozOriginais = new Map();
         const vozes = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
         if (vozes.length === 0) { this.showNotification('Nenhuma voz na timeline', 'warning'); return; }
+
+        // Trocar o buffer recola a faixa num clip único (migração preguiçosa):
+        // divisões e trims da timeline se perdem. Avisa antes, não impede —
+        // Encurtar Pausas continua sendo o jeito certo de tratar a voz CRUA.
+        const temEdicaoDeClips = this.tracks.some(t =>
+            t.type === 'voice' && t.clips && t.clips.length > 1);
+        if (temEdicaoDeClips) {
+            this.showNotification('Atenção: Encurtar Pausas junta os clips divididos da voz num só', 'warning');
+        }
 
         let mexeu = false;
         for (const t of vozes) {
