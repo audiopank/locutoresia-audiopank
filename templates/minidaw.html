@@ -48,6 +48,10 @@
             padding: 1.5rem;
             margin-bottom: 1rem;
             transition: all 0.3s ease;
+            /* Âncora dos filhos position:absolute do card (o selo "Auto Fade
+               Ativo"). Sem isto eles se posicionavam pelo documento e iam parar
+               no canto da página, longe da faixa a que pertencem. */
+            position: relative;
         }
 
         .track-card:hover {
@@ -592,38 +596,10 @@
             font-weight: 600;
         }
 
-        .track-zoom-controls {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            display: flex;
-            gap: 0.25rem;
-            background: rgba(30, 41, 59, 0.9);
-            padding: 0.25rem;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            z-index: 10;
-        }
-
-        .track-zoom-btn {
-            width: 24px;
-            height: 24px;
-            border: none;
-            background: transparent;
-            color: var(--text-secondary);
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            transition: all 0.2s ease;
-        }
-
-        .track-zoom-btn:hover {
-            background: var(--primary-color);
-            color: white;
-        }
+        /* .track-zoom-controls / .track-zoom-btn removidos: eram um painel
+           position:absolute sem ancestral posicionado, que jogava o + e o -
+           da faixa pro canto da página. Os botões viraram Bootstrap normais,
+           na fileira do cabeçalho (createTrackUI). */
 
         .project-controls {
             display: flex;
@@ -1037,7 +1013,7 @@
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/clip-model.js?v=2"></script>
-    <script src="/static/minidaw.js?v=39"></script>
+    <script src="/static/minidaw.js?v=40"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

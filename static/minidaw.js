@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 39;
+const MINIDAW_VERSAO = 40;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -268,16 +268,6 @@ class MiniDAW {
                     <i class="fas fa-magic me-1"></i>
                     Auto Fade Ativo
                 </div>
-                <div class="track-zoom-controls">
-                    <button class="track-zoom-btn" onclick="minidaw.trackZoomIn('${track.id}')"
-                            title="Engordar faixa (mais altura: enxerga o detalhe da onda)">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <button class="track-zoom-btn" onclick="minidaw.trackZoomOut('${track.id}')"
-                            title="Emagrecer faixa (menos altura: cabe mais pista na tela)">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                </div>
                 <div class="d-flex align-items-center gap-3">
                     <div class="track-type ${track.type}" onclick="minidaw.alternarTipoFaixa('${track.id}')"
                          title="Clique para trocar entre Voz e Trilha. Isto NÃO é só um rótulo: só faixa de Voz aciona o ducking e o auto fade-out da trilha.">
@@ -288,6 +278,18 @@ class MiniDAW {
                            onchange="minidaw.updateTrackName('${track.id}', this.value)" style="max-width: 200px;">
                 </div>
                 <div class="d-flex gap-2">
+                    <!-- Zoom VERTICAL da pista. Ficavam num .track-zoom-controls
+                         position:absolute sem ancestral posicionado: voavam pro
+                         canto da PÁGINA e o produtor nunca os viu. Agora moram
+                         na fileira, ao lado do chevron que também mexe no card. -->
+                    <button class="btn btn-sm btn-outline-primary" onclick="minidaw.trackZoomIn('${track.id}')"
+                            title="Engordar faixa (mais altura: enxerga o detalhe da onda)">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="minidaw.trackZoomOut('${track.id}')"
+                            title="Emagrecer faixa (menos altura: cabe mais pista na tela)">
+                        <i class="fas fa-minus"></i>
+                    </button>
                     <button class="btn btn-sm btn-outline-light" onclick="minidaw.alternarCompacto('${track.id}')"
                             title="${track.compacto ? 'Expandir efeitos' : 'Recolher efeitos (só timeline)'}">
                         <i class="fas fa-chevron-${track.compacto ? 'down' : 'up'}"></i>
