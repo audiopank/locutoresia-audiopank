@@ -2,11 +2,17 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 38;
+const MINIDAW_VERSAO = 39;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
 class MiniDAW {
+    // Altura da pista na timeline (zoom vertical, botões + / − do cabeçalho).
+    // PADRAO espelha o `height` de .clips-lane no CSS — mudar lá pede mudar aqui.
+    static ALTURA_LANE_PADRAO = 84;
+    static ALTURA_LANE_MIN = 44;    // ainda dá pra ler a onda e pegar o clip
+    static ALTURA_LANE_MAX = 220;
+
     constructor() {
         this.tracks = [];
         this.isPlaying = false;
@@ -232,6 +238,9 @@ class MiniDAW {
             // Modo compacto: recolhe sliders/efeitos e deixa só cabeçalho +
             // timeline — com vários tracks é o único jeito de ver tudo de uma vez.
             compacto: false,
+            // Altura da pista na timeline (zoom vertical). Preferência de
+            // vista, igual `compacto`: vive no localStorage, não no projeto.
+            altura: MiniDAW.ALTURA_LANE_PADRAO,
             color: type === 'voice' ? '#3b82f6' : '#a855f7'
         };
 
@@ -260,10 +269,12 @@ class MiniDAW {
                     Auto Fade Ativo
                 </div>
                 <div class="track-zoom-controls">
-                    <button class="track-zoom-btn" onclick="minidaw.trackZoomIn('${track.id}')" title="Zoom In (+)">
+                    <button class="track-zoom-btn" onclick="minidaw.trackZoomIn('${track.id}')"
+                            title="Engordar faixa (mais altura: enxerga o detalhe da onda)">
                         <i class="fas fa-plus"></i>
                     </button>
-                    <button class="track-zoom-btn" onclick="minidaw.trackZoomOut('${track.id}')" title="Zoom Out (-)">
+                    <button class="track-zoom-btn" onclick="minidaw.trackZoomOut('${track.id}')"
+                            title="Emagrecer faixa (menos altura: cabe mais pista na tela)">
                         <i class="fas fa-minus"></i>
                     </button>
                 </div>
@@ -864,6 +875,10 @@ class MiniDAW {
                 }
             });
         }
+        // Zoom vertical: a lane nasce com a altura do CSS e o card é recriado a
+        // cada updateTrackUI, então reaplicar aqui é o que faz a altura escolhida
+        // sobreviver a Mute/Solo, troca de tipo e reabertura de projeto.
+        lane.style.height = (track.altura || MiniDAW.ALTURA_LANE_PADRAO) + 'px';
         const conteudo = lane.querySelector('.lane-conteudo');
         if (!conteudo) return;
         conteudo.style.width = this._larguraDaTimeline() + 'px';
@@ -3336,8 +3351,37 @@ class MiniDAW {
 
     // Zoom por faixa não existe mais: a timeline tem UMA escala (senão "10s"
     // teria tamanhos diferentes por faixa e arrastar entre elas não fecharia).
-    trackZoomIn() { this.zoomIn(); }
-    trackZoomOut() { this.zoomOut(); }
+    // ── ZOOM VERTICAL (altura da faixa) ──────────────────────────────────
+    // O + e o − do cabeçalho de cada faixa engordam/emagrecem SÓ aquela pista.
+    // Antes os dois chamavam o zoom horizontal global — eram um par de botões
+    // fantasma, duplicata dos do transporte. Agora fazem o eixo que faltava:
+    // faixa alta mostra detalhe da onda (respiração, o exato fim da palavra),
+    // faixa baixa faz caber mais pista na tela. É o complemento vertical do
+    // zoom horizontal, e é independente do modo compacto (que esconde efeitos).
+    // Altura é preferência de VISTA: fica no localStorage junto com `compacto`,
+    // não vai pro projeto salvo no Supabase.
+    _ajustarAltura(trackId, fator) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const atual = track.altura || MiniDAW.ALTURA_LANE_PADRAO;
+        const nova = Math.max(MiniDAW.ALTURA_LANE_MIN,
+                     Math.min(MiniDAW.ALTURA_LANE_MAX, Math.round(atual * fator)));
+        if (nova === atual) {
+            this.showNotification(
+                fator > 1 ? 'Faixa já está na altura máxima' : 'Faixa já está na altura mínima', 'info');
+            return;
+        }
+        track.altura = nova;
+        const lane = document.getElementById(`lane_${track.id}`);
+        // Altura ANTES do render: o canvas da onda se desenha pelo offsetHeight
+        // da lane, então redesenhar antes de crescer sairia na altura velha.
+        if (lane) lane.style.height = nova + 'px';
+        this.renderizarClips(track);
+        this.saveToLocalStorage();
+    }
+
+    trackZoomIn(trackId) { this._ajustarAltura(trackId, 1.3); }
+    trackZoomOut(trackId) { this._ajustarAltura(trackId, 1 / 1.3); }
 
     updateZoomIndicator() {
         const indicator = document.getElementById('zoomIndicator');
