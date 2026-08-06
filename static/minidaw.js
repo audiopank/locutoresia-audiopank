@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 40;
+const MINIDAW_VERSAO = 41;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -826,7 +826,48 @@ class MiniDAW {
         for (let t = 0; t * this.pxPorSegundo <= largura; t += passo) {
             html += `<div class="marca" style="left:${t * this.pxPorSegundo}px">${this.formatTime(t)}</div>`;
         }
+        // O marcador do playhead vai no innerHTML porque ele é reescrito a
+        // cada redesenho — elemento criado por fora seria apagado aqui.
+        html += '<div class="playhead-regua"></div>';
         regua.innerHTML = html;
+        // Clicar na régua leva o cursor de reprodução pro ponto (padrão de DAW).
+        // Listener no elemento, não nas marcas: sobrevive ao innerHTML.
+        if (!regua._clique) {
+            regua._clique = true;
+            regua.addEventListener('click', (e) => {
+                const r = regua.getBoundingClientRect();
+                // + scrollLeft: a régua rola junto com as lanes.
+                this.irPara((e.clientX - r.left + regua.scrollLeft) / this.pxPorSegundo);
+            });
+        }
+        this._desenharPlayhead();
+    }
+
+    // ── CURSOR DE REPRODUÇÃO (playhead) ──────────────────────────────────
+    // Antes não existia: `currentTime` só era incrementado pelo relógio e
+    // zerado pelo stop, então o play SEMPRE partia do 0:00. O produtor via a
+    // linha vermelha (que é de CORTE, e segue o mouse) e esperava tocar dali.
+    _desenharPlayhead() {
+        const px = ((this.currentTime || 0) * this.pxPorSegundo) + 'px';
+        document.querySelectorAll('.clips-lane .playhead').forEach(el => { el.style.left = px; });
+        const marca = document.querySelector('.timeline-regua .playhead-regua');
+        if (marca) marca.style.left = px;
+    }
+
+    // Leva o cursor de reprodução pro tempo pedido. Tocando, pula pro ponto
+    // (mesmo padrão de reinício-preservando-posição dos gestos de clip).
+    irPara(tempo) {
+        const t = Math.max(0, tempo || 0);
+        const tocando = this.isPlaying;
+        if (tocando) this.stop();
+        this.currentTime = t;
+        this._inicioDaReproducao = t;   // é pra cá que o stop volta
+        if (tocando) {
+            this.play();
+        } else {
+            this._mostrarTempo();
+            this._desenharPlayhead();
+        }
     }
 
     // Posiciona a linha de corte em TODAS as lanes no tempo sob o mouse.
@@ -876,6 +917,14 @@ class MiniDAW {
                     this.desenharLinhaDeCorte();
                 }
             });
+            // Clique no VAZIO da pista posiciona o cursor de reprodução.
+            // Em cima de objeto o clique é de seleção/arrasto (o mousedownClip
+            // é quem posiciona lá, e só se o clique não virar arrasto).
+            lane.addEventListener('click', (e) => {
+                if (this.trackTesoura === track.id) return;   // tesoura usa a lane pra marcar trecho
+                if (e.target.closest && e.target.closest('.clip-bloco')) return;
+                this.irPara(this._tempoNoPonto(e, track));
+            });
         }
         // Zoom vertical: a lane nasce com a altura do CSS e o card é recriado a
         // cada updateTrackUI, então reaplicar aqui é o que faz a altura escolhida
@@ -889,6 +938,12 @@ class MiniDAW {
             linha.className = 'linha-corte';
             linha.innerHTML = '<span class="linha-tempo"></span>';
             conteudo.appendChild(linha);
+        }
+        if (!conteudo.querySelector('.playhead')) {
+            const ph = document.createElement('div');
+            ph.className = 'playhead';
+            ph.style.left = ((this.currentTime || 0) * this.pxPorSegundo) + 'px';
+            conteudo.appendChild(ph);
         }
         // Remove só os blocos de clip — as guias da Tesoura (selreg_/selini_/
         // selfim_) moram na mesma lane e precisam sobreviver ao redesenho.
@@ -983,6 +1038,7 @@ class MiniDAW {
         if (!el) return;
         const x0 = ev.clientX, y0 = ev.clientY;
         const inicioOriginal = clip.inicio;
+        const tempoDoClique = this._tempoNoPonto(ev, track);
         const snapshotPreDrag = this._snapshotClips();
         this.clipDrag = { track, clip, moveu: false };
         el.classList.add('arrastando');
@@ -1033,7 +1089,13 @@ class MiniDAW {
             el.classList.remove('arrastando');
             document.querySelectorAll('.clips-lane').forEach(l => l.style.outline = '');
             const d = this.clipDrag; this.clipDrag = null;
-            if (!d || !d.moveu) return;
+            if (!d || !d.moveu) {
+                // Clique seco no objeto: além de selecionar, leva o cursor de
+                // reprodução pro ponto clicado. O ponto de onde o produtor quer
+                // ouvir quase sempre está DENTRO de um objeto, não no vazio.
+                this.irPara(tempoDoClique);
+                return;
+            }
             this._guardarUndo(snapshotPreDrag);
 
             if (d.trackAlvoId && d.trackAlvoId !== track.id) {
@@ -1730,6 +1792,8 @@ class MiniDAW {
             return;
         }
 
+        // De onde esta reprodução partiu — o stop volta pra cá.
+        this._inicioDaReproducao = this.currentTime || 0;
         this.isPlaying = true;
         this.setPlayIcon('fas fa-pause');
 
@@ -1882,7 +1946,10 @@ class MiniDAW {
 
     stop() {
         this.isPlaying = false;
-        this.currentTime = 0;
+        // Volta pro ponto de ONDE O PLAY PARTIU, não pro 0:00 — ouvir a partir
+        // dos 19s, apertar espaço e dar play de novo tem que voltar aos 19s
+        // (padrão de DAW). O botão ⏹ é quem zera de verdade (stopPlayback).
+        this.currentTime = this._inicioDaReproducao || 0;
 
         this.setPlayIcon('fas fa-play');
 
@@ -1930,8 +1997,14 @@ class MiniDAW {
                 this.stop();
             }
         }
+        this._mostrarTempo();
+        this._desenharPlayhead();   // o playhead anda junto com o relógio
+    }
 
-        // Atualiza os dois transportes (topo e o de baixo das faixas).
+    // Só os dois relógios do transporte (topo e o de baixo das faixas).
+    // Separado do updatePlaybackTime porque quem posiciona o cursor precisa
+    // atualizar o mostrador SEM avançar 0,1s no tempo.
+    _mostrarTempo() {
         const txt = this.formatTime(this.currentTime);
         ['currentTime', 'currentTimeBottom'].forEach(id => {
             const el = document.getElementById(id);
@@ -3304,10 +3377,14 @@ class MiniDAW {
         this.showNotification(`${nomes[modo]} — arraste os clips como quiser`, 'success');
     }
 
+    // Botão ⏹: este sim volta pro começo do projeto e ZERA o ponto de partida,
+    // senão o próximo stop puxaria o cursor de volta pro ponto antigo.
     stopPlayback() {
         this.stop();
+        this._inicioDaReproducao = 0;
         this.currentTime = 0;
-        this.updatePlaybackTime();
+        this._mostrarTempo();
+        this._desenharPlayhead();
     }
 
     // ── ZOOM ANCORADO ────────────────────────────────────────────────────

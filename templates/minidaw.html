@@ -674,6 +674,7 @@
             height: 26px; margin-bottom: 4px;
             background: #0e1424; border: 1px solid #2a3350; border-radius: 6px;
             position: relative; overflow: hidden;
+            cursor: pointer;   /* clicar posiciona o cursor de reprodução */
         }
         .timeline-regua .marca {
             position: absolute; top: 0; bottom: 0;
@@ -717,6 +718,19 @@
         .linha-corte {
             position: absolute; top: 0; bottom: 0; width: 1px; z-index: 4;
             background: rgba(239,68,68,.85); pointer-events: none; display: none;
+        }
+        /* Cursor de REPRODUÇÃO (playhead): onde o play começa e por onde ele
+           passa. Ciano, e FIXO — não confundir com a linha de corte, que é
+           vermelha e só acompanha o mouse. */
+        .playhead, .playhead-regua {
+            position: absolute; top: 0; bottom: 0; width: 2px; z-index: 6;
+            background: #22d3ee; pointer-events: none;
+            box-shadow: 0 0 6px rgba(34,211,238,.8);
+        }
+        .playhead-regua::before {
+            content: ''; position: absolute; top: 0; left: -4px;
+            border-left: 5px solid transparent; border-right: 5px solid transparent;
+            border-top: 7px solid #22d3ee;
         }
         .linha-corte .linha-tempo {
             position: absolute; top: 0; left: 4px;
@@ -1013,7 +1027,7 @@
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/clip-model.js?v=2"></script>
-    <script src="/static/minidaw.js?v=40"></script>
+    <script src="/static/minidaw.js?v=41"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
