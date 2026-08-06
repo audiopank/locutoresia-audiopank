@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 37;
+const MINIDAW_VERSAO = 38;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -34,6 +34,13 @@ class MiniDAW {
         this.clipTrim = false;    // trim em andamento (guard dos atalhos)
         this.cursorTempo = null;  // tempo do projeto sob o mouse (linha de corte)
         this.cursorLane = null;   // trackId da lane sob o mouse
+        // Copiar/colar objeto entre faixas (Ctrl+C/X/V, estilo Samplitude).
+        this.clipSelecionado = null;  // {trackId, clipId} do objeto realçado
+        this.clipboardClip = null;    // molde copiado (buffer por REFERÊNCIA)
+        // Ctrl+V precisa saber ONDE colar, e keydown não traz coordenada de
+        // mouse. Guardar o último ponto é o que permite colar na faixa sob o
+        // ponteiro — inclusive numa faixa VAZIA, que não tem lane pra hover.
+        this._mouseXY = null;
         // Undo/redo de CLIPS (só posições/cortes/trims — efeitos ficam fora;
         // Encurtar Pausas tem o próprio Desfazer). Snapshots são baratos:
         // cópia rasa dos objetos clip, buffers por referência.
@@ -164,7 +171,13 @@ class MiniDAW {
             if ((e.ctrlKey || e.metaKey) && !e.altKey) {
                 if (k === 'z' && !e.shiftKey) { e.preventDefault(); this.desfazerClips(); return; }
                 if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); this.refazerClips(); return; }
-                return;   // outros Ctrl+... seguem pro navegador (ex.: Ctrl+C)
+                // Copiar/recortar/colar OBJETO. Só engolem a tecla quando de
+                // fato tratam algo (copiarClip devolve false sem seleção),
+                // senão o Ctrl+C de copiar texto da página pararia de funcionar.
+                if (k === 'c') { if (this.copiarClip()) e.preventDefault(); return; }
+                if (k === 'x') { if (this.recortarClip()) e.preventDefault(); return; }
+                if (k === 'v') { if (this.colarClip()) e.preventDefault(); return; }
+                return;   // outros Ctrl+... seguem pro navegador
             }
             if (e.ctrlKey || e.metaKey || e.altKey) return;
             if ((k === 'd' || k === 't') && this.cursorLane != null && this.cursorTempo != null) {
@@ -176,6 +189,12 @@ class MiniDAW {
                 this.deletarClipNoPonto(this.cursorLane, this.cursorTempo);
             }
         });
+
+        // Último ponto do mouse — o Ctrl+V lê daqui pra saber em que faixa
+        // colar (keydown não carrega coordenada). passive: só leitura.
+        document.addEventListener('mousemove', (e) => {
+            this._mouseXY = { x: e.clientX, y: e.clientY };
+        }, { passive: true });
     }
 
     addTrack(type = 'voice') {
@@ -871,6 +890,10 @@ class MiniDAW {
             nome.className = 'clip-nome';
             nome.textContent = track.name;   // textContent: nome é DADO, não HTML (XSS recorrente da casa)
             el.appendChild(nome);
+            // Realce sobrevive ao redesenho (renderizarClips recria os blocos).
+            if (this.clipSelecionado && this.clipSelecionado.clipId === clip.id) {
+                el.classList.add('selecionado');
+            }
             el.addEventListener('mousedown', (ev) => this.mousedownClip(ev, track.id, clip.id));
             conteudo.appendChild(el);
             this.desenharOndaDoClip(track, clip, el.querySelector('canvas'));
@@ -933,6 +956,10 @@ class MiniDAW {
             return;
         }
         if (this.trackTesoura === trackId) return this.iniciarSelecao(ev, trackId);
+
+        // Clicar no corpo já seleciona (o Ctrl+C copia o selecionado). Vale
+        // mesmo que o clique não vire arrasto — é o "clique pra selecionar".
+        this.selecionarClip(trackId, clipId);
 
         ev.preventDefault();
         const el = document.getElementById(`clip_el_${clip.id}`);
@@ -1182,6 +1209,129 @@ class MiniDAW {
         this.undoClips.push(this._snapshotClips());
         this._restaurarSnapshotClips(this.redoClips.pop());
         this.showNotification('Refeito', 'info');
+    }
+
+    // ── SELEÇÃO E COPIAR/COLAR DE OBJETO ─────────────────────────────────
+    // Fluxo do Samplitude/Pro Tools que o produtor pediu: clica no objeto pra
+    // selecionar, Ctrl+C, aponta o mouse pra faixa de destino, Ctrl+V. Antes
+    // disso, replicar a mesma voz em 4 pistas exigia reimportar o arquivo 4x.
+
+    // Realça o objeto clicado. Mexe nas classes DIRETO (sem re-render): o
+    // mousedown que seleciona é o mesmo que pode virar arrasto, e recriar o
+    // bloco no meio do gesto mataria o drag.
+    selecionarClip(trackId, clipId) {
+        this.clipSelecionado = { trackId, clipId };
+        document.querySelectorAll('.clip-bloco.selecionado')
+            .forEach(el => el.classList.remove('selecionado'));
+        const el = document.getElementById(`clip_el_${clipId}`);
+        if (el) el.classList.add('selecionado');
+    }
+
+    // Resolve a seleção em {track, clip} REAIS. Devolve null se o objeto sumiu
+    // (apagado, desfeito, movido) — id guardado não é garantia de existência.
+    _clipSelecionadoVivo() {
+        const s = this.clipSelecionado;
+        if (!s) return null;
+        const track = this.tracks.find(t => t.id === s.trackId);
+        if (!track) return null;
+        const clip = this._clipsDaFaixa(track).find(c => c.id === s.clipId);
+        return clip ? { track, clip } : null;
+    }
+
+    // Faixa sob o ponteiro — pelo CARD, não pela lane. Faixa vazia é
+    // drop-zone (não tem lane), e colar numa faixa vazia é justamente o caso
+    // principal: espalhar a voz nas pistas de baixo.
+    _faixaSobOMouse() {
+        if (!this._mouseXY) return null;
+        const el = document.elementFromPoint(this._mouseXY.x, this._mouseXY.y);
+        const card = el && el.closest ? el.closest('.track-card') : null;
+        if (!card) return null;
+        return this.tracks.find(t => `track_${t.id}` === card.id) || null;
+    }
+
+    // Guarda o molde na área de transferência. Buffer POR REFERÊNCIA: colar a
+    // mesma voz em 4 faixas não pesa memória nem vira 4 WAVs ao salvar.
+    _copiarParaClipboard(clip) {
+        this.clipboardClip = {
+            buffer: clip.buffer, offset: clip.offset, duracao: clip.duracao,
+            fadeIn: clip.fadeIn || 0, fadeOut: clip.fadeOut || 0
+        };
+    }
+
+    copiarClip() {
+        // Texto selecionado na página tem prioridade: senão o Ctrl+C de copiar
+        // um roteiro da tela viraria "copiar objeto" com um clip realçado.
+        const texto = (typeof window.getSelection === 'function')
+            ? String(window.getSelection() || '').trim() : '';
+        if (texto) return false;
+        const alvo = this._clipSelecionadoVivo();
+        if (!alvo) {
+            this.showNotification('Clique num objeto da timeline antes de copiar', 'info');
+            return false;
+        }
+        this._copiarParaClipboard(alvo.clip);
+        this.showNotification(
+            `Objeto copiado (${alvo.clip.duracao.toFixed(2)}s) — aponte o mouse na faixa e Ctrl+V`, 'success');
+        return true;
+    }
+
+    recortarClip() {
+        const alvo = this._clipSelecionadoVivo();
+        if (!alvo) {
+            this.showNotification('Clique num objeto da timeline antes de recortar', 'info');
+            return false;
+        }
+        this._copiarParaClipboard(alvo.clip);
+        this._guardarUndo(this._snapshotClips());
+        const { track, clip } = alvo;
+        track.clips = this._clipsDaFaixa(track).filter(c => c.id !== clip.id);
+        this._sincronizarDerivados(track);
+        this.clipSelecionado = null;
+        if (!track.clips.length) this.updateTrackUI(track);   // esvaziou: vira drop-zone
+        this.aposMudancaDeClips([track]);
+        this.showNotification('Objeto recortado — Ctrl+V cola, Ctrl+Z desfaz', 'success');
+        return true;
+    }
+
+    colarClip() {
+        if (!this.clipboardClip) {
+            this.showNotification('Nada copiado ainda (clique num objeto e Ctrl+C)', 'info');
+            return false;
+        }
+        const destino = this._faixaSobOMouse();
+        if (!destino) {
+            this.showNotification('Aponte o mouse na faixa onde quer colar e tecle Ctrl+V', 'info');
+            return false;
+        }
+        // Ponto de destino: a linha de corte, se o mouse está sobre a lane —
+        // mesma regra do D/T e do Delete. Sobre o card de uma faixa vazia (sem
+        // lane) não há linha: cola no cursor de reprodução.
+        const inicioPedido = (this.cursorLane === destino.id && this.cursorTempo != null)
+            ? this.cursorTempo
+            : (this.currentTime || 0);
+
+        const clipsDestino = this._clipsDaFaixa(destino);
+        const novo = ClipModel.clonarClip(this.clipboardClip, inicioPedido);
+        const lista = clipsDestino.concat([novo]);
+        novo.inicio = ClipModel.moverClip(lista, novo, novo.inicio);
+        if (ClipModel.temSobreposicao(lista, novo)) {
+            // Vão livre menor que o objeto: não comete sobreposição (dois
+            // áudios somados sem crossfade soam a erro).
+            this.showNotification('Sem espaço livre nesse ponto — tente outro lugar da faixa', 'info');
+            return true;
+        }
+        this._guardarUndo(this._snapshotClips());
+        const eraVazia = clipsDestino.length === 0;
+        destino.clips = ClipModel.ordenarClips(lista);
+        this._sincronizarDerivados(destino);
+        // Faixa que estava vazia era drop-zone: precisa virar lane pra mostrar
+        // o objeto (espelho do que o arrasto entre faixas já fazia).
+        if (eraVazia) this.updateTrackUI(destino);
+        this.aposMudancaDeClips([destino]);
+        this.selecionarClip(destino.id, novo.id);
+        this.showNotification(
+            `Colado em "${destino.name}" a ${novo.inicio.toFixed(2)}s — Ctrl+Z desfaz`, 'success');
+        return true;
     }
 
     // Delete/Backspace: apaga o clip sob a linha de corte. As "sobras" de
@@ -3574,6 +3724,10 @@ class MiniDAW {
             // depois de abrir projeto diria "Desfeito" sem fazer nada.
             this.undoClips = [];
             this.redoClips = [];
+            // Seleção e área de transferência são do projeto ANTERIOR: colar
+            // áudio de outro spot depois de abrir um projeto seria surpresa.
+            this.clipSelecionado = null;
+            this.clipboardClip = null;
 
             for (const td of (proj.tracks || [])) {
                 this.addTrack(td.type || 'music');

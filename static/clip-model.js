@@ -186,11 +186,28 @@
         return false;
     }
 
+    // Cópia do clip numa posição nova (Ctrl+C / Ctrl+V, estilo Samplitude).
+    // O BUFFER vai por REFERÊNCIA de propósito: colar a mesma voz em 4 faixas
+    // não duplica áudio na memória nem vira 4 WAVs no Storage — a persistência
+    // já grava 1 arquivo por buffer DISTINTO. O id é novo (dois clips com o
+    // mesmo id quebrariam seleção, arrasto e o clipNoPonto).
+    function clonarClip(molde, inicio) {
+        return {
+            id: novoId(),
+            buffer: molde.buffer,
+            inicio: Math.max(0, inicio || 0),
+            offset: molde.offset || 0,
+            duracao: molde.duracao,
+            fadeIn: molde.fadeIn || 0,
+            fadeOut: molde.fadeOut || 0
+        };
+    }
+
     const ClipModel = {
         DURACAO_MIN, novoId, clipInteiro, fimDoClip, fimDaFaixa,
         duracaoDoProjeto, ordenarClips, clipNoPonto, dividirClip,
         removerTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip,
-        temSobreposicao
+        temSobreposicao, clonarClip
     };
 
     global.ClipModel = ClipModel;

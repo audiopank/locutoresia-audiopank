@@ -131,6 +131,26 @@ test('temSobreposicao detecta invasão e ignora encostar', () => {
     assert.equal(CM.temSobreposicao([a, c], c), true);
 });
 
+test('clonarClip: id novo, buffer POR REFERENCIA, recorte preservado', () => {
+    const c = { id: 'clip_a', buffer: buf, inicio: 2, offset: 3, duracao: 4, fadeIn: 0.2, fadeOut: 0.4 };
+    const copia = CM.clonarClip(c, 10);
+    assert.notEqual(copia.id, c.id);
+    assert.equal(copia.buffer, buf);        // mesmo buffer: colar nao duplica audio
+    assert.equal(copia.inicio, 10);
+    assert.equal(copia.offset, 3);          // recorte (trim) vai junto
+    assert.equal(copia.duracao, 4);
+    assert.equal(copia.fadeIn, 0.2);
+    assert.equal(copia.fadeOut, 0.4);
+    // original intacto
+    assert.equal(c.inicio, 2);
+});
+
+test('clonarClip nunca cola antes do zero', () => {
+    const c = { id: 'c', buffer: buf, offset: 0, duracao: 2 };
+    assert.equal(CM.clonarClip(c, -5).inicio, 0);
+    assert.equal(CM.clonarClip(c, undefined).inicio, 0);
+});
+
 test('ordenarClips ordena por inicio sem mutar o array original', () => {
     const arr = [{ inicio: 5 }, { inicio: 1 }];
     const ord = CM.ordenarClips(arr);

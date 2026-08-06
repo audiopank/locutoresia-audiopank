@@ -719,6 +719,13 @@
         }
         .clip-bloco:active { cursor: grabbing; }
         .clip-bloco.arrastando { opacity: .75; z-index: 10; box-shadow: 0 0 0 2px #ec4899; }
+        /* Objeto selecionado (alvo do Ctrl+C/Ctrl+X) — laranja, igual ao
+           Samplitude, pra não confundir com o rosa do arrasto. */
+        .clip-bloco.selecionado {
+            border-color: #f59e0b;
+            box-shadow: 0 0 0 2px #f59e0b, 0 0 10px rgba(245,158,11,.45);
+            background: rgba(60,40,10,.85);
+        }
         .clip-bloco canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
         .clip-alca {
             position: absolute; top: 0; bottom: 0; width: 7px; z-index: 3;
@@ -1029,8 +1036,8 @@
     <script src="/static/enviar-entrega.js?v=3"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
     <script src="/static/mix-engine.js?v=5"></script>
-    <script src="/static/clip-model.js?v=1"></script>
-    <script src="/static/minidaw.js?v=37"></script>
+    <script src="/static/clip-model.js?v=2"></script>
+    <script src="/static/minidaw.js?v=38"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
