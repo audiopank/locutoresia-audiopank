@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 41;
+const MINIDAW_VERSAO = 42;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -241,6 +241,7 @@ class MiniDAW {
             // Altura da pista na timeline (zoom vertical). Preferência de
             // vista, igual `compacto`: vive no localStorage, não no projeto.
             altura: MiniDAW.ALTURA_LANE_PADRAO,
+            ganhoOnda: 1,   // multiplicador só do DESENHO da onda (1x/2x/4x/8x)
             color: type === 'voice' ? '#3b82f6' : '#a855f7'
         };
 
@@ -290,6 +291,12 @@ class MiniDAW {
                             title="Emagrecer faixa (menos altura: cabe mais pista na tela)">
                         <i class="fas fa-minus"></i>
                     </button>
+                    <!-- Ganho VISUAL da onda: estica o desenho dentro da pista,
+                         sem mexer na altura dela nem no áudio. -->
+                    <button class="btn btn-sm btn-outline-primary" id="ganhoOnda_${track.id}"
+                            style="min-width:38px;font-variant-numeric:tabular-nums;"
+                            onclick="minidaw.alternarGanhoOnda('${track.id}')"
+                            title="Ganho VISUAL da onda (1x/2x/4x/8x): engorda só o desenho pra enxergar respiração e detalhe em áudio fraco. NÃO muda o áudio.">${track.ganhoOnda || 1}x</button>
                     <button class="btn btn-sm btn-outline-light" onclick="minidaw.alternarCompacto('${track.id}')"
                             title="${track.compacto ? 'Expandir efeitos' : 'Recolher efeitos (só timeline)'}">
                         <i class="fas fa-chevron-${track.compacto ? 'down' : 'up'}"></i>
@@ -995,6 +1002,10 @@ class MiniDAW {
         ctx.fillStyle = 'rgba(255,255,255,.18)';
         ctx.fillRect(0, Math.round(meio), width, 1);
         ctx.fillStyle = 'rgba(255,255,255,.85)';
+        // Ganho VISUAL da onda: multiplica só o DESENHO, nunca o áudio. Serve
+        // pra caçar detalhe em trecho fraco (respiração, "sss", ruído de fundo)
+        // que num desenho 1x fica rente à linha do meio e some.
+        const ganho = track.ganhoOnda || 1;
         const amostrasPorPixel = (a1 - a0) / width;
         for (let px = 0; px < width; px++) {
             const ini = a0 + Math.floor(px * amostrasPorPixel);
@@ -1006,8 +1017,12 @@ class MiniDAW {
                 if (v < min) min = v;
                 if (v > max) max = v;
             }
-            const topo = meio - max * meio;
-            ctx.fillRect(px, topo, 1, Math.max(1, (max - min) * meio));
+            // Clampa em ±1 depois do ganho: sem isto o pico transborda o canvas
+            // e vira um bloco chapado sem informação nenhuma.
+            const mx = Math.min(1, max * ganho);
+            const mn = Math.max(-1, min * ganho);
+            const topo = meio - mx * meio;
+            ctx.fillRect(px, topo, 1, Math.max(1, (mx - mn) * meio));
         }
     }
 
@@ -3461,6 +3476,28 @@ class MiniDAW {
 
     trackZoomIn(trackId) { this._ajustarAltura(trackId, 1.3); }
     trackZoomOut(trackId) { this._ajustarAltura(trackId, 1 / 1.3); }
+
+    // ── GANHO VISUAL DA ONDA ─────────────────────────────────────────────
+    // Primo do zoom vertical, e coisa diferente dele: a ALTURA muda o tamanho
+    // da pista; o GANHO estica só o desenho dentro dela. É o que faz uma
+    // respiração ou um "sss" — que a 1x fica rente à linha do meio — virar
+    // relevo visível pra você achar o ponto de corte. Não toca no áudio.
+    // Um botão só, ciclando 1x → 2x → 4x → 8x → 1x.
+    alternarGanhoOnda(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const passos = [1, 2, 4, 8];
+        const i = passos.indexOf(track.ganhoOnda || 1);
+        track.ganhoOnda = passos[(i + 1) % passos.length];
+        // Rótulo trocado no lugar, SEM updateTrackUI: recriar o card desliga os
+        // efeitos e é a armadilha mais cara desta MiniDAW.
+        const btn = document.getElementById(`ganhoOnda_${track.id}`);
+        if (btn) btn.textContent = track.ganhoOnda + 'x';
+        this.renderizarClips(track);
+        this.saveToLocalStorage();
+        this.showNotification(
+            `Onda em ${track.ganhoOnda}x — só o desenho, o áudio não muda`, 'info');
+    }
 
     updateZoomIndicator() {
         const indicator = document.getElementById('zoomIndicator');
