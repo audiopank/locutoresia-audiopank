@@ -151,6 +151,20 @@ test('clonarClip nunca cola antes do zero', () => {
     assert.equal(CM.clonarClip(c, undefined).inicio, 0);
 });
 
+test('ehArquivoInteiroNoZero: so o clip virgem passa', () => {
+    const virgem = { buffer: buf, inicio: 0, offset: 0, duracao: 10 };
+    assert.equal(CM.ehArquivoInteiroNoZero(virgem), true);
+    // movido na timeline
+    assert.equal(CM.ehArquivoInteiroNoZero({ ...virgem, inicio: 3 }), false);
+    // aparado pela esquerda
+    assert.equal(CM.ehArquivoInteiroNoZero({ ...virgem, offset: 2, duracao: 8 }), false);
+    // aparado pela direita
+    assert.equal(CM.ehArquivoInteiroNoZero({ ...virgem, duracao: 6 }), false);
+    // sem buffer conhecido nao acusa edicao (nao assusta a toa)
+    assert.equal(CM.ehArquivoInteiroNoZero({ inicio: 0, offset: 0, duracao: 5 }), true);
+    assert.equal(CM.ehArquivoInteiroNoZero(null), false);
+});
+
 test('ordenarClips ordena por inicio sem mutar o array original', () => {
     const arr = [{ inicio: 5 }, { inicio: 1 }];
     const ord = CM.ordenarClips(arr);

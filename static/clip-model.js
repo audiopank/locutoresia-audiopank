@@ -203,11 +203,25 @@
         };
     }
 
+    // true se o clip é "o arquivo inteiro, começando em 0:00" — isto é, a faixa
+    // NÃO foi editada na timeline. Quem TROCA o buffer da faixa (Encurtar
+    // Pausas) precisa saber se existe edição a perder antes de recolar tudo
+    // num clip só, porque isso não tem desfazer.
+    function ehArquivoInteiroNoZero(clip) {
+        if (!clip) return false;
+        const tol = 1e-3;
+        if (Math.abs(clip.inicio || 0) > tol) return false;    // foi movido
+        if (Math.abs(clip.offset || 0) > tol) return false;    // foi aparado pela esquerda
+        const dur = clip.buffer && clip.buffer.duration;
+        if (dur == null) return true;      // buffer desconhecido: não acusa edição
+        return Math.abs(clip.duracao - dur) <= tol;            // foi aparado pela direita?
+    }
+
     const ClipModel = {
         DURACAO_MIN, novoId, clipInteiro, fimDoClip, fimDaFaixa,
         duracaoDoProjeto, ordenarClips, clipNoPonto, dividirClip,
         removerTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip,
-        temSobreposicao, clonarClip
+        temSobreposicao, clonarClip, ehArquivoInteiroNoZero
     };
 
     global.ClipModel = ClipModel;

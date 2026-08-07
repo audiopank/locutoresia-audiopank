@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 43;
+const MINIDAW_VERSAO = 44;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -1830,6 +1830,16 @@ class MiniDAW {
         return track.clips;
     }
 
+    // A faixa tem edição de timeline a perder se alguém trocar o buffer dela?
+    // Lê `track.clips` DIRETO, sem passar pelo _clipsDaFaixa: aquele faria a
+    // migração preguiçosa e criaria clip onde não havia, só pra responder.
+    _faixaFoiEditadaNaTimeline(track) {
+        const clips = (track && track.clips) || [];
+        if (clips.length > 1) return true;                  // dividida
+        if (clips.length === 1) return !ClipModel.ehArquivoInteiroNoZero(clips[0]);
+        return false;
+    }
+
     // Fim da última posição de áudio da faixa (tempo do PROJETO). Substitui o
     // track.duration "do arquivo" nos cálculos de duração/gate/fade.
     _fimDaFaixa(track) {
@@ -2298,12 +2308,30 @@ class MiniDAW {
         if (vozes.length === 0) { this.showNotification('Nenhuma voz na timeline', 'warning'); return; }
 
         // Trocar o buffer recola a faixa num clip único (migração preguiçosa):
-        // divisões e trims da timeline se perdem. Avisa antes, não impede —
-        // Encurtar Pausas continua sendo o jeito certo de tratar a voz CRUA.
-        const temEdicaoDeClips = this.tracks.some(t =>
-            t.type === 'voice' && t.clips && t.clips.length > 1);
-        if (temEdicaoDeClips) {
-            this.showNotification('Atenção: Encurtar Pausas junta os clips divididos da voz num só', 'warning');
+        // divisões, trims e posições da timeline se perdem. Isto era só um
+        // aviso DEPOIS do estrago; virou pergunta que BLOQUEIA, porque com a
+        // timeline de clips um clique distraído custa uma montagem inteira.
+        // Encurtar Pausas continua sendo o jeito certo de tratar a voz CRUA —
+        // a ordem boa é encurtar primeiro, cortar e distribuir depois.
+        const editadas = this.tracks.filter(t =>
+            t.type === 'voice' && this._faixaFoiEditadaNaTimeline(t));
+        if (editadas.length) {
+            const objetos = editadas.reduce((s, t) => s + (t.clips || []).length, 0);
+            const lista = editadas.map(t => `- ${t.name} (${(t.clips || []).length} objeto(s))`).join('\n');
+            const seguir = confirm(
+                'ATENCAO: isto vai DESFAZER sua edicao da timeline.\n\n' +
+                'Encurtar Pausas refaz o audio da voz do zero, e por isso junta os objetos ' +
+                'divididos num bloco so, no inicio da pista.\n\n' +
+                `Voce perderia ${objetos} objeto(s) posicionado(s) em ${editadas.length} faixa(s):\n${lista}\n\n` +
+                'O botao voltar devolve o audio original, mas NAO devolve os cortes nem as posicoes ' +
+                '(o Ctrl+Z tambem nao alcanca isto).\n\n' +
+                'Ordem recomendada: encurtar pausas primeiro, na voz crua; cortar e distribuir depois.\n\n' +
+                'Continuar mesmo assim?'
+            );
+            if (!seguir) {
+                this.showNotification('Encurtar Pausas cancelado — sua edição está intacta', 'info');
+                return;
+            }
         }
 
         let mexeu = false;
