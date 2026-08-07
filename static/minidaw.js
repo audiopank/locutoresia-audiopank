@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 42;
+const MINIDAW_VERSAO = 43;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -397,6 +397,10 @@ class MiniDAW {
                             </button>
                             <button class="effect-btn" onclick="minidaw.applyAutoFade()" title="Auto Fade">
                                 <i class="fas fa-wave-square"></i> Auto Fade
+                            </button>
+                            <button class="effect-btn" onclick="minidaw.copiarEfeitosParaIguais('${track.id}')"
+                                    title="Aplica os efeitos DESTA faixa em todas as outras do mesmo tipo (voz para vozes, trilha para trilhas). Serve quando a faixa de destino já tinha objeto — faixa vazia herda sozinha ao receber um clip.">
+                                <i class="fas fa-clone"></i> Copiar Efeitos
                             </button>
                             <div class="ms-2 border-start border-secondary px-2"></div>
                             <button class="effect-btn ${track.effects.reverb ? 'active' : ''}" 
@@ -1208,13 +1212,22 @@ class MiniDAW {
             this.aposMudancaDeClips([origem]);
             return;
         }
+        const destinoEraVazio = clipsDestino.length === 0;
         origem.clips = origemSemClip;
         destino.clips = ClipModel.ordenarClips(clipsDestino.concat([clip]));
         // Sincroniza os campos derivados legados dos DOIS lados.
         this._sincronizarDerivados(origem);
         this._sincronizarDerivados(destino);
+        // Faixa vazia que recebe objeto herda os efeitos da origem (mesma regra
+        // do colar) — pista sem objeto não tem ajuste próprio pra perder.
+        const herdou = destinoEraVazio && origem.type === destino.type;
+        if (herdou) {
+            this._copiarEfeitos(origem, destino);
+            this.updateTrackUI(destino);   // reaplica efeitos e redesenha sliders
+        }
         if (!origem.clips.length) this.updateTrackUI(origem);   // vira drop-zone de verdade
         this.aposMudancaDeClips([origem, destino]);
+        if (herdou) this.showNotification(`Efeitos de "${origem.name}" vieram junto`, 'info');
     }
 
     // Campos legados derivados dos clips — o resto do arquivo (e o export)
@@ -1345,10 +1358,12 @@ class MiniDAW {
 
     // Guarda o molde na área de transferência. Buffer POR REFERÊNCIA: colar a
     // mesma voz em 4 faixas não pesa memória nem vira 4 WAVs ao salvar.
-    _copiarParaClipboard(clip) {
+    _copiarParaClipboard(clip, origemId) {
         this.clipboardClip = {
             buffer: clip.buffer, offset: clip.offset, duracao: clip.duracao,
-            fadeIn: clip.fadeIn || 0, fadeOut: clip.fadeOut || 0
+            fadeIn: clip.fadeIn || 0, fadeOut: clip.fadeOut || 0,
+            // De qual faixa saiu — pra faixa vazia poder herdar os efeitos.
+            origemId: origemId || null
         };
     }
 
@@ -1363,7 +1378,7 @@ class MiniDAW {
             this.showNotification('Clique num objeto da timeline antes de copiar', 'info');
             return false;
         }
-        this._copiarParaClipboard(alvo.clip);
+        this._copiarParaClipboard(alvo.clip, alvo.track.id);
         this.showNotification(
             `Objeto copiado (${alvo.clip.duracao.toFixed(2)}s) — aponte o mouse na faixa e Ctrl+V`, 'success');
         return true;
@@ -1375,7 +1390,7 @@ class MiniDAW {
             this.showNotification('Clique num objeto da timeline antes de recortar', 'info');
             return false;
         }
-        this._copiarParaClipboard(alvo.clip);
+        this._copiarParaClipboard(alvo.clip, alvo.track.id);
         this._guardarUndo(this._snapshotClips());
         const { track, clip } = alvo;
         track.clips = this._clipsDaFaixa(track).filter(c => c.id !== clip.id);
@@ -1418,14 +1433,60 @@ class MiniDAW {
         const eraVazia = clipsDestino.length === 0;
         destino.clips = ClipModel.ordenarClips(lista);
         this._sincronizarDerivados(destino);
+        // Faixa vazia herda os efeitos da faixa de origem: é a MESMA voz sendo
+        // espalhada, e uma pista sem objeto não tem ajuste pra perder. ANTES do
+        // updateTrackUI, que é quem reaplica efeitos e redesenha os sliders.
+        const origem = this.clipboardClip.origemId
+            ? this.tracks.find(t => t.id === this.clipboardClip.origemId) : null;
+        const herdou = eraVazia && origem && origem !== destino && origem.type === destino.type;
+        if (herdou) this._copiarEfeitos(origem, destino);
         // Faixa que estava vazia era drop-zone: precisa virar lane pra mostrar
         // o objeto (espelho do que o arrasto entre faixas já fazia).
         if (eraVazia) this.updateTrackUI(destino);
         this.aposMudancaDeClips([destino]);
         this.selecionarClip(destino.id, novo.id);
         this.showNotification(
-            `Colado em "${destino.name}" a ${novo.inicio.toFixed(2)}s — Ctrl+Z desfaz`, 'success');
+            `Colado em "${destino.name}" a ${novo.inicio.toFixed(2)}s` +
+            (herdou ? ` — efeitos de "${origem.name}" vieram junto` : '') + ' — Ctrl+Z desfaz', 'success');
         return true;
+    }
+
+    // ── EFEITOS: HERANÇA E CÓPIA ENTRE FAIXAS ────────────────────────────
+    // Efeito é do CANAL, não do objeto — isso é regra de DAW e continua de pé
+    // (clip movido soa como a faixa onde ele está). Só que o produtor recorta
+    // UMA voz em pedaços e espalha em várias pistas: são todas a MESMA voz, e
+    // redigitar Gate/EQ/Reverb faixa por faixa é trabalho repetido e sujeito a
+    // erro. Daí: faixa VAZIA que recebe um clip herda os efeitos da origem
+    // (não tinha ajuste nenhum pra perder), e o botão "Copiar Efeitos" resolve
+    // o resto na mão. Volume/pan/fades NÃO vão junto: são dosagem da pista.
+    _copiarEfeitos(origem, destino) {
+        if (!origem || !destino || origem === destino) return;
+        destino.effects = Object.assign({}, origem.effects);
+        destino.eqSettings = Object.assign({}, origem.eqSettings || {});
+        destino.gateSettings = Object.assign({}, origem.gateSettings || {});
+        destino.compressorSettings = Object.assign({}, origem.compressorSettings || {});
+        if (origem.reverbAmount != null) destino.reverbAmount = origem.reverbAmount;
+    }
+
+    copiarEfeitosParaIguais(trackId) {
+        const origem = this.tracks.find(t => t.id === trackId);
+        if (!origem) return;
+        const alvos = this.tracks.filter(t => t.id !== origem.id && t.type === origem.type);
+        const rotulo = origem.type === 'voice' ? 'voz' : 'trilha';
+        if (!alvos.length) {
+            this.showNotification(`Não há outra faixa de ${rotulo} pra receber os efeitos`, 'info');
+            return;
+        }
+        // Substitui ajuste que o produtor pode ter feito à mão, e o Ctrl+Z só
+        // desfaz clips (efeito fica de fora) — então pergunta antes.
+        if (!confirm(`Aplicar os efeitos de "${origem.name}" em ${alvos.length} faixa(s) de ${rotulo}?\n\n` +
+                     `Isso substitui os efeitos dessas faixas e não tem desfazer.`)) return;
+        for (const t of alvos) {
+            this._copiarEfeitos(origem, t);
+            this.updateTrackUI(t);   // recria o card já reaplicando efeitos e sliders
+        }
+        this.saveToLocalStorage();
+        this.showNotification(`Efeitos de "${origem.name}" aplicados em ${alvos.length} faixa(s)`, 'success');
     }
 
     // Delete/Backspace: apaga o clip sob a linha de corte. As "sobras" de
