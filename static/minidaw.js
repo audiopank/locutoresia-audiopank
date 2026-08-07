@@ -2,7 +2,7 @@
 // "não aparece", a primeira pergunta é sempre se o navegador está rodando o
 // arquivo novo ou uma cópia velha do cache. Abra o console (F12) e leia.
 // Suba este número junto com o ?v= do minidaw.html a cada mudança visível.
-const MINIDAW_VERSAO = 44;
+const MINIDAW_VERSAO = 45;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
@@ -115,6 +115,15 @@ class MiniDAW {
         }
     }
 
+    // O usuário está digitando num campo? Atalho de tecla solta NUNCA pode
+    // roubar a digitação. Fica num método só porque são DOIS listeners de
+    // keydown neste arquivo e o guard precisa ser idêntico nos dois.
+    _digitando(e) {
+        const alvo = e.target;
+        return !!(alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA'
+                           || alvo.isContentEditable));
+    }
+
     setupEventListeners() {
         // Prevent default drag behaviors
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -128,6 +137,14 @@ class MiniDAW {
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
+            // ⚠️ Estes são atalhos de UMA TECLA e ficaram anos sem guard nenhum.
+            // Sem o primeiro, espaço/s/c/+/- eram ENGOLIDOS dentro de qualquer
+            // campo de texto (o Briefing não aceitava espaço: "promoção ativa"
+            // virava "promoçãoativa", e s/c nem apareciam). Sem o segundo, o
+            // Ctrl+C ligava a Tesoura junto com o copiar objeto, e o Ctrl+S
+            // sequestrava o salvar do navegador.
+            if (this._digitando(e)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
             // Tecla + para zoom in
             if (e.key === '+' || e.key === '=') {
                 e.preventDefault();
@@ -164,8 +181,7 @@ class MiniDAW {
         // D ou T = dividir o clip sob a linha de corte, no ponto exato.
         // Não dispara digitando em campo de texto (nome da faixa, roteiro...).
         document.addEventListener('keydown', (e) => {
-            const alvo = e.target;
-            if (alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable)) return;
+            if (this._digitando(e)) return;
             // Gesto de mouse em andamento: mexer nos clips por baixo dele
             // cometeria um objeto órfão no soltar. Atalhos esperam.
             if (this.clipDrag || this.clipTrim) return;
