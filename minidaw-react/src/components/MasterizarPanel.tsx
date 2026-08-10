@@ -1,5 +1,5 @@
 // minidaw-react/src/components/MasterizarPanel.tsx
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Upload, Loader2, Activity, Play, Pause, Trash2, Download, Wand2 } from "lucide-react";
 import { decodificar, paraWav, paraMp3, baixar } from "@/lib/audioFile.js";
 import { medir, masterizar } from "@/lib/mastering.js";
@@ -65,26 +65,26 @@ export default function MasterizarPanel() {
 
   const gerar = useCallback(async () => {
     if (!buffer) return;
-    setProcessando(true);
+    setProcessando(true); setErro("");
     try {
-      const d = acharDestino(destino);
-      const r = await masterizar(buffer, {
-        alvoLufs: d.alvoLufs,
-        tetoDb: d.tetoDb,
+      const destinoEscolhido = acharDestino(destino);
+      const resultado = await masterizar(buffer, {
+        alvoLufs: destinoEscolhido.alvoLufs,
+        tetoDb: destinoEscolhido.tetoDb,
         corteBaixoHz: corteBaixo,
         corteAltoHz: corteAlto,
         intensidade,
         balancoReferencia: null,
       });
-      setVersoes((v) => [
-        ...v,
+      setVersoes((atual) => [
+        ...atual,
         {
-          id: `v_${v.length + 1}_${d.chave}`,
-          rotulo: d.rotulo,
-          buffer: r.buffer,
-          medicao: r.medicao,
-          alvoLufs: d.alvoLufs,
-          ganhoAplicadoDb: r.ganhoAplicadoDb,
+          id: `v_${atual.length + 1}_${destinoEscolhido.chave}`,
+          rotulo: destinoEscolhido.rotulo,
+          buffer: resultado.buffer,
+          medicao: resultado.medicao,
+          alvoLufs: destinoEscolhido.alvoLufs,
+          ganhoAplicadoDb: resultado.ganhoAplicadoDb,
         },
       ]);
     } catch (e: any) {
@@ -94,20 +94,39 @@ export default function MasterizarPanel() {
     }
   }, [buffer, destino, intensidade, corteBaixo, corteAlto]);
 
+  // Ref único pro AudioContext da pilha: nunca dois tocando ao mesmo tempo
+  // (compararia mal), e cada troca fecha o anterior com segurança.
+  const playbackCtxRef = useRef<AudioContext | null>(null);
+
+  const fecharPlaybackAtual = useCallback(() => {
+    const ctx = playbackCtxRef.current;
+    playbackCtxRef.current = null;
+    if (ctx && ctx.state !== "closed") {
+      ctx.close().catch(() => {});
+    }
+  }, []);
+
+  // Fecha o contexto de reprodução ao desmontar o painel — nada de áudio
+  // tocando às escondidas depois que o usuário sai da aba.
+  useEffect(() => fecharPlaybackAtual, [fecharPlaybackAtual]);
+
   // Um player só para a pilha inteira: tocar duas versões ao mesmo tempo
   // atrapalharia a comparação, que é justamente o ponto da pilha.
   const tocar = useCallback((id: string, buf: AudioBuffer) => {
-    (window as any).__pankMasterCtx?.close?.();
+    fecharPlaybackAtual();
     if (tocandoId === id) { setTocandoId(""); return; }
     const ctx = new AudioContext();
-    (window as any).__pankMasterCtx = ctx;
+    playbackCtxRef.current = ctx;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.connect(ctx.destination);
-    src.onended = () => setTocandoId("");
+    src.onended = () => {
+      setTocandoId("");
+      fecharPlaybackAtual(); // fim natural também libera o contexto
+    };
     src.start(0);
     setTocandoId(id);
-  }, [tocandoId]);
+  }, [tocandoId, fecharPlaybackAtual]);
 
   return (
     <div className="space-y-4">
