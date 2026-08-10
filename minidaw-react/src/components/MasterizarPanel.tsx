@@ -52,8 +52,30 @@ export default function MasterizarPanel() {
   const [refBalanco, setRefBalanco] = useState<number[] | null>(null);
   const refInputRef = useRef<HTMLInputElement>(null);
 
+  // Ref único pro AudioContext da pilha: nunca dois tocando ao mesmo tempo
+  // (compararia mal), e cada troca fecha o anterior com segurança.
+  const playbackCtxRef = useRef<AudioContext | null>(null);
+
+  const fecharPlaybackAtual = useCallback(() => {
+    const ctx = playbackCtxRef.current;
+    playbackCtxRef.current = null;
+    if (ctx && ctx.state !== "closed") {
+      ctx.close().catch(() => {});
+    }
+  }, []);
+
+  // Fecha o contexto de reprodução ao desmontar o painel — nada de áudio
+  // tocando às escondidas depois que o usuário sai da aba.
+  useEffect(() => fecharPlaybackAtual, [fecharPlaybackAtual]);
+
   const carregar = useCallback(async (file: File) => {
     setCarregando(true); setErro("");
+    // Um arquivo novo apaga a pilha de versões do arquivo anterior -- versão
+    // antiga tocando (ou baixada) com o nome do arquivo novo seria o pior
+    // tipo de bug: silencioso e parece certo.
+    fecharPlaybackAtual();
+    setTocandoId("");
+    setVersoes([]);
     try {
       const buf = await decodificar(file);
       setBuffer(buf);
@@ -65,7 +87,7 @@ export default function MasterizarPanel() {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [fecharPlaybackAtual]);
 
   const carregarReferencia = useCallback(async (file: File) => {
     setErro("");
@@ -77,6 +99,11 @@ export default function MasterizarPanel() {
       setErro(`Não consegui ler a referência "${file.name}". ${e?.message || ""}`);
     }
   }, []);
+
+  // Contador que só cresce -- nunca reusa número mesmo depois de apagar uma
+  // versão do meio da pilha (índice/tamanho do array reutilizava id e
+  // colidia duas linhas no mesmo key do React).
+  const proximoIdRef = useRef(0);
 
   const gerar = useCallback(async () => {
     if (!buffer) return;
@@ -94,7 +121,7 @@ export default function MasterizarPanel() {
       setVersoes((atual) => [
         ...atual,
         {
-          id: `v_${atual.length + 1}_${destinoEscolhido.chave}`,
+          id: `v_${++proximoIdRef.current}_${destinoEscolhido.chave}`,
           rotulo: refBalanco ? `${destinoEscolhido.rotulo} + ref.` : destinoEscolhido.rotulo,
           buffer: resultado.buffer,
           medicao: resultado.medicao,
@@ -108,22 +135,6 @@ export default function MasterizarPanel() {
       setProcessando(false);
     }
   }, [buffer, destino, intensidade, corteBaixo, corteAlto, refBalanco]);
-
-  // Ref único pro AudioContext da pilha: nunca dois tocando ao mesmo tempo
-  // (compararia mal), e cada troca fecha o anterior com segurança.
-  const playbackCtxRef = useRef<AudioContext | null>(null);
-
-  const fecharPlaybackAtual = useCallback(() => {
-    const ctx = playbackCtxRef.current;
-    playbackCtxRef.current = null;
-    if (ctx && ctx.state !== "closed") {
-      ctx.close().catch(() => {});
-    }
-  }, []);
-
-  // Fecha o contexto de reprodução ao desmontar o painel — nada de áudio
-  // tocando às escondidas depois que o usuário sai da aba.
-  useEffect(() => fecharPlaybackAtual, [fecharPlaybackAtual]);
 
   // Um player só para a pilha inteira: tocar duas versões ao mesmo tempo
   // atrapalharia a comparação, que é justamente o ponto da pilha.
@@ -310,7 +321,16 @@ export default function MasterizarPanel() {
                         className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm">
                   WAV
                 </button>
-                <button onClick={() => setVersoes((lista) => lista.filter((x) => x.id !== v.id))}
+                <button onClick={() => {
+                          // Apagar a versão que está tocando não pode deixar o
+                          // áudio (e o AudioContext) rodando sem nenhuma linha
+                          // na tela pra pausar.
+                          if (v.id === tocandoId) {
+                            fecharPlaybackAtual();
+                            setTocandoId("");
+                          }
+                          setVersoes((lista) => lista.filter((x) => x.id !== v.id));
+                        }}
                         className="p-2 rounded-lg hover:bg-red-500/20 text-red-300">
                   <Trash2 className="w-4 h-4" />
                 </button>
