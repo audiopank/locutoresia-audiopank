@@ -1,12 +1,22 @@
 // minidaw-react/src/components/MasterizarPanel.tsx
 import { useCallback, useRef, useState } from "react";
-import { Upload, Loader2, Activity } from "lucide-react";
-import { decodificar } from "@/lib/audioFile.js";
-import { medir } from "@/lib/mastering.js";
+import { Upload, Loader2, Activity, Play, Pause, Trash2, Download, Wand2 } from "lucide-react";
+import { decodificar, paraWav, paraMp3, baixar } from "@/lib/audioFile.js";
+import { medir, masterizar } from "@/lib/mastering.js";
+import { DESTINOS, acharDestino } from "@/lib/destinos.js";
 
 type Medicao = {
   lufs: number; picoDb: number; faixaDinamica: number;
   balanco: number[]; duracao: number; sampleRate: number; canais: number;
+};
+
+type Versao = {
+  id: string;
+  rotulo: string;
+  buffer: AudioBuffer;
+  medicao: Medicao;
+  alvoLufs: number;
+  ganhoAplicadoDb: number;
 };
 
 /** Um número medido, ou um traço quando não há o que mostrar. */
@@ -30,6 +40,14 @@ export default function MasterizarPanel() {
   const [erro, setErro] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [destino, setDestino] = useState("radio");
+  const [intensidade, setIntensidade] = useState(0.5);
+  const [corteBaixo, setCorteBaixo] = useState(20);
+  const [corteAlto, setCorteAlto] = useState(0);
+  const [versoes, setVersoes] = useState<Versao[]>([]);
+  const [processando, setProcessando] = useState(false);
+  const [tocandoId, setTocandoId] = useState<string>("");
+
   const carregar = useCallback(async (file: File) => {
     setCarregando(true); setErro("");
     try {
@@ -44,6 +62,52 @@ export default function MasterizarPanel() {
       setCarregando(false);
     }
   }, []);
+
+  const gerar = useCallback(async () => {
+    if (!buffer) return;
+    setProcessando(true);
+    try {
+      const d = acharDestino(destino);
+      const r = await masterizar(buffer, {
+        alvoLufs: d.alvoLufs,
+        tetoDb: d.tetoDb,
+        corteBaixoHz: corteBaixo,
+        corteAltoHz: corteAlto,
+        intensidade,
+        balancoReferencia: null,
+      });
+      setVersoes((v) => [
+        ...v,
+        {
+          id: `v_${v.length + 1}_${d.chave}`,
+          rotulo: d.rotulo,
+          buffer: r.buffer,
+          medicao: r.medicao,
+          alvoLufs: d.alvoLufs,
+          ganhoAplicadoDb: r.ganhoAplicadoDb,
+        },
+      ]);
+    } catch (e: any) {
+      setErro(`Falhou ao masterizar: ${e?.message || e}`);
+    } finally {
+      setProcessando(false);
+    }
+  }, [buffer, destino, intensidade, corteBaixo, corteAlto]);
+
+  // Um player só para a pilha inteira: tocar duas versões ao mesmo tempo
+  // atrapalharia a comparação, que é justamente o ponto da pilha.
+  const tocar = useCallback((id: string, buf: AudioBuffer) => {
+    (window as any).__pankMasterCtx?.close?.();
+    if (tocandoId === id) { setTocandoId(""); return; }
+    const ctx = new AudioContext();
+    (window as any).__pankMasterCtx = ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.onended = () => setTocandoId("");
+    src.start(0);
+    setTocandoId(id);
+  }, [tocandoId]);
 
   return (
     <div className="space-y-4">
@@ -102,6 +166,87 @@ export default function MasterizarPanel() {
             <Numero rotulo="Pico real" valor={medicao.picoDb} unidade="dB" />
             <Numero rotulo="Faixa dinâmica" valor={medicao.faixaDinamica} unidade="dB" />
           </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <label className="text-sm">
+              <span className="block text-white/60 mb-1">Destino</span>
+              <select
+                value={destino} onChange={(e) => setDestino(e.target.value)}
+                className="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-2"
+              >
+                {DESTINOS.map((d) => (
+                  <option key={d.chave} value={d.chave}>
+                    {d.rotulo} — alvo {d.alvoLufs} LUFS
+                  </option>
+                ))}
+              </select>
+              <span className="block text-xs text-white/40 mt-1">{acharDestino(destino).dica}</span>
+            </label>
+
+            <div className="text-sm space-y-2">
+              <label className="block">
+                <span className="text-white/60">Intensidade do acabamento: {intensidade.toFixed(2)}</span>
+                <input type="range" min={0} max={1} step={0.05} value={intensidade}
+                       onChange={(e) => setIntensidade(parseFloat(e.target.value))} className="w-full" />
+              </label>
+              <label className="block">
+                <span className="text-white/60">Corte baixo: {corteBaixo || "desligado"} Hz</span>
+                <input type="range" min={0} max={120} step={5} value={corteBaixo}
+                       onChange={(e) => setCorteBaixo(parseInt(e.target.value))} className="w-full" />
+              </label>
+              <label className="block">
+                <span className="text-white/60">Corte alto: {corteAlto || "desligado"} Hz</span>
+                <input type="range" min={0} max={20000} step={500} value={corteAlto}
+                       onChange={(e) => setCorteAlto(parseInt(e.target.value))} className="w-full" />
+              </label>
+            </div>
+          </div>
+
+          <button
+            onClick={gerar} disabled={processando}
+            className="mt-4 px-5 py-2.5 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 font-medium inline-flex items-center gap-2"
+          >
+            {processando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+            {processando ? "Masterizando…" : "Masterizar"}
+          </button>
+        </div>
+      )}
+
+      {versoes.length > 0 && (
+        <div className="space-y-2">
+          {versoes.map((v) => {
+            const alcancou = Math.abs(v.medicao.lufs - v.alvoLufs) <= 1;
+            return (
+              <div key={v.id} className="rounded-xl bg-black/30 border border-white/10 p-3 flex items-center gap-3">
+                <button onClick={() => tocar(v.id, v.buffer)}
+                        className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
+                  {tocandoId === v.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium">{v.rotulo}</div>
+                  <div className="text-xs text-white/50 tabular-nums">
+                    medido {v.medicao.lufs.toFixed(1)} LUFS · pico {v.medicao.picoDb.toFixed(1)} dB ·
+                    ganho {v.ganhoAplicadoDb >= 0 ? "+" : ""}{v.ganhoAplicadoDb.toFixed(1)} dB
+                    {!alcancou && (
+                      <span className="text-amber-300"> · não alcançou o alvo de {v.alvoLufs} LUFS</span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => baixar(paraMp3(v.buffer), `${nome.replace(/\.[^.]+$/, "")} - ${v.rotulo}.mp3`)}
+                        className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm inline-flex items-center gap-1">
+                  <Download className="w-4 h-4" /> MP3
+                </button>
+                <button onClick={() => baixar(paraWav(v.buffer), `${nome.replace(/\.[^.]+$/, "")} - ${v.rotulo}.wav`)}
+                        className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm">
+                  WAV
+                </button>
+                <button onClick={() => setVersoes((lista) => lista.filter((x) => x.id !== v.id))}
+                        className="p-2 rounded-lg hover:bg-red-500/20 text-red-300">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
