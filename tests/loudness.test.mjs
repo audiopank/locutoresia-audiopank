@@ -116,10 +116,28 @@ test('picoReal: silencio devolve -Infinity', () => {
     assert.equal(L.picoRealDb(new Float32Array(1000), 48000), -Infinity);
 });
 
+test('picoReal: acha overshoot entre amostras que o maximo simples nao pega', () => {
+    // p0=0, p1=1, p2=1, p3=0: o Catmull-Rom entre p1 e p2 (ambos 1) tem
+    // curvatura por causa dos vizinhos, e em t=0.5 vale 1.125 -- overshoot
+    // que a interpolacao linear (reta entre 1 e 1) jamais acharia.
+    const x = new Float32Array([0, 1, 1, 0]);
+    const simples = Math.max(...Array.from(x, Math.abs));   // 1
+    const real = Math.pow(10, L.picoRealDb(x, 48000) / 20);
+    assert.ok(real > simples + 0.01, `real ${real} nao superou o maximo simples ${simples}`);
+});
+
 test('balancoTonal: devolve 4 bandas somando energia positiva', () => {
     const b = L.balancoTonal([seno(0.5, 1)], 48000);
     assert.equal(b.length, 4);
     assert.ok(b.every((v) => Number.isFinite(v)));
+});
+
+test('balancoTonal: tom puro mede muito mais alto na banda que o contem', () => {
+    const tom = seno(0.5, 2);   // 1kHz, cai dentro da banda medio-grave (200-1200)
+    const b = L.balancoTonal([tom], 48000);
+    // BANDAS = [grave, medio-grave, medio-agudo, agudo]
+    assert.ok(b[1] > b[0] + 10, `medio-grave (${b[1].toFixed(1)}) devia ser bem maior que grave (${b[0].toFixed(1)})`);
+    assert.ok(b[1] > b[3] + 10, `medio-grave (${b[1].toFixed(1)}) devia ser bem maior que agudo (${b[3].toFixed(1)})`);
 });
 
 test('faixaDinamica: seno constante tem faixa pequena', () => {

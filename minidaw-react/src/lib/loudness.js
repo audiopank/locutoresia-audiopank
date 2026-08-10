@@ -111,24 +111,44 @@ export function lufsIntegrado(canais, sr) {
     return -0.691 + 10 * Math.log10(mediaMs(passouRelativo));
 }
 
+/** Interpolação Catmull-Rom entre p1 e p2, usando os vizinhos p0/p3 pra dar
+ * curvatura. Ao contrário da interpolação linear (que é uma combinação
+ * convexa e por isso NUNCA excede o maior dos dois pontos), esta pode
+ * "estourar" além dos vizinhos — é esse estouro que revela o pico real entre
+ * amostras, o mesmo que a reconstrução do conversor D/A produziria. */
+function catmullRom(p0, p1, p2, p3, t) {
+    const t2 = t * t, t3 = t2 * t;
+    return 0.5 * (
+        (2 * p1) +
+        (-p0 + p2) * t +
+        (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+        (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+    );
+}
+
 /**
  * Pico REAL (inter-amostra), em dB. O pico que estoura na conversão para MP3
  * mora ENTRE as amostras e não aparece num medidor comum — é por isso que um
- * áudio "limpo" no fone chia no alto-falante do cliente. Sobre-amostragem 4x
- * por interpolação linear: não é a precisão de um medidor de laboratório, mas
- * pega o caso que interessa, que é o pico escondido logo depois do limiter.
+ * áudio "limpo" no fone chia no alto-falante do cliente. 4x oversampling por
+ * Catmull-Rom (4 pontos): ao contrário de interpolação linear simples, esta
+ * consegue captar o "estouro" entre amostras que o reconstrutor real produz.
+ * k=0 sempre reproduz a amostra exata, então o pico nunca fica ABAIXO do
+ * Math.max ingênuo — só pode ficar igual ou acima.
  */
 export function picoRealDb(canal, _sr) {
+    const n = canal.length;
+    if (n === 0) return -Infinity;
     let pico = 0;
-    for (let i = 0; i < canal.length - 1; i++) {
-        const a = canal[i], b = canal[i + 1];
+    for (let i = 0; i < n; i++) {
+        const p0 = canal[Math.max(0, i - 1)];
+        const p1 = canal[i];
+        const p2 = canal[Math.min(n - 1, i + 1)];
+        const p3 = canal[Math.min(n - 1, i + 2)];
         for (let k = 0; k < 4; k++) {
-            const v = Math.abs(a + (b - a) * (k / 4));
+            const v = Math.abs(catmullRom(p0, p1, p2, p3, k / 4));
             if (v > pico) pico = v;
         }
     }
-    const ultimo = Math.abs(canal[canal.length - 1] || 0);
-    if (ultimo > pico) pico = ultimo;
     return pico > 0 ? 20 * Math.log10(pico) : -Infinity;
 }
 
@@ -156,23 +176,42 @@ export const BANDAS = [
     { nome: 'agudo', de: 5000, ate: 16000 },
 ];
 
+/** Passa-banda de ganho constante no centro (RBJ), Q derivado da largura da
+ * banda em Hz. Não precisa calibração absoluta: fonte e referência passam
+ * pelo MESMO filtro em correcaoTom.js, então qualquer viés do filtro em si
+ * cancela na diferença entre os dois. */
+function coefBandpass(sr, f0, q) {
+    const w0 = 2 * Math.PI * f0 / sr;
+    const cw = Math.cos(w0), sw = Math.sin(w0);
+    const alpha = sw / (2 * q);
+    const a0 = 1 + alpha;
+    return {
+        b0: alpha / a0, b1: 0, b2: -alpha / a0,
+        a1: (-2 * cw) / a0, a2: (1 - alpha) / a0,
+    };
+}
+
 /**
  * Energia média de cada banda, em dB. É a base do "imitar referência": mede-se
  * o seu material e o da referência, e a diferença vira a correção.
  * Quatro bandas e não mais: cada banda a mais é uma chance a mais de artefato
  * e uma explicação a menos que o produtor consegue dar ao ouvir o resultado.
  *
- * Usa Goertzel em algumas frequências por banda em vez de FFT completa — é
- * barato, suficiente para um balanço grosso, e não traz dependência nova.
+ * Filtra o sinal com um passa-banda de verdade por banda (reaproveitando o
+ * biquad() do filtro K) e mede a energia RMS do resultado — não Goertzel em
+ * pontos isolados, que mede ruído de banda estreita, não a banda inteira.
  */
 export function balancoTonal(canais, sr) {
     const mono = misturarMono(canais);
     const amostrasMax = Math.min(mono.length, sr * 30);   // 30s bastam para o balanço
+    const excerto = mono.subarray(0, amostrasMax);
     return BANDAS.map((b) => {
-        const freqs = [b.de * 1.3, Math.sqrt(b.de * b.ate), b.ate * 0.77];
-        let energia = 0;
-        for (const f of freqs) energia += goertzel(mono, amostrasMax, sr, f);
-        const media = energia / freqs.length;
+        const f0 = Math.sqrt(b.de * b.ate);      // centro geométrico da banda
+        const q = f0 / (b.ate - b.de);            // Q pela largura em Hz
+        const filtrado = biquad(excerto, coefBandpass(sr, f0, q));
+        let acc = 0;
+        for (let i = 0; i < filtrado.length; i++) acc += filtrado[i] * filtrado[i];
+        const media = filtrado.length ? acc / filtrado.length : 0;
         return media > 0 ? 10 * Math.log10(media) : -120;
     });
 }
@@ -187,16 +226,4 @@ export function misturarMono(canais) {
         out[i] = s / canais.length;
     }
     return out;
-}
-
-/** Energia numa frequência única, sem FFT. */
-export function goertzel(dados, n, sr, freq) {
-    const k = 2 * Math.cos(2 * Math.PI * freq / sr);
-    let s0 = 0, s1 = 0, s2 = 0;
-    for (let i = 0; i < n; i++) {
-        s0 = dados[i] + k * s1 - s2;
-        s2 = s1; s1 = s0;
-    }
-    const potencia = s1 * s1 + s2 * s2 - k * s1 * s2;
-    return Math.max(0, potencia) / n;
 }
