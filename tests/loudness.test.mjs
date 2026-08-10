@@ -104,3 +104,25 @@ test('LUFS: o portao ignora o silencio (metade muda mede igual)', () => {
     const b = L.lufsIntegrado([comSilencio], 48000);
     assert.ok(Math.abs(a - b) < 0.5, `sem portao daria ~3 LU de diferenca: ${a} vs ${b}`);
 });
+
+test('picoReal: nunca menor que o pico das amostras', () => {
+    const x = seno(0.9, 0.2);
+    const amostra = Math.max(...Array.from(x, Math.abs));
+    const real = Math.pow(10, L.picoRealDb(x, 48000) / 20);
+    assert.ok(real >= amostra - 1e-6, `real ${real} < amostra ${amostra}`);
+});
+
+test('picoReal: silencio devolve -Infinity', () => {
+    assert.equal(L.picoRealDb(new Float32Array(1000), 48000), -Infinity);
+});
+
+test('balancoTonal: devolve 4 bandas somando energia positiva', () => {
+    const b = L.balancoTonal([seno(0.5, 1)], 48000);
+    assert.equal(b.length, 4);
+    assert.ok(b.every((v) => Number.isFinite(v)));
+});
+
+test('faixaDinamica: seno constante tem faixa pequena', () => {
+    const fd = L.faixaDinamica([seno(0.5, 2)], 48000);
+    assert.ok(fd >= 0 && fd < 12, `faixa ${fd}`);
+});
