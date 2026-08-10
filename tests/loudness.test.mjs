@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as L from '../minidaw-react/src/lib/loudness.js';
 import * as D from '../minidaw-react/src/lib/destinos.js';
+import * as C from '../minidaw-react/src/lib/correcaoTom.js';
 
 // Gera um seno de 1 kHz com a amplitude pedida.
 function seno(amplitude, segundos = 3, sr = 48000) {
@@ -159,4 +160,26 @@ test('destinos: todos tem alvo, teto e rotulo', () => {
 test('destinos: radio e o alvo mais baixo (a emissora processa depois)', () => {
     const radio = D.acharDestino('radio');
     for (const d of D.DESTINOS) assert.ok(radio.alvoLufs <= d.alvoLufs);
+});
+
+test('correcaoTom: sem referencia devolve tudo zero', () => {
+    assert.deepEqual(C.calcularCorrecao([-10, -12, -14, -20], null, 1), [0, 0, 0, 0]);
+});
+
+test('correcaoTom: fecha a diferenca multiplicada pela intensidade', () => {
+    const fonte = [-20, -20, -20, -20];
+    const alvo  = [-16, -20, -24, -20];   // referencia tem +4 no grave, -4 no medio-agudo
+    const meio = C.calcularCorrecao(fonte, alvo, 0.5);
+    assert.ok(Math.abs(meio[0] - 2) < 0.01, `grave ${meio[0]}`);
+    assert.ok(Math.abs(meio[2] + 2) < 0.01, `medio-agudo ${meio[2]}`);
+    assert.equal(meio[1], 0);
+});
+
+test('correcaoTom: NUNCA passa de +-6 dB, nem com diferenca absurda', () => {
+    const c = C.calcularCorrecao([-60, -60, -60, -60], [0, 0, 0, 0], 1);
+    for (const v of c) assert.ok(v <= 6 && v >= -6, `estourou o teto: ${v}`);
+});
+
+test('correcaoTom: intensidade zero nao mexe em nada', () => {
+    assert.deepEqual(C.calcularCorrecao([-10, -10, -10, -10], [0, 0, 0, 0], 0), [0, 0, 0, 0]);
 });
