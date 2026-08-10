@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as L from '../minidaw-react/src/lib/loudness.js';
+import * as D from '../minidaw-react/src/lib/destinos.js';
 
 // Gera um seno de 1 kHz com a amplitude pedida.
 function seno(amplitude, segundos = 3, sr = 48000) {
@@ -143,4 +144,19 @@ test('balancoTonal: tom puro mede muito mais alto na banda que o contem', () => 
 test('faixaDinamica: seno constante tem faixa pequena', () => {
     const fd = L.faixaDinamica([seno(0.5, 2)], 48000);
     assert.ok(fd >= 0 && fd < 12, `faixa ${fd}`);
+});
+
+test('destinos: todos tem alvo, teto e rotulo', () => {
+    assert.ok(D.DESTINOS.length >= 4);
+    for (const d of D.DESTINOS) {
+        assert.equal(typeof d.chave, 'string');
+        assert.equal(typeof d.rotulo, 'string');
+        assert.ok(d.alvoLufs < 0 && d.alvoLufs > -30);
+        assert.ok(d.tetoDb <= 0 && d.tetoDb > -3);
+    }
+});
+
+test('destinos: radio e o alvo mais baixo (a emissora processa depois)', () => {
+    const radio = D.acharDestino('radio');
+    for (const d of D.DESTINOS) assert.ok(radio.alvoLufs <= d.alvoLufs);
 });
