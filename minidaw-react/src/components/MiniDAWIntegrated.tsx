@@ -16,6 +16,7 @@ import { ScriptPanel } from "@/components/ScriptPanel";
 import { SecretsManager } from "@/components/SecretsManager";
 import { TrackEffectsPanel } from "@/components/TrackEffectsPanel";
 import { VipProjects } from "@/components/VipProjects";
+import MasterizarPanel from "./MasterizarPanel";
 import { mixToMp3, downloadBlob } from "@/lib/mixer";
 import { defaultEffects, type TrackEffects } from "@/lib/audioEffects";
 
@@ -30,7 +31,7 @@ interface Track {
   effects: TrackEffects;
 }
 
-type TabKey = "roteiro" | "trilha" | "upload" | "multitrack" | "mix";
+type TabKey = "roteiro" | "trilha" | "upload" | "multitrack" | "mix" | "master";
 
 const TABS: { key: TabKey; label: string; icon: typeof FileText }[] = [
   { key: "roteiro", label: "Roteiro", icon: FileText },
@@ -38,6 +39,7 @@ const TABS: { key: TabKey; label: string; icon: typeof FileText }[] = [
   { key: "upload", label: "Upload", icon: Upload },
   { key: "multitrack", label: "Multi-Track", icon: Sliders },
   { key: "mix", label: "Mix Rápido", icon: Download },
+  { key: "master", label: "Masterizar", icon: Wand2 },
 ];
 
 const MiniDAWIntegrated = () => {
@@ -251,7 +253,7 @@ const MiniDAWIntegrated = () => {
 
   // Status das etapas do fluxo de produção
   const stepStatus = (step: 1 | 2 | 3): "active" | "done" | "pending" => {
-    const map: Record<TabKey, 1 | 2 | 3> = { roteiro: 1, trilha: 2, upload: 2, multitrack: 3, mix: 3 };
+    const map: Record<TabKey, 1 | 2 | 3> = { roteiro: 1, trilha: 2, upload: 2, multitrack: 3, mix: 3, master: 3 };
     const current = map[activeTab];
     if (step === current) return "active";
     if (step < current) return "done";
@@ -598,6 +600,12 @@ const MiniDAWIntegrated = () => {
               </Button>
             </div>
           </Card>
+        )}
+
+        {activeTab === "master" && (
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
+            <MasterizarPanel />
+          </div>
         )}
 
         {/* Rodapé */}
