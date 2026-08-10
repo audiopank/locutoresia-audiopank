@@ -48,6 +48,10 @@ export default function MasterizarPanel() {
   const [processando, setProcessando] = useState(false);
   const [tocandoId, setTocandoId] = useState<string>("");
 
+  const [refNome, setRefNome] = useState("");
+  const [refBalanco, setRefBalanco] = useState<number[] | null>(null);
+  const refInputRef = useRef<HTMLInputElement>(null);
+
   const carregar = useCallback(async (file: File) => {
     setCarregando(true); setErro("");
     try {
@@ -63,6 +67,17 @@ export default function MasterizarPanel() {
     }
   }, []);
 
+  const carregarReferencia = useCallback(async (file: File) => {
+    setErro("");
+    try {
+      const buf = await decodificar(file);
+      setRefBalanco(medir(buf).balanco);
+      setRefNome(file.name);
+    } catch (e: any) {
+      setErro(`Não consegui ler a referência "${file.name}". ${e?.message || ""}`);
+    }
+  }, []);
+
   const gerar = useCallback(async () => {
     if (!buffer) return;
     setProcessando(true); setErro("");
@@ -74,13 +89,13 @@ export default function MasterizarPanel() {
         corteBaixoHz: corteBaixo,
         corteAltoHz: corteAlto,
         intensidade,
-        balancoReferencia: null,
+        balancoReferencia: refBalanco,
       });
       setVersoes((atual) => [
         ...atual,
         {
           id: `v_${atual.length + 1}_${destinoEscolhido.chave}`,
-          rotulo: destinoEscolhido.rotulo,
+          rotulo: refBalanco ? `${destinoEscolhido.rotulo} + ref.` : destinoEscolhido.rotulo,
           buffer: resultado.buffer,
           medicao: resultado.medicao,
           alvoLufs: destinoEscolhido.alvoLufs,
@@ -92,7 +107,7 @@ export default function MasterizarPanel() {
     } finally {
       setProcessando(false);
     }
-  }, [buffer, destino, intensidade, corteBaixo, corteAlto]);
+  }, [buffer, destino, intensidade, corteBaixo, corteAlto, refBalanco]);
 
   // Ref único pro AudioContext da pilha: nunca dois tocando ao mesmo tempo
   // (compararia mal), e cada troca fecha o anterior com segurança.
@@ -232,6 +247,38 @@ export default function MasterizarPanel() {
             {processando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
             {processando ? "Masterizando…" : "Masterizar"}
           </button>
+
+          <div className="mt-4 pt-3 border-t border-white/10 text-sm">
+            <div className="text-white/60 mb-1">Faixa de referência (opcional)</div>
+            <p className="text-xs text-white/40 mb-2">
+              Suba um jingle que você admira. O acabamento puxa o seu material na direção
+              do equilíbrio dele — grave, médio e agudo. Não copia arranjo nem instrumento.
+            </p>
+            <label
+              className="inline-block px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer"
+              tabIndex={0}
+              role="button"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  refInputRef.current?.click();
+                }
+              }}
+            >
+              {refNome || "Escolher referência"}
+              <input
+                ref={refInputRef}
+                type="file" accept="audio/*" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) carregarReferencia(f); }}
+              />
+            </label>
+            {refBalanco && (
+              <button onClick={() => { setRefBalanco(null); setRefNome(""); }}
+                      className="ml-2 text-xs text-white/50 hover:text-white underline">
+                remover
+              </button>
+            )}
+          </div>
         </div>
       )}
 
