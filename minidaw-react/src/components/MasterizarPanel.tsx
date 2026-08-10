@@ -1,5 +1,5 @@
 // minidaw-react/src/components/MasterizarPanel.tsx
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Upload, Loader2, Activity } from "lucide-react";
 import { decodificar } from "@/lib/audioFile.js";
 import { medir } from "@/lib/mastering.js";
@@ -28,6 +28,7 @@ export default function MasterizarPanel() {
   const [medicao, setMedicao] = useState<Medicao | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string>("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const carregar = useCallback(async (file: File) => {
     setCarregando(true); setErro("");
@@ -60,9 +61,20 @@ export default function MasterizarPanel() {
         <p className="text-sm text-white/60 mb-4">
           Mix desta MiniDAW, da clássica, do seu teclado ou de terceiros. MP3, WAV, OGG, M4A.
         </p>
-        <label className="inline-block px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer">
+        <label
+          className="inline-block px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer"
+          tabIndex={0}
+          role="button"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+        >
           Escolher arquivo
           <input
+            ref={inputRef}
             type="file" accept="audio/*" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) carregar(f); }}
           />
