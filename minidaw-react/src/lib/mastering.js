@@ -10,7 +10,7 @@
  * Depois de renderizar, o resultado é MEDIDO DE NOVO: o número que a tela
  * mostra é sempre o medido, nunca o pedido.
  */
-import { lufsIntegrado, picoRealDbTodos, faixaDinamica, balancoTonal, BANDAS } from './loudness.js';
+import { lufsIntegrado, picoRealDbTodos, balancoTonal, BANDAS } from './loudness.js';
 import { calcularCorrecao } from './correcaoTom.js';
 
 /** Extrai os canais de um AudioBuffer como Float32Array[]. */
@@ -24,10 +24,15 @@ export function canaisDe(buffer) {
 export function medir(buffer) {
     const canais = canaisDe(buffer);
     const sr = buffer.sampleRate;
+    // lufs e picoDb calculados UMA vez e reaproveitados -- faixaDinamica()
+    // solta os recalcularia do zero por dentro, dobrando o custo (medido:
+    // ~7.7s em vez de ~3.6s num arquivo de 5min estereo).
+    const lufs = lufsIntegrado(canais, sr);
+    const picoDb = picoRealDbTodos(canais, sr);
     return {
-        lufs: lufsIntegrado(canais, sr),
-        picoDb: picoRealDbTodos(canais, sr),
-        faixaDinamica: faixaDinamica(canais, sr),
+        lufs,
+        picoDb,
+        faixaDinamica: (Number.isFinite(lufs) && Number.isFinite(picoDb)) ? (picoDb - lufs) : 0,
         balanco: balancoTonal(canais, sr),
         duracao: buffer.duration,
         sampleRate: sr,
@@ -119,7 +124,9 @@ export async function masterizar(bufferOriginal, opcoes) {
     // isto o arquivo sai estourando e o medidor mentiria por omissão.
     const medicaoBruta = medir(renderizado);
     let buffer = renderizado;
+    let clampou = false;
     if (Number.isFinite(medicaoBruta.picoDb) && medicaoBruta.picoDb > tetoDb) {
+        clampou = true;
         const corte = Math.pow(10, (tetoDb - medicaoBruta.picoDb) / 20);
         for (let c = 0; c < buffer.numberOfChannels; c++) {
             const dados = buffer.getChannelData(c);
@@ -129,7 +136,12 @@ export async function masterizar(bufferOriginal, opcoes) {
 
     return {
         buffer,
-        medicao: medir(buffer),      // MEDIDO no resultado, nunca o pedido
+        // Reaproveita medicaoBruta quando o clamp nao mexeu no buffer -- medir
+        // de novo daria o MESMO resultado a um custo real (~8s num arquivo de
+        // 5min). Só remedimos quando o clamp de fato alterou as amostras.
+        // Continua sendo "MEDIDO no resultado, nunca o pedido": so pulamos
+        // uma medicao redundante, nunca inventamos o numero.
+        medicao: clampou ? medir(buffer) : medicaoBruta,      // MEDIDO no resultado, nunca o pedido
         ganhoAplicadoDb: ganhoDb,
         correcaoDb,
     };

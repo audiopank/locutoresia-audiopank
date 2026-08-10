@@ -183,3 +183,32 @@ test('correcaoTom: NUNCA passa de +-6 dB, nem com diferenca absurda', () => {
 test('correcaoTom: intensidade zero nao mexe em nada', () => {
     assert.deepEqual(C.calcularCorrecao([-10, -10, -10, -10], [0, 0, 0, 0], 0), [0, 0, 0, 0]);
 });
+
+test('correcaoTom: nivel geral diferente entre fonte e referencia NAO deve dominar a correcao', () => {
+    // fonte bem mais baixa que o alvo em TODAS as bandas igualmente (~13dB de
+    // gap de nivel) -- mas a FORMA das duas e quase a mesma (leve diferenca
+    // real: fonte tem um pouco menos de agudo relativo). Antes do fix, essa
+    // situacao saturava as 4 bandas no teto de +-6dB por causa do gap de
+    // nivel, apagando a diferenca de forma real: com a formula antiga, em
+    // intensidade 0.5, o resultado era [6.00, 6.00, 4.50, 6.00] -- tres das
+    // quatro bandas encostadas no teto, sem forma nenhuma.
+    const fonte = [-30, -32, -34, -40];
+    const alvo  = [-17, -19, -25, -25];
+    const c = C.calcularCorrecao(fonte, alvo, 0.5);
+    // Nenhuma banda deve saturar no teto so por causa do gap de nivel --
+    // a diferenca de FORMA aqui e pequena, entao a correcao tem que ser pequena.
+    for (const v of c) assert.ok(Math.abs(v) < 3, `banda saturou por nivel, nao por forma: ${v}`);
+    // A forma real bate com o calculo manual (fonte e alvo centrados pela
+    // propria media antes do diff, depois escalados por intensidade 0.5).
+    const esperado = [0.25, 0.25, -1.75, 1.25];
+    c.forEach((v, i) => assert.ok(Math.abs(v - esperado[i]) < 0.01, `banda ${i}: ${v} != esperado ${esperado[i]}`));
+});
+
+test('correcaoTom: fonte e alvo com a MESMA forma (so nivel diferente) nao corrige nada', () => {
+    // Mesmo desenho tonal, deslocado 10dB em bloco -- e literalmente o "sem
+    // diferenca de tom", so nivel. Correcao deveria ser ~zero em toda banda.
+    const fonte = [-20, -22, -24, -30];
+    const alvo  = [-10, -12, -14, -20];   // fonte + 10 em cada banda
+    const c = C.calcularCorrecao(fonte, alvo, 1);
+    for (const v of c) assert.ok(Math.abs(v) < 0.01, `deveria ser zero (mesma forma): ${v}`);
+});
