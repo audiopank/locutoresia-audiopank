@@ -121,6 +121,10 @@ export default function MasterizarPanel() {
     src.buffer = buf;
     src.connect(ctx.destination);
     src.onended = () => {
+      // Só reage se ESTE contexto ainda é o que está tocando -- se o usuário
+      // já trocou de versão, quem terminou por último não pode derrubar o
+      // áudio novo por baixo dele.
+      if (playbackCtxRef.current !== ctx) return;
       setTocandoId("");
       fecharPlaybackAtual(); // fim natural também libera o contexto
     };
