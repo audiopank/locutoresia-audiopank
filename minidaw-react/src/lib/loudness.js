@@ -61,3 +61,52 @@ export function biquad(canal, c) {
 export function filtroK(canal, sr) {
     return biquad(biquad(canal, coefShelfAgudo(sr)), coefPassaAlta(sr));
 }
+
+/** Peso por canal do BS.1770. Estéreo e mono usam 1,0; surround pesa mais. */
+const PESO_CANAL = [1.0, 1.0, 1.0, 1.41, 1.41];
+
+/**
+ * Média quadrática de cada bloco de 400 ms, com 75% de sobreposição.
+ * Devolve [{ ms, l }]: a soma ponderada dos canais e o loudness do bloco.
+ */
+export function blocosDeLoudness(canais, sr) {
+    const filtrados = canais.map((c) => filtroK(c, sr));
+    const tamanho = Math.round(0.4 * sr);          // bloco de 400 ms
+    const passo = Math.round(0.1 * sr);            // avanço de 100 ms = 75% de sobreposição
+    const n = filtrados[0].length;
+    const blocos = [];
+    if (n < tamanho) return blocos;                // curto demais para um bloco
+    for (let ini = 0; ini + tamanho <= n; ini += passo) {
+        let soma = 0;
+        for (let ch = 0; ch < filtrados.length; ch++) {
+            const dados = filtrados[ch];
+            let acc = 0;
+            for (let i = ini; i < ini + tamanho; i++) acc += dados[i] * dados[i];
+            soma += (PESO_CANAL[ch] ?? 1.0) * (acc / tamanho);
+        }
+        blocos.push({ ms: soma, l: -0.691 + 10 * Math.log10(soma || Number.MIN_VALUE) });
+    }
+    return blocos;
+}
+
+/**
+ * LUFS integrado. Os DOIS portões do padrão importam aqui:
+ * o absoluto (-70) joga fora silêncio digital; o relativo (-10 abaixo da média
+ * dos que passaram) impede que as pausas entre as frases puxem a média para
+ * baixo — é ele que faz um spot com respiros medir igual a um sem.
+ */
+export function lufsIntegrado(canais, sr) {
+    const blocos = blocosDeLoudness(canais, sr);
+    if (!blocos.length) return -Infinity;
+
+    const passouAbsoluto = blocos.filter((b) => b.l > -70);
+    if (!passouAbsoluto.length) return -Infinity;
+
+    const mediaMs = (lista) => lista.reduce((s, b) => s + b.ms, 0) / lista.length;
+    const gamma = -0.691 + 10 * Math.log10(mediaMs(passouAbsoluto)) - 10;
+
+    const passouRelativo = passouAbsoluto.filter((b) => b.l > gamma);
+    if (!passouRelativo.length) return -Infinity;
+
+    return -0.691 + 10 * Math.log10(mediaMs(passouRelativo));
+}

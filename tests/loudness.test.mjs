@@ -78,3 +78,29 @@ test('filtroK: resposta em frequencia bate com os coeficientes publicados do BS.
         );
     }
 });
+
+test('LUFS: dobrar a amplitude sobe ~6 LU', () => {
+    const a = L.lufsIntegrado([seno(0.1)], 48000);
+    const b = L.lufsIntegrado([seno(0.2)], 48000);
+    assert.ok(Math.abs((b - a) - 6.02) < 0.1, `subiu ${(b - a).toFixed(2)} LU`);
+});
+
+test('LUFS: seno de -20 dBFS mede perto de -20 LUFS', () => {
+    // 0.1 de amplitude = -20 dBFS. O filtro K desloca um pouco no 1 kHz,
+    // por isso a tolerancia de 1,5 LU em vez de igualdade exata.
+    const v = L.lufsIntegrado([seno(0.1), seno(0.1)], 48000);
+    assert.ok(v > -21.5 && v < -18.5, `mediu ${v.toFixed(2)} LUFS`);
+});
+
+test('LUFS: silencio total devolve -Infinity', () => {
+    assert.equal(L.lufsIntegrado([new Float32Array(48000)], 48000), -Infinity);
+});
+
+test('LUFS: o portao ignora o silencio (metade muda mede igual)', () => {
+    const puro = seno(0.1, 4);
+    const comSilencio = new Float32Array(48000 * 8);
+    comSilencio.set(puro, 0);                       // 4s de som + 4s de silencio
+    const a = L.lufsIntegrado([puro], 48000);
+    const b = L.lufsIntegrado([comSilencio], 48000);
+    assert.ok(Math.abs(a - b) < 0.5, `sem portao daria ~3 LU de diferenca: ${a} vs ${b}`);
+});
