@@ -12,14 +12,18 @@ export interface TrackEffects {
   compressor: boolean;     // dá consistência/peso à voz
   reverb: number;          // 0..1 (quantidade de wet)
   normalize: boolean;      // "nivelar voz" — limiter + makeup
+  // Gate de respiração — independente do `enabled` geral acima (ver mixer.ts).
+  // Ativo por padrão em tracks de Locução, nunca em Música.
+  gate: { ativo: boolean; sensibilidade: number }; // sensibilidade 1-30
 }
 
-export const defaultEffects = (): TrackEffects => ({
+export const defaultEffects = (trackType: "voiceover" | "music" = "music"): TrackEffects => ({
   enabled: false,
   eq: { low: 0, mid: 0, high: 0 },
   compressor: false,
   reverb: 0,
   normalize: false,
+  gate: { ativo: trackType === "voiceover", sensibilidade: 12 },
 });
 
 export const hasActiveEffects = (fx?: TrackEffects): boolean =>
