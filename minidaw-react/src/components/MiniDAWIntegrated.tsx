@@ -59,12 +59,24 @@ const MiniDAWIntegrated = () => {
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
   const { toast } = useToast();
 
+  // Projetos salvos antes do Gate existir não têm `effects.gate` — preenche
+  // com o default do tipo da track (ativo=true só em locução) sem perder o
+  // resto dos efeitos que o usuário já tinha configurado.
+  const normalizeTrackEffects = (t: Track): Track => ({
+    ...t,
+    effects: {
+      ...defaultEffects(t.type),
+      ...t.effects,
+      gate: { ...defaultEffects(t.type).gate, ...(t.effects?.gate || {}) },
+    },
+  });
+
   // Carrega um projeto VIP salvo de volta para o estúdio
   const loadSnapshot = useCallback((snap: { projectId: string; roteiro: string; tracks: Track[] }) => {
     audioRefs.current = {};
     if (snap.projectId) setProjectId(snap.projectId);
     setRoteiro(snap.roteiro || "");
-    setTracks(snap.tracks || []);
+    setTracks((snap.tracks || []).map(normalizeTrackEffects));
     setActiveTab("multitrack");
   }, []);
 
@@ -84,7 +96,7 @@ const MiniDAWIntegrated = () => {
       volume: 100,
       color: type === "voiceover" ? "border-blue-500 bg-blue-500/10" : "border-purple-500 bg-purple-500/10",
       duration: 0,
-      effects: defaultEffects(),
+      effects: defaultEffects(type),
     };
     setTracks(prev => [...prev, newTrack]);
     setActiveTab("multitrack");
@@ -128,7 +140,7 @@ const MiniDAWIntegrated = () => {
       volume: 100,
       color: "border-blue-500 bg-blue-500/10",
       duration: 0,
-      effects: defaultEffects(),
+      effects: defaultEffects("voiceover"),
     };
     setTracks(prev => [...prev, newTrack]);
     const audio = new Audio(audioUrl);
@@ -151,7 +163,7 @@ const MiniDAWIntegrated = () => {
       volume: 100,
       color: "border-purple-500 bg-purple-500/10",
       duration: 0,
-      effects: defaultEffects(),
+      effects: defaultEffects("music"),
     };
     setTracks(prev => [...prev, newTrack]);
     const audio = new Audio(audioUrl);
