@@ -1,5 +1,6 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
 import { buildEffectChain, hasActiveEffects, type TrackEffects } from "./audioEffects";
+import { detectarTrechos, aplicarGate } from "./gate.js";
 
 export type MixFormat = "mp3" | "wav";
 export type MixQuality = "low" | "medium" | "high" | "ultra";
@@ -144,6 +145,17 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
   limiter.connect(offline.destination);
 
   for (const d of decoded) {
+    // Gate de respiração: roda ANTES da cadeia de efeitos (EQ/Compressor/etc),
+    // direto no buffer decodificado — é conserto na voz crua, não estilo.
+    // Independente de `hasActiveEffects`/`effects.enabled`: por isso é
+    // checado aqui, fora do bloco que decide se builda a cadeia de nós.
+    if (d.type === "voiceover" && d.effects?.gate?.ativo) {
+      const trechos = detectarTrechos(d.buffer.getChannelData(0), d.buffer.sampleRate, d.effects.gate.sensibilidade);
+      for (let ch = 0; ch < d.buffer.numberOfChannels; ch++) {
+        aplicarGate(d.buffer.getChannelData(ch), d.buffer.sampleRate, trechos);
+      }
+    }
+
     const src = offline.createBufferSource();
     src.buffer = d.buffer;
 
