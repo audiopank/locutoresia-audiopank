@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Sliders, Waves, Gauge, Activity, ChevronDown, ChevronUp } from "lucide-react";
+import { Sliders, Waves, Gauge, Activity, Wind, ChevronDown, ChevronUp } from "lucide-react";
 import type { TrackEffects } from "@/lib/audioEffects";
 
 interface TrackEffectsPanelProps {
   effects: TrackEffects;
   onChange: (fx: TrackEffects) => void;
+  trackType: "voiceover" | "music";
 }
 
 const EqBand = ({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) => (
@@ -18,10 +19,11 @@ const EqBand = ({ label, value, onChange }: { label: string; value: number; onCh
   </div>
 );
 
-export const TrackEffectsPanel = ({ effects, onChange }: TrackEffectsPanelProps) => {
+export const TrackEffectsPanel = ({ effects, onChange, trackType }: TrackEffectsPanelProps) => {
   const [open, setOpen] = useState(false);
   const set = (patch: Partial<TrackEffects>) => onChange({ ...effects, ...patch });
   const setEq = (patch: Partial<TrackEffects["eq"]>) => onChange({ ...effects, eq: { ...effects.eq, ...patch } });
+  const setGate = (patch: Partial<TrackEffects["gate"]>) => onChange({ ...effects, gate: { ...effects.gate, ...patch } });
 
   const activeCount =
     (effects.compressor ? 1 : 0) + (effects.normalize ? 1 : 0) + (effects.reverb > 0 ? 1 : 0) +
@@ -36,6 +38,9 @@ export const TrackEffectsPanel = ({ effects, onChange }: TrackEffectsPanelProps)
           {effects.enabled && activeCount > 0 && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200">{activeCount} ativo(s)</span>
           )}
+          {trackType === "voiceover" && effects.gate.ativo && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/30 text-teal-200">Gate</span>
+          )}
           {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
         <div className="flex items-center gap-2">
@@ -45,32 +50,51 @@ export const TrackEffectsPanel = ({ effects, onChange }: TrackEffectsPanelProps)
       </div>
 
       {open && (
-        <div className={`p-4 pt-0 space-y-4 ${effects.enabled ? "" : "opacity-50 pointer-events-none"}`}>
-          {/* Toggles rápidos */}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex items-center justify-between gap-2 p-2 rounded-md bg-white/5">
-              <span className="flex items-center gap-2 text-sm text-white/80"><Gauge className="w-4 h-4 text-blue-400" /> Compressor</span>
-              <Switch checked={effects.compressor} onCheckedChange={(v) => set({ compressor: v })} />
-            </label>
-            <label className="flex items-center justify-between gap-2 p-2 rounded-md bg-white/5">
-              <span className="flex items-center gap-2 text-sm text-white/80"><Activity className="w-4 h-4 text-green-400" /> Nivelar voz</span>
-              <Switch checked={effects.normalize} onCheckedChange={(v) => set({ normalize: v })} />
-            </label>
-          </div>
+        <div className="p-4 pt-0 space-y-4">
+          {trackType === "voiceover" && (
+            <div className="p-2 rounded-md bg-white/5 space-y-2">
+              <label className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-sm text-white/80"><Wind className="w-4 h-4 text-teal-400" /> Gate (respiração)</span>
+                <Switch checked={effects.gate.ativo} onCheckedChange={(v) => setGate({ ativo: v })} />
+              </label>
+              {effects.gate.ativo && (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-white/60 w-20">Sensibilidade</span>
+                  <Slider value={[effects.gate.sensibilidade]} min={1} max={30} step={1} onValueChange={([v]) => setGate({ sensibilidade: v })} className="flex-1" />
+                  <span className="text-xs text-white/70 w-8 text-right">{effects.gate.sensibilidade}</span>
+                </div>
+              )}
+              <p className="text-xs text-white/40">Corta a respiração entre as falas. Independe do "Ativar" ao lado — funciona sempre que ligado.</p>
+            </div>
+          )}
 
-          {/* Reverb */}
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-2 text-sm text-white/80 w-28"><Waves className="w-4 h-4 text-cyan-400" /> Reverb</span>
-            <Slider value={[Math.round(effects.reverb * 100)]} min={0} max={100} step={1} onValueChange={([v]) => set({ reverb: v / 100 })} className="flex-1" />
-            <span className="text-xs text-white/70 w-10 text-right">{Math.round(effects.reverb * 100)}%</span>
-          </div>
+          <div className={`space-y-4 ${effects.enabled ? "" : "opacity-50 pointer-events-none"}`}>
+            {/* Toggles rápidos */}
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center justify-between gap-2 p-2 rounded-md bg-white/5">
+                <span className="flex items-center gap-2 text-sm text-white/80"><Gauge className="w-4 h-4 text-blue-400" /> Compressor</span>
+                <Switch checked={effects.compressor} onCheckedChange={(v) => set({ compressor: v })} />
+              </label>
+              <label className="flex items-center justify-between gap-2 p-2 rounded-md bg-white/5">
+                <span className="flex items-center gap-2 text-sm text-white/80"><Activity className="w-4 h-4 text-green-400" /> Nivelar voz</span>
+                <Switch checked={effects.normalize} onCheckedChange={(v) => set({ normalize: v })} />
+              </label>
+            </div>
 
-          {/* Equalizador */}
-          <div className="space-y-2">
-            <span className="text-sm text-white/80">Equalizador</span>
-            <EqBand label="Graves" value={effects.eq.low} onChange={(v) => setEq({ low: v })} />
-            <EqBand label="Médios" value={effects.eq.mid} onChange={(v) => setEq({ mid: v })} />
-            <EqBand label="Agudos" value={effects.eq.high} onChange={(v) => setEq({ high: v })} />
+            {/* Reverb */}
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-2 text-sm text-white/80 w-28"><Waves className="w-4 h-4 text-cyan-400" /> Reverb</span>
+              <Slider value={[Math.round(effects.reverb * 100)]} min={0} max={100} step={1} onValueChange={([v]) => set({ reverb: v / 100 })} className="flex-1" />
+              <span className="text-xs text-white/70 w-10 text-right">{Math.round(effects.reverb * 100)}%</span>
+            </div>
+
+            {/* Equalizador */}
+            <div className="space-y-2">
+              <span className="text-sm text-white/80">Equalizador</span>
+              <EqBand label="Graves" value={effects.eq.low} onChange={(v) => setEq({ low: v })} />
+              <EqBand label="Médios" value={effects.eq.mid} onChange={(v) => setEq({ mid: v })} />
+              <EqBand label="Agudos" value={effects.eq.high} onChange={(v) => setEq({ high: v })} />
+            </div>
           </div>
 
           <p className="text-xs text-white/40">Os efeitos são aplicados no mix final (Exportar/Mix Rápido).</p>

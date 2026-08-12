@@ -582,6 +582,7 @@ const MiniDAWIntegrated = () => {
                         {/* Efeitos por faixa (EQ + Compressor + Reverb + Nivelar) */}
                         <TrackEffectsPanel
                           effects={track.effects}
+                          trackType={track.type}
                           onChange={(fx) => setTracks(prev => prev.map(t => t.id === track.id ? { ...t, effects: fx } : t))}
                         />
                       </div>
