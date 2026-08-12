@@ -80,3 +80,22 @@ test('aplicarGate: trecho cobrindo o buffer inteiro nao atenua nada', () => {
     G.aplicarGate(canal, sr, [[0, 2]]);
     assert.ok(canal.every((v) => Math.abs(v - 1) < 1e-6), 'buffer 100% falado nao deveria ter nenhuma amostra atenuada');
 });
+
+test('aplicarGate: rampa de attack interpola de verdade no meio do caminho', () => {
+    const sr = 1000;
+    const canal = new Float32Array(3000).fill(1); // 3s
+    G.aplicarGate(canal, sr, [[1.0, 2.0]], { piso: 0.06, attack: 0.02, release: 0.12 });
+    const meio = 0.06 + (1 - 0.06) / 2;
+    assert.ok(Math.abs(canal[990] - meio) < 0.01, `ganho no meio da rampa de attack ${canal[990]}, esperado ~${meio}`);
+});
+
+test('aplicarGate: dois trechos separados abrem, fecham no gap e voltam a abrir', () => {
+    const sr = 1000;
+    const canal = new Float32Array(3000).fill(1); // 3s
+    G.aplicarGate(canal, sr, [[0.2, 1.0], [1.5, 2.5]]);
+    assert.ok(Math.abs(canal[600] - 1) < 1e-6, `dentro do 1o trecho ${canal[600]}, esperado ganho pleno`);
+    assert.ok(Math.abs(canal[2000] - 1) < 1e-6, `dentro do 2o trecho ${canal[2000]}, esperado ganho pleno`);
+    assert.ok(Math.abs(canal[1250] - 0.06) < 1e-6, `no meio do gap real ${canal[1250]}, esperado piso 0.06`);
+    assert.ok(Math.abs(canal[50] - 0.06) < 1e-6, `antes do 1o trecho ${canal[50]}, esperado piso 0.06`);
+    assert.ok(Math.abs(canal[2900] - 0.06) < 1e-6, `depois do 2o trecho ${canal[2900]}, esperado piso 0.06`);
+});
