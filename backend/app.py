@@ -9039,6 +9039,22 @@ def delete_vip_project(project_id):
     try:
         if not supabase_manager or not supabase_manager.newpost_manager_client:
             return jsonify({'success': False, 'error': 'Supabase não configurado'}), 500
+
+        # Faxina: apaga do Storage os áudios que ESTE projeto subiu (audio_path)
+        # antes de apagar a linha. `audio_url_direct` nunca entra aqui -- é URL
+        # pública/compartilhada (ex.: trilha da Biblioteca), não pertence só a
+        # este projeto. Falha na faxina não impede a exclusão do projeto.
+        try:
+            r = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
+                .select('tracks').eq('id', project_id).limit(1).execute()
+            if r.data:
+                paths = [tr.get('audio_path') for tr in (r.data[0].get('tracks') or []) if tr.get('audio_path')]
+                if paths:
+                    supabase_manager.newpost_manager_client.storage \
+                        .from_(CLIENT_DELIVERIES_BUCKET).remove(paths)
+        except Exception as cleanup_err:
+            print(f'[VIP] faxina de audio orfao falhou (nao bloqueia a exclusao): {cleanup_err}')
+
         supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
             .delete().eq('id', project_id).execute()
         return jsonify({'success': True})
