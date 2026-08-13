@@ -57,6 +57,9 @@ export async function garantirArmazenamentoPermanente(
 ): Promise<ArmazenamentoResolvido> {
   const nome = track.name || "sem nome";
 
+  // Assume que audio_path/audio_url_direct só existem se ainda apontarem pro
+  // áudio atual da faixa; uma feature futura que troque o áudio de uma faixa
+  // já persistida precisa limpar esses campos primeiro.
   if (track.audio_path) return { audio_path: track.audio_path };
   if (track.audio_url_direct) return { audio_url_direct: track.audio_url_direct };
 
@@ -73,6 +76,7 @@ export async function garantirArmazenamentoPermanente(
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     blob = await res.blob();
   } catch (e: any) {
+    console.error("[projectStorage] falha ao ler o áudio da faixa", e);
     throw new Error(`Faixa "${nome}": falha ao ler o áudio (${e.message})`);
   }
 
@@ -81,6 +85,7 @@ export async function garantirArmazenamentoPermanente(
     const buffer = await decodificar(blob);
     mp3 = paraMp3(buffer, 128);
   } catch (e: any) {
+    console.error("[projectStorage] falha ao comprimir o áudio da faixa", e);
     throw new Error(`Faixa "${nome}": falha ao comprimir o áudio (${e.message})`);
   }
 
@@ -88,6 +93,7 @@ export async function garantirArmazenamentoPermanente(
     const path = await uploadAudioProjeto(mp3);
     return { audio_path: path };
   } catch (e: any) {
+    console.error("[projectStorage] falha ao enviar o áudio da faixa", e);
     throw new Error(`Faixa "${nome}": falha ao enviar o áudio (${e.message})`);
   }
 }
