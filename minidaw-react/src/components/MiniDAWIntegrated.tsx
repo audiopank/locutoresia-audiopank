@@ -52,6 +52,7 @@ const MiniDAWIntegrated = () => {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [projectId, setProjectId] = useState("audio-pank-" + Date.now());
+  const [dbProjectId, setDbProjectId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("roteiro");
   const [roteiro, setRoteiro] = useState("");
   const [voiceGen, setVoiceGen] = useState<{ open: boolean; text: string; voiceKey?: string }>({ open: false, text: "" });
@@ -72,9 +73,10 @@ const MiniDAWIntegrated = () => {
   });
 
   // Carrega um projeto VIP salvo de volta para o estúdio
-  const loadSnapshot = useCallback((snap: { projectId: string; roteiro: string; tracks: Track[] }) => {
+  const loadSnapshot = useCallback((snap: { projectId: string; dbProjectId?: string | null; roteiro: string; tracks: Track[] }) => {
     audioRefs.current = {};
     if (snap.projectId) setProjectId(snap.projectId);
+    setDbProjectId(snap.dbProjectId || null);
     setRoteiro(snap.roteiro || "");
     setTracks((snap.tracks || []).map(normalizeTrackEffects));
     setActiveTab("multitrack");
@@ -259,6 +261,7 @@ const MiniDAWIntegrated = () => {
     audioRefs.current = {};
     setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setProjectId("audio-pank-" + Date.now());
+    setDbProjectId(null);
     setActiveTab("roteiro");
     toast({ title: "🎵 Novo projeto criado" });
   }, [toast]);
@@ -651,8 +654,9 @@ const MiniDAWIntegrated = () => {
       <VipProjects
         open={vipOpen}
         onClose={() => setVipOpen(false)}
-        getCurrent={() => ({ projectId, roteiro, tracks })}
+        getCurrent={() => ({ projectId, dbProjectId, roteiro, tracks })}
         onLoad={loadSnapshot}
+        onSaved={(id) => setDbProjectId(id)}
       />
     </div>
   );

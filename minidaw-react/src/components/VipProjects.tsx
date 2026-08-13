@@ -9,6 +9,7 @@ import { garantirArmazenamentoPermanente } from "@/lib/projectStorage";
 
 export interface ProjectSnapshot {
   projectId: string;
+  dbProjectId: string | null;
   roteiro: string;
   tracks: any[];
 }
@@ -26,9 +27,10 @@ interface VipProjectsProps {
   onClose: () => void;
   getCurrent: () => ProjectSnapshot;
   onLoad: (snap: ProjectSnapshot) => void;
+  onSaved: (dbProjectId: string) => void;
 }
 
-export const VipProjects = ({ open, onClose, getCurrent, onLoad }: VipProjectsProps) => {
+export const VipProjects = ({ open, onClose, getCurrent, onLoad, onSaved }: VipProjectsProps) => {
   const { toast } = useToast();
   const [list, setList] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,13 +76,20 @@ export const VipProjects = ({ open, onClose, getCurrent, onLoad }: VipProjectsPr
           return { ...resto, ...armazenamento };
         })
       );
+      // Reusa o id real do banco se este projeto já foi salvo antes -- sem
+      // isso, todo "Salvar VIP" criaria uma linha NOVA em vez de atualizar a
+      // existente, deixando duas linhas apontando pro mesmo audio_path no
+      // Storage (perigoso agora que excluir projeto apaga o arquivo de verdade).
+      const body: any = { name, description, ...snap, tracks };
+      if (snap.dbProjectId) body.id = snap.dbProjectId;
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description, ...snap, tracks }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Falha ao salvar");
+      onSaved(data.project.id);
       toast({ title: "⭐ Projeto VIP salvo!", description: name });
       setName("");
       setDescription("");
@@ -103,7 +112,9 @@ export const VipProjects = ({ open, onClose, getCurrent, onLoad }: VipProjectsPr
       // Preserva `audio_path`/`audio_url_direct` (via ...t) -- é o que deixa
       // um PRÓXIMO save não reenviar áudio que não mudou.
       const tracks = (p.tracks || []).map((t: any) => ({ ...t, audioUrl: t.audio_url || t.audioUrl }));
-      onLoad({ projectId: p.projectId || "", roteiro: p.roteiro || "", tracks });
+      // `p.id` é o id real da linha no banco -- guarda pra o próximo
+      // "Salvar VIP" ATUALIZAR esta mesma linha em vez de criar outra.
+      onLoad({ projectId: p.projectId || "", dbProjectId: p.id || null, roteiro: p.roteiro || "", tracks });
       toast({ title: "Projeto aberto", description: p.name });
       onClose();
     } catch (e: any) {
