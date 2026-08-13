@@ -70,7 +70,7 @@ export const VipProjects = ({ open, onClose, getCurrent, onLoad }: VipProjectsPr
       const tracks = await Promise.all(
         comAudio.map(async (t: any) => {
           const armazenamento = await garantirArmazenamentoPermanente(t);
-          const { audioUrl, ...resto } = t;
+          const { audioUrl, audio_url, ...resto } = t;
           return { ...resto, ...armazenamento };
         })
       );
