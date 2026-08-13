@@ -9048,7 +9048,13 @@ def delete_vip_project(project_id):
             r = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
                 .select('tracks').eq('id', project_id).limit(1).execute()
             if r.data:
-                paths = [tr.get('audio_path') for tr in (r.data[0].get('tracks') or []) if tr.get('audio_path')]
+                paths = []
+                for tr in (r.data[0].get('tracks') or []):
+                    if tr.get('audio_path'):
+                        paths.append(tr['audio_path'])
+                    for b in (tr.get('buffers') or []):
+                        if b.get('audio_path'):
+                            paths.append(b['audio_path'])
                 if paths:
                     supabase_manager.newpost_manager_client.storage \
                         .from_(CLIENT_DELIVERIES_BUCKET).remove(paths)
