@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Star, X, FolderOpen, Trash2, Save, Loader2, Music2 } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
+import { garantirArmazenamentoPermanente } from "@/lib/projectStorage";
 
 export interface ProjectSnapshot {
   projectId: string;
@@ -61,10 +62,22 @@ export const VipProjects = ({ open, onClose, getCurrent, onLoad }: VipProjectsPr
     setSaving(true);
     try {
       const snap = getCurrent();
+      // Faixa recém-adicionada mas ainda sem áudio (ex.: "+ Locução" sem
+      // gerar voz ainda) não tem o que subir -- não é erro, só não entra no
+      // projeto salvo. Mesmo filtro que a clássica já usa antes de salvar.
+      const comAudio = snap.tracks.filter((t: any) => t.audioUrl || t.audio_path || t.audio_url_direct);
+      toast({ title: "Enviando áudio(s)...", description: "Preparando as faixas antes de salvar." });
+      const tracks = await Promise.all(
+        comAudio.map(async (t: any) => {
+          const armazenamento = await garantirArmazenamentoPermanente(t);
+          const { audioUrl, ...resto } = t;
+          return { ...resto, ...armazenamento };
+        })
+      );
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description, ...snap }),
+        body: JSON.stringify({ name, description, ...snap, tracks }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Falha ao salvar");
@@ -85,7 +98,12 @@ export const VipProjects = ({ open, onClose, getCurrent, onLoad }: VipProjectsPr
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Falha ao abrir");
       const p = data.project;
-      onLoad({ projectId: p.projectId || "", roteiro: p.roteiro || "", tracks: p.tracks || [] });
+      // O backend devolve o link resolvido do áudio como `audio_url` (com
+      // underscore, convenção da MiniDAW clássica); a React lê `audioUrl`.
+      // Preserva `audio_path`/`audio_url_direct` (via ...t) -- é o que deixa
+      // um PRÓXIMO save não reenviar áudio que não mudou.
+      const tracks = (p.tracks || []).map((t: any) => ({ ...t, audioUrl: t.audio_url || t.audioUrl }));
+      onLoad({ projectId: p.projectId || "", roteiro: p.roteiro || "", tracks });
       toast({ title: "Projeto aberto", description: p.name });
       onClose();
     } catch (e: any) {
