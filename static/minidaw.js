@@ -29,6 +29,7 @@ class MiniDAW {
         // Novas funcionalidades
         this.scissorMode = false;
         this.trackTesoura = null;   // qual faixa está com a tesoura armada
+        this.trackAutomacao = null; // qual faixa está com a automação de volume armada
         this.selecoes = {};         // trackId -> {ini, fim} em segundos
         this.playbackBase = null;   // t=0 do projeto no relógio do AudioContext (null = parado)
         // ── TIMELINE ─────────────────────────────────────────────────────
@@ -3290,15 +3291,6 @@ class MiniDAW {
         if (anterior && anterior !== trackId) this.cancelarSelecao(anterior);
         if (!ligando) this.cancelarSelecao(trackId);
 
-        // Nunca as duas ligadas juntas na mesma faixa (ver toggleAutomacaoVolume).
-        if (ligando && this.trackAutomacao === trackId) {
-            this.trackAutomacao = null;
-            const btnAuto = document.getElementById(`btnautomacao_${trackId}`);
-            if (btnAuto) btnAuto.classList.remove('active');
-            const t = this.tracks.find(tr => tr.id === trackId);
-            if (t) this.desenharAutomacaoVolume(t);
-        }
-
         this.tracks.forEach(t => {
             const btn = document.getElementById(`btntesoura_${t.id}`);
             if (btn) btn.classList.toggle('active', this.trackTesoura === t.id);
@@ -3306,6 +3298,18 @@ class MiniDAW {
             const lane = document.getElementById(`lane_${t.id}`);
             if (lane) lane.style.cursor = (this.trackTesoura === t.id) ? 'crosshair' : 'default';
         });
+
+        // Nunca as duas ligadas juntas na mesma faixa (ver toggleAutomacaoVolume).
+        // Vem DEPOIS do forEach acima: assim o botão/cursor da Tesoura já
+        // ficaram sincronizados antes de qualquer chance desta chamada
+        // quebrar (desenharAutomacaoVolume só chega na Task 4).
+        if (ligando && this.trackAutomacao === trackId) {
+            this.trackAutomacao = null;
+            const btnAuto = document.getElementById(`btnautomacao_${trackId}`);
+            if (btnAuto) btnAuto.classList.remove('active');
+            const t = this.tracks.find(tr => tr.id === trackId);
+            if (t) this.desenharAutomacaoVolume(t);
+        }
 
         this.showNotification(
             ligando ? 'Tesoura ligada — arraste em cima da onda pra marcar o trecho'
