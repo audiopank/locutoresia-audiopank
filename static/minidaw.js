@@ -380,7 +380,9 @@ class MiniDAW {
                     </button>
                 </div>
                 <div class="controls-panel">
-                    <div class="control-group">
+                    <div class="control-group ${(track.automacaoVolume && track.automacaoVolume.length) ? 'controlado-por-automacao' : ''}"
+                         id="volgroup_${track.id}"
+                         title="${(track.automacaoVolume && track.automacaoVolume.length) ? 'Este volume não faz efeito agora — a automação de pontos está no controle' : ''}">
                         <span class="control-label">Volume:</span>
                         <input type="range" class="form-range volume-slider" min="0" max="150" value="${track.volume}"
                                onchange="minidaw.updateTrackVolume('${track.id}', this.value)">
@@ -1030,6 +1032,17 @@ class MiniDAW {
         if (!conteudo) return;
         const svg = conteudo.querySelector('.automacao-svg');
         if (!svg) return;
+
+        // Fader "esmaece" sempre que a trilha tem pontos -- ele já não faz
+        // efeito nenhum nesse caso (ver agendarVolumeDaFaixa), com o modo de
+        // edição aberto ou fechado. Sem isto o produtor não tem como saber
+        // olhando pra tela por que o volume dele "parou de obedecer".
+        const volGroup = document.getElementById(`volgroup_${track.id}`);
+        if (volGroup) {
+            const controlado = track.automacaoVolume && track.automacaoVolume.length > 0;
+            volGroup.classList.toggle('controlado-por-automacao', controlado);
+            volGroup.title = controlado ? 'Este volume não faz efeito agora — a automação de pontos está no controle' : '';
+        }
 
         const ativo = this.trackAutomacao === track.id;
         svg.classList.toggle('ativa', ativo);

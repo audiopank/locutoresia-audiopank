@@ -757,6 +757,9 @@
             fill: #fbbf24; stroke: #78350f; stroke-width: 1; cursor: grab;
         }
         .automacao-ponto:active { cursor: grabbing; }
+        /* Fader de volume tradicional esmaece quando a automação de pontos
+           está no controle -- ele não faz efeito nenhum nesse caso. */
+        .control-group.controlado-por-automacao { opacity: 0.45; }
         .linha-corte .linha-tempo {
             position: absolute; top: 0; left: 4px;
             color: #fca5a5; font-size: .6rem; white-space: nowrap;
