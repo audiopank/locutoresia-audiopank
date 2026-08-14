@@ -237,6 +237,27 @@
         return true;
     }
 
+    // ── AUTOMAÇÃO DE VOLUME POR PONTOS ───────────────────────────────────
+    // Pontos manuais desenhados pelo produtor na timeline SUBSTITUEM o
+    // Ducking nesta faixa -- os dois nunca coexistem no mesmo AudioParam
+    // (mesmo motivo do Gate ter nó próprio: automações concorrentes
+    // brigam pelo valor). `pontos` = [{tempo, volume}] (volume 0-150,
+    // igual ao fader). Ordena por tempo, liga com rampa reta -- mesma
+    // disciplina do Ducking/Gate, sem curva suavizada nova. Antes do
+    // primeiro ponto e depois do último, o volume fica parado naquele
+    // extremo -- nunca "cai" pro fader escondido no meio da automação.
+    // Devolve true se aplicou (mesma convenção de retorno do aplicarDucking).
+    function agendarAutomacaoVolume(gainParam, pontos, offset) {
+        if (!pontos || !pontos.length) return false;
+        const off = offset || 0;
+        const ordenados = pontos.slice().sort((a, b) => a.tempo - b.tempo);
+        gainParam.setValueAtTime(ordenados[0].volume / 100, off);
+        for (let i = 1; i < ordenados.length; i++) {
+            gainParam.linearRampToValueAtTime(ordenados[i].volume / 100, off + ordenados[i].tempo);
+        }
+        return true;
+    }
+
     // Normaliza o loudness do mix renderizado pro alvo (dBFS RMS aprox.) e aplica
     // um soft-limiter (tanh) no teto de -1dB. Dá o "alto e consistente": todo
     // export sai no mesmo nível, sem clipar. Trabalha in-place no buffer.
@@ -479,22 +500,27 @@
                 const pan = offlineContext.createStereoPanner();
                 pan.pan.value = track.pan;
 
-                // Nível da faixa (fades agora são por clip, no clipGain).
-                trackGain.gain.setValueAtTime(track.volume / 100, 0);
+                // Automação por pontos manuais: SUBSTITUI Ducking/fade final
+                // nesta faixa. Precisa ser IDÊNTICO ao playback (mesma regra
+                // "prévia e arquivo idênticos" do resto do motor).
+                if (!agendarAutomacaoVolume(trackGain.gain, track.automacaoVolume, 0)) {
+                    // Nível da faixa (fades agora são por clip, no clipGain).
+                    trackGain.gain.setValueAtTime(track.volume / 100, 0);
 
-                if (track.type === 'music' && clipsDeVoz.length > 0) {
-                    // DUCKING por posição: a trilha abaixa quando a voz ENTRA
-                    // de verdade na timeline, não a partir do zero.
-                    const trechosDeVoz = detectarTrechosDeClips(clipsDeVoz, duck.hold);
-                    const ducou = aplicarDucking(
-                        trackGain.gain, trechosDeVoz, track.volume / 100, fimDaVoz, 0, duck
-                    );
-                    if (!ducou) {
-                        trackGain.gain.linearRampToValueAtTime(track.volume / 100, fimDaVoz);
+                    if (track.type === 'music' && clipsDeVoz.length > 0) {
+                        // DUCKING por posição: a trilha abaixa quando a voz ENTRA
+                        // de verdade na timeline, não a partir do zero.
+                        const trechosDeVoz = detectarTrechosDeClips(clipsDeVoz, duck.hold);
+                        const ducou = aplicarDucking(
+                            trackGain.gain, trechosDeVoz, track.volume / 100, fimDaVoz, 0, duck
+                        );
+                        if (!ducou) {
+                            trackGain.gain.linearRampToValueAtTime(track.volume / 100, fimDaVoz);
+                        }
+                        // Fade final: desce ao zero em 3.05s depois do fim da voz
+                        // (calibrado pelo produtor contra o Samplitude).
+                        trackGain.gain.linearRampToValueAtTime(0, fimDaVoz + 3.05);
                     }
-                    // Fade final: desce ao zero em 3.05s depois do fim da voz
-                    // (calibrado pelo produtor contra o Samplitude).
-                    trackGain.gain.linearRampToValueAtTime(0, fimDaVoz + 3.05);
                 }
 
                 // Connect the entire chain
@@ -640,6 +666,7 @@
     global.MixEngine = {
         renderizarMix, masterizarBuffer, bufferToWav, bufferToMp3,
         detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
+        agendarAutomacaoVolume,
         DUCK_PADRAO, GATE_PADRAO
     };
 })(window);
