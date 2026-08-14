@@ -3874,6 +3874,12 @@ class MiniDAW {
     }
 
     applyMusicFadeOut(musicTrack) {
+        // Trilha com automação de volume manual já está inteiramente
+        // governada pela agenda central (ver agendarVolumeDaFaixa) -- este
+        // fade legado escreve direto no gainNode.gain por fora dela e
+        // brigaria com a curva desenhada pelo produtor. Pula.
+        if (musicTrack.automacaoVolume && musicTrack.automacaoVolume.length > 0) return;
+
         const nodes = this.trackNodes.get(musicTrack.id);
         if (!nodes || !nodes.gainNode) return;
 
