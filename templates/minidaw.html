@@ -440,6 +440,15 @@
             border-color: var(--accent-color);
         }
 
+        /* Trilha tem pontos de automação salvos mas o modo de edição está
+           fechado agora -- sem isto, o Ducking parece "quebrado" sem
+           explicação nenhuma na tela (ele está desligado por causa dos
+           pontos, só que a linha deles está escondida). */
+        .effect-btn.tem-automacao:not(.active) {
+            border-color: #fbbf24;
+            color: #fbbf24;
+        }
+
         .effects-panel {
             background: rgba(15, 23, 42, 0.6);
             border: 1px solid var(--border-color);

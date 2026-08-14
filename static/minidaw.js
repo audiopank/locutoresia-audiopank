@@ -413,6 +413,11 @@ class MiniDAW {
                                     onclick="minidaw.toggleScissorMode('${track.id}')" title="Tesoura">
                                 <i class="fas fa-cut"></i> Tesoura
                             </button>
+                            <button class="effect-btn ${this.trackAutomacao === track.id ? 'active' : ''} ${(track.automacaoVolume && track.automacaoVolume.length) ? 'tem-automacao' : ''}"
+                                    id="btnautomacao_${track.id}"
+                                    onclick="minidaw.toggleAutomacaoVolume('${track.id}')" title="Automação de volume (pontos manuais — substitui o Ducking nesta faixa enquanto tiver pontos)">
+                                <i class="fas fa-wave-square"></i> Automação
+                            </button>
                             <button class="effect-btn" onclick="minidaw.normalizeVolumes()" title="Normalizar">
                                 <i class="fas fa-sliders-h"></i> Normalizar
                             </button>
@@ -3285,6 +3290,15 @@ class MiniDAW {
         if (anterior && anterior !== trackId) this.cancelarSelecao(anterior);
         if (!ligando) this.cancelarSelecao(trackId);
 
+        // Nunca as duas ligadas juntas na mesma faixa (ver toggleAutomacaoVolume).
+        if (ligando && this.trackAutomacao === trackId) {
+            this.trackAutomacao = null;
+            const btnAuto = document.getElementById(`btnautomacao_${trackId}`);
+            if (btnAuto) btnAuto.classList.remove('active');
+            const t = this.tracks.find(tr => tr.id === trackId);
+            if (t) this.desenharAutomacaoVolume(t);
+        }
+
         this.tracks.forEach(t => {
             const btn = document.getElementById(`btntesoura_${t.id}`);
             if (btn) btn.classList.toggle('active', this.trackTesoura === t.id);
@@ -3296,6 +3310,35 @@ class MiniDAW {
         this.showNotification(
             ligando ? 'Tesoura ligada — arraste em cima da onda pra marcar o trecho'
                     : 'Tesoura desligada',
+            ligando ? 'info' : 'success');
+    }
+
+    // ── AUTOMAÇÃO DE VOLUME POR PONTOS ───────────────────────────────────
+    // Modo por faixa, mesmo padrão da Tesoura: liga só numa faixa por vez.
+    // Nunca liga junto com a Tesoura NA MESMA faixa -- a lane não teria
+    // como distinguir "clique pra marcar corte" de "clique pra criar ponto".
+    toggleAutomacaoVolume(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+
+        const ligando = this.trackAutomacao !== trackId;
+        this.trackAutomacao = ligando ? trackId : null;
+
+        if (ligando && this.trackTesoura === trackId) {
+            this.cancelarSelecao(trackId);
+            this.trackTesoura = null;
+            this.scissorMode = false;
+            const btnTesoura = document.getElementById(`btntesoura_${trackId}`);
+            if (btnTesoura) btnTesoura.classList.remove('active');
+        }
+
+        const btn = document.getElementById(`btnautomacao_${trackId}`);
+        if (btn) btn.classList.toggle('active', ligando);
+        this.desenharAutomacaoVolume(track);
+
+        this.showNotification(
+            ligando ? 'Automação de volume ligada — clique na linha pra criar pontos'
+                    : 'Automação de volume desligada',
             ligando ? 'info' : 'success');
     }
 
