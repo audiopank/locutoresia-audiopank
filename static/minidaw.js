@@ -960,7 +960,7 @@ class MiniDAW {
             // é quem posiciona lá, e só se o clique não virar arrasto).
             lane.addEventListener('click', (e) => {
                 if (this.trackTesoura === track.id) return;   // tesoura usa a lane pra marcar trecho
-                if (e.target.closest && e.target.closest('.clip-bloco')) return;
+                if (e.target.closest && (e.target.closest('.clip-bloco') || e.target.closest('.automacao-svg'))) return;
                 this.irPara(this._tempoNoPonto(e, track));
             });
         }
