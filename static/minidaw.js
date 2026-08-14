@@ -1128,6 +1128,7 @@ class MiniDAW {
             tempo: Math.max(0, this._tempoNoPonto(ev, track)),
             volume: this._volumeNoPonto(ev, track)
         });
+        track.automacaoVolume.ativo = true;   // desenhar um ponto sempre liga de verdade
         this.desenharAutomacaoVolume(track);
         this.saveToLocalStorage();
         this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
@@ -1151,6 +1152,7 @@ class MiniDAW {
         this.saveToLocalStorage();
         this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
         if (track.automacaoVolume.pontos.length === 0) {
+            track.automacaoVolume.ativo = false;
             this.showNotification('Sem pontos restantes — o Ducking automático volta a valer nesta faixa.', 'info');
         }
     }
@@ -3489,7 +3491,16 @@ class MiniDAW {
         // normal e volta pra ele sem apagar os pontos -- religar traz a
         // curva de volta do jeito que estava. NÃO mexe no `ativo` de
         // nenhuma outra faixa.
-        track.automacaoVolume.ativo = ligando;
+        // Só ativa de verdade se já tiver pontos pra reger -- abrir o
+        // editor numa faixa vazia não deve fingir que já tem efeito
+        // (o efeito real só começa quando o primeiro ponto é desenhado,
+        // ver mousedownAutomacao). Desligar sempre pausa, ponto count
+        // não importa nesse sentido.
+        if (ligando) {
+            if (track.automacaoVolume.pontos.length > 0) track.automacaoVolume.ativo = true;
+        } else {
+            track.automacaoVolume.ativo = false;
+        }
 
         const btn = document.getElementById(`btnautomacao_${trackId}`);
         if (btn) btn.classList.toggle('active', ligando);
@@ -3924,7 +3935,7 @@ class MiniDAW {
         // governada pela agenda central (ver agendarVolumeDaFaixa) -- este
         // fade legado escreve direto no gainNode.gain por fora dela e
         // brigaria com a curva desenhada pelo produtor. Pula.
-        if (musicTrack.automacaoVolume && musicTrack.automacaoVolume.ativo) return;
+        if (musicTrack.automacaoVolume && musicTrack.automacaoVolume.ativo && musicTrack.automacaoVolume.pontos.length) return;
 
         const nodes = this.trackNodes.get(musicTrack.id);
         if (!nodes || !nodes.gainNode) return;
