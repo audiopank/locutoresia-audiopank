@@ -983,6 +983,15 @@ class MiniDAW {
             ph.style.left = ((this.currentTime || 0) * this.pxPorSegundo) + 'px';
             conteudo.appendChild(ph);
         }
+        if (!conteudo.querySelector('.automacao-svg')) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('class', 'automacao-svg');
+            svg.setAttribute('id', `automacaosvg_${track.id}`);
+            svg.innerHTML = '<polyline class="automacao-poly"></polyline>';
+            svg.addEventListener('mousedown', (ev) => this.mousedownAutomacao(ev, track.id));
+            svg.addEventListener('dblclick', (ev) => this.dblclickAutomacao(ev, track.id));
+            conteudo.appendChild(svg);
+        }
         // Remove só os blocos de clip — as guias da Tesoura (selreg_/selini_/
         // selfim_) moram na mesma lane e precisam sobreviver ao redesenho.
         conteudo.querySelectorAll('.clip-bloco').forEach(el => el.remove());
@@ -1007,6 +1016,119 @@ class MiniDAW {
             el.addEventListener('mousedown', (ev) => this.mousedownClip(ev, track.id, clip.id));
             conteudo.appendChild(el);
             this.desenharOndaDoClip(track, clip, el.querySelector('canvas'));
+        }
+        this.desenharAutomacaoVolume(track);
+    }
+
+    // Redesenha a linha + pontos de automação de UMA faixa. Esconde tudo
+    // (via a classe `.ativa`) se o modo de edição não está ligado nela —
+    // "a linha some quando não está em uso" (decisão do produtor).
+    desenharAutomacaoVolume(track) {
+        const lane = document.getElementById(`lane_${track.id}`);
+        if (!lane) return;
+        const conteudo = lane.querySelector('.lane-conteudo');
+        if (!conteudo) return;
+        const svg = conteudo.querySelector('.automacao-svg');
+        if (!svg) return;
+
+        const ativo = this.trackAutomacao === track.id;
+        svg.classList.toggle('ativa', ativo);
+        if (!ativo) return;   // nada pra desenhar com o modo desligado
+
+        const pontos = track.automacaoVolume || [];
+        const altura = track.altura || MiniDAW.ALTURA_LANE_PADRAO;
+        const yDoVolume = (v) => altura - (Math.max(0, Math.min(150, v)) / 150) * altura;
+
+        const ordenados = pontos.slice().sort((a, b) => a.tempo - b.tempo);
+        const poly = svg.querySelector('.automacao-poly');
+        poly.setAttribute('points', ordenados.map(p => `${p.tempo * this.pxPorSegundo},${yDoVolume(p.volume)}`).join(' '));
+
+        svg.querySelectorAll('.automacao-ponto').forEach(el => el.remove());
+        for (const p of ordenados) {
+            const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            c.setAttribute('class', 'automacao-ponto');
+            c.setAttribute('cx', p.tempo * this.pxPorSegundo);
+            c.setAttribute('cy', yDoVolume(p.volume));
+            c.setAttribute('r', 5);
+            c.dataset.pontoId = p.id;
+            svg.appendChild(c);
+        }
+    }
+
+    // Converte a posição Y do mouse (relativa ao topo da .lane-conteudo) num
+    // volume 0-150, mesma escala do fader. Recalcula o retângulo TODA vez
+    // (mesmo padrão do _tempoNoPonto já existente) em vez de cachear no
+    // início do arrasto — a lane não rola verticalmente, mas a PÁGINA pode
+    // rolar durante um arrasto longo, e um rect cacheado ficaria errado.
+    _volumeNoPonto(ev, track) {
+        const lane = document.getElementById(`lane_${track.id}`);
+        if (!lane) return 0;
+        const conteudo = lane.querySelector('.lane-conteudo');
+        if (!conteudo) return 0;
+        const altura = track.altura || MiniDAW.ALTURA_LANE_PADRAO;
+        const r = conteudo.getBoundingClientRect();
+        const y = ev.clientY - r.top;
+        return Math.max(0, Math.min(150, 150 - (y / altura) * 150));
+    }
+
+    mousedownAutomacao(ev, trackId) {
+        if (this.trackAutomacao !== trackId) return;   // modo desligado nesta faixa
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        if (ev.target.classList.contains('automacao-ponto')) {
+            // Arrastar ponto existente — tempo E volume seguem o mouse juntos.
+            const ponto = track.automacaoVolume.find(p => p.id === ev.target.dataset.pontoId);
+            if (!ponto) return;
+            const mover = (e) => {
+                ponto.tempo = Math.max(0, this._tempoNoPonto(e, track));
+                ponto.volume = this._volumeNoPonto(e, track);
+                this.desenharAutomacaoVolume(track);
+            };
+            const soltar = () => {
+                document.removeEventListener('mousemove', mover);
+                document.removeEventListener('mouseup', soltar);
+                this.saveToLocalStorage();
+                this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
+            };
+            document.addEventListener('mousemove', mover);
+            document.addEventListener('mouseup', soltar);
+            return;
+        }
+
+        // Clique em espaço vazio: cria um ponto novo ali.
+        const eraPrimeiro = track.automacaoVolume.length === 0;
+        track.automacaoVolume.push({
+            id: ClipModel.novoId(),
+            tempo: Math.max(0, this._tempoNoPonto(ev, track)),
+            volume: this._volumeNoPonto(ev, track)
+        });
+        this.desenharAutomacaoVolume(track);
+        this.saveToLocalStorage();
+        this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
+        if (eraPrimeiro) {
+            this.showNotification('Primeiro ponto criado — o Ducking automático desligou nesta faixa.', 'info');
+        }
+    }
+
+    dblclickAutomacao(ev, trackId) {
+        if (this.trackAutomacao !== trackId) return;
+        if (!ev.target.classList.contains('automacao-ponto')) return;
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.automacaoVolume) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const idx = track.automacaoVolume.findIndex(p => p.id === ev.target.dataset.pontoId);
+        if (idx === -1) return;
+        track.automacaoVolume.splice(idx, 1);
+        this.desenharAutomacaoVolume(track);
+        this.saveToLocalStorage();
+        this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
+        if (track.automacaoVolume.length === 0) {
+            this.showNotification('Automação removida — o Ducking automático voltou nesta faixa.', 'info');
         }
     }
 
