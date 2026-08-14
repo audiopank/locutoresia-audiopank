@@ -251,6 +251,11 @@ class MiniDAW {
             // vira pausa e mais respiração some — mas passar do ponto começa
             // a comer o comecinho das palavras. Acha-se de ouvido.
             gateSettings: { sensibilidade: 12 },
+            // Pontos de automação de volume manual: [{id, tempo, volume}].
+            // Enquanto tiver pelo menos 1 ponto, SUBSTITUI o Ducking nesta
+            // trilha (ver agendarVolumeDaFaixa). Vazio = comportamento de
+            // hoje (fader + Ducking automático), sem mudança nenhuma.
+            automacaoVolume: [],
             // Modo compacto: recolhe sliders/efeitos e deixa só cabeçalho +
             // timeline — com vários tracks é o único jeito de ver tudo de uma vez.
             compacto: false,
@@ -1936,6 +1941,11 @@ class MiniDAW {
             g.setValueAtTime(0, this.audioContext.currentTime);
             return;
         }
+
+        // Automação por pontos manuais: SUBSTITUI Ducking/fade final nesta
+        // faixa (nunca convivem no mesmo AudioParam). Mesma função do export
+        // em mix-engine.js -- prévia e arquivo idênticos.
+        if (MixEngine.agendarAutomacaoVolume(g, track.automacaoVolume, base)) return;
 
         const nivel = track.volume / 100;
         // Fades agora são POR CLIP e vivem no clipGain de cada source (ver
@@ -3867,6 +3877,7 @@ class MiniDAW {
                     fadeIn: t.fadeIn, fadeOut: t.fadeOut,
                     effects: t.effects, eqSettings: t.eqSettings,
                     gateSettings: t.gateSettings,
+                    automacaoVolume: t.automacaoVolume,
                     buffers: [], clips: []
                 };
                 // Um upload por BUFFER DISTINTO (clips de um corte compartilham
@@ -4007,6 +4018,10 @@ class MiniDAW {
                 track.effects   = td.effects    || track.effects;
                 track.eqSettings= td.eqSettings || track.eqSettings;
                 track.gateSettings = td.gateSettings || track.gateSettings;
+                // Projetos salvos ANTES desta feature não têm esse campo —
+                // td.automacaoVolume vem undefined e cai no [] que addTrack
+                // já deu à track (mesmo padrão de fallback de effects/eqSettings/gateSettings acima).
+                track.automacaoVolume = td.automacaoVolume || track.automacaoVolume;
                 if (td.clips && td.clips.length && td.buffers) {
                     // Projeto novo: baixa cada buffer e reconstrói os clips
                     // nas posições exatas em que foram salvos.
