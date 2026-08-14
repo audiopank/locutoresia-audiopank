@@ -256,7 +256,7 @@ class MiniDAW {
             // Enquanto tiver pelo menos 1 ponto, SUBSTITUI o Ducking nesta
             // trilha (ver agendarVolumeDaFaixa). Vazio = comportamento de
             // hoje (fader + Ducking automático), sem mudança nenhuma.
-            automacaoVolume: [],
+            automacaoVolume: { ativo: false, pontos: [] },
             // Modo compacto: recolhe sliders/efeitos e deixa só cabeçalho +
             // timeline — com vários tracks é o único jeito de ver tudo de uma vez.
             compacto: false,
@@ -380,9 +380,9 @@ class MiniDAW {
                     </button>
                 </div>
                 <div class="controls-panel">
-                    <div class="control-group ${(track.automacaoVolume && track.automacaoVolume.length) ? 'controlado-por-automacao' : ''}"
+                    <div class="control-group ${(track.automacaoVolume && track.automacaoVolume.ativo) ? 'controlado-por-automacao' : ''}"
                          id="volgroup_${track.id}"
-                         title="${(track.automacaoVolume && track.automacaoVolume.length) ? 'Este volume não faz efeito agora — a automação de pontos está no controle' : ''}">
+                         title="${(track.automacaoVolume && track.automacaoVolume.ativo) ? 'Este volume não faz efeito agora — a automação de pontos está no controle' : ''}">
                         <span class="control-label">Volume:</span>
                         <input type="range" class="form-range volume-slider" min="0" max="150" value="${track.volume}"
                                onchange="minidaw.updateTrackVolume('${track.id}', this.value)">
@@ -416,7 +416,7 @@ class MiniDAW {
                                     onclick="minidaw.toggleScissorMode('${track.id}')" title="Tesoura">
                                 <i class="fas fa-cut"></i> Tesoura
                             </button>
-                            <button class="effect-btn ${this.trackAutomacao === track.id ? 'active' : ''} ${(track.automacaoVolume && track.automacaoVolume.length) ? 'tem-automacao' : ''}"
+                            <button class="effect-btn ${this.trackAutomacao === track.id ? 'active' : ''} ${(track.automacaoVolume && track.automacaoVolume.ativo) ? 'tem-automacao' : ''}"
                                     id="btnautomacao_${track.id}"
                                     onclick="minidaw.toggleAutomacaoVolume('${track.id}')" title="Automação de volume (pontos manuais — substitui o Ducking nesta faixa enquanto tiver pontos)">
                                 <i class="fas fa-wave-square"></i> Automação
@@ -1022,6 +1022,16 @@ class MiniDAW {
         this.desenharAutomacaoVolume(track);
     }
 
+    // Versões anteriores desta feature salvavam automacaoVolume como array
+    // puro (pontos sempre "ativos" se existissem). Converte pro formato
+    // novo {ativo, pontos} na leitura -- silencioso, sem quebrar projetos
+    // já salvos hoje mais cedo.
+    _normalizarAutomacaoVolume(raw) {
+        if (Array.isArray(raw)) return { ativo: raw.length > 0, pontos: raw };
+        if (raw && typeof raw === 'object' && Array.isArray(raw.pontos)) return raw;
+        return { ativo: false, pontos: [] };
+    }
+
     // Redesenha a linha + pontos de automação de UMA faixa. Esconde tudo
     // (via a classe `.ativa`) se o modo de edição não está ligado nela —
     // "a linha some quando não está em uso" (decisão do produtor).
@@ -1033,22 +1043,22 @@ class MiniDAW {
         const svg = conteudo.querySelector('.automacao-svg');
         if (!svg) return;
 
-        // Fader "esmaece" sempre que a trilha tem pontos -- ele já não faz
-        // efeito nenhum nesse caso (ver agendarVolumeDaFaixa), com o modo de
-        // edição aberto ou fechado. Sem isto o produtor não tem como saber
-        // olhando pra tela por que o volume dele "parou de obedecer".
+        // Fader "esmaece" enquanto ESTA FAIXA estiver com a automação
+        // realmente LIGADA (não é sobre a linha de edição estar visível ou
+        // não -- uma trilha pode estar ativa e "tocando por baixo" mesmo
+        // com a linha escondida, se outra trilha estiver sendo editada).
         const volGroup = document.getElementById(`volgroup_${track.id}`);
         if (volGroup) {
-            const controlado = track.automacaoVolume && track.automacaoVolume.length > 0;
+            const controlado = !!(track.automacaoVolume && track.automacaoVolume.ativo);
             volGroup.classList.toggle('controlado-por-automacao', controlado);
             volGroup.title = controlado ? 'Este volume não faz efeito agora — a automação de pontos está no controle' : '';
         }
 
-        const ativo = this.trackAutomacao === track.id;
-        svg.classList.toggle('ativa', ativo);
-        if (!ativo) return;   // nada pra desenhar com o modo desligado
+        const editando = this.trackAutomacao === track.id;
+        svg.classList.toggle('ativa', editando);
+        if (!editando) return;   // nada pra desenhar com a edição fechada
 
-        const pontos = track.automacaoVolume || [];
+        const pontos = (track.automacaoVolume && track.automacaoVolume.pontos) || [];
         const altura = track.altura || MiniDAW.ALTURA_LANE_PADRAO;
         const yDoVolume = (v) => altura - (Math.max(0, Math.min(150, v)) / 150) * altura;
 
@@ -1093,7 +1103,7 @@ class MiniDAW {
 
         if (ev.target.classList.contains('automacao-ponto')) {
             // Arrastar ponto existente — tempo E volume seguem o mouse juntos.
-            const ponto = track.automacaoVolume.find(p => p.id === ev.target.dataset.pontoId);
+            const ponto = track.automacaoVolume.pontos.find(p => p.id === ev.target.dataset.pontoId);
             if (!ponto) return;
             const mover = (e) => {
                 ponto.tempo = Math.max(0, this._tempoNoPonto(e, track));
@@ -1112,8 +1122,8 @@ class MiniDAW {
         }
 
         // Clique em espaço vazio: cria um ponto novo ali.
-        const eraPrimeiro = track.automacaoVolume.length === 0;
-        track.automacaoVolume.push({
+        const eraPrimeiro = track.automacaoVolume.pontos.length === 0;
+        track.automacaoVolume.pontos.push({
             id: ClipModel.novoId(),
             tempo: Math.max(0, this._tempoNoPonto(ev, track)),
             volume: this._volumeNoPonto(ev, track)
@@ -1134,14 +1144,14 @@ class MiniDAW {
         ev.preventDefault();
         ev.stopPropagation();
 
-        const idx = track.automacaoVolume.findIndex(p => p.id === ev.target.dataset.pontoId);
+        const idx = track.automacaoVolume.pontos.findIndex(p => p.id === ev.target.dataset.pontoId);
         if (idx === -1) return;
-        track.automacaoVolume.splice(idx, 1);
+        track.automacaoVolume.pontos.splice(idx, 1);
         this.desenharAutomacaoVolume(track);
         this.saveToLocalStorage();
         this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
-        if (track.automacaoVolume.length === 0) {
-            this.showNotification('Automação removida — o Ducking automático voltou nesta faixa.', 'info');
+        if (track.automacaoVolume.pontos.length === 0) {
+            this.showNotification('Sem pontos restantes — o Ducking automático volta a valer nesta faixa.', 'info');
         }
     }
 
@@ -2086,7 +2096,8 @@ class MiniDAW {
         // Automação por pontos manuais: SUBSTITUI Ducking/fade final nesta
         // faixa (nunca convivem no mesmo AudioParam). Mesma função do export
         // em mix-engine.js -- prévia e arquivo idênticos.
-        if (MixEngine.agendarAutomacaoVolume(g, track.automacaoVolume, base)) return;
+        const auto = track.automacaoVolume;
+        if (auto && auto.ativo && MixEngine.agendarAutomacaoVolume(g, auto.pontos, base)) return;
 
         const nivel = track.volume / 100;
         // Fades agora são POR CLIP e vivem no clipGain de cada source (ver
@@ -3382,6 +3393,7 @@ class MiniDAW {
                     this.addTrack(trackData.type);
                     const track = this.tracks[this.tracks.length - 1];
                     Object.assign(track, trackData);
+                    track.automacaoVolume = this._normalizarAutomacaoVolume(track.automacaoVolume);
                     this.createTrackUI(track);
                 });
                 
@@ -3459,8 +3471,10 @@ class MiniDAW {
     toggleAutomacaoVolume(trackId) {
         const track = this.tracks.find(t => t.id === trackId);
         if (!track) return;
+        if (!track.automacaoVolume) track.automacaoVolume = { ativo: false, pontos: [] };
 
         const ligando = this.trackAutomacao !== trackId;
+        const anterior = this.trackAutomacao;
         this.trackAutomacao = ligando ? trackId : null;
 
         if (ligando && this.trackTesoura === trackId) {
@@ -3471,13 +3485,32 @@ class MiniDAW {
             if (btnTesoura) btnTesoura.classList.remove('active');
         }
 
+        // Liga/desliga de VERDADE só PARA ESTA FAIXA: sai do fader/Ducking
+        // normal e volta pra ele sem apagar os pontos -- religar traz a
+        // curva de volta do jeito que estava. NÃO mexe no `ativo` de
+        // nenhuma outra faixa.
+        track.automacaoVolume.ativo = ligando;
+
         const btn = document.getElementById(`btnautomacao_${trackId}`);
         if (btn) btn.classList.toggle('active', ligando);
         this.desenharAutomacaoVolume(track);
 
+        // A faixa anterior (se era outra) só perde a VISIBILIDADE da linha
+        // -- continua tocando com a automação que já tinha, só não editável
+        // mais. Sem isto a linha dela ficava presa em "aberta" na tela.
+        if (anterior && anterior !== trackId) {
+            const trackAnterior = this.tracks.find(t => t.id === anterior);
+            const btnAnterior = document.getElementById(`btnautomacao_${anterior}`);
+            if (btnAnterior) btnAnterior.classList.remove('active');
+            if (trackAnterior) this.desenharAutomacaoVolume(trackAnterior);
+        }
+
+        this.saveToLocalStorage();
+        this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
+
         this.showNotification(
             ligando ? 'Automação de volume ligada — clique na linha pra criar pontos'
-                    : 'Automação de volume desligada',
+                    : 'Automação de volume desligada — volume volta ao normal, pontos preservados',
             ligando ? 'info' : 'success');
     }
 
@@ -3891,7 +3924,7 @@ class MiniDAW {
         // governada pela agenda central (ver agendarVolumeDaFaixa) -- este
         // fade legado escreve direto no gainNode.gain por fora dela e
         // brigaria com a curva desenhada pelo produtor. Pula.
-        if (musicTrack.automacaoVolume && musicTrack.automacaoVolume.length > 0) return;
+        if (musicTrack.automacaoVolume && musicTrack.automacaoVolume.ativo) return;
 
         const nodes = this.trackNodes.get(musicTrack.id);
         if (!nodes || !nodes.gainNode) return;
@@ -4206,10 +4239,11 @@ class MiniDAW {
                 track.effects   = td.effects    || track.effects;
                 track.eqSettings= td.eqSettings || track.eqSettings;
                 track.gateSettings = td.gateSettings || track.gateSettings;
-                // Projetos salvos ANTES desta feature não têm esse campo —
-                // td.automacaoVolume vem undefined e cai no [] que addTrack
-                // já deu à track (mesmo padrão de fallback de effects/eqSettings/gateSettings acima).
-                track.automacaoVolume = td.automacaoVolume || track.automacaoVolume;
+                // Normaliza o formato -- cobre projetos salvos antes desta
+                // feature (campo ausente), e os salvos HOJE mais cedo antes
+                // do liga/desliga de verdade existir (formato antigo: array
+                // puro, sem {ativo, pontos}).
+                track.automacaoVolume = this._normalizarAutomacaoVolume(td.automacaoVolume);
                 if (td.clips && td.clips.length && td.buffers) {
                     // Projeto novo: baixa cada buffer e reconstrói os clips
                     // nas posições exatas em que foram salvos.

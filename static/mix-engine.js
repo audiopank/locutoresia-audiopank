@@ -501,9 +501,12 @@
                 pan.pan.value = track.pan;
 
                 // Automação por pontos manuais: SUBSTITUI Ducking/fade final
-                // nesta faixa. Precisa ser IDÊNTICO ao playback (mesma regra
-                // "prévia e arquivo idênticos" do resto do motor).
-                if (!agendarAutomacaoVolume(trackGain.gain, track.automacaoVolume, 0)) {
+                // nesta faixa, só quando REALMENTE ligada (não basta ter
+                // pontos -- o liga/desliga manual do produtor manda).
+                // Precisa ser IDÊNTICO ao playback (mesma regra "prévia e
+                // arquivo idênticos" do resto do motor).
+                const autoTrilha = track.automacaoVolume;
+                if (!(autoTrilha && autoTrilha.ativo && agendarAutomacaoVolume(trackGain.gain, autoTrilha.pontos, 0))) {
                     // Nível da faixa (fades agora são por clip, no clipGain).
                     trackGain.gain.setValueAtTime(track.volume / 100, 0);
 
