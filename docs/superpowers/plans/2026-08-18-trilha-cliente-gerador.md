@@ -322,6 +322,17 @@ Dentro do handler de `DOMContentLoaded` (no fim do arquivo, onde os outros botõ
             try {
                 estado.trilhaCliente = await subirTrilhaCliente(file, nome, buffer);
                 await carregarTrilhas(estado.trilhaCliente.id);
+                if (selTrilha.selectedIndex === -1) {
+                    // O recarregamento do catálogo falhou (rede): sem isto o
+                    // select ficaria em branco e a trilha recém-subida seria
+                    // ignorada em silêncio. O buffer está em mãos de qualquer
+                    // jeito — garante uma opção visível apontando pra ela.
+                    const o = document.createElement('option');
+                    o.value = String(estado.trilhaCliente.id);
+                    o.textContent = estado.trilhaCliente.name;
+                    selTrilha.appendChild(o);
+                    selTrilha.value = String(estado.trilhaCliente.id);
+                }
                 trilhaAnterior = String(estado.trilhaCliente.id);
                 avisar('✅ Trilha "' + nome + '" guardada e selecionada. Pode gerar o anúncio.', 'ok');
             } catch (e) {
