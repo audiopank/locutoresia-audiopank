@@ -20,8 +20,13 @@
         trilha: null,       // {name, file_url, ...}
         trilhaBuffer: null,
         receita: null,      // resposta do mix-recipe
-        mixBlob: null       // resultado final
+        mixBlob: null,      // resultado final
+        trilhaCliente: null // trilha subida NESTA aba: {id, name, file_url, buffer}
     };
+
+    // Valor do select quando a trilha do cliente decodificou mas NÃO ficou
+    // guardada (Storage/catálogo falhou): vive só nesta aba, sem file_url.
+    const TRILHA_LOCAL = 'local';
 
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -144,6 +149,49 @@
 
         // Depois de um upload, o catálogo recarrega e a trilha nova já fica ativa.
         if (selecionarId != null) sel.value = String(selecionarId);
+    }
+
+    // ── Trilha do cliente (upload) ───────────────────────────────────────
+
+    // Sobe o arquivo pro Storage (signed URL — o corpo NÃO passa pela função
+    // da Vercel, que rejeita >4.5MB) e cataloga na music_tracks com
+    // genre='trilha_cliente'. Esse marcador é o que esconde a trilha da IA do
+    // "Deixar a IA escolher" (recommend-tracks filtra): jingle do cliente A
+    // jamais no anúncio do cliente B. O buffer já vem decodificado de fora.
+    async function subirTrilhaCliente(file, nome, buffer) {
+        const ru = await fetch('/api/tracks/upload-url', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name || (nome + '.mp3') })
+        });
+        const u = await ru.json();
+        if (!u.success) throw new Error(u.error || 'sem URL de upload');
+
+        const fd = new FormData();
+        fd.append('file', file, file.name || nome);
+        const up = await fetch(u.upload_url, {
+            method: 'PUT',
+            headers: { 'apikey': u.apikey, 'Authorization': `Bearer ${u.apikey}` },
+            body: fd
+        });
+        if (!up.ok) throw new Error('falha no envio pro Storage');
+
+        const rm = await fetch('/api/tracks/upload-metadata', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: nome,
+                genre: 'trilha_cliente',
+                mood: 'cliente',
+                description: 'Trilha enviada pelo cliente',
+                duration: Math.round(buffer.duration),
+                file_url: u.public_url,
+                file_size: file.size,
+                mime_type: file.type || 'audio/mpeg'
+            })
+        });
+        const m = await rm.json();
+        if (!m.success || !m.track) throw new Error(m.error || 'falha ao catalogar a trilha');
+
+        return { id: m.track.id, name: nome, file_url: u.public_url, buffer: buffer };
     }
 
     // ── Helpers de áudio ─────────────────────────────────────────────────
@@ -551,6 +599,77 @@
             };
             fr.readAsDataURL(vozBlob);
         };
+
+        // ── Upload de trilha do cliente ──────────────────────────────────
+        const selTrilha = document.getElementById('selectTrilha');
+        const inputTrilha = document.getElementById('inputTrilhaCliente');
+        let trilhaAnterior = selTrilha.value;   // pra voltar se cancelar o seletor
+
+        selTrilha.addEventListener('change', () => {
+            if (selTrilha.value !== 'upload') { trilhaAnterior = selTrilha.value; return; }
+            inputTrilha.value = '';   // permite escolher o MESMO arquivo de novo
+            inputTrilha.click();
+        });
+
+        inputTrilha.addEventListener('change', async () => {
+            const file = inputTrilha.files && inputTrilha.files[0];
+            if (!file) { selTrilha.value = trilhaAnterior; return; }
+
+            // Decodifica ANTES de subir: áudio que não toca não vai pro Storage.
+            let buffer;
+            try {
+                buffer = await ctx.decodeAudioData(await file.arrayBuffer());
+            } catch (e) {
+                avisar('Não consegui ler esse áudio — confira se o arquivo toca no seu computador. Prefira MP3 ou WAV.', 'atencao');
+                selTrilha.value = trilhaAnterior;
+                return;
+            }
+
+            if (file.size > 25 * 1024 * 1024) {
+                avisar('Arquivo grande (' + Math.round(file.size / 1024 / 1024)
+                       + 'MB) — funciona, mas em MP3 pesaria bem menos e soaria igual no spot.', 'atencao');
+            }
+
+            const sugestao = (file.name || 'trilha-do-cliente').replace(/\.[^.]+$/, '');
+            const nome = ((window.prompt(
+                'Nome da trilha (inclua o cliente, ex.: "Jingle Padaria do Zé"):',
+                sugestao) || sugestao).trim()) || sugestao;
+
+            avisar('⬆️ Subindo "' + nome + '" pro Storage...', 'info');
+            try {
+                estado.trilhaCliente = await subirTrilhaCliente(file, nome, buffer);
+                await carregarTrilhas(estado.trilhaCliente.id);
+                if (selTrilha.selectedIndex === -1) {
+                    // O recarregamento do catálogo falhou (rede): sem isto o
+                    // select ficaria em branco e a trilha recém-subida seria
+                    // ignorada em silêncio. O buffer está em mãos de qualquer
+                    // jeito — garante uma opção visível apontando pra ela.
+                    const o = document.createElement('option');
+                    o.value = String(estado.trilhaCliente.id);
+                    o.textContent = estado.trilhaCliente.name;
+                    selTrilha.appendChild(o);
+                    selTrilha.value = String(estado.trilhaCliente.id);
+                }
+                trilhaAnterior = String(estado.trilhaCliente.id);
+                avisar('✅ Trilha "' + nome + '" guardada e selecionada. Pode gerar o anúncio.', 'ok');
+            } catch (e) {
+                // O áudio decodificou mas não ficou guardado: o spot da VEZ ainda
+                // sai com ele — só não existe amanhã nem no "Abrir na MiniDAW".
+                estado.trilhaCliente = { id: TRILHA_LOCAL, name: nome, file_url: null, buffer: buffer };
+                let o = selTrilha.querySelector('option[value="' + TRILHA_LOCAL + '"]');
+                if (!o) {
+                    o = document.createElement('option');
+                    o.value = TRILHA_LOCAL;
+                    selTrilha.appendChild(o);
+                }
+                o.textContent = '⚠️ ' + nome + ' (só nesta aba)';
+                selTrilha.value = TRILHA_LOCAL;
+                trilhaAnterior = TRILHA_LOCAL;
+                avisar('⚠️ A trilha NÃO ficou guardada (' + e.message + '). Dá pra gerar o spot '
+                       + 'agora mesmo assim, mas ela some ao fechar a aba e não vai junto '
+                       + 'no "Abrir na MiniDAW".', 'atencao');
+            }
+        });
 
         document.getElementById('textoComercial').addEventListener('input', atualizarContador);
         atualizarContador();
