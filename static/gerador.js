@@ -386,6 +386,19 @@
             try {
                 if (escolha === 'nenhuma') {
                     avisar('Sem trilha, por escolha sua.', 'info');
+                } else if (escolha === 'upload') {
+                    // Abriu o seletor de arquivo mas nenhum upload se concluiu.
+                    avisar('Nenhuma trilha foi subida — seguindo com locução seca. Suba o arquivo antes de gerar.', 'atencao');
+                } else if (estado.trilhaCliente && String(estado.trilhaCliente.id) === escolha) {
+                    // Trilha do cliente subida NESTA aba: o buffer já está em
+                    // mãos — não baixa de volta do Storage. Cobre também a
+                    // TRILHA_LOCAL (upload falhou, buffer só na memória).
+                    estado.trilha = {
+                        id: estado.trilhaCliente.id,
+                        name: estado.trilhaCliente.name,
+                        file_url: estado.trilhaCliente.file_url
+                    };
+                    estado.trilhaBuffer = estado.trilhaCliente.buffer;
                 } else if (escolha === 'auto') {
                     const rTr = await fetch('/api/voxcraft/recommend-tracks', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -412,7 +425,9 @@
                     const dT = await rT.json();
                     estado.trilha = (dT.tracks || []).find(t => String(t.id) === escolha) || null;
                 }
-                if (estado.trilha) estado.trilhaBuffer = await baixarEDecodificar(estado.trilha.file_url);
+                if (estado.trilha && !estado.trilhaBuffer) {
+                    estado.trilhaBuffer = await baixarEDecodificar(estado.trilha.file_url);
+                }
             } catch (e) {
                 avisar('Não consegui carregar a trilha (' + e.message + ') — seguindo com locução seca.', 'atencao');
                 estado.trilha = null;
@@ -584,7 +599,9 @@
                 try {
                     localStorage.setItem('minidaw_projeto_gerador', JSON.stringify({
                         voz: { base64: fr.result, nome: base + '-voz.wav' },
-                        trilha: estado.trilha
+                        // Trilha local (upload que falhou) não tem URL — mandar
+                        // url:null faria a MiniDAW tentar baixar 'null'.
+                        trilha: (estado.trilha && estado.trilha.file_url)
                             ? { url: estado.trilha.file_url, nome: estado.trilha.name }
                             : null,
                         receita: estado.receita || null,
