@@ -1343,9 +1343,16 @@ def voxcraft_recommend_tracks():
         if not supabase_manager or not supabase_manager.newpost_manager_client:
             return jsonify({"success": False, "error": "Biblioteca indisponível no momento."}), 500
 
+        # .neq demo_voz: demos de VOZ moram nesta tabela (ver /api/voice-demos);
+        # /api/tracks já filtrava, mas aqui a IA podia recomendar uma demo como
+        # trilha de fundo. .neq trilha_cliente: jingle subido pelo produtor pra
+        # UM cliente — a IA jamais pode escolhê-lo pro anúncio de outro.
         tracks_resp = supabase_manager.newpost_manager_client.table('music_tracks') \
             .select('id,name,artist,genre,mood,duration,bpm,description,file_url') \
-            .eq('is_active', True).execute()
+            .eq('is_active', True) \
+            .neq('genre', 'demo_voz') \
+            .neq('genre', 'trilha_cliente') \
+            .execute()
         acervo = tracks_resp.data or []
 
         if len(acervo) == 0:
