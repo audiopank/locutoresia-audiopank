@@ -118,7 +118,7 @@
         return prov === 'gemini' ? 'google' : prov;
     }
 
-    async function carregarTrilhas() {
+    async function carregarTrilhas(selecionarId) {
         const sel = document.getElementById('selectTrilha');
         let lista = [];
         try {
@@ -126,10 +126,24 @@
             const d = await r.json();
             lista = d.tracks || [];
         } catch (e) { /* segue sem catálogo: dá pra usar 'auto' ou 'nenhuma' */ }
+
+        // Trilhas de clientes ficam num grupo próprio: o produtor acha o jingle
+        // do cliente na hora, e ninguém confunde acervo com material de cliente.
+        const doCliente = lista.filter(t => t.genre === 'trilha_cliente');
+        const doAcervo = lista.filter(t => t.genre !== 'trilha_cliente');
+        const opt = t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`;
+
         sel.innerHTML =
             '<option value="auto" selected>Deixar a IA escolher</option>' +
             '<option value="nenhuma">Sem trilha (locução seca)</option>' +
-            lista.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+            '<option value="upload">📤 Subir trilha do cliente...</option>' +
+            (doAcervo.length
+                ? `<optgroup label="Acervo">${doAcervo.map(opt).join('')}</optgroup>` : '') +
+            (doCliente.length
+                ? `<optgroup label="Trilhas de clientes">${doCliente.map(opt).join('')}</optgroup>` : '');
+
+        // Depois de um upload, o catálogo recarrega e a trilha nova já fica ativa.
+        if (selecionarId != null) sel.value = String(selecionarId);
     }
 
     // ── Helpers de áudio ─────────────────────────────────────────────────
