@@ -611,8 +611,16 @@
             inputTrilha.click();
         });
 
+        // Chrome dispara 'cancel' (não 'change') quando o produtor fecha o
+        // seletor sem escolher arquivo. Sem isto, o select ficava travado em
+        // "upload" e re-selecionar a opção não reabria o diálogo.
+        inputTrilha.addEventListener('cancel', () => {
+            selTrilha.value = trilhaAnterior;
+        });
+
         inputTrilha.addEventListener('change', async () => {
             const file = inputTrilha.files && inputTrilha.files[0];
+            // Cinto de segurança pra navegador que dispare 'change' vazio.
             if (!file) { selTrilha.value = trilhaAnterior; return; }
 
             // Decodifica ANTES de subir: áudio que não toca não vai pro Storage.
