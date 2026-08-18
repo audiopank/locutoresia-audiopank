@@ -236,19 +236,6 @@ except Exception as e:
     HAS_NEWS_AUTOMATION = False
     news_automation = None
 
-# Inicializar OrchestratorAgent (Exército de Agentes de IA)
-orchestrator = None
-HAS_ORCHESTRATOR = False
-try:
-    from core.orchestrator import get_orchestrator
-    orchestrator = get_orchestrator()
-    HAS_ORCHESTRATOR = True
-    print("✅ OrchestratorAgent (Exército de Agentes) inicializado com sucesso!")
-except Exception as e:
-    print(f"⚠️ Erro ao inicializar OrchestratorAgent: {e}")
-    HAS_ORCHESTRATOR = False
-    orchestrator = None
-
 # Helper para obter a chave Supabase correta
 def get_supabase_key():
     return (os.getenv('PLUGPOST_SUPABASE_ANON_KEY') 
@@ -843,11 +830,6 @@ def vitrine():
 def demos_voz_page():
     """Onde você publica as amostras de voz que aparecem no modal da vitrine."""
     return render_template('demos-voz.html')
-
-@app.route('/agent-army')
-def agent_army():
-    """Exército de Agentes de IA - Página Dedicada"""
-    return render_template('agent-army.html')
 
 @app.route('/minidaw')
 def minidaw():
@@ -8735,159 +8717,6 @@ def api_news_automation_published():
         print(f"Erro no published: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-
-# ============================================================
-# ENDPOINTS DO EXÉRCITO DE AGENTES DE IA
-# ============================================================
-
-@app.route('/api/agents/health', methods=['GET'])
-def agents_health():
-    """Health check para o Exército de Agentes de IA"""
-    return jsonify({
-        'success': True,
-        'status': 'running' if HAS_ORCHESTRATOR else 'error',
-        'message': 'Exército de Agentes de IA' if HAS_ORCHESTRATOR else 'Orchestrator não inicializado',
-        'agents': ['PlannerAgent', 'BuilderAgent', 'CodeReviewerAgent', 'TesterAgent', 'DeployerAgent'],
-        'timestamp': datetime.now(timezone.utc).isoformat()
-    })
-
-@app.route('/api/agents/pipeline', methods=['POST'])
-def agents_pipeline():
-    """Inicia um pipeline completo do Exército de Agentes"""
-    if not HAS_ORCHESTRATOR or not orchestrator:
-        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
-    
-    try:
-        data = request.get_json() or {}
-        brief = data.get('brief', 'Projeto padrão')
-        project_name = data.get('project_name') or data.get('projectName') or f'projeto_{uuid.uuid4().hex[:8]}'
-        
-        # Executa pipeline completo
-        pipeline_result = orchestrator.execute({
-            'brief': brief,
-            'project_name': project_name
-        })
-        
-        return jsonify({
-            'success': True,
-            'pipeline': pipeline_result
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/agents/pipelines', methods=['GET'])
-def agents_list_pipelines():
-    """Lista todos os pipelines executados"""
-    if not HAS_ORCHESTRATOR or not orchestrator:
-        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
-    
-    try:
-        pipelines = orchestrator.list_pipelines()
-        return jsonify({
-            'success': True,
-            'pipelines': pipelines
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/agents/pipelines/<pipeline_id>', methods=['GET'])
-def agents_get_pipeline(pipeline_id):
-    """Obtém detalhes de um pipeline específico"""
-    if not HAS_ORCHESTRATOR or not orchestrator:
-        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
-    
-    try:
-        pipeline = orchestrator.get_pipeline(pipeline_id)
-        if pipeline:
-            return jsonify({'success': True, 'pipeline': pipeline})
-        else:
-            return jsonify({'success': False, 'error': 'Pipeline não encontrado'}), 404
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/agents/planner', methods=['POST'])
-def agents_planner():
-    """Executa apenas o PlannerAgent"""
-    if not HAS_ORCHESTRATOR or not orchestrator:
-        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
-    
-    try:
-        data = request.get_json() or {}
-        brief = data.get('brief', 'Projeto padrão')
-        project_name = data.get('project_name') or data.get('projectName') or f'projeto_{uuid.uuid4().hex[:8]}'
-        
-        plan = orchestrator.agents['PlannerAgent'].execute({
-            'brief': brief,
-            'project_name': project_name
-        })
-        
-        return jsonify({'success': True, 'plan': plan})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/agents/builder', methods=['POST'])
-def agents_builder():
-    """Executa apenas o BuilderAgent"""
-    if not HAS_ORCHESTRATOR or not orchestrator:
-        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
-    
-    try:
-        data = request.get_json() or {}
-        plan = data.get('plan', {})
-        
-        artifacts = orchestrator.agents['BuilderAgent'].execute({'plan': plan})
-        return jsonify({'success': True, 'artifacts': artifacts})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/agents/reviewer', methods=['POST'])
-def agents_reviewer():
-    """Executa apenas o CodeReviewerAgent"""
-    if not HAS_ORCHESTRATOR or not orchestrator:
-        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
-    
-    try:
-        data = request.get_json() or {}
-        artifacts = data.get('artifacts', {})
-        
-        review = orchestrator.agents['CodeReviewerAgent'].execute({'artifacts': artifacts})
-        return jsonify({'success': True, 'review': review})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/agents/tester', methods=['POST'])
-def agents_tester():
-    """Executa apenas o TesterAgent"""
-    if not HAS_ORCHESTRATOR or not orchestrator:
-        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
-    
-    try:
-        data = request.get_json() or {}
-        plan = data.get('plan', {})
-        
-        test_results = orchestrator.agents['TesterAgent'].execute({'plan': plan})
-        return jsonify({'success': True, 'tests': test_results})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/agents/deployer', methods=['POST'])
-def agents_deployer():
-    """Executa apenas o DeployerAgent"""
-    if not HAS_ORCHESTRATOR or not orchestrator:
-        return jsonify({'success': False, 'error': 'Orchestrator não inicializado'}), 500
-    
-    try:
-        data = request.get_json() or {}
-        artifacts = data.get('artifacts', {})
-        project_name = data.get('project_name') or data.get('projectName') or f'projeto_{uuid.uuid4().hex[:8]}'
-        
-        deployment = orchestrator.agents['DeployerAgent'].execute({
-            'artifacts': artifacts,
-            'project_name': project_name
-        })
-        return jsonify({'success': True, 'deployment': deployment})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 # =====================================================================
 # Projetos VIP — Audio Pank Studio (salvar/abrir projetos da MiniDAW)
