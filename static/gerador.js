@@ -584,13 +584,14 @@
         // Mix renderizado é arquivo achatado: não dá pra mexer no volume da
         // trilha, trocar efeito nem salvar projeto de verdade — e é exatamente
         // pra isso que se abre a MiniDAW.
-        document.getElementById('btnAbrirMiniDAW').onclick = () => {
+        document.getElementById('btnAbrirMiniDAW').onclick = async () => {
             if (!estado.vozBuffer) { alert('Gere o anúncio primeiro.'); return; }
 
-            // A voz vai como WAV (é o AudioBuffer que temos em mãos); a trilha
-            // vai como URL, porque o localStorage tem teto de ~5MB e trilha
-            // inteira em base64 estoura fácil.
-            const vozBlob = MixEngine.bufferToWav(estado.vozBuffer);
+            // A voz vai como MP3 192kbps (mesmo encoder do arquivo final): em
+            // WAV cru, locução a partir de ~40s estourava o teto de ~5MB do
+            // localStorage e o produtor caía no aviso de "grande demais". A
+            // trilha segue como URL pelo mesmo motivo de tamanho.
+            const vozBlob = await MixEngine.bufferToMp3(estado.vozBuffer, 192);
             const base = (document.getElementById('inputNome').value || 'spot').trim()
                 .replace(/[^\w\-]+/g, '-') || 'spot';
 
@@ -598,7 +599,7 @@
             fr.onloadend = () => {
                 try {
                     localStorage.setItem('minidaw_projeto_gerador', JSON.stringify({
-                        voz: { base64: fr.result, nome: base + '-voz.wav' },
+                        voz: { base64: fr.result, nome: base + '-voz.mp3' },
                         // Trilha local (upload que falhou) não tem URL — mandar
                         // url:null faria a MiniDAW tentar baixar 'null'.
                         trilha: (estado.trilha && estado.trilha.file_url)
