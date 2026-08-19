@@ -596,6 +596,11 @@
         document.getElementById('btnAbrirMiniDAW').onclick = async () => {
             if (!estado.vozBuffer) { alert('Gere o anúncio primeiro.'); return; }
 
+            // A aba abre JÁ, dentro do gesto do clique: codificar o MP3 de uma
+            // locução longa passa dos ~5s de ativação que o Chrome exige pro
+            // window.open — depois disso o popup é bloqueado em silêncio.
+            const aba = window.open('about:blank', '_blank');
+
             // A voz vai como MP3 192kbps (mesmo encoder do arquivo final): em
             // WAV cru, locução a partir de ~40s estourava o teto de ~5MB do
             // localStorage e o produtor caía no aviso de "grande demais". A
@@ -617,8 +622,9 @@
                         receita: estado.receita || null,
                         roteiro: (estado.roteiro || '').slice(0, 900)
                     }));
-                    window.open('/minidaw', '_blank');
+                    if (aba) { aba.location = '/minidaw'; } else { window.open('/minidaw', '_blank'); }
                 } catch (e) {
+                    if (aba) aba.close();
                     // QuotaExceededError: locução longa demais pro localStorage.
                     alert('A locução ficou grande demais pra passar por aqui. '
                         + 'Use o Download e arraste o arquivo dentro da MiniDAW.');

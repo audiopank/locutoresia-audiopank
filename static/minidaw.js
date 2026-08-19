@@ -4376,6 +4376,10 @@ let minidaw;
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     minidaw = new MiniDAW();
+    // 'let' no topo do script NÃO vira propriedade de window — e o receptor
+    // do projeto do Gerador (minidaw.html) checa window.minidaw. Sem esta
+    // linha ele desistia em silêncio e o "Abrir na MiniDAW" nunca entregava.
+    window.minidaw = minidaw;
 });
 
 // Global functions for onclick handlers
