@@ -190,6 +190,21 @@
                         "Sério" pra institucional. Vale também no "Regerar só a voz".
                     </div>
 
+                    <label class="form-label" for="selectPlano">Duração do spot</label>
+                    <!-- Valores precisam existir em DURACAO_POR_PLANO (backend/app.py):
+                         é a grade dos planos VENDIDOS, não inventar opção aqui. -->
+                    <select id="selectPlano" class="form-select mb-1">
+                        <option value="spot_30_45" selected>Spot 30–45s</option>
+                        <option value="spot_60_90">Spot 60–90s</option>
+                        <option value="teaser_5s">Teaser (3–8s)</option>
+                        <option value="outro">Livre (sem grade)</option>
+                    </select>
+                    <div class="hint mb-3">
+                        A grade do plano vendido: a IA escreve o roteiro nesse tamanho
+                        e a checagem final confere a duração real. Escolher um pedido
+                        ajusta isto sozinho.
+                    </div>
+
                     <label class="form-label" for="selectTrilha">Trilha de fundo</label>
                     <select id="selectTrilha" class="form-select mb-1">
                         <option value="auto" selected>Deixar a IA escolher</option>
@@ -263,6 +278,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=3"></script>
+    <script src="/static/gerador.js?v=4"></script>
 </body>
 </html>

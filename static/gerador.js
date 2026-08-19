@@ -74,6 +74,11 @@
         sel.onchange = () => {
             estado.pedido = estado.pedidos.find(p => String(p.id) === sel.value) || null;
             if (!estado.pedido) return;
+            // O plano VENDIDO manda na grade de duração: plano sem grade
+            // (jingle etc.) cai em "Livre" — não inventar alvo não comprado.
+            const selPlano = document.getElementById('selectPlano');
+            const plano = String(estado.pedido.plano || '');
+            selPlano.value = selPlano.querySelector('option[value="' + plano + '"]') ? plano : 'outro';
             document.getElementById('textoComercial').value = estado.pedido.roteiro || '';
             document.getElementById('inputNome').value =
                 'spot-' + String(estado.pedido.cliente_nome || 'cliente')
@@ -357,7 +362,9 @@
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     briefing: briefing,
-                    plano: (estado.pedido && estado.pedido.plano) || 'outro',
+                    // O select é a fonte do plano: ele já foi sincronizado com o
+                    // pedido (quando há um) e cobre o briefing escrito na mão.
+                    plano: document.getElementById('selectPlano').value,
                     tipo: (estado.pedido && estado.pedido.tipo) || '',
                     estilo_voz: (estado.pedido && estado.pedido.estilo_voz) || ''
                 })
@@ -478,7 +485,9 @@
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         roteiro: estado.roteiro,
-                        plano: (estado.pedido && estado.pedido.plano) || 'outro',
+                        // Mesma fonte do roteiro: a checagem confere contra a
+                        // MESMA grade que a IA recebeu como alvo.
+                        plano: document.getElementById('selectPlano').value,
                         duracao_segundos: r.duracao
                     })
                 });
