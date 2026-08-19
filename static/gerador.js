@@ -358,27 +358,35 @@
                 || (estado.pedido && estado.pedido.roteiro) || '';
             if (!briefing) throw new Error('Escolha um pedido ou escreva o briefing antes de gerar.');
 
-            const rRot = await fetch('/api/gerador/roteiro', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    briefing: briefing,
-                    // O select é a fonte do plano: ele já foi sincronizado com o
-                    // pedido (quando há um) e cobre o briefing escrito na mão.
-                    plano: document.getElementById('selectPlano').value,
-                    tipo: (estado.pedido && estado.pedido.tipo) || '',
-                    estilo_voz: (estado.pedido && estado.pedido.estilo_voz) || ''
-                })
-            });
-            const dRot = await rRot.json();
-            if (!dRot.success) throw new Error(dRot.error || 'Falha ao escrever o roteiro');
-            estado.roteiro = dRot.roteiro;
-            document.getElementById('textoComercial').value = estado.roteiro;
-            atualizarContador();
-            if (dRot.fonte === 'base') {
-                // O motivo vem junto: sem ele não dá pra distinguir cota estourada
-                // de resposta malformada, e os dois pedem reação diferente.
-                avisar('⚙️ Roteiro veio do briefing do cliente — a IA não respondeu agora. Revise o texto.'
-                       + (dRot.erro_ia ? ' (motivo: ' + dRot.erro_ia + ')' : ''), 'atencao');
+            if (document.getElementById('checkTextoPronto').checked) {
+                // Roteiro aprovado pelo cliente é sagrado: locuta como está,
+                // sem IA no meio. A checagem de duração do passo [6] segue
+                // valendo — avisar que estourou a grade continua sendo dever.
+                estado.roteiro = briefing;
+                avisar('📝 Texto do cliente usado como está — a IA não mexeu em nada.', 'info');
+            } else {
+                const rRot = await fetch('/api/gerador/roteiro', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        briefing: briefing,
+                        // O select é a fonte do plano: ele já foi sincronizado com o
+                        // pedido (quando há um) e cobre o briefing escrito na mão.
+                        plano: document.getElementById('selectPlano').value,
+                        tipo: (estado.pedido && estado.pedido.tipo) || '',
+                        estilo_voz: (estado.pedido && estado.pedido.estilo_voz) || ''
+                    })
+                });
+                const dRot = await rRot.json();
+                if (!dRot.success) throw new Error(dRot.error || 'Falha ao escrever o roteiro');
+                estado.roteiro = dRot.roteiro;
+                document.getElementById('textoComercial').value = estado.roteiro;
+                atualizarContador();
+                if (dRot.fonte === 'base') {
+                    // O motivo vem junto: sem ele não dá pra distinguir cota estourada
+                    // de resposta malformada, e os dois pedem reação diferente.
+                    avisar('⚙️ Roteiro veio do briefing do cliente — a IA não respondeu agora. Revise o texto.'
+                           + (dRot.erro_ia ? ' (motivo: ' + dRot.erro_ia + ')' : ''), 'atencao');
+                }
             }
 
             // [2] VOZ — sem locução não há spot: o único passo que interrompe.

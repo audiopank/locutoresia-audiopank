@@ -227,6 +227,12 @@
             <div class="col-lg-7">
                 <div class="section-card">
                     <label class="form-label" for="textoComercial">Texto do comercial</label>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="checkTextoPronto">
+                        <label class="form-check-label hint" for="checkTextoPronto">
+                            📝 Texto pronto do cliente — usar como está (a IA não reescreve)
+                        </label>
+                    </div>
                     <textarea id="textoComercial" class="form-control" maxlength="5000"
                               placeholder="Escolha um pedido acima, ou escreva aqui o briefing do cliente."></textarea>
                     <div class="d-flex justify-content-between mt-2">
@@ -278,6 +284,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=5"></script>
+    <script src="/static/gerador.js?v=6"></script>
 </body>
 </html>
