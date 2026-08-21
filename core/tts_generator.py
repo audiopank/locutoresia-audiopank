@@ -404,6 +404,13 @@ class TTSGenerator:
             Código do idioma (pt-BR, en-US, es-ES)
         api : str, default "auto"
             Qual API usar: "edge", "google", "elevenlabs", "lmnt", ou "auto"
+        dialogo : bool, default False
+            Diálogo de 2 vozes (multi-speaker do Gemini). Exige api google/auto.
+        voice2 : str, optional
+            Voz do 2º personagem (obrigatória no diálogo).
+        speakers : list, optional
+            Nomes dos personagens NA ORDEM de aparição — têm que bater com os
+            rótulos "Nome:" do texto (o backend detecta e passa).
 
         Retorna
         -------
@@ -607,11 +614,31 @@ class TTSGenerator:
         """
         if len(speakers) != 2:
             raise ValueError(f"Diálogo exige exatamente 2 personagens, recebi {len(speakers)}")
-        voz1 = GOOGLE_VOICE_MAP.get(voice_model, GOOGLE_VOICE_MAP["default"])
-        voz2 = GOOGLE_VOICE_MAP.get(voice2, GOOGLE_VOICE_MAP["default"])
+        # Voz fora do catálogo Gemini NÃO cai em Zephyr calado (sairia um
+        # "diálogo" com as duas vozes iguais depois de gastar cota — achado em
+        # revisão): erra alto, com o nome da voz culpada na mensagem.
+        for v in (voice_model, voice2):
+            if v not in GOOGLE_VOICE_MAP:
+                raise ValueError(f"❌ Diálogo usa vozes do Gemini — a voz '{v}' não é do catálogo Google")
+        voz1 = GOOGLE_VOICE_MAP[voice_model]
+        voz2 = GOOGLE_VOICE_MAP[voice2]
         style = normalizar_estilo(style)
         temperature = STYLE_MAP[style]["temperature"]
-        text = aplicar_instrucao_de_tom(text, style)
+
+        # Instrução SEMPRE em linha própria, formato "leia a conversa". O
+        # aplicar_instrucao_de_tom cru tem um fallback pra texto curto que
+        # gruda a ordem NA MESMA LINHA da primeira fala — o rótulo "Nome:"
+        # deixa de abrir a linha e o modelo perde o roteamento do 1º
+        # personagem (achado em revisão). Diálogo curto (teaser) é o caso
+        # comum, então o preâmbulo aqui é próprio: tom (se houver) + ordem de
+        # ler a conversa, e SÓ DEPOIS as falas rotuladas — o formato
+        # documentado do multi-speaker do Gemini.
+        primeira = (text or "").lstrip().split("\n", 1)[0].strip()
+        ja_tem = primeira.startswith("[") or primeira.upper().startswith(("FALE ", "DIGA ", "NARRE ", "LEIA "))
+        if not ja_tem:
+            instrucao = STYLE_INSTRUCTIONS.get(style)
+            preambulo = (instrucao + "\n") if instrucao else ""
+            text = f"{preambulo}Leia a conversa a seguir em voz alta, exatamente como está escrita:\n{text}"
 
         speech_config = types.SpeechConfig(
             multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(

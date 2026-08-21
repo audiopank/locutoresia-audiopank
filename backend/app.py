@@ -3970,7 +3970,7 @@ def run_audio_generation(payload, trigger_source='api'):
             if len(speakers) < 2:
                 return {'error': 'Marque as falas como "Nome: fala" — preciso de 2 personagens no roteiro.'}, 400
             if len(speakers) > 2:
-                return {'error': f'O diálogo suporta 2 vozes; achei {len(speakers)} personagens ({", ".join(speakers[:4])}...). Junte ou corte pra 2.'}, 400
+                return {'error': f'O diálogo suporta 2 vozes; achei {len(speakers)} personagens ({", ".join(speakers)}). Junte ou corte pra 2.'}, 400
 
         request_summary = {
             "text_length": len(text),
