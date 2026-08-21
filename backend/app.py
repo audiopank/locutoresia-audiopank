@@ -948,7 +948,13 @@ def gerador_roteiro():
         plano = str(data.get('plano') or 'outro')
         tipo = str(data.get('tipo') or '')[:80]
         estilo_voz = str(data.get('estilo_voz') or '')[:300]
+        formato = 'dialogo' if str(data.get('formato') or '') == 'dialogo' else 'unico'
         faixa = duracao_alvo_do_plano(plano)
+
+        def estimar(texto_roteiro):
+            # No diálogo, os rótulos "Nome:" não são falados — descontar.
+            base = texto_falado_do_dialogo(texto_roteiro) if formato == 'dialogo' else texto_roteiro
+            return estimar_duracao_locucao(base)
 
         def responder_base(motivo=''):
             # Fallback: o briefing vira o roteiro. Não é bonito, mas é honesto —
@@ -960,7 +966,7 @@ def gerador_roteiro():
             # ferramenta piorou.
             return jsonify({
                 "success": True, "fonte": "base", "roteiro": briefing,
-                "tempo_leitura_estimado": estimar_duracao_locucao(briefing),
+                "tempo_leitura_estimado": estimar(briefing),
                 "faixa_alvo": list(faixa) if faixa else None,
                 "erro_ia": motivo,
                 "aviso": "A IA não respondeu agora — este é o briefing do cliente como veio. Edite antes de aprovar."
@@ -977,7 +983,21 @@ def gerador_roteiro():
         else:
             alvo_txt = "Não há duração fixa contratada — escreva no tamanho que o conteúdo pedir."
 
+        # Diálogo: as regras extras entram como bloco no MESMO prompt — a
+        # grade de duração e as regras gerais continuam valendo igual.
+        if formato == 'dialogo':
+            regras_formato = """
+FORMATO OBRIGATÓRIO — DIÁLOGO ENTRE 2 PERSONAGENS:
+- Exatamente DOIS personagens, com nomes curtos e coerentes com o briefing (ex: Ana, Seu Zé).
+- CADA fala em uma linha própria, no formato exato "Nome: fala" (nome, dois-pontos, espaço, fala).
+- Só as falas — sem narrador, sem descrição de cena, sem rubrica.
+- Os nomes dos personagens NÃO contam como palavras faladas.
+- A conversa precisa vender: um personagem tem a necessidade, o outro apresenta a solução, e o fecho traz a chamada pra ação."""
+        else:
+            regras_formato = ""
+
         prompt = f"""Você é redator publicitário de rádio no Brasil. Escreva o TEXTO FALADO de um spot comercial.
+{regras_formato}
 
 BRIEFING DO CLIENTE:
 {briefing}
@@ -1023,6 +1043,12 @@ Devolva SOMENTE um JSON válido, sem markdown:
                 candidato = json.loads(texto)
                 if not (candidato.get('roteiro') or '').strip():
                     raise ValueError('JSON sem o campo roteiro')
+                if formato == 'dialogo':
+                    # Roteiro de diálogo sem exatamente 2 personagens é resposta
+                    # malformada — vale a segunda tentativa, igual JSON quebrado.
+                    n_pers = len(detectar_personagens_dialogo(candidato['roteiro']))
+                    if n_pers != 2:
+                        raise ValueError(f'diálogo veio com {n_pers} personagem(ns), preciso de 2')
                 parsed = candidato
                 break
             except Exception as ia_err:
@@ -1039,7 +1065,7 @@ Devolva SOMENTE um JSON válido, sem markdown:
             "success": True, "fonte": "ia",
             "roteiro": roteiro[:5000],
             "resumo": (parsed.get('resumo') or '').strip()[:300],
-            "tempo_leitura_estimado": estimar_duracao_locucao(roteiro),
+            "tempo_leitura_estimado": estimar(roteiro),
             "faixa_alvo": list(faixa) if faixa else None
         })
 
