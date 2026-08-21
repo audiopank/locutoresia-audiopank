@@ -164,8 +164,27 @@ FORMATO OBRIGATÓRIO — DIÁLOGO ENTRE 2 PERSONAGENS:
 - Só as falas — sem narrador, sem descrição de cena, sem rubrica.
 - Os nomes dos personagens NÃO contam como palavras faladas.
 - A conversa precisa vender: um personagem tem a necessidade, o outro apresenta a solução, e o fecho traz a chamada pra ação."""
+            # O bullet fixo de REGRAS dizia "Nada de 'LOCUTOR:'" — pro modelo,
+            # isso é ordem de NÃO usar rótulo de falante, brigando de frente com
+            # o formato obrigatório acima (achado em revisão: quando o modelo
+            # pende pro lado errado, a validação de 2 personagens falha e queima
+            # as 2 tentativas). No diálogo, o bullet muda de figura.
+            regra_fala = '- Escreva APENAS as falas dos personagens, cada linha com seu rótulo "Nome: ". Nada de rubrica, marcação de trilha, colchetes ou instrução de produção.'
         else:
             regras_formato = ""
+            regra_fala = '- Escreva APENAS o que o locutor fala. Nada de rubrica, marcação de trilha, "LOCUTOR:", colchetes ou instrução de produção.'
+```
+
+E dentro do corpo do prompt, o bullet fixo:
+
+```python
+- Escreva APENAS o que o locutor fala. Nada de rubrica, marcação de trilha, "LOCUTOR:", colchetes ou instrução de produção.
+```
+
+vira a interpolação:
+
+```python
+{regra_fala}
 ```
 
 Depois, na primeira linha do prompt, localizar:
