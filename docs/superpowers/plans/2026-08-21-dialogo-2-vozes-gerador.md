@@ -378,11 +378,31 @@ Substituir por:
         """
         if len(speakers) != 2:
             raise ValueError(f"Diálogo exige exatamente 2 personagens, recebi {len(speakers)}")
-        voz1 = GOOGLE_VOICE_MAP.get(voice_model, GOOGLE_VOICE_MAP["default"])
-        voz2 = GOOGLE_VOICE_MAP.get(voice2, GOOGLE_VOICE_MAP["default"])
+        # Voz fora do catálogo Gemini NÃO cai em Zephyr calado (sairia um
+        # "diálogo" com as duas vozes iguais depois de gastar cota — achado em
+        # revisão): erra alto, com o nome da voz culpada na mensagem.
+        for v in (voice_model, voice2):
+            if v not in GOOGLE_VOICE_MAP:
+                raise ValueError(f"❌ Diálogo usa vozes do Gemini — a voz '{v}' não é do catálogo Google")
+        voz1 = GOOGLE_VOICE_MAP[voice_model]
+        voz2 = GOOGLE_VOICE_MAP[voice2]
         style = normalizar_estilo(style)
         temperature = STYLE_MAP[style]["temperature"]
-        text = aplicar_instrucao_de_tom(text, style)
+
+        # Instrução SEMPRE em linha própria, formato "leia a conversa". O
+        # aplicar_instrucao_de_tom cru tem um fallback pra texto curto que
+        # gruda a ordem NA MESMA LINHA da primeira fala — o rótulo "Nome:"
+        # deixa de abrir a linha e o modelo perde o roteamento do 1º
+        # personagem (achado em revisão). Diálogo curto (teaser) é o caso
+        # comum, então o preâmbulo aqui é próprio: tom (se houver) + ordem de
+        # ler a conversa, e SÓ DEPOIS as falas rotuladas — o formato
+        # documentado do multi-speaker do Gemini.
+        primeira = (text or "").lstrip().split("\n", 1)[0].strip()
+        ja_tem = primeira.startswith("[") or primeira.upper().startswith(("FALE ", "DIGA ", "NARRE ", "LEIA "))
+        if not ja_tem:
+            instrucao = STYLE_INSTRUCTIONS.get(style)
+            preambulo = (instrucao + "\n") if instrucao else ""
+            text = f"{preambulo}Leia a conversa a seguir em voz alta, exatamente como está escrita:\n{text}"
 
         speech_config = types.SpeechConfig(
             multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
@@ -489,7 +509,7 @@ Substituir por:
             if len(speakers) < 2:
                 return {'error': 'Marque as falas como "Nome: fala" — preciso de 2 personagens no roteiro.'}, 400
             if len(speakers) > 2:
-                return {'error': f'O diálogo suporta 2 vozes; achei {len(speakers)} personagens ({", ".join(speakers[:4])}...). Junte ou corte pra 2.'}, 400
+                return {'error': f'O diálogo suporta 2 vozes; achei {len(speakers)} personagens ({", ".join(speakers)}). Junte ou corte pra 2.'}, 400
 ```
 
 Depois, localizar:
