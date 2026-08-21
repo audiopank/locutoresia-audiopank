@@ -883,6 +883,36 @@ def estimar_duracao_locucao(texto):
     return round(len(palavras) / PALAVRAS_POR_SEGUNDO, 1)
 
 
+# Linha de fala de diálogo: "Nome: fala". O rótulo tem até 30 chars, não
+# contém dois-pontos, e PRECISA de espaço depois do ':' — assim "10:30" ou
+# uma URL nunca viram personagem. Âncora no início da linha: "às 10: 30" no
+# meio de uma fala também não conta.
+RE_FALA_DIALOGO = re.compile(r'^\s*([^:\n]{1,30}?):\s+\S', re.MULTILINE)
+
+
+def detectar_personagens_dialogo(texto):
+    """Nomes dos personagens na ORDEM da primeira aparição (sem repetir).
+
+    Fonte única da verdade do formato diálogo: quem valida quantidade de
+    vozes (2, nem mais nem menos) são os chamadores — aqui só se detecta.
+    """
+    vistos = []
+    for m in RE_FALA_DIALOGO.finditer(str(texto or '')):
+        nome = m.group(1).strip()
+        if nome and nome not in vistos:
+            vistos.append(nome)
+    return vistos
+
+
+def texto_falado_do_dialogo(texto):
+    """Remove os rótulos 'Nome:' do início das linhas — rótulo não é falado.
+
+    Usar SÓ quando formato='dialogo': num spot de voz única, "Atenção: chegou"
+    é fala normal, não personagem, e a estimativa não deve perder palavra.
+    """
+    return re.sub(r'^\s*[^:\n]{1,30}?:\s+', '', str(texto or ''), flags=re.MULTILINE)
+
+
 def duracao_alvo_do_plano(plano):
     """Faixa (min, max) em segundos do plano vendido, ou None se não tem grade.
 
