@@ -112,11 +112,25 @@
 
         if (!filtradas.length) {
             sel.innerHTML = '<option value="">— nenhuma voz deste modo —</option>';
-            return;
+        } else {
+            sel.innerHTML = filtradas.map((v, i) =>
+                `<option value="${esc(v.id)}"${i === 0 ? ' selected' : ''}>${esc(v.name)}</option>`
+            ).join('');
         }
-        sel.innerHTML = filtradas.map((v, i) =>
-            `<option value="${esc(v.id)}"${i === 0 ? ' selected' : ''}>${esc(v.name)}</option>`
-        ).join('');
+
+        // Voz 2 (diálogo) é SEMPRE do Gemini — o multi-speaker é dele. Começa
+        // na segunda voz da lista pro diálogo não nascer com voz repetida.
+        const sel2 = document.getElementById('selectVoz2');
+        const gemini = estado.vozes.filter(v => v.provider === 'gemini');
+        sel2.innerHTML = gemini.length
+            ? gemini.map((v, i) =>
+                `<option value="${esc(v.id)}"${i === Math.min(1, gemini.length - 1) ? ' selected' : ''}>${esc(v.name)}</option>`
+              ).join('')
+            : '<option value="">— catálogo de vozes vazio —</option>';
+    }
+
+    function formatoAtual() {
+        return document.getElementById('selectFormato').value === 'dialogo' ? 'dialogo' : 'unico';
     }
 
     // Provider real da voz selecionada. 'gemini' vira 'google' porque é isso
@@ -239,7 +253,12 @@
                 // aqui e já existia no Studio). No Gemini vira instrução de tom
                 // no prompt; no edge/eleven, parâmetros do provider.
                 style: document.getElementById('selectEstilo').value,
-                language: 'pt-BR'
+                language: 'pt-BR',
+                // Diálogo: o backend detecta os personagens no texto e mapeia
+                // 1º -> voice, 2º -> voice2. Fora do diálogo, campos ausentes.
+                dialogo: formatoAtual() === 'dialogo',
+                voice2: formatoAtual() === 'dialogo'
+                    ? document.getElementById('selectVoz2').value : undefined
             })
         });
         const d = await r.json();
@@ -352,6 +371,13 @@
         const TOTAL = 6;
 
         try {
+            // Diálogo só existe no Gemini (multi-speaker): barrar ANTES de
+            // gastar roteiro/TTS. O backend valida de novo (fonte da verdade).
+            if (formatoAtual() === 'dialogo' && providerDaVoz() !== 'google') {
+                avisar('Diálogo por enquanto é só no Modo Padrão (Google). Troque o Modo ou o Formato.', 'atencao');
+                throw new Error('Diálogo é só no Modo Padrão por enquanto.');
+            }
+
             // [1] ROTEIRO — falha aqui não interrompe: cai no briefing do cliente.
             passo(1, TOTAL, 'Escrevendo o roteiro...');
             const briefing = document.getElementById('textoComercial').value.trim()
@@ -372,6 +398,7 @@
                         // O select é a fonte do plano: ele já foi sincronizado com o
                         // pedido (quando há um) e cobre o briefing escrito na mão.
                         plano: document.getElementById('selectPlano').value,
+                        formato: formatoAtual(),
                         tipo: (estado.pedido && estado.pedido.tipo) || '',
                         estilo_voz: (estado.pedido && estado.pedido.estilo_voz) || ''
                     })
@@ -718,6 +745,13 @@
                        + 'agora mesmo assim, mas ela some ao fechar a aba e não vai junto '
                        + 'no "Abrir na MiniDAW".', 'atencao');
             }
+        });
+
+        // ── Formato: Locutor único / Diálogo (2 vozes) ───────────────────
+        const selFormato = document.getElementById('selectFormato');
+        selFormato.addEventListener('change', () => {
+            document.getElementById('grupoVoz2').style.display =
+                selFormato.value === 'dialogo' ? '' : 'none';
         });
 
         document.getElementById('textoComercial').addEventListener('input', atualizarContador);

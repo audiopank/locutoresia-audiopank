@@ -155,6 +155,17 @@
             <!-- Controles -->
             <div class="col-lg-5">
                 <div class="section-card">
+                    <label class="form-label" for="selectFormato">Formato</label>
+                    <select id="selectFormato" class="form-select mb-1">
+                        <option value="unico" selected>Locutor único</option>
+                        <option value="dialogo">Diálogo (2 vozes)</option>
+                    </select>
+                    <div class="hint mb-3">
+                        Diálogo: a IA escreve a conversa com 2 personagens
+                        ("Nome: fala") e cada um ganha uma voz. Por enquanto,
+                        só no Modo Padrão (Google).
+                    </div>
+
                     <label class="form-label" for="selectModo">Modo</label>
                     <select id="selectModo" class="form-select mb-1">
                         <option value="padrao" selected>Modo Padrão</option>
@@ -169,6 +180,16 @@
                     <select id="selectVoz" class="form-select mb-1"></select>
                     <div class="hint mb-3">
                         A IA não escolhe a voz — escolha aqui antes de gerar.
+                    </div>
+
+                    <!-- Só aparece no formato Diálogo (2 vozes). -->
+                    <div id="grupoVoz2" style="display:none">
+                        <label class="form-label" for="selectVoz2">Voz 2</label>
+                        <select id="selectVoz2" class="form-select mb-1"></select>
+                        <div class="hint mb-3">
+                            1ª voz = primeiro personagem que fala no roteiro;
+                            Voz 2 = o segundo.
+                        </div>
                     </div>
 
                     <label class="form-label" for="selectEstilo">Estilo de fala</label>
@@ -284,6 +305,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=6"></script>
+    <script src="/static/gerador.js?v=7"></script>
 </body>
 </html>
