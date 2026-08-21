@@ -3966,6 +3966,10 @@ def run_audio_generation(payload, trigger_source='api'):
             api = 'google'
             if not voice2:
                 return {'error': 'Escolha a Voz 2 pro diálogo.'}, 400
+            if voice2 == voice_model:
+                # Mesma voz nos dois personagens = "diálogo" de voz única
+                # depois de gastar cota (achado da revisão holística).
+                return {'error': 'Escolha duas vozes diferentes pro diálogo.'}, 400
             speakers = detectar_personagens_dialogo(text)
             if len(speakers) < 2:
                 return {'error': 'Marque as falas como "Nome: fala" — preciso de 2 personagens no roteiro.'}, 400
