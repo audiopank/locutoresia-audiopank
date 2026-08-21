@@ -425,6 +425,26 @@
 
             // [2] VOZ — sem locução não há spot: o único passo que interrompe.
             passo(2, TOTAL, 'Gravando a locução...');
+            if (formatoAtual() === 'dialogo') {
+                // A escalação é decisão do produtor — a IA não escolhe voz.
+                // Mostrar o mapa personagem→voz na cara pega sexo trocado
+                // ANTES de ouvir (pedido do produtor no primeiro teste real,
+                // quando o Leo saiu com voz feminina).
+                const nomes = [];
+                const re = /^[ \t]*([^:\n]{1,30}):[ \t]+\S/gm;
+                let m;
+                while ((m = re.exec(estado.roteiro)) !== null) {
+                    const n = m[1].trim();
+                    if (n && !nomes.includes(n)) nomes.push(n);
+                }
+                const txt = sel => sel.options[sel.selectedIndex]
+                    ? sel.options[sel.selectedIndex].text : '?';
+                if (nomes.length >= 2) {
+                    avisar('🎭 Escalação: ' + nomes[0] + ' → ' + txt(document.getElementById('selectVoz'))
+                           + '  |  ' + nomes[1] + ' → ' + txt(document.getElementById('selectVoz2'))
+                           + '. Sexo trocado? Ajuste as vozes e clique "Regerar só a voz".', 'info');
+                }
+            }
             estado.vozBuffer = await gerarVoz(estado.roteiro);
 
             // [3] TRILHA — falha aqui NÃO interrompe: locução seca é entregável.
