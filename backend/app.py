@@ -3956,6 +3956,22 @@ def run_audio_generation(payload, trigger_source='api'):
         if len(text) > 5000:
             return {'error': 'Texto muito longo (máximo 5000 caracteres)'}, 400
 
+        # Diálogo (2 vozes): validar TUDO antes de gastar TTS.
+        dialogo = bool(data.get('dialogo'))
+        voice2 = str(data.get('voice2') or '')
+        speakers = []
+        if dialogo:
+            if api not in ('google', 'auto'):
+                return {'error': 'Diálogo por enquanto é só no Modo Padrão (Google).'}, 400
+            api = 'google'
+            if not voice2:
+                return {'error': 'Escolha a Voz 2 pro diálogo.'}, 400
+            speakers = detectar_personagens_dialogo(text)
+            if len(speakers) < 2:
+                return {'error': 'Marque as falas como "Nome: fala" — preciso de 2 personagens no roteiro.'}, 400
+            if len(speakers) > 2:
+                return {'error': f'O diálogo suporta 2 vozes; achei {len(speakers)} personagens ({", ".join(speakers[:4])}...). Junte ou corte pra 2.'}, 400
+
         request_summary = {
             "text_length": len(text),
             "voice": voice_model,
@@ -3970,6 +3986,8 @@ def run_audio_generation(payload, trigger_source='api'):
                 "style": style,
                 "language": language,
                 "api": api,
+                "dialogo": dialogo,
+                "voice2": voice2,
             }
         }
         job = operation_tracker.start_job('audio_generate', request_summary)
@@ -3995,7 +4013,10 @@ def run_audio_generation(payload, trigger_source='api'):
                 voice_model=voice_model,
                 style=style,
                 language=language,
-                api=api
+                api=api,
+                dialogo=dialogo,
+                voice2=voice2 or None,
+                speakers=speakers or None
             )
         except Exception as e:
             print(f"❌ Erro ao gerar áudio: {type(e).__name__}: {e}")

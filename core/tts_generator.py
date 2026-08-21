@@ -384,7 +384,10 @@ class TTSGenerator:
         voice_model: str = "Zephyr",
         style: str = "normal",
         language: str = "pt-BR",
-        api: Literal["edge", "google", "elevenlabs", "auto", "lmnt"] = "auto"
+        api: Literal["edge", "google", "elevenlabs", "auto", "lmnt"] = "auto",
+        dialogo: bool = False,
+        voice2: str = None,
+        speakers: list = None
     ) -> bytes:
         """
         Gera áudio WAV a partir de texto usando a API especificada.
@@ -410,6 +413,16 @@ class TTSGenerator:
         # Validar texto
         if not text or not text.strip():
             raise ValueError("❌ Texto não pode estar vazio")
+
+        # Diálogo (2 vozes): só existe no Gemini (multi-speaker nativo).
+        # O desvio vem ANTES da detecção de voz clonada e do roteamento por
+        # provider — diálogo nunca cai em LMNT/Edge/ElevenLabs por acidente.
+        if dialogo:
+            if api not in ("google", "auto"):
+                raise ValueError("❌ Diálogo por enquanto é só no Modo Padrão (Google)")
+            if not self.google_available:
+                raise ValueError("❌ Google Gemini TTS não disponível")
+            return self._generate_google_dialogo(text, voice_model, voice2 or "Puck", speakers or [], style)
 
         # Primeiro: Verificar se a voz é uma voz clonada LMNT (não está em nenhum mapa)
         is_cloned_voice = (
@@ -521,35 +534,27 @@ class TTSGenerator:
         print(f"✅ Áudio gerado ({len(audio_bytes)} bytes)")
         return audio_bytes
 
-    def _synthesize_google(
-        self,
-        text: str,
-        voice: str,
-        temperature: float,
-        language: str
-    ) -> bytes:
-        """Síntese síncrona com Google Gemini."""
+    def _executar_tts_google(self, text: str, speech_config, temperature: float) -> bytes:
+        """Executa a chamada TTS do Gemini e devolve WAV.
+
+        Comum aos caminhos de voz única e diálogo — a única diferença entre
+        eles é o speech_config (VoiceConfig vs MultiSpeakerVoiceConfig).
+        """
         try:
             generate_content_config = types.GenerateContentConfig(
                 temperature=temperature,
                 response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice
-                        )
-                    )
-                ),
+                speech_config=speech_config,
             )
 
             audio_data = io.BytesIO()
-            
+
             response = self.google_client.models.generate_content(
                 model=self.google_model,
                 contents=text,
                 config=generate_content_config,
             )
-            
+
             if response.candidates and len(response.candidates) > 0:
                 candidate = response.candidates[0]
                 if candidate.content and candidate.content.parts:
@@ -567,6 +572,68 @@ class TTSGenerator:
 
         except Exception as e:
             raise RuntimeError(f"Erro ao sintetizar com Google: {str(e)}") from e
+
+    def _synthesize_google(
+        self,
+        text: str,
+        voice: str,
+        temperature: float,
+        language: str
+    ) -> bytes:
+        """Síntese síncrona com Google Gemini (voz única)."""
+        speech_config = types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                    voice_name=voice
+                )
+            )
+        )
+        return self._executar_tts_google(text, speech_config, temperature)
+
+    def _generate_google_dialogo(
+        self,
+        text: str,
+        voice_model: str,
+        voice2: str,
+        speakers: list,
+        style: str,
+    ) -> bytes:
+        """Diálogo de 2 vozes numa chamada só (multi-speaker nativo do Gemini).
+
+        `speakers` são os nomes dos personagens NA ORDEM de aparição no texto
+        (detectados pelo backend) — o texto vai COM os rótulos "Nome:", é
+        assim que o modelo roteia as vozes. 1º personagem → voice_model,
+        2º → voice2.
+        """
+        if len(speakers) != 2:
+            raise ValueError(f"Diálogo exige exatamente 2 personagens, recebi {len(speakers)}")
+        voz1 = GOOGLE_VOICE_MAP.get(voice_model, GOOGLE_VOICE_MAP["default"])
+        voz2 = GOOGLE_VOICE_MAP.get(voice2, GOOGLE_VOICE_MAP["default"])
+        style = normalizar_estilo(style)
+        temperature = STYLE_MAP[style]["temperature"]
+        text = aplicar_instrucao_de_tom(text, style)
+
+        speech_config = types.SpeechConfig(
+            multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                speaker_voice_configs=[
+                    types.SpeakerVoiceConfig(
+                        speaker=speakers[0],
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voz1)
+                        ),
+                    ),
+                    types.SpeakerVoiceConfig(
+                        speaker=speakers[1],
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voz2)
+                        ),
+                    ),
+                ]
+            )
+        )
+        audio_bytes = self._executar_tts_google(text, speech_config, temperature)
+        print(f"✅ Diálogo gerado ({len(audio_bytes)} bytes)")
+        return audio_bytes
 
     # ========================================================================
     # ELEVENLABS TTS
