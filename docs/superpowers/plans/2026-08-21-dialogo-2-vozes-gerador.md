@@ -505,6 +505,10 @@ Substituir por:
             api = 'google'
             if not voice2:
                 return {'error': 'Escolha a Voz 2 pro diálogo.'}, 400
+            if voice2 == voice_model:
+                # Mesma voz nos dois personagens = "diálogo" de voz única
+                # depois de gastar cota (achado da revisão holística).
+                return {'error': 'Escolha duas vozes diferentes pro diálogo.'}, 400
             speakers = detectar_personagens_dialogo(text)
             if len(speakers) < 2:
                 return {'error': 'Marque as falas como "Nome: fala" — preciso de 2 personagens no roteiro.'}, 400
@@ -721,11 +725,48 @@ Inserir IMEDIATAMENTE ANTES:
 ```javascript
         // ── Formato: Locutor único / Diálogo (2 vozes) ───────────────────
         const selFormato = document.getElementById('selectFormato');
-        selFormato.addEventListener('change', () => {
+        const sincronizarFormato = () => {
             document.getElementById('grupoVoz2').style.display =
                 selFormato.value === 'dialogo' ? '' : 'none';
-        });
+            atualizarContador();   // a estimativa desconta rótulos no diálogo
+        };
+        selFormato.addEventListener('change', sincronizarFormato);
+        sincronizarFormato();   // navegador pode restaurar o select num reload
 
+```
+
+**Step 3b (revisão holística): estimativa da tela desconta os rótulos no diálogo**
+
+Localizar a função `atualizarContador` inteira:
+
+```javascript
+    function atualizarContador() {
+        const ta = document.getElementById('textoComercial');
+        document.getElementById('contadorChars').textContent =
+            (5000 - ta.value.length) + ' caracteres restantes';
+        const palavras = ta.value.trim().split(/\s+/).filter(Boolean).length;
+        document.getElementById('tempoEstimado').textContent =
+            palavras ? `~${(palavras / 2.5).toFixed(1)}s de locução` : '';
+    }
+```
+
+Substituir por:
+
+```javascript
+    function atualizarContador() {
+        const ta = document.getElementById('textoComercial');
+        document.getElementById('contadorChars').textContent =
+            (5000 - ta.value.length) + ' caracteres restantes';
+        // No diálogo, os rótulos "Nome:" não são falados — descontar da
+        // estimativa (espelho do texto_falado_do_dialogo do backend; sem
+        // isto a tela inflava ~4s num spot de 30s e furava a grade).
+        const texto = formatoAtual() === 'dialogo'
+            ? ta.value.replace(/^\s*[^:\n]{1,30}:[ \t]+/gm, '')
+            : ta.value;
+        const palavras = texto.trim().split(/\s+/).filter(Boolean).length;
+        document.getElementById('tempoEstimado').textContent =
+            palavras ? `~${(palavras / 2.5).toFixed(1)}s de locução` : '';
+    }
 ```
 
 - [ ] **Step 4: JS — bloqueio Diálogo fora do Modo Padrão + payloads**
