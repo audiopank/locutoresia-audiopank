@@ -104,6 +104,13 @@
     // ElevenLabs com api='google' faria ela cair fora dos mapas e ser
     // roteada pra outro provider em silêncio. Então o modo FILTRA a lista,
     // e o provider sai da voz escolhida.
+    // O sexo no rótulo é o guia de escalação do diálogo: foi de ouvido que se
+    // descobriu o catálogo com sexo trocado (Leo saiu com voz feminina).
+    function rotuloVoz(v) {
+        const sexo = v.gender === 'female' ? ' ♀' : v.gender === 'male' ? ' ♂' : '';
+        return esc(v.name) + sexo;
+    }
+
     function aplicarFiltroDeVozes() {
         const modo = document.getElementById('selectModo').value;
         const alvo = modo === 'expressivo' ? 'elevenlabs' : 'gemini';
@@ -114,7 +121,7 @@
             sel.innerHTML = '<option value="">— nenhuma voz deste modo —</option>';
         } else {
             sel.innerHTML = filtradas.map((v, i) =>
-                `<option value="${esc(v.id)}"${i === 0 ? ' selected' : ''}>${esc(v.name)}</option>`
+                `<option value="${esc(v.id)}"${i === 0 ? ' selected' : ''}>${rotuloVoz(v)}</option>`
             ).join('');
         }
 
@@ -124,7 +131,7 @@
         const gemini = estado.vozes.filter(v => v.provider === 'gemini');
         sel2.innerHTML = gemini.length
             ? gemini.map((v, i) =>
-                `<option value="${esc(v.id)}"${i === Math.min(1, gemini.length - 1) ? ' selected' : ''}>${esc(v.name)}</option>`
+                `<option value="${esc(v.id)}"${i === Math.min(1, gemini.length - 1) ? ' selected' : ''}>${rotuloVoz(v)}</option>`
               ).join('')
             : '<option value="">— catálogo de vozes vazio —</option>';
     }

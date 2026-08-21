@@ -4441,9 +4441,15 @@ def download_file(filename):
 def get_voices():
     """Lista de vozes disponíveis - Google Gemini + ElevenLabs"""
     voices = [
-        # Vozes do Google Gemini (30 opções)
-        {"id": "Zephyr", "name": "Zephyr - Bright", "language": "pt-BR", "gender": "male", "provider": "gemini"},
-        {"id": "Puck", "name": "Puck - Upbeat", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        # Vozes do Google Gemini (30 opções).
+        # ⚠️ 21/08/2026: 5 vozes estavam com o sexo TROCADO em relação à tabela
+        # oficial do Gemini TTS — descoberto de ouvido no primeiro spot em
+        # diálogo (Leo saiu com voz feminina). Zephyr é FEMININA e Puck é
+        # MASCULINO (confirmados de ouvido); Algieba/Schedar (masc.) e Gacrux
+        # (fem.) corrigidos pela documentação. O gender é só metadado de
+        # exibição, mas no diálogo ele é o guia de escalação dos personagens.
+        {"id": "Zephyr", "name": "Zephyr - Bright", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Puck", "name": "Puck - Upbeat", "language": "pt-BR", "gender": "male", "provider": "gemini"},
         {"id": "Charon", "name": "Charon - Informative", "language": "pt-BR", "gender": "male", "provider": "gemini"},
         {"id": "Kore", "name": "Kore - Firm", "language": "pt-BR", "gender": "female", "provider": "gemini"},
         {"id": "Fenrir", "name": "Fenrir - Excitable", "language": "pt-BR", "gender": "male", "provider": "gemini"},
@@ -4455,7 +4461,7 @@ def get_voices():
         {"id": "Enceladus", "name": "Enceladus - Breathy", "language": "pt-BR", "gender": "male", "provider": "gemini"},
         {"id": "Iapetus", "name": "Iapetus - Clear", "language": "pt-BR", "gender": "male", "provider": "gemini"},
         {"id": "Umbriel", "name": "Umbriel - Easy-going", "language": "pt-BR", "gender": "male", "provider": "gemini"},
-        {"id": "Algieba", "name": "Algieba - Smooth", "language": "pt-BR", "gender": "female", "provider": "gemini"},
+        {"id": "Algieba", "name": "Algieba - Smooth", "language": "pt-BR", "gender": "male", "provider": "gemini"},
         {"id": "Despina", "name": "Despina - Smooth", "language": "pt-BR", "gender": "female", "provider": "gemini"},
         {"id": "Erinome", "name": "Erinome - Clear", "language": "pt-BR", "gender": "female", "provider": "gemini"},
         {"id": "Algenib", "name": "Algenib - Gravelly", "language": "pt-BR", "gender": "male", "provider": "gemini"},
@@ -4463,8 +4469,8 @@ def get_voices():
         {"id": "Laomedeia", "name": "Laomedeia - Upbeat", "language": "pt-BR", "gender": "female", "provider": "gemini"},
         {"id": "Achernar", "name": "Achernar - Soft", "language": "pt-BR", "gender": "female", "provider": "gemini"},
         {"id": "Alnilam", "name": "Alnilam - Firm", "language": "pt-BR", "gender": "male", "provider": "gemini"},
-        {"id": "Schedar", "name": "Schedar - Even", "language": "pt-BR", "gender": "female", "provider": "gemini"},
-        {"id": "Gacrux", "name": "Gacrux - Mature", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Schedar", "name": "Schedar - Even", "language": "pt-BR", "gender": "male", "provider": "gemini"},
+        {"id": "Gacrux", "name": "Gacrux - Mature", "language": "pt-BR", "gender": "female", "provider": "gemini"},
         {"id": "Pulcherrima", "name": "Pulcherrima - Forward", "language": "pt-BR", "gender": "female", "provider": "gemini"},
         {"id": "Achird", "name": "Achird - Friendly", "language": "pt-BR", "gender": "male", "provider": "gemini"},
         {"id": "Zubenelgenubi", "name": "Zubenelgenubi - Casual", "language": "pt-BR", "gender": "male", "provider": "gemini"},
