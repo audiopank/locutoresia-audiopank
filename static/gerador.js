@@ -497,6 +497,14 @@
                 if (estado.trilha && !estado.trilhaBuffer) {
                     estado.trilhaBuffer = await baixarEDecodificar(estado.trilha.file_url);
                 }
+                // Jingle de cliente em spot de OUTRO cliente é desastre de
+                // marca. A IA já é cega a essas trilhas; a seleção manual é
+                // livre de propósito (o produtor é o guardião) — mas ganha um
+                // lembrete na cara toda vez (pedido do produtor no teste real).
+                if (estado.trilha && (estado.trilha.genre === 'trilha_cliente'
+                        || (estado.trilhaCliente && String(estado.trilhaCliente.id) === escolha))) {
+                    avisar('⚠️ "' + estado.trilha.name + '" é trilha de CLIENTE — use só em spots pedidos por esse cliente.', 'atencao');
+                }
             } catch (e) {
                 avisar('Não consegui carregar a trilha (' + e.message + ') — seguindo com locução seca.', 'atencao');
                 estado.trilha = null;
