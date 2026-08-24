@@ -137,7 +137,14 @@
     }
 
     function formatoAtual() {
-        return document.getElementById('selectFormato').value === 'dialogo' ? 'dialogo' : 'unico';
+        const v = document.getElementById('selectFormato').value;
+        return (v === 'dialogo' || v === 'narracao') ? v : 'unico';
+    }
+
+    // Os dois formatos de 2 vozes usam o MESMO motor multi-speaker; muda só
+    // como o texto chega nele (rótulos do roteiro x revezamento por parágrafo).
+    function duasVozes() {
+        return formatoAtual() !== 'unico';
     }
 
     // Provider real da voz selecionada. 'gemini' vira 'google' porque é isso
@@ -261,10 +268,13 @@
                 // no prompt; no edge/eleven, parâmetros do provider.
                 style: document.getElementById('selectEstilo').value,
                 language: 'pt-BR',
-                // Diálogo: o backend detecta os personagens no texto e mapeia
-                // 1º -> voice, 2º -> voice2. Fora do diálogo, campos ausentes.
-                dialogo: formatoAtual() === 'dialogo',
-                voice2: formatoAtual() === 'dialogo'
+                // Os dois formatos de 2 vozes entram pelo mesmo caminho
+                // (dialogo=true); `modo_dialogo` diz ao backend se os
+                // personagens vêm do texto ou se ele reveza por parágrafo.
+                // No formato único, os campos nem vão.
+                dialogo: duasVozes(),
+                modo_dialogo: duasVozes() ? formatoAtual() : undefined,
+                voice2: duasVozes()
                     ? document.getElementById('selectVoz2').value : undefined
             })
         });
@@ -380,9 +390,9 @@
         try {
             // Diálogo só existe no Gemini (multi-speaker): barrar ANTES de
             // gastar roteiro/TTS. O backend valida de novo (fonte da verdade).
-            if (formatoAtual() === 'dialogo' && providerDaVoz() !== 'google') {
-                avisar('Diálogo por enquanto é só no Modo Padrão (Google). Troque o Modo ou o Formato.', 'atencao');
-                throw new Error('Diálogo é só no Modo Padrão por enquanto.');
+            if (duasVozes() && providerDaVoz() !== 'google') {
+                avisar('Os formatos de 2 vozes por enquanto são só no Modo Padrão (Google). Troque o Modo ou o Formato.', 'atencao');
+                throw new Error('2 vozes é só no Modo Padrão por enquanto.');
             }
 
             // [1] ROTEIRO — falha aqui não interrompe: cai no briefing do cliente.
@@ -444,6 +454,12 @@
                            + '  |  ' + nomes[1] + ' → ' + txt(document.getElementById('selectVoz2'))
                            + '. Sexo trocado? Ajuste as vozes e clique "Regerar só a voz".', 'info');
                 }
+            } else if (formatoAtual() === 'narracao') {
+                const txt = sel => sel.options[sel.selectedIndex]
+                    ? sel.options[sel.selectedIndex].text : '?';
+                avisar('🎙️ Narração revezada: as vozes ' + txt(document.getElementById('selectVoz'))
+                       + ' e ' + txt(document.getElementById('selectVoz2'))
+                       + ' se alternam a cada parágrafo. Sem personagens no texto.', 'info');
             }
             estado.vozBuffer = await gerarVoz(estado.roteiro);
 
@@ -788,11 +804,12 @@
             }
         });
 
-        // ── Formato: Locutor único / Diálogo (2 vozes) ───────────────────
+        // ── Formato: único / diálogo com personagens / narração revezada ──
         const selFormato = document.getElementById('selectFormato');
         const sincronizarFormato = () => {
+            // Voz 2 aparece nos DOIS formatos de 2 vozes.
             document.getElementById('grupoVoz2').style.display =
-                selFormato.value === 'dialogo' ? '' : 'none';
+                duasVozes() ? '' : 'none';
             atualizarContador();   // a estimativa desconta rótulos no diálogo
         };
         selFormato.addEventListener('change', sincronizarFormato);

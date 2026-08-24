@@ -914,6 +914,42 @@ def texto_falado_do_dialogo(texto):
     return re.sub(r'^\s*[^:\n]{1,30}?:[ \t]+', '', str(texto or ''), flags=re.MULTILINE)
 
 
+# Rótulos internos da narração revezada. NUNCA aparecem na tela nem são
+# falados: existem só pra API multi-speaker saber trocar de voz.
+NARRADOR_1 = 'Locutor 1'
+NARRADOR_2 = 'Locutor 2'
+
+
+def rotular_narracao_revezada(texto):
+    """Texto corrido -> falas rotuladas alternando entre 2 locutores.
+
+    Caso real: spot institucional em que as duas vozes se revezam narrando,
+    SEM personagens ("Laura e Alex"). O produtor manda o texto do cliente
+    limpo; aqui ele é fatiado e rotulado só pra o multi-speaker do Gemini
+    trocar de voz. Divide por parágrafo; se vier tudo num bloco só, divide
+    por frase — texto de uma frase só devolve vazio (o chamador barra, é
+    caso de locutor único).
+    """
+    bruto = str(texto or '').strip()
+    if not bruto:
+        return ''
+
+    blocos = [b.strip() for b in re.split(r'\n\s*\n+', bruto) if b.strip()]
+    if len(blocos) < 2:
+        # Um parágrafo só: fatia por frase (o ponto/!/? fica com a frase).
+        blocos = [f.strip() for f in re.split(r'(?<=[.!?])\s+', bruto) if f.strip()]
+    if len(blocos) < 2:
+        return ''
+
+    # Quebras internas viram espaço: cada fala precisa caber numa linha só,
+    # senão a 2ª linha ficaria sem rótulo e a voz não trocaria direito.
+    linhas = []
+    for i, bloco in enumerate(blocos):
+        fala = re.sub(r'\s+', ' ', bloco).strip()
+        linhas.append(f"{NARRADOR_1 if i % 2 == 0 else NARRADOR_2}: {fala}")
+    return '\n'.join(linhas)
+
+
 def duracao_alvo_do_plano(plano):
     """Faixa (min, max) em segundos do plano vendido, ou None se não tem grade.
 
@@ -948,7 +984,9 @@ def gerador_roteiro():
         plano = str(data.get('plano') or 'outro')
         tipo = str(data.get('tipo') or '')[:80]
         estilo_voz = str(data.get('estilo_voz') or '')[:300]
-        formato = 'dialogo' if str(data.get('formato') or '') == 'dialogo' else 'unico'
+        formato = str(data.get('formato') or '')
+        if formato not in ('dialogo', 'narracao'):
+            formato = 'unico'
         faixa = duracao_alvo_do_plano(plano)
 
         def estimar(texto_roteiro):
@@ -999,6 +1037,18 @@ FORMATO OBRIGATÓRIO — DIÁLOGO ENTRE 2 PERSONAGENS:
             # pende pro lado errado, a validação de 2 personagens falha e queima
             # as 2 tentativas). No diálogo, o bullet muda de figura.
             regra_fala = '- Escreva APENAS as falas dos personagens, cada linha com seu rótulo "Nome: ". Nada de rubrica, marcação de trilha, colchetes ou instrução de produção.'
+        elif formato == 'narracao':
+            # Duas vozes REVEZANDO a narração, sem personagem nenhum (spot
+            # institucional). O texto sai limpo e o revezamento é decidido na
+            # hora de gerar o áudio, por parágrafo — por isso o pedido de
+            # parágrafos curtos aqui.
+            regras_formato = """
+FORMATO OBRIGATÓRIO — NARRAÇÃO REVEZADA POR 2 VOZES:
+- NÃO invente personagens, nomes nem diálogo: é texto corrido de locução institucional.
+- Separe o texto em 4 a 8 parágrafos CURTOS (1 ou 2 frases cada), com uma linha em branco entre eles — cada parágrafo será lido por uma voz diferente, alternando.
+- Cada parágrafo tem que fazer sentido sozinho na boca de quem o lê.
+- Não escreva rótulo de locutor nenhum: só o texto."""
+            regra_fala = '- Escreva APENAS o texto falado, em parágrafos curtos separados por linha em branco. Nada de rubrica, marcação de trilha, "LOCUTOR:", colchetes ou instrução de produção.'
         else:
             regras_formato = ""
             regra_fala = '- Escreva APENAS o que o locutor fala. Nada de rubrica, marcação de trilha, "LOCUTOR:", colchetes ou instrução de produção.'
@@ -1050,6 +1100,10 @@ Devolva SOMENTE um JSON válido, sem markdown:
                 candidato = json.loads(texto)
                 if not (candidato.get('roteiro') or '').strip():
                     raise ValueError('JSON sem o campo roteiro')
+                if formato == 'narracao' and not rotular_narracao_revezada(candidato['roteiro']):
+                    # Sem 2 blocos não há como revezar as vozes: resposta
+                    # malformada, vale a segunda tentativa.
+                    raise ValueError('narração veio num bloco só, sem como revezar')
                 if formato == 'dialogo':
                     # Roteiro de diálogo sem exatamente 2 personagens é resposta
                     # malformada — vale a segunda tentativa, igual JSON quebrado.
@@ -3970,6 +4024,14 @@ def run_audio_generation(payload, trigger_source='api'):
                 # Mesma voz nos dois personagens = "diálogo" de voz única
                 # depois de gastar cota (achado da revisão holística).
                 return {'error': 'Escolha duas vozes diferentes pro diálogo.'}, 400
+            if str(data.get('modo_dialogo') or '') == 'narracao':
+                # Narração revezada: o texto do cliente vem LIMPO (sem
+                # personagens) e ganha rótulos internos aqui, só pra API
+                # trocar de voz. Nada disso volta pra tela.
+                rotulado = rotular_narracao_revezada(text)
+                if not rotulado:
+                    return {'error': 'Pra revezar duas vozes preciso de pelo menos 2 parágrafos ou 2 frases.'}, 400
+                text = rotulado
             speakers = detectar_personagens_dialogo(text)
             if len(speakers) < 2:
                 return {'error': 'Marque as falas como "Nome: fala" — preciso de 2 personagens no roteiro.'}, 400

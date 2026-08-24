@@ -158,12 +158,14 @@
                     <label class="form-label" for="selectFormato">Formato</label>
                     <select id="selectFormato" class="form-select mb-1">
                         <option value="unico" selected>Locutor único</option>
-                        <option value="dialogo">Diálogo (2 vozes)</option>
+                        <option value="dialogo">Diálogo (2 vozes, com personagens)</option>
+                        <option value="narracao">Narração a 2 vozes (revezando)</option>
                     </select>
                     <div class="hint mb-3">
-                        Diálogo: a IA escreve a conversa com 2 personagens
-                        ("Nome: fala") e cada um ganha uma voz. Por enquanto,
-                        só no Modo Padrão (Google).
+                        <strong>Diálogo</strong>: conversa entre 2 personagens
+                        ("Nome: fala"). <strong>Narração revezada</strong>: texto
+                        corrido, sem personagens — as duas vozes se alternam a cada
+                        parágrafo (institucional). Os dois só no Modo Padrão (Google).
                     </div>
 
                     <label class="form-label" for="selectModo">Modo</label>
@@ -306,6 +308,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=10"></script>
+    <script src="/static/gerador.js?v=11"></script>
 </body>
 </html>
