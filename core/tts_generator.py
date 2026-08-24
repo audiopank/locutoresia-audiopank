@@ -633,12 +633,19 @@ class TTSGenerator:
         # comum, então o preâmbulo aqui é próprio: tom (se houver) + ordem de
         # ler a conversa, e SÓ DEPOIS as falas rotuladas — o formato
         # documentado do multi-speaker do Gemini.
+        #
+        # O preâmbulo NOMEIA os dois falantes ("entre X e Y") de propósito: é
+        # o formato documentado do multi-speaker, e sem isso o modelo pode
+        # simplesmente LER TUDO NUMA VOZ SÓ — foi o que aconteceu na primeira
+        # narração revezada real (texto institucional, que não "parece"
+        # conversa; o diálogo com personagens escapou por sorte).
         primeira = (text or "").lstrip().split("\n", 1)[0].strip()
         ja_tem = primeira.startswith("[") or primeira.upper().startswith(("FALE ", "DIGA ", "NARRE ", "LEIA "))
         if not ja_tem:
             instrucao = STYLE_INSTRUCTIONS.get(style)
             preambulo = (instrucao + "\n") if instrucao else ""
-            text = f"{preambulo}Leia a conversa a seguir em voz alta, exatamente como está escrita:\n{text}"
+            text = (f"{preambulo}Leia em voz alta, exatamente como está escrito, o texto a seguir, "
+                    f"alternando entre as vozes de {speakers[0]} e {speakers[1]}:\n{text}")
 
         speech_config = types.SpeechConfig(
             multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(

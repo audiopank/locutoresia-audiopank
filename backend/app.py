@@ -916,8 +916,11 @@ def texto_falado_do_dialogo(texto):
 
 # Rótulos internos da narração revezada. NUNCA aparecem na tela nem são
 # falados: existem só pra API multi-speaker saber trocar de voz.
-NARRADOR_1 = 'Locutor 1'
-NARRADOR_2 = 'Locutor 2'
+# Uma palavra só, sem espaço nem dígito solto: rótulo com cara de NOME é o
+# que o multi-speaker roteia bem — "Locutor 1"/"Locutor 2" saiu tudo numa
+# voz só no primeiro teste real.
+NARRADOR_1 = 'Marina'
+NARRADOR_2 = 'Rafael'
 
 
 def rotular_narracao_revezada(texto):
