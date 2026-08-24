@@ -1442,6 +1442,30 @@ def gerador_rascunhos():
         return jsonify({"success": False, "error": "Não consegui listar os spots guardados."}), 500
 
 
+@app.route('/api/gerador/rascunhos', methods=['DELETE'])
+def gerador_rascunho_excluir():
+    """Apaga UM spot guardado (a versão errada que não pode ir ao cliente).
+
+    Só mexe dentro de `rascunhos/`: entregas de clientes, projetos e trilhas
+    moram em outras pastas do mesmo bucket e não podem ser alcançadas daqui
+    por um caminho forjado.
+    """
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Storage não configurado"}), 500
+
+        caminho = str((request.get_json() or {}).get('path') or '').strip()
+        if not caminho.startswith('rascunhos/') or '..' in caminho or caminho.count('/') != 1:
+            return jsonify({"success": False, "error": "Caminho inválido."}), 400
+
+        storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+        storage.remove([caminho])
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"Erro ao excluir rascunho do Gerador: {e}", flush=True)
+        return jsonify({"success": False, "error": "Não consegui excluir este spot."}), 500
+
+
 @app.route('/api/voxcraft/recommend-tracks', methods=['POST', 'OPTIONS'])
 def voxcraft_recommend_tracks():
     """VoxCraft robusto: lê o roteiro/descrição do projeto + o ACERVO REAL de

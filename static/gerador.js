@@ -361,7 +361,30 @@
                     <audio controls preload="none" src="${esc(x.url)}"></audio>
                     <a class="btn btn-sm btn-outline-light" download="${esc(x.titulo)}.mp3"
                        href="${esc(x.url)}"><i class="fas fa-download"></i></a>
+                    <button class="btn btn-sm btn-outline-danger" data-excluir="${esc(x.path)}"
+                            title="Excluir esta versão"><i class="fas fa-trash"></i></button>
                 </div>`).join('');
+
+            // Versão errada na lista é risco de mandar o arquivo trocado pro
+            // cliente — daí o botão. Some do Storage de verdade, sem volta.
+            box.querySelectorAll('[data-excluir]').forEach(btn => {
+                btn.onclick = async () => {
+                    if (!confirm('Excluir esta versão do spot? Não dá pra desfazer.')) return;
+                    btn.disabled = true;
+                    try {
+                        const rd = await fetch('/api/gerador/rascunhos', {
+                            method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path: btn.dataset.excluir })
+                        });
+                        const dd = await rd.json();
+                        if (!dd.success) throw new Error(dd.error || 'falha ao excluir');
+                        carregarRascunhos();
+                    } catch (e) {
+                        btn.disabled = false;
+                        alert('Não consegui excluir: ' + e.message);
+                    }
+                };
+            });
         } catch (e) {
             box.innerHTML = '<div class="hint">Não consegui carregar os spots guardados.</div>';
         }
