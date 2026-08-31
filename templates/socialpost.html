@@ -515,6 +515,13 @@
             <button class="btn btn-success btn-sm d-none" id="btn-aprovar-lote" onclick="aprovarRecomendados()">
                 <i class="fas fa-check-double me-1"></i>Aprovar recomendados
             </button>
+            <!-- LOTE FINAL da linha de montagem (pedido em 31/08/2026): publica de uma
+                 vez tudo que está aprovado. Continua MÃO HUMANA — um clique consciente,
+                 com confirmação — só deixa de ser um clique POR post. -->
+            <button class="btn btn-sm d-none" id="btn-publicar-lote" onclick="publicarAprovados()"
+                    style="background:linear-gradient(135deg,#06b6d4,#7C3AED);color:#fff;font-weight:600;">
+                <i class="fas fa-broadcast-tower me-1"></i>Publicar aprovados
+            </button>
             <button class="btn btn-outline-danger btn-sm" onclick="deleteAllRejectedPosts()">
                 <i class="fas fa-trash-alt me-1"></i>Remover todos os rejeitados
             </button>
@@ -822,7 +829,7 @@
             const date = new Date(post.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'short', year:'numeric' });
             const hasAudio = !!post.audio_url;
             const hasImage = !!post.image_url;
-            const isApproved = post.status === 'aprovado' || post.status === 'approved' || post.status === 'ready' || post.status === 'pendente';
+            const isApproved = STATUS_APROVADO.includes(post.status);
             const isPublished = post.status === 'publicado' || post.status === 'published';
             const isRejected = (post.status === 'rejeitado' || post.status === 'rejected') || (post.metadata && post.metadata.is_rejected);
 
@@ -879,6 +886,17 @@
             `;
             list.appendChild(col);
         });
+
+        // Botão "Publicar os N aprovados": aparece sempre que houver post
+        // aprovado esperando e some quando não há. Conta sobre allPosts (não
+        // sobre a aba filtrada) pra não mentir o total. Não mexe no rótulo
+        // enquanto um lote está rodando (disabled = progresso na tela).
+        const btnPub = document.getElementById('btn-publicar-lote');
+        if (btnPub && !btnPub.disabled) {
+            const n = allPosts.filter(p => STATUS_APROVADO.includes(p.status)).length;
+            btnPub.classList.toggle('d-none', n === 0);
+            btnPub.innerHTML = `<i class="fas fa-broadcast-tower me-1"></i>Publicar os ${n} aprovados`;
+        }
     }
 
     function escHtml(str) {
@@ -893,6 +911,10 @@
     // PRÉ-CLASSIFICAÇÃO (IA sugere, o gestor decide)
     // ============================================================
     let triagem = {};   // { postId: {rec, motivo, fonte} }
+
+    // Status que contam como "aprovado, esperando publicação" — a MESMA lista
+    // que faz o card mostrar o botão Publicar (mudar aqui muda nos dois lugares).
+    const STATUS_APROVADO = ['aprovado', 'approved', 'ready', 'pendente'];
 
     const TRIAGEM_ESTILO = {
         aprovar:  { cor: '#22c55e', fundo: 'rgba(34,197,94,.12)',  icone: 'fa-thumbs-up',   texto: 'Recomendo aprovar' },
@@ -1043,7 +1065,7 @@
     async function aprovarRecomendados() {
         const ids = Object.keys(triagem).filter(id => triagem[id].rec === 'aprovar');
         if (ids.length === 0) return;
-        if (!confirm(`Aprovar ${ids.length} rascunho(s) de uma vez?\n\nEles ficam prontos pra publicar — a publicação continua sendo um clique seu, post a post.`)) return;
+        if (!confirm(`Aprovar ${ids.length} rascunho(s) de uma vez?\n\nEles ficam prontos pra publicar — depois é só um clique em "Publicar os N aprovados" (ou post a post, como preferir).`)) return;
 
         const btn = document.getElementById('btn-aprovar-lote');
         btn.disabled = true;
@@ -1065,6 +1087,42 @@
         triagem = {};
         document.getElementById('triagem-resumo').classList.add('d-none');
         btn.classList.add('d-none');
+        btn.disabled = false;
+        refreshPosts();
+    }
+
+    // ============================================================
+    // PUBLICAR TODOS OS APROVADOS DE UMA VEZ (pedido em 31/08/2026)
+    // Fecha a linha de montagem: Pré-classificar → Aprovar → Publicar.
+    // Segue sendo mão humana: UM clique consciente, com confirmação —
+    // e o placar separa "chegou no feed" de "só banco interno".
+    // ============================================================
+    async function publicarAprovados() {
+        const alvos = allPosts.filter(p => STATUS_APROVADO.includes(p.status));
+        if (alvos.length === 0) {
+            showToast('Nenhum post aprovado esperando publicação.', 'error');
+            return;
+        }
+        if (!confirm(`Publicar ${alvos.length} post(s) aprovado(s) na NewPost-IA de uma vez?\n\nEles vão pro FEED PÚBLICO agora, um por um (alguns segundos cada).`)) return;
+
+        const btn = document.getElementById('btn-publicar-lote');
+        btn.disabled = true;
+        let feedOk = 0, soInterno = 0, falhou = 0;
+        for (let i = 0; i < alvos.length; i++) {
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>Publicando ${i + 1}/${alvos.length}...`;
+            try {
+                const res = await fetch(`/api/social/posts/${alvos[i].id}/publish`, { method: 'POST' });
+                const d = await res.json();
+                if (!d.success) falhou++;
+                else if (d.feed_newpost === 'publicado' || String(d.feed_newpost || '').startsWith('duplicado')) feedOk++;
+                else soInterno++;   // salvou no banco interno, mas o feed recusou — não fingir sucesso
+            } catch (_) { falhou++; }
+        }
+        const partes = [`${feedOk} no feed`];
+        if (soInterno) partes.push(`${soInterno} só no banco interno (feed recusou)`);
+        if (falhou) partes.push(`${falhou} falhou(ram)`);
+        showToast('📡 ' + partes.join(' · '), (falhou || soInterno) ? 'error' : 'success');
+        btn.innerHTML = '<i class="fas fa-broadcast-tower me-1"></i>Publicar aprovados';
         btn.disabled = false;
         refreshPosts();
     }
