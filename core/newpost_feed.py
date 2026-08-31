@@ -23,6 +23,7 @@ Sem fallback de URL de propósito: URL morta escondida como fallback foi o que
 deixou a integração quebrada em silêncio quando o projeto antigo desligou.
 """
 import os
+import re
 import time
 import hashlib
 import logging
@@ -35,6 +36,9 @@ logger = logging.getLogger(__name__)
 CONTAS = {
     'principal': ('NEWPOST_FEED_EMAIL', 'NEWPOST_FEED_SENHA'),
     'futuro': ('NEWPOST_FEED_EMAIL_FUTURO', 'NEWPOST_FEED_SENHA_FUTURO'),
+    # Perfil da produtora ("LOCUTORES IA - Áudio Pank") — assina os SPOTS do
+    # Gerador no feed; contas que faltarem caem na principal.
+    'locutores': ('NEWPOST_FEED_EMAIL_LOCUTORES', 'NEWPOST_FEED_SENHA_LOCUTORES'),
 }
 
 # Cache de sessão por e-mail (vive enquanto a instância viver — na Vercel, por
@@ -138,7 +142,7 @@ def _chave_idempotente(user_id, base):
 
 
 def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_types=None,
-             is_ia=True, chave=None):
+             is_ia=True, chave=None, audio_url=None):
     """Insere um post no feed como a conta indicada.
 
     `chave` (ex.: link da notícia) vira idempotency_key — o mesmo artigo não
@@ -170,6 +174,8 @@ def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_type
     if media_urls:
         payload['media_urls'] = list(media_urls)
         payload['media_types'] = list(media_types or (['image'] * len(media_urls)))
+    if audio_url:
+        payload['audio_url'] = audio_url
 
     cabecalhos = {
         'apikey': anon,
@@ -220,6 +226,27 @@ def listar(limit=20, author_id=None):
     except Exception as e:
         logger.error(f'[newpost_feed] listar falhou: {e}')
         return []
+
+
+def subir_audio(nome, dados, conta='principal'):
+    """Sobe um MP3 pro storage do FEED (bucket `post-audio`) e devolve a URL pública.
+
+    Caminho no padrão do próprio feed: `<user_id>/<timestamp>-<slug>.mp3`
+    (verificado ao vivo em 31/08/2026: upload autenticado responde 200).
+    Levanta exceção com mensagem clara em falha — quem chama decide a tela.
+    """
+    s = sessao(conta)
+    url, anon = _cfg()
+    base = re.sub(r'[^\w\-]+', '-', str(nome or 'spot')).strip('-')[:60] or 'spot'
+    caminho = f"{s['user_id']}/{int(time.time())}-{base}.mp3"
+    r = requests.post(f"{url}/storage/v1/object/post-audio/{caminho}",
+                      headers={'apikey': anon,
+                               'Authorization': f"Bearer {s['access_token']}",
+                               'Content-Type': 'audio/mpeg'},
+                      data=dados, timeout=60)
+    if not r.ok:
+        raise RuntimeError(f'upload do áudio falhou ({r.status_code}): {(r.text or "")[:160]}')
+    return f"{url}/storage/v1/object/public/post-audio/{caminho}"
 
 
 def apagar(post_id, conta='principal'):

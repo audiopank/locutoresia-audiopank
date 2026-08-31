@@ -5921,6 +5921,52 @@ def api_update_social_post(post_id):
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/gerador/publicar-feed', methods=['POST'])
+def api_gerador_publicar_feed():
+    """Publica um SPOT do Gerador no FEED da NewPost-IA (áudio + texto).
+
+    Sempre por clique do produtor (nunca automático), assinando com a conta
+    escolhida na tela. O MP3 sobe pro storage do próprio feed (bucket
+    post-audio) e o post nasce com player nativo — mesmo caminho do VoiceFlow.
+    """
+    try:
+        data = request.get_json() or {}
+        conta = str(data.get('conta') or 'locutores')
+        if conta not in ('locutores', 'principal', 'futuro'):
+            return jsonify({"success": False, "error": "Conta inválida."}), 400
+        nome = str(data.get('nome') or 'Spot').strip()[:120]
+        texto = str(data.get('texto') or '').strip()
+        audio_b64 = str(data.get('audio_base64') or '')
+        if ',' in audio_b64[:80]:
+            audio_b64 = audio_b64.split(',', 1)[1]   # tira o prefixo data:...;base64,
+        if not audio_b64:
+            return jsonify({"success": False, "error": "Sem áudio."}), 400
+        import base64 as _b64
+        try:
+            dados = _b64.b64decode(audio_b64)
+        except Exception:
+            return jsonify({"success": False, "error": "Áudio inválido (base64)."}), 400
+        # Teto folgado pro corpo da função na Vercel (~4,5MB): um spot de 90s
+        # em MP3 192kbps tem ~2,2MB — cabe com sobra.
+        if len(dados) > 3_500_000:
+            return jsonify({"success": False, "error": "Áudio grande demais pra publicar por aqui (limite ~3,5MB)."}), 400
+
+        from core import newpost_feed
+        audio_url = newpost_feed.subir_audio(nome, dados, conta=conta)
+        trecho = re.sub(r'\s+', ' ', texto)[:220].strip()
+        if len(texto) > 220 and ' ' in trecho:
+            trecho = trecho.rsplit(' ', 1)[0] + '…'
+        conteudo = f"🎙️ {nome}" + (f"\n\n{trecho}" if trecho else "")
+        r = newpost_feed.publicar(conteudo, conta=conta, tags=['LocutoresIA', 'Spot'],
+                                  audio_url=audio_url, chave=audio_url)
+        if r.get('success'):
+            return jsonify({"success": True, "post_id": r.get('post_id'), "audio_url": audio_url})
+        return jsonify({"success": False, "error": r.get('error', 'falha ao publicar')}), 200
+    except Exception as e:
+        print(f"[gerador/publicar-feed] erro: {e}")
+        return jsonify({"success": False, "error": str(e)[:200]}), 500
+
+
 # Publieditorial/oferta de varejo tem cara própria — e anúncio no feed é espaço
 # PAGO (decisão do produtor, 31/08/2026: "pra entrar esse tipo de post, eles
 # precisam nos pagar"). A regra marca "revisar", não "rejeitar": falso positivo

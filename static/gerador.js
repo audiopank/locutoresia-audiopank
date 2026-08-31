@@ -702,6 +702,48 @@
             window.enviarParaEntrega(estado.mixBlob, nomeArquivo());
         };
 
+        // Spot no FEED da NewPost-IA — a conta do seletor assina; sempre por
+        // clique consciente (feed é PÚBLICO). Vai o mix final SEM carimbo:
+        // aqui é vitrine da produtora, não prévia de cliente.
+        document.getElementById('btnPublicarFeed').onclick = async () => {
+            if (!exigeAudio()) return;
+            const conta = document.getElementById('selectContaFeed').value;
+            const rotulos = { locutores: 'LOCUTORES IA', principal: 'NewPost-IA ✓', futuro: 'Futuro em Pauta' };
+            if (!confirm(`Publicar este spot no FEED PÚBLICO da NewPost-IA assinando como ${rotulos[conta]}?`)) return;
+            const btn = document.getElementById('btnPublicarFeed');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Publicando...';
+            try {
+                const b64 = await new Promise((res, rej) => {
+                    const fr = new FileReader();
+                    fr.onloadend = () => res(fr.result);
+                    fr.onerror = () => rej(new Error('falha ao ler o áudio'));
+                    fr.readAsDataURL(estado.mixBlob);
+                });
+                const resp = await fetch('/api/gerador/publicar-feed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        conta,
+                        nome: (document.getElementById('inputNome').value || 'Spot').trim(),
+                        texto: document.getElementById('textoComercial').value || '',
+                        audio_base64: b64
+                    })
+                });
+                const d = await resp.json();
+                if (d.success) {
+                    alert(`📡 Spot no ar no feed da NewPost-IA, assinado por ${rotulos[conta]}!\nConfira em www.newpostia.app`);
+                } else {
+                    alert('O feed recusou: ' + (d.error || 'falha desconhecida'));
+                }
+            } catch (e) {
+                alert('Erro ao publicar no feed: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-broadcast-tower me-1"></i>Feed';
+            }
+        };
+
         // Escape hatch: ajuste fino manual na MiniDAW completa.
         //
         // Manda as faixas SEPARADAS (voz + trilha + receita), não o mix pronto.

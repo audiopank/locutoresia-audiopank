@@ -302,12 +302,22 @@
         <button id="btnEnviar" class="btn btn-success btn-sm">
             <i class="fas fa-paper-plane me-1"></i>Enviar
         </button>
+        <!-- Spot no FEED da NewPost-IA — vitrine da produtora. A conta escolhida
+             assina o post; sempre por clique, nunca automático. -->
+        <select id="selectContaFeed" class="btn btn-outline-light btn-sm" title="Quem assina no feed">
+            <option value="locutores">LOCUTORES IA</option>
+            <option value="principal">NewPost-IA ✓</option>
+            <option value="futuro">Futuro em Pauta</option>
+        </select>
+        <button id="btnPublicarFeed" class="btn btn-outline-light btn-sm">
+            <i class="fas fa-broadcast-tower me-1"></i>Feed
+        </button>
     </div>
 
     <!-- lamejs: sem ele o export cai pra WAV (arquivo bem maior). -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=12"></script>
+    <script src="/static/gerador.js?v=13"></script>
 </body>
 </html>
