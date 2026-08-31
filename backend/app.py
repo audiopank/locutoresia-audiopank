@@ -133,7 +133,7 @@ def insert_post_resiliente(url, payload, headers, tentativas=4, timeout=10):
     return resp, corpo
 
 
-def publicar_no_feed_newpost(titulo, conteudo, categoria='geral', image_url='', source_url='', tags=None):
+def publicar_no_feed_newpost(titulo, conteudo, categoria='geral', image_url='', source_url='', tags=None, conta='principal'):
     """Publica no FEED REAL da NewPost-IA (https://www.newpostia.app/).
 
     ⚠️ São DOIS projetos Supabase trabalhando juntos: o resto do app grava no
@@ -155,7 +155,7 @@ def publicar_no_feed_newpost(titulo, conteudo, categoria='geral', image_url='', 
         if categoria and categoria != 'geral' and categoria not in etiquetas:
             etiquetas.append(str(categoria))
         midia = [image_url] if str(image_url or '').lower().startswith('http') else None
-        r = newpost_feed.publicar(texto, conta='principal', tags=etiquetas, media_urls=midia,
+        r = newpost_feed.publicar(texto, conta=conta, tags=etiquetas, media_urls=midia,
                                   chave=source_url if tem_link else None)
         if r.get('success'):
             return 'publicado'
@@ -3522,32 +3522,49 @@ def cloned_voices():
 # =========================================================
 @app.route('/api/newpost/authors', methods=['GET'])
 def api_list_newpost_authors():
-    """Lista todos os autores da tabela users (NewPost-IA) via Supabase"""
+    """Lista os autores REAIS com que o app consegue assinar no feed novo.
+
+    Desde 31/08/2026 o feed (www.newpostia.app) exige LOGIN: só dá pra publicar
+    como as contas cujas credenciais estão no ambiente (NEWPOST_FEED_*). A lista
+    vem AO VIVO da tabela profiles do feed — nome e selo reais, zero mock.
+    (Antes listava `newpost_profiles` do banco interno, uma cópia velha com
+    autores que não existem mais — os "dados que não são reais".)
+    """
     try:
-        supabase_url = os.getenv('NEWPOST_SUPABASE_URL', 'https://ykswhzqdjoshjoaruhqs.supabase.co').rstrip('/')
-        supabase_key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY', os.getenv('NEWPOST_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrc3doenFkam9zaGpvYXJ1aHFzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8'))
-        
-        if not supabase_url or not supabase_key:
-            return jsonify({"success": False, "error": "Credenciais Supabase não configuradas"}), 500
-        
-        headers = {
-            'apikey': supabase_key,
-            'Authorization': f'Bearer {supabase_key}',
-            'Content-Type': 'application/json'
-        }
-        
-        response = requests.get(
-            f"{supabase_url}/rest/v1/newpost_profiles?select=*&order=criado_em.desc",
-            headers=headers,
-            timeout=10
-        )
-        
-        if response.status_code in (200, 201):
-            authors = response.json()
-            return jsonify({"success": True, "authors": authors})
-        else:
-            return jsonify({"success": False, "error": response.text}), response.status_code
-            
+        from core import newpost_feed
+        contas = []
+        for conta, var_email in (('principal', 'NEWPOST_FEED_EMAIL'),
+                                 ('futuro', 'NEWPOST_FEED_EMAIL_FUTURO')):
+            email = os.getenv(var_email, '').strip()
+            if not email:
+                continue
+            try:
+                s = newpost_feed.sessao(conta)
+            except Exception as e_login:
+                contas.append({"id": "", "email": email,
+                               "name": f"⚠️ {conta}: login falhou — {str(e_login)[:90]}"})
+                continue
+            nome, verificado = conta, False
+            try:
+                url, anon = newpost_feed._cfg()
+                r = requests.get(f"{url}/rest/v1/profiles",
+                                 headers={'apikey': anon, 'Authorization': f'Bearer {anon}'},
+                                 params={'id': f"eq.{s['user_id']}",
+                                         'select': 'display_name,is_verified'},
+                                 timeout=10)
+                perfil = (r.json() or [{}])[0] if r.ok else {}
+                nome = (perfil.get('display_name') or conta).strip().rstrip(':')
+                verificado = bool(perfil.get('is_verified'))
+            except Exception:
+                pass
+            contas.append({"id": s['user_id'], "email": email,
+                           "name": nome + (' ✓' if verificado else '')})
+
+        if not contas:
+            return jsonify({"success": False,
+                            "error": "Nenhuma conta do feed configurada (NEWPOST_FEED_EMAIL/SENHA)."}), 500
+        return jsonify({"success": True, "authors": contas})
+
     except Exception as e:
         import traceback
         print(f"[DEBUG] Erro em api_list_newpost_authors: {e}")
@@ -7446,8 +7463,66 @@ def api_cron_publish_news():
 
 @app.route('/api/scheduler/status', methods=['GET'])
 def api_scheduler_status():
-    """Retorna estado completo do scheduler."""
+    """Retorna estado completo do scheduler.
+
+    Na Vercel quem agenda de VERDADE é o Vercel Cron (vercel.json: 12/15/21 UTC
+    = 9/12/18 de Brasília) — a thread deste processo nunca sobrevive no
+    serverless, então mostrá-la deixava o painel dizendo "Parado" com o cron
+    funcionando todo dia (comprovado no banco em 31/08/2026). Aqui o status
+    passa a medir a REALIDADE: conta os posts que os disparos criaram.
+    """
     try:
+        if os.environ.get('VERCEL'):
+            agora = datetime.now(timezone.utc)
+            horarios_utc = (12, 15, 21)
+
+            ultimas = []
+            try:
+                url = os.getenv('NEWPOST_SUPABASE_URL', '').rstrip('/')
+                key = os.getenv('NEWPOST_SUPABASE_ANON_KEY') or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or ''
+                desde = (agora - timedelta(hours=40)).isoformat()
+                r = requests.get(f"{url}/rest/v1/posts",
+                                 headers={'apikey': key, 'Authorization': f'Bearer {key}'},
+                                 params={'select': 'created_at', 'created_at': f'gte.{desde}',
+                                         'order': 'created_at.desc', 'limit': '300'},
+                                 timeout=8)
+                janelas = {}
+                for p in (r.json() if r.ok else []):
+                    c = str(p.get('created_at') or '')
+                    if len(c) >= 13 and c[11:13].isdigit() and int(c[11:13]) in horarios_utc:
+                        janelas[c[:13]] = janelas.get(c[:13], 0) + 1
+                for chave in sorted(janelas, reverse=True)[:5]:
+                    ultimas.append({'time': chave + ':00:00Z', 'success': True,
+                                    'published': janelas[chave]})
+            except Exception as e_medicao:
+                print(f"[scheduler/status] medição no banco falhou: {e_medicao}")
+
+            proximos = []
+            for h in horarios_utc:
+                alvo = agora.replace(hour=h, minute=0, second=0, microsecond=0)
+                if alvo <= agora:
+                    alvo += timedelta(days=1)
+                proximos.append(alvo)
+            proximos.sort()
+            # next_runs em horário de Brasília (UTC-3): é o relógio do produtor
+            # (o template recorta HH:MM da posição 11 do ISO).
+            next_runs = [(p - timedelta(hours=3)).strftime('%Y-%m-%dT%H:%M:%S') for p in proximos]
+
+            return jsonify({
+                'success': True,
+                'running': True,          # o Vercel Cron está sempre armado
+                'mode': 'vercel-cron',
+                'jobs_count': len(horarios_utc),
+                'next_runs': next_runs,
+                'last_runs': ultimas,
+                'config': {
+                    'enabled': True,
+                    'categories': automation_config_memory.get('active_categories', []),
+                    'times': ['09:00', '12:00', '18:00'],  # BRT — fixados no vercel.json
+                    'posts_per_category': automation_config_memory.get('posts_per_category', 1)
+                }
+            })
+
         jobs = [j for j in _schedule.jobs if 'news_auto' in j.tags]
         return jsonify({
             'success': True,
@@ -7705,17 +7780,26 @@ def run_newpost_publish(payload, trigger_source='api'):
             dedupe_key=dedupe_key
         )
 
-        if not HAS_SUPABASE_MANAGER or not supabase_manager:
-            operation_tracker.fail_job(job['id'], "SupabaseManager não inicializado", http_status=503)
-            return {"success": False, "error": "SupabaseManager não inicializado"}, 503
-
-        result = supabase_manager.publish_to_newpost(title, content, author_id)
+        # Registro interno (ykswh) é HISTÓRICO, best-effort: não pode derrubar a
+        # publicação no feed nem decidir o sucesso dela. (O check antigo usava
+        # HAS_SUPABASE_MANAGER, variável que nunca existiu — NameError em toda
+        # publicação por esta rota. Descoberto em 31/08/2026.)
+        result = {"success": False, "error": "SupabaseManager não inicializado"}
+        if supabase_manager:
+            try:
+                result = supabase_manager.publish_to_newpost(title, content, author_id)
+            except Exception as e_interno:
+                result = {"success": False, "error": f"registro interno falhou: {e_interno}"}
         plugpost_status = "skipped"
 
-        # Espelha no FEED público (projeto separado, com login) — mesmo funil da
-        # curadoria: publicar_no_feed_newpost cuida de sessão, formato e dedup.
-        feed_status = publicar_no_feed_newpost(title, content, categoria='geral', tags=["NewPostIA", "LocutoresIA"])
-        print(f"[DEBUG] Feed NewPost-IA: {feed_status}")
+        # FEED público (projeto separado, com login) — mesmo funil da curadoria:
+        # publicar_no_feed_newpost cuida de sessão, formato e dedup. O autor
+        # escolhido na tela vira a CONTA que assina: Futuro em Pauta ou a
+        # principal (NewPost-IA verificada).
+        conta_feed = 'futuro' if str(author_id or '').startswith('4ac786cc') else 'principal'
+        feed_status = publicar_no_feed_newpost(title, content, categoria='geral',
+                                               tags=["NewPostIA", "LocutoresIA"], conta=conta_feed)
+        print(f"[DEBUG] Feed NewPost-IA ({conta_feed}): {feed_status}")
         if feed_status == 'publicado':
             plugpost_status = "published"
         elif feed_status.startswith('duplicado'):
@@ -7725,7 +7809,11 @@ def run_newpost_publish(payload, trigger_source='api'):
         else:
             plugpost_status = f"failed: {feed_status[:120]}"
 
-        if result.get("success", True):
+        # Quem decide o sucesso é o FEED (é ele que o produtor chama de
+        # "NewPost-IA" desde a migração de 31/08) — o registro interno vai
+        # como informação, nunca como veto.
+        sucesso_feed = plugpost_status in ("published", "duplicate")
+        if sucesso_feed:
             operation_tracker.complete_job(
                 job['id'],
                 {
@@ -7735,11 +7823,14 @@ def run_newpost_publish(payload, trigger_source='api'):
                     "post_id": result.get("post_id"),
                 }
             )
-            return result, 200
+            msg = ("Publicado no feed da NewPost-IA!" if plugpost_status == "published"
+                   else "Este post já estava no feed da NewPost-IA (duplicado).")
+            return {"success": True, "message": msg, "feed_newpost": feed_status,
+                    "conta": conta_feed, "registro_interno": bool(result.get("success"))}, 200
 
         operation_tracker.fail_job(
             job['id'],
-            result.get("error", "Falha ao publicar na NewPost"),
+            f"feed da NewPost-IA recusou: {feed_status}",
             {
                 "title": preview_text(title, 90),
                 "plugpost_status": plugpost_status,
@@ -7747,7 +7838,8 @@ def run_newpost_publish(payload, trigger_source='api'):
             },
             http_status=200
         )
-        return result, 200
+        return {"success": False, "error": f"Feed da NewPost-IA recusou: {feed_status}",
+                "feed_newpost": feed_status, "registro_interno": bool(result.get("success"))}, 200
     except Exception as e:
         print(f"Erro publish to newpost: {e}")
         import traceback
