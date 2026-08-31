@@ -191,31 +191,13 @@ class SupabaseManager:
             return {"success": False, "error": str(e)}
 
     def get_published_posts(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Retorna posts publicados no PlugPost-IA Feed (usando requests diretamente)"""
+        """Retorna os últimos posts do FEED público da NewPost-IA (leitura com anon key).
+
+        Desde 31/08/2026 o feed mora no projeto NEWPOST_FEED_* — ver core/newpost_feed.py.
+        """
         try:
-            plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-            plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
-            
-            if plugpost_url and plugpost_key:
-                headers = {
-                    "apikey": plugpost_key,
-                    "Authorization": f"Bearer {plugpost_key}",
-                    "Content-Type": "application/json"
-                }
-                
-                response = requests.get(
-                    f"{plugpost_url}/rest/v1/posts?select=*&order=created_at.desc&limit={limit}",
-                    headers=headers,
-                    timeout=30
-                )
-                
-                if response.status_code in (200, 201):
-                    return response.json()
-                else:
-                    logger.error(f"❌ Erro ao buscar posts no PlugPost Feed: {response.status_code} - {response.text}")
-                    return []
-            else:
-                return []
+            from core import newpost_feed
+            return newpost_feed.listar(limit)
         except Exception as e:
             logger.error(f"❌ Erro ao buscar posts: {e}")
             return []

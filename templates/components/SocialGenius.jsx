@@ -234,7 +234,7 @@ export const SocialGenius = () => {
     setPublishingField('preview');
     try {
       await navigator.clipboard.writeText(previewContent);
-      const newPostUrl = `https://plugpost-ai.lovable.app/?compose=1&content=${encodeURIComponent(previewContent)}`;
+      const newPostUrl = `https://www.newpostia.app/?compose=1&content=${encodeURIComponent(previewContent)}`;
       window.open(newPostUrl, '_blank', 'noopener,noreferrer');
       toast({
         title: 'Abrindo NewPost-IA',

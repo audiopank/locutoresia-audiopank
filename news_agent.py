@@ -35,10 +35,11 @@ except ImportError:
             }
         }
 
-# Configuração Supabase da NewPost-IA (PROJETO ATIVO)
-# Usa variáveis do .env se disponíveis, caso contrário usa fallback
-SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co")
-SUPABASE_SERVICE_KEY = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzMxNDMwOCwiZXhwIjoyMDkyODkwMzA4fQ.QAHywO5Uu70dmcMQM7t7EslEqZG4y79-kLUIxPR81RM")
+# Configuração Supabase (banco de trabalho do Locutores IA) — só por variável de
+# ambiente. O fallback antigo apontava pro projeto hzmt… da Lovable, desligado em
+# 31/08/2026; o FEED público agora é publicado via core/newpost_feed.py.
+SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "")
 
 from postgrest.exceptions import APIError
 

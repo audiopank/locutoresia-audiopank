@@ -54,7 +54,7 @@ Estas estão detalhadas na memória persistente (ver `MEMORY.md`). Resumo críti
 - **Vercel é read-only filesystem:** nada de `FileHandler` em logging nem gravar arquivos no disco em produção. Código já usa `os.environ.get('VERCEL')` para detectar o ambiente e desabilitar essas partes (agentes com SQLite/log ficam off em prod).
 - **WSGI:** o runtime do Vercel procura a variável `app`. Sempre exponha `app` em `api/index.py` (não só `application`).
 - **Dependências removidas** por incompatibilidade com Python 3.12: `lxml`, `newspaper3k`, `numpy`. Não reintroduzir.
-- **Supabase — dois projetos:** o feed da NewPost-IA roda em `hzmtdfojctctvgqjdbex` (Lovable); o CEO controla `ykswhzqdjoshjoaruhqs`. Confirme o projeto antes de rodar SQL/triggers.
+- **Supabase — dois projetos:** o banco de trabalho do Locutores IA é `ykswhzqdjoshjoaruhqs` (`NEWPOST_SUPABASE_*`); o **feed público da NewPost-IA** (https://www.newpostia.app) roda em `esdglycwumxxksqpeima` desde 31/08/2026 (`NEWPOST_FEED_*`, publicação **com login** via [core/newpost_feed.py](core/newpost_feed.py) — a RLS barra anônimo). O projeto antigo `hzmtdfojctctvgqjdbex` (Lovable) foi desligado. Confirme o projeto antes de rodar SQL/triggers.
 - **Tabela `posts`:** usa `media_urls`/`media_types`/`tags` (arrays), **não** `image_url`/`caption`/`hashtags`. `author_id` é FK para `profiles.id` (usar o ID válido da NewPost-IA verificada).
 - **Git push:** o remote correto é `audiopank/locutoresia-audiopank`; a URL precisa embutir `audiopank@` para evitar 403.
 - **Vercel project correto:** `locutoresia-audiopank` (conta `novaaudiopank@gmail.com`).
@@ -73,6 +73,12 @@ O repositório inclui três pastas com agentes e skills para guiar o desenvolvim
 - **Nunca** afirme que algo está "pronto/funcionando" sem evidência — rode a verificação primeiro (**verification-before-completion**).
 
 > **Ativação:** ✅ feito — os 6 agentes e as 14 skills foram copiados para a raiz `.claude/agents/` e `.claude/skills/`, então já são carregados pelo Claude Code. As pastas `c-level-squad/`, `SquadDev/SquadDev/` e `claude-squads/` permanecem como fonte/backup. Para invocar um agente use o Agent tool (ex.: `vision-chief`, `cto-architect`); as skills aparecem via Skill tool.
+
+## Skills de marketing
+
+O repositório inclui `marketingskills-main/` — pacote open-source de +50 skills de marketing pro Claude Code ([coreyhaines31/marketingskills](https://github.com/coreyhaines31/marketingskills)): copywriting, CRO, anúncios pagos, SEO, e-mail, precificação, lançamento, psicologia de marketing, etc.
+
+> **Ativação (13/08/2026):** ✅ parcial — 9 skills relevantes pra uma produtora de áudio/locução foram copiadas pra `.claude/skills/`, já carregadas pelo Claude Code: `copywriting`, `cro`, `ads`, `social`, `marketing-ideas`, `pricing`, `launch`, `marketing-psychology`, `emails`. As outras ~41 (ASO de app, paywalls, SMS, revops B2B, etc.) ficaram de fora por não se aplicarem ao negócio — estão disponíveis em `marketingskills-main/skills/` caso alguma faça sentido depois; copiar a pasta pra `.claude/skills/<nome>/` ativa. `marketingskills-main/` permanece como fonte/backup completo.
 
 ## Convenções
 

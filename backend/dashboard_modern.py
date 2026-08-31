@@ -1038,7 +1038,7 @@ def get_trends():
                 'by_day': m['by_day'],
                 'period_hours': hours,
                 'generated_at': datetime.now().isoformat(),
-                'data_source': 'Supabase hzmtdfojctctvgqjdbex (posts reais, agrupado por fonte)'
+                'data_source': 'Supabase do feed NewPost-IA (posts reais, agrupado por fonte)'
             }
         })
         

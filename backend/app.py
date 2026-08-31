@@ -134,53 +134,36 @@ def insert_post_resiliente(url, payload, headers, tentativas=4, timeout=10):
 
 
 def publicar_no_feed_newpost(titulo, conteudo, categoria='geral', image_url='', source_url='', tags=None):
-    """Publica no FEED REAL da NewPost-IA (plugpost-ai.lovable.app).
+    """Publica no FEED REAL da NewPost-IA (https://www.newpostia.app/).
 
     ⚠️ São DOIS projetos Supabase trabalhando juntos: o resto do app grava no
     projeto de trabalho do Locutores IA (NEWPOST_SUPABASE_URL), mas a rede social
-    que o público vê roda em OUTRO projeto (PLUGPOST_*). Sem este passo o post
+    que o público vê roda em OUTRO projeto (NEWPOST_FEED_*). Sem este passo o post
     fica só no banco interno e NUNCA aparece no feed.
 
-    Devolve uma string de status; nunca levanta exceção (não pode derrubar o publish).
+    Desde 31/08/2026 (NewPost-IA saiu da Lovable) o feed exige LOGIN — a RLS
+    barra anônimo — e não tem mais as colunas title/category/source_url: o título
+    e o link vão dentro do `content`. Tudo isso vive em core/newpost_feed.py;
+    aqui `categoria` sobrevive só como tag. Devolve uma string de status; nunca
+    levanta exceção (não pode derrubar o publish).
     """
     try:
-        url = os.getenv('PLUGPOST_SUPABASE_URL',
-                        os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co')).rstrip('/')
-        key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
-        if not (url and key):
-            return 'sem credenciais PLUGPOST (defina PLUGPOST_SUPABASE_URL e PLUGPOST_SUPABASE_SERVICE_KEY)'
-
-        autor_raw = os.getenv('PLUGPOST_AUTHOR_ID') or os.getenv('NEWPOST_AUTHOR_ID', '') or ''
-        achado = _UUID_RE.search(autor_raw)
-        autor = achado.group(0) if achado else NEWPOST_AUTHOR_ID_FALLBACK
-
-        payload = {
-            'author_id': autor,
-            'title': (titulo or 'Post')[:300],          # title é NOT NULL
-            'content': conteudo or titulo or '',
-            'status': 'published',
-            'is_ia_generated': True,
-            'category': categoria or 'geral',
-            'tags': tags or ['#NewPostIA', '#LocutoresIA'],
-            'published_at': datetime.now(timezone.utc).isoformat()
-        }
-        if str(source_url or '').lower().startswith('http'):
-            payload['source_url'] = source_url
-        if str(image_url or '').lower().startswith('http'):
-            payload['image_url'] = image_url
-            payload['media_urls'] = [image_url]
-            payload['media_types'] = ['image']
-
-        headers = {
-            'apikey': key,
-            'Authorization': f'Bearer {key}',
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-        }
-        resp, payload = insert_post_resiliente(f"{url}/rest/v1/posts", payload, headers, timeout=30)
-        if resp is not None and resp.status_code in (200, 201):
+        from core import newpost_feed
+        tem_link = str(source_url or '').lower().startswith('http')
+        texto = newpost_feed.montar_conteudo(titulo, conteudo, source_url if tem_link else '')
+        etiquetas = list(tags or ['NewPostIA', 'LocutoresIA'])
+        if categoria and categoria != 'geral' and categoria not in etiquetas:
+            etiquetas.append(str(categoria))
+        midia = [image_url] if str(image_url or '').lower().startswith('http') else None
+        r = newpost_feed.publicar(texto, conta='principal', tags=etiquetas, media_urls=midia,
+                                  chave=source_url if tem_link else None)
+        if r.get('success'):
             return 'publicado'
-        return f"falhou:{getattr(resp, 'status_code', '?')} {str(getattr(resp, 'text', ''))[:200]}"
+        if r.get('already'):
+            return 'duplicado (já estava no feed)'
+        if r.get('nao_configurado'):
+            return f"sem credenciais do feed: {r.get('error')}"
+        return f"falhou:{r.get('status_code', '?')} {str(r.get('error', ''))[:200]}"
     except Exception as e:
         print(f"[DEBUG] Erro ao publicar no feed NewPost-IA: {e}")
         return f'erro: {e}'
@@ -6449,7 +6432,7 @@ def api_publish_social_post(post_id):
 
         # --- PUBLICA NO FEED REAL DA NEWPOST-IA (o SEGUNDO projeto Supabase) ---
         # O insert acima grava no projeto de trabalho do Locutores IA. A rede
-        # social que o público vê (plugpost-ai.lovable.app) roda em outro projeto,
+        # social que o público vê (www.newpostia.app) roda em outro projeto,
         # então sem este passo o post nunca aparecia no feed.
         feed_status = publicar_no_feed_newpost(
             titulo=(post.get('title') or '').strip(),
@@ -7710,54 +7693,18 @@ def run_newpost_publish(payload, trigger_source='api'):
         result = supabase_manager.publish_to_newpost(title, content, author_id)
         plugpost_status = "skipped"
 
-        try:
-            plugpost_url = os.getenv('PLUGPOST_SUPABASE_URL', os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co')).rstrip('/')
-            plugpost_key = os.getenv('PLUGPOST_SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
-            plugpost_author_id = os.getenv('PLUGPOST_AUTHOR_ID', os.getenv('NEWPOST_AUTHOR_ID', '3f51ca52-5a5c-4cf0-a95a-ec26c96245e3'))
-
-            if plugpost_url and plugpost_key:
-                print(f"[DEBUG] Publishing to PlugPost: {plugpost_url}")
-
-                plugpost_payload = {
-                    "author_id": author_id or plugpost_author_id,
-                    "title": title,
-                    "content": f"📰 {title}\n\n{content}",
-                    "status": "published",
-                    "is_ia_generated": True,
-                    "source_url": str(uuid.uuid4()),
-                    "category": "geral",
-                    "tags": ["NewPostIA", "LocutoresIA"]
-                }
-
-                headers = {
-                    "apikey": plugpost_key,
-                    "Authorization": f"Bearer {plugpost_key}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=representation"
-                }
-
-                plugpost_response, plugpost_payload = insert_post_resiliente(
-                    f"{plugpost_url}/rest/v1/posts",
-                    plugpost_payload,
-                    headers,
-                    timeout=30
-                )
-
-                if plugpost_response.status_code in (200, 201):
-                    plugpost_data = plugpost_response.json()
-                    print(f"[DEBUG] PlugPost publish SUCCESS! Post ID: {plugpost_data[0]['id'] if plugpost_data else 'N/A'}")
-                    plugpost_status = "published"
-                else:
-                    print(f"[DEBUG] PlugPost publish failed: {plugpost_response.status_code} - {plugpost_response.text}")
-                    plugpost_status = f"failed:{plugpost_response.status_code}"
-            else:
-                print("[DEBUG] Skipping PlugPost: missing credentials")
-
-        except Exception as plugpost_err:
-            print(f"[DEBUG] PlugPost error: {plugpost_err}")
-            import traceback
-            traceback.print_exc()
-            plugpost_status = "error"
+        # Espelha no FEED público (projeto separado, com login) — mesmo funil da
+        # curadoria: publicar_no_feed_newpost cuida de sessão, formato e dedup.
+        feed_status = publicar_no_feed_newpost(title, content, categoria='geral', tags=["NewPostIA", "LocutoresIA"])
+        print(f"[DEBUG] Feed NewPost-IA: {feed_status}")
+        if feed_status == 'publicado':
+            plugpost_status = "published"
+        elif feed_status.startswith('duplicado'):
+            plugpost_status = "duplicate"
+        elif feed_status.startswith('sem credenciais'):
+            plugpost_status = "skipped"
+        else:
+            plugpost_status = f"failed: {feed_status[:120]}"
 
         if result.get("success", True):
             operation_tracker.complete_job(
@@ -8743,58 +8690,30 @@ def api_publish_to_newpost():
                             "error": f"Bloqueado pelo filtro de conteúdo sensível (padrão: {motivo_bloqueio}). "
                                      f"Esta notícia não vai para o feed."}), 200
 
-        # Publica DIRETO no FEED (hzmt) como "Futuro em Pauta", via anon key.
-        # Antes tentava 2 caminhos, os 2 furados: gravar no ykswh (source_url
-        # vazio -> 23505 duplicado) e no hzmt com uma service key MORTA hardcoded.
-        # O feed é o hzmt, e a anon dele funciona pra inserir (comprovado). O
-        # limite (nao editar/apagar por aqui) o usuario aceita: edita no app da
-        # Lovable logado como Futuro em Pauta.
-        FUTURO_EM_PAUTA_ID = '4ac786cc-a640-4c7f-a12f-5031731044bf'
-        feed_url = os.getenv('SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
-        feed_key = os.getenv('SUPABASE_ANON_KEY', '')
-        if not feed_key:
-            return jsonify({"success": False, "error": "SUPABASE_ANON_KEY (feed) não configurada"}), 500
-
-        # Sempre publica como Futuro em Pauta (o perfil do usuario no feed).
-        autor = FUTURO_EM_PAUTA_ID
-
-        # Garante conteudo limpo (o front ja manda montado, mas nao custa) e um
-        # source_url UNICO: usa o link real da noticia (dedup natural — o mesmo
-        # artigo nao posta 2x) ou um uuid quando nao ha link.
+        # Publica DIRETO no FEED público como "Futuro em Pauta" — conta própria,
+        # COM LOGIN: desde 31/08/2026 (NewPost-IA fora da Lovable) a RLS barra
+        # anônimo e a tabela não tem mais source_url/category. O link real da
+        # notícia vira a chave de idempotência (o mesmo artigo não posta 2x) e
+        # vai no fim do texto pro leitor chegar na fonte.
+        from core import newpost_feed
         conteudo = strip_html(content or title).strip()
-        src = link if link.lower().startswith('http') else str(uuid.uuid4())
+        tem_link = link.lower().startswith('http')
+        texto = newpost_feed.montar_conteudo('', conteudo, link if tem_link else '')
+        r = newpost_feed.publicar(texto, conta='futuro',
+                                  tags=data.get('tags') or ["Notícias", "FuturoEmPauta"],
+                                  chave=link if tem_link else None)
 
-        payload = {
-            "author_id": autor,
-            "content": conteudo,
-            "status": "published",
-            "is_ia_generated": True,
-            "source_url": src,
-            "category": categoria or 'geral',
-            "tags": data.get('tags') or ["Notícias", "FuturoEmPauta"],
-        }
-        headers = {
-            "apikey": feed_key,
-            "Authorization": f"Bearer {feed_key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-        }
-        resp, payload = insert_post_resiliente(f"{feed_url}/rest/v1/posts", payload, headers, timeout=30)
-
-        if resp is not None and resp.status_code in (200, 201):
-            d = resp.json()
-            pid = d[0]['id'] if isinstance(d, list) and d else None
+        if r.get('success'):
             return jsonify({"success": True, "message": "Publicado no feed como Futuro em Pauta",
-                            "post_id": pid, "author": "Futuro em Pauta"})
-
-        texto = getattr(resp, 'text', '') or ''
-        if '23505' in texto:
-            # source_url duplicado = esse ARTIGO ja foi publicado antes. Nao e erro.
+                            "post_id": r.get('post_id'), "author": "Futuro em Pauta"})
+        if r.get('already'):
+            # mesmo link/conteudo = esse ARTIGO ja foi publicado antes. Nao e erro.
             return jsonify({"success": False, "already": True,
                             "error": "Esta notícia já foi publicada antes (mesmo link)."}), 200
-
+        if r.get('nao_configurado'):
+            return jsonify({"success": False, "error": f"Feed não configurado: {r.get('error')}"}), 500
         return jsonify({"success": False,
-                        "error": f"Falha ao publicar no feed ({getattr(resp,'status_code','?')}): {texto[:200]}"}), 200
+                        "error": f"Falha ao publicar no feed ({r.get('status_code', '?')}): {str(r.get('error', ''))[:200]}"}), 200
     except Exception as e:
         print(f"Erro publish to newpost: {e}")
         import traceback

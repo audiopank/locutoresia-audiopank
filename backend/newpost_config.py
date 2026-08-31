@@ -7,7 +7,7 @@ Credenciais fornecidas pelo usuário
 
 NEWPOST_CONFIG = {
     # Configurações da NewPost-IA REAL
-    "url": os.getenv("NEWPOST_IA_URL", "https://plugpost-ai.lovable.app"),
+    "url": os.getenv("NEWPOST_IA_URL", "https://www.newpostia.app"),
     "api_endpoint": "/api/posts",
     "project_id": "71da61a3-9afe-44e1-903b-b696168bfa60",
     
@@ -18,8 +18,8 @@ NEWPOST_CONFIG = {
     "headers": {
         "Content-Type": "application/json",
         "User-Agent": "NewsAutoPost/1.0",
-        "Origin": "https://plugpost-ai.lovable.app",
-        "Referer": "https://plugpost-ai.lovable.app/"
+        "Origin": "https://www.newpostia.app",
+        "Referer": "https://www.newpostia.app/"
     }
 }
 

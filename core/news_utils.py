@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class NewsUtils:
     def __init__(self):
         self.supabase_url = os.getenv("VITE_SUPABASE_URL", 
-                                      os.getenv("NEWPOST_SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co")).strip()
+                                      os.getenv("NEWPOST_SUPABASE_URL", "")).strip()
         # Usar URL base, não adicionar /rest/v1/posts automaticamente
         self.supabase_url = self.supabase_url.rstrip('/')
         
@@ -38,8 +38,7 @@ class NewsUtils:
             self.supabase_key = os.getenv("NEWPOST_SUPABASE_ANON_KEY", "").strip()
         if not self.supabase_key:
             self.supabase_key = os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", "").strip()
-        if not self.supabase_key:
-            self.supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bXRkZm9qY3RjdHZncWpkYmV4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTYxMDgyNiwiZXhwIjoyMDg3MTg2ODI2fQ.jnVoRruRPlMpcskHU0ofEdH5hEY8_5tvT89HT6lKWK8"
+        # (sem chave cravada: o projeto antigo hzmt… foi desligado em 31/08/2026; só env)
         
         print(f"Supabase URL: {self.supabase_url}")
         print(f"Supabase Key configurada: {'Sim' if self.supabase_key else 'Não'}")

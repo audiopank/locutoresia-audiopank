@@ -473,7 +473,7 @@ def get_real_dashboard_data():
             'trending_topics': m['trending_topics'][:10],
             'period_hours': hours,
             'generated_at': datetime.now().isoformat(),
-            'data_source': 'Supabase hzmtdfojctctvgqjdbex (posts reais, agrupado por fonte)'
+            'data_source': 'Supabase do feed NewPost-IA (posts reais, agrupado por fonte)'
         })
         
     except Exception as e:

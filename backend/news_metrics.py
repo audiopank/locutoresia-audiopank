@@ -1,7 +1,7 @@
 """
 Métricas REAIS de notícias para os dashboards (Principal/Avançado/Profissional).
 
-Lê a tabela `posts` do Supabase do feed (hzmtdfojctctvgqjdbex) via REST + chave anon
+Lê a tabela `posts` do Supabase de trabalho (NEWPOST_SUPABASE_URL) via REST + chave anon
 (NÃO usa o client Python, que falha/é bloqueado por RLS em alguns projetos).
 Agrupa por FONTE REAL (domínio do source_url -> G1, Exame, Olhar Digital, ...),
 filtra pelas últimas N horas e extrai tópicos/keywords reais dos títulos.
@@ -61,7 +61,7 @@ def _source_name(url):
 
 
 def _fetch_posts(hours, limit):
-    url = os.getenv('NEWPOST_SUPABASE_URL', 'https://hzmtdfojctctvgqjdbex.supabase.co').rstrip('/')
+    url = os.getenv('NEWPOST_SUPABASE_URL', '').rstrip('/')  # sem fallback: projeto antigo desligado (31/08/2026)
     key = (os.getenv('NEWPOST_SUPABASE_ANON_KEY')
            or os.getenv('VITE_SUPABASE_PUBLISHABLE_KEY')
            or os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or '')

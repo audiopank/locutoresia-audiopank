@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 # CONFIGURAÇÃO NEWPOST-IA
 # ============================================================
 # URL correta da NewPost-IA
-NEWPOST_IA_URL = os.getenv("NEWPOST_IA_URL", "https://plugpost-ai.lovable.app")
-NEWPOST_SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", os.getenv("SUPABASE_URL", "https://hzmtdfojctctvgqjdbex.supabase.co"))
+NEWPOST_IA_URL = os.getenv("NEWPOST_IA_URL", "https://www.newpostia.app")
+# Sem fallback de URL: o projeto antigo (hzmt…) foi desligado em 31/08/2026 e uma
+# URL morta escondida aqui só faria a falha ser silenciosa.
+NEWPOST_SUPABASE_URL = os.getenv("NEWPOST_SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
 # Usar a chave ANON para NewPost-IA (conforme configuração oficial)
 NEWPOST_SUPABASE_KEY = os.getenv("NEWPOST_SUPABASE_ANON_KEY", os.getenv("NEWPOST_SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")))
 
