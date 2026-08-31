@@ -5904,6 +5904,20 @@ def api_update_social_post(post_id):
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+# Publieditorial/oferta de varejo tem cara própria — e anúncio no feed é espaço
+# PAGO (decisão do produtor, 31/08/2026: "pra entrar esse tipo de post, eles
+# precisam nos pagar"). A regra marca "revisar", não "rejeitar": falso positivo
+# custa só uma olhada humana, e se um dia o anunciante pagar, o produtor publica.
+# Nasceu de um caso real: "caixas de som em promoção na Amazon" passou pela IA
+# e foi parar no feed de graça, no primeiro lote da história.
+RE_PUBLIEDITORIAL = re.compile(
+    r'(em promo[cç][aã]o|promo[cç][oõ]es? (na|no|da|do) |cupom|'
+    r'confira (as )?ofertas?|melhores? pre[cç]os?|vale a pena comprar|'
+    r'guia de compras|frete gr[aá]tis|por apenas r\$|'
+    r'(na|da|no|do) (amazon|shopee|aliexpress|magalu|magazine luiza|mercado livre)\b|'
+    r'black friday)', re.IGNORECASE)
+
+
 @app.route('/api/social/posts/triage', methods=['POST', 'OPTIONS'])
 def api_social_posts_triage():
     """PRÉ-CLASSIFICAÇÃO da curadoria: olha os rascunhos e SUGERE
@@ -5951,6 +5965,11 @@ def api_social_posts_triage():
             if motivo_sensivel:
                 sugestoes[pid] = {"rec": "rejeitar", "fonte": "regra",
                                   "motivo": f"Conteúdo sensível ({motivo_sensivel})"}
+                continue
+
+            if RE_PUBLIEDITORIAL.search(f"{titulo}\n{texto}"):
+                sugestoes[pid] = {"rec": "revisar", "fonte": "regra",
+                                  "motivo": "Cara de publieditorial (oferta/promoção) — anúncio no feed é espaço PAGO"}
                 continue
 
             chave = _normalizar_titulo(titulo)
