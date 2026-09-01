@@ -7145,6 +7145,124 @@ automation_config_memory = {
     "updated_at": datetime.now(timezone.utc).isoformat()
 }
 
+# ------------------------------------------------------------
+# PERSISTÊNCIA da config (tabela automation_config no Supabase de trabalho).
+# Antes vivia SÓ em memória: na Vercel cada disparo do cron nasce numa
+# instância nova e rodava com a config de fábrica — as categorias marcadas
+# na tela nunca chegavam no cron (descoberto em 01/09/2026). Leitura com a
+# anon (policy pública); escrita com a service key (RLS barra o resto).
+# Falha de rede/tabela ausente NÃO derruba nada: cai na memória e avisa.
+# ------------------------------------------------------------
+_AUTOMATION_CONFIG_CAMPOS = ('enabled', 'active_categories', 'posts_per_category',
+                             'schedule_time_1', 'schedule_time_2', 'schedule_time_3')
+
+
+def _automation_config_conexao(escrita=False):
+    """Config interna: lê e escreve com a SERVICE key (a tabela tem RLS sem
+    policy pra anon — com a anon o GET volta 200 e vazio, e o cron cairia
+    calado na config de fábrica; comprovado no teste de 01/09). A anon fica
+    só como último recurso de leitura."""
+    url = os.getenv('NEWPOST_SUPABASE_URL', '').rstrip('/')
+    key = os.getenv('NEWPOST_SUPABASE_SERVICE_KEY') or ''
+    if not key and not escrita:
+        key = os.getenv('NEWPOST_SUPABASE_ANON_KEY') or ''
+    return url, key
+
+
+def carregar_automation_config():
+    """Traz a config persistida pra memória. True se leu do banco.
+
+    A tabela é de LINHA ÚNICA com `id uuid` (herança antiga, magra: pode não
+    ter posts_per_category/horários 2-3/updated_at até o ALTER rodar) — por
+    isso lê a primeira linha que existir e trata cada coluna como opcional.
+    """
+    url, key = _automation_config_conexao()
+    if not (url and key):
+        return False
+    try:
+        cab = {'apikey': key, 'Authorization': f'Bearer {key}'}
+        # Prefere a linha mais recente; se a coluna updated_at ainda não existir
+        # (tabela antiga sem o ALTER), o banco responde 400 e cai na leitura simples.
+        r = requests.get(f"{url}/rest/v1/automation_config", headers=cab,
+                         params={'select': '*', 'order': 'updated_at.desc.nullslast', 'limit': '1'}, timeout=8)
+        if r.status_code == 400 and 'updated_at' in (r.text or ''):
+            r = requests.get(f"{url}/rest/v1/automation_config", headers=cab,
+                             params={'select': '*', 'limit': '1'}, timeout=8)
+        linhas = r.json() if r.ok else []
+        if not linhas:
+            print(f"[automation_config] sem linha no banco ({r.status_code}) — usando memória")
+            return False
+        row = linhas[0]
+        cats = row.get('active_categories')
+        if isinstance(cats, str):
+            try:
+                cats = json.loads(cats)
+            except Exception:
+                cats = None
+        atual = automation_config_memory
+        automation_config_memory.update({
+            'id': str(row.get('id') or atual.get('id')),
+            'enabled': bool(row.get('enabled') if row.get('enabled') is not None else True),
+            'active_categories': list(cats) if isinstance(cats, list) and cats else atual['active_categories'],
+            'posts_per_category': max(1, int(row.get('posts_per_category') or atual.get('posts_per_category') or 1)),
+            'schedule_time_1': str(row.get('schedule_time_1') or atual['schedule_time_1'])[:5],
+            'schedule_time_2': str(row.get('schedule_time_2') or atual['schedule_time_2'])[:5],
+            'schedule_time_3': str(row.get('schedule_time_3') or atual['schedule_time_3'])[:5],
+            'updated_at': row.get('updated_at') or atual.get('updated_at'),
+        })
+        return True
+    except Exception as e:
+        print(f"[automation_config] leitura falhou: {e}")
+        return False
+
+
+def salvar_automation_config():
+    """Grava a config da memória no banco. Devolve (ok, motivo).
+
+    PATCH na linha única (ou INSERT se ainda não existe). Se o banco acusar
+    coluna inexistente (PGRST204 — a tabela antiga sem o ALTER), descarta a
+    coluna e tenta de novo: assim categorias/enabled sempre persistem, e o
+    resto passa a persistir no dia em que a coluna nascer.
+    """
+    url, key = _automation_config_conexao(escrita=True)
+    if not (url and key):
+        return False, 'NEWPOST_SUPABASE_SERVICE_KEY ausente — salvo só em memória'
+    cab = {'apikey': key, 'Authorization': f'Bearer {key}',
+           'Content-Type': 'application/json', 'Prefer': 'return=representation'}
+    corpo = {c: automation_config_memory.get(c) for c in _AUTOMATION_CONFIG_CAMPOS}
+    corpo['updated_at'] = datetime.now(timezone.utc).isoformat()
+    row_id = str(automation_config_memory.get('id') or '')
+    if not _UUID_RE.search(row_id):
+        row_id = ''
+    descartadas = []
+    try:
+        for _ in range(6):
+            if row_id:
+                r = requests.patch(f"{url}/rest/v1/automation_config", headers=cab,
+                                   params={'id': f'eq.{row_id}'}, json=corpo, timeout=10)
+                if r.ok and not r.json():
+                    row_id = ''          # id em memória não existe mais: vai inserir
+                    continue
+            else:
+                r = requests.post(f"{url}/rest/v1/automation_config", headers=cab,
+                                  json={**corpo, 'id': str(uuid.uuid4())}, timeout=10)
+            if r.ok:
+                dados = r.json()
+                if isinstance(dados, list) and dados:
+                    automation_config_memory['id'] = str(dados[0].get('id') or row_id)
+                aviso = f" (colunas ainda sem lugar na tabela: {', '.join(descartadas)})" if descartadas else ''
+                return True, 'salvo no banco' + aviso
+            achado = re.search(r"Could not find the '([^']+)' column", r.text or '')
+            if achado and achado.group(1) in corpo:
+                descartadas.append(achado.group(1))
+                corpo.pop(achado.group(1), None)
+                continue
+            return False, f'banco respondeu {r.status_code}: {(r.text or "")[:120]}'
+        return False, 'banco recusou repetidamente'
+    except Exception as e:
+        return False, f'falha de rede: {e}'
+
+
 # ============================================================
 # SCHEDULER REAL — background thread com a biblioteca 'schedule'
 # ============================================================
@@ -7157,6 +7275,9 @@ _scheduler_log = []   # histórico de execuções: [{time, success, published, c
 def _scheduled_publish_job():
     """Executado pelo scheduler nos horários configurados."""
     global _scheduler_log
+    # Na Vercel esta instância pode ter acabado de nascer: busca a config
+    # que o produtor salvou na tela antes de decidir o que publicar.
+    carregar_automation_config()
     config = automation_config_memory
     if not config.get('enabled', True):
         return {'success': False, 'error': 'automação desabilitada', 'skipped': True}
@@ -7254,9 +7375,11 @@ start_news_scheduler()
 def api_get_automation_config():
     """Obtém configuração de automação"""
     try:
+        do_banco = carregar_automation_config()
         return jsonify({
             'success': True,
-            'config': automation_config_memory
+            'config': automation_config_memory,
+            'persistido': do_banco
         })
     except Exception as e:
         print(f"Erro ao buscar config automação: {e}")
@@ -7321,13 +7444,20 @@ def api_save_automation_config():
             "updated_at": datetime.now(timezone.utc).isoformat()
         })
 
-        # Reagenda jobs com novos horários
+        # Reagenda jobs com novos horários (só vale no scheduler de thread, local)
         _update_scheduler_jobs()
 
+        # Persiste — é isso que faz o cron da Vercel obedecer a tela.
+        persistido, motivo = salvar_automation_config()
+        if persistido:
+            msg = 'Configuração salva no banco — o cron passa a usar estas categorias.'
+        else:
+            msg = f'Salvo só em memória (o cron NÃO vai ver): {motivo}'
         return jsonify({
             'success': True,
             'config': automation_config_memory,
-            'message': 'Configuração salva e scheduler atualizado!'
+            'persistido': persistido,
+            'message': msg
         })
         
     except Exception as e:
@@ -7519,6 +7649,7 @@ def api_scheduler_status():
     """
     try:
         if os.environ.get('VERCEL'):
+            carregar_automation_config()   # categorias/qtd reais, não as de fábrica
             agora = datetime.now(timezone.utc)
             horarios_utc = (12, 15, 21)
 

@@ -250,8 +250,10 @@
                     <div>
                         <h5 class="text-white mb-1">Como funciona</h5>
                         <p class="text-gray-300 mb-0 text-secondary">
-                            A automação rodará nos horários abaixo (7h, 12h e 18h — horário de Brasília),
-                            buscando notícias das categorias selecionadas e inserindo posts automaticamente na tabela <strong>posts</strong>.
+                            Em produção quem dispara é o <strong>Vercel Cron</strong>, três vezes ao dia
+                            (09:00 · 12:00 · 18:00 — horário de Brasília). Ele busca notícias das
+                            <strong>categorias que você marcar aqui</strong>, na <strong>quantidade que você escolher</strong>,
+                            e insere como rascunhos na tabela <strong>posts</strong> — a publicação no feed continua sendo sua, na curadoria.
                         </p>
                     </div>
                 </div>
@@ -259,19 +261,26 @@
 
             <!-- Schedule Times -->
             <div class="card-dark p-4 mb-4">
-                <h5 class="mb-4 text-white"><i class="fas fa-clock me-2" style="color: var(--newpost-purple);"></i>Horários de Publicação (Brasília)</h5>
+                <h5 class="mb-2 text-white"><i class="fas fa-clock me-2" style="color: var(--newpost-purple);"></i>Horários de Publicação (Brasília)</h5>
+                <!-- Honestidade: na Vercel os horários são fixos no vercel.json (12/15/21 UTC).
+                     Os campos ficam travados em produção e destravam só quando o status
+                     informa que o scheduler de thread (local) é quem manda. -->
+                <p class="small mb-3" id="horariosNota" style="color:#fbbf24;">
+                    <i class="fas fa-lock me-1"></i>Fixos pelo Vercel Cron: <strong>09:00 · 12:00 · 18:00</strong>.
+                    Mudar aqui não muda o cron — isso é no <code>vercel.json</code>. Categorias e quantidade, sim, valem.
+                </p>
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label text-gray-300">Horário 1</label>
-                        <input type="time" id="time1" class="time-input" value="09:10">
+                        <input type="time" id="time1" class="time-input" value="09:00" disabled>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label text-gray-300">Horário 2</label>
-                        <input type="time" id="time2" class="time-input" value="12:00">
+                        <input type="time" id="time2" class="time-input" value="12:00" disabled>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label text-gray-300">Horário 3</label>
-                        <input type="time" id="time3" class="time-input" value="18:00">
+                        <input type="time" id="time3" class="time-input" value="18:00" disabled>
                     </div>
                 </div>
             </div>
@@ -485,7 +494,13 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showToast('✅ Configuração salva e scheduler atualizado!', 'success');
+                    // A mensagem vem do servidor e diz a verdade: salvo no banco (o cron
+                    // vai obedecer) ou só em memória (o cron NÃO vai ver) — nunca fingir.
+                    if (data.persistido) {
+                        showToast('✅ ' + (data.message || 'Configuração salva no banco.'), 'success');
+                    } else {
+                        showToast('⚠️ ' + (data.message || 'Salvo só em memória — o cron não vai ver.'), 'warning');
+                    }
                     if (data.config && data.config.id) {
                         config.id = data.config.id;
                     }
@@ -550,9 +565,16 @@
                         </div>`).join('')
                     : '<div class="small text-muted mt-1">Nenhuma execução ainda</div>';
 
+                // Fora da Vercel (local), quem manda é o scheduler de thread: os
+                // horários voltam a ser editáveis e a nota de "fixos" some.
+                const vercelCron = data.mode === 'vercel-cron';
+                ['time1', 'time2', 'time3'].forEach(id => { document.getElementById(id).disabled = vercelCron; });
+                const nota = document.getElementById('horariosNota');
+                if (nota) nota.style.display = vercelCron ? '' : 'none';
+
                 box.innerHTML = `
                     <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="badge ${running ? 'bg-success' : 'bg-danger'}">${running ? '● Rodando' : '○ Parado'}</span>
+                        <span class="badge ${running ? 'bg-success' : 'bg-danger'}">${running ? (vercelCron ? '● Ativo (Vercel Cron)' : '● Rodando') : '○ Parado'}</span>
                         <span class="small text-muted">${jobs} job(s) agendado(s)</span>
                     </div>
                     <div class="small mb-1"><strong>Próximas execuções:</strong> ${nextRunHtml}</div>
