@@ -7669,7 +7669,14 @@ def api_scheduler_status():
                     if len(c) >= 13 and c[11:13].isdigit() and int(c[11:13]) in horarios_utc:
                         janelas[c[:13]] = janelas.get(c[:13], 0) + 1
                 for chave in sorted(janelas, reverse=True)[:5]:
-                    ultimas.append({'time': chave + ':00:00Z', 'success': True,
+                    # Mostra em horário de Brasília, igual às "próximas" — painel
+                    # que mistura UTC e BRT faz a rodada das 9h parecer meio-dia.
+                    try:
+                        brt = datetime.strptime(chave, '%Y-%m-%dT%H') - timedelta(hours=3)
+                        quando = brt.strftime('%Y-%m-%dT%H:%M:%S')
+                    except ValueError:
+                        quando = chave + ':00:00'
+                    ultimas.append({'time': quando, 'success': True,
                                     'published': janelas[chave]})
             except Exception as e_medicao:
                 print(f"[scheduler/status] medição no banco falhou: {e_medicao}")
