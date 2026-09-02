@@ -130,17 +130,29 @@ class LMNTVoiceClonerVercel(LMNTVoiceCloner):
         except Exception as e:
             return {"error": str(e)}
 
+# 02/09/2026: o LMNT FECHOU. lmnt.com e docs.lmnt.com só mostram "LMNT has
+# shut down" e api.lmnt.com nem completa o handshake TLS. Tudo que dependia
+# dele (clonar, preview, "Usar" das vozes clonadas) morreu junto. A mensagem
+# abaixo é o que o app diz ao usuário em vez de fingir progresso e estourar
+# um erro de SSL 30 segundos depois.
+# 02/09/2026: decisão do dono — clonagem DESCONTINUADA, sem provedor novo.
+LMNT_ENCERRADO_MSG = (
+    "A clonagem de voz foi descontinuada no Locutores IA. O LMNT, serviço que "
+    "fazia a clonagem, encerrou as atividades e as vozes clonadas nele deixaram "
+    "de existir. Decidimos não substituir o serviço."
+)
+
+
 # Wrapper seguro que não quebra se LMNT falhar
 class SafeLMNTIntegration:
     """Integração segura que não crasha se LMNT não estiver disponível"""
     
     def __init__(self):
+        # Não instancia cliente nem tenta rede: o serviço não existe mais.
+        # Com client=None o TTSGenerator marca lmnt_available=False e o
+        # /api/lmnt/status responde "unavailable" com o motivo real.
         self.client = None
-        self.error = None
-        try:
-            self.client = LMNTVoiceClonerVercel()
-        except Exception as e:
-            self.error = str(e)
+        self.error = LMNT_ENCERRADO_MSG
     
     def get_status(self):
         if self.client is None:

@@ -93,28 +93,9 @@ async function loadAllVoices() {
             console.log('?? Vozes ElevenLabs não carregadas:', elevenError);
         }
         
-        // Carregar vozes clonadas do localStorage
-        try {
-            const storedCloned = localStorage.getItem('cloned_voices_library');
-            if (storedCloned) {
-                const clonedVoices = JSON.parse(storedCloned);
-                const clonedWithFormat = clonedVoices.map(v => ({
-                    id: v.lmntVoiceId || v.id,
-                    name: `${v.name} (Clonada)`,
-                    description: v.description || 'Voz clonada personalizada',
-                    gender: v.gender || 'neutral',
-                    language: 'pt-BR',
-                    style: 'professional',
-                    avatar: `https://picsum.photos/seed/cloned-${v.id}/80/80`,
-                    model: v.lmntVoiceId || v.id,
-                    provider: 'cloned',
-                    sampleText: 'Olá! Esta é uma amostra da minha voz clonada.'
-                }));
-                currentVoices = [...currentVoices, ...clonedWithFormat];
-            }
-        } catch (clonedError) {
-            console.log('?? Vozes clonadas não carregadas:', clonedError);
-        }
+        // 02/09/2026: vozes clonadas NÃO entram mais no seletor. O LMNT fechou e a
+        // clonagem foi descontinuada; o que sobrou no localStorage
+        // ('cloned_voices_library') é só lista de nomes, sem voz por trás.
         
         // Check if there's a selected voice from localStorage (from cloned voices page)
         const selectedVoiceId = localStorage.getItem('selectedVoiceId');

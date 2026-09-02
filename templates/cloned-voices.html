@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -42,6 +42,7 @@
             background: rgba(30, 41, 59, 0.8);
             border: 1px solid var(--border-color);
             border-radius: 12px;
+            color: var(--text-primary);
             transition: all 0.3s ease;
         }
 
@@ -159,6 +160,7 @@
     </header>
 
     <main class="container-fluid py-4">
+        <div id="cloneStatusBanner" class="alert alert-warning d-none" role="alert"></div>
         <div id="searchSection" class="mb-4" style="display: none;">
             <div class="input-group">
                 <span class="input-group-text bg-transparent border-end-0">
@@ -205,6 +207,24 @@
         let voices = [];
         let audioElement = null;
         let playingVoiceId = null;
+        // Estado da clonagem vindo do backend. As vozes ficam listadas (nome,
+        // descrição, exportar) mesmo com o provedor fora — mas Preview/Usar/
+        // MiniDAW não prometem o que não podem entregar.
+        let cloneStatus = { available: true, message: '' };
+
+        async function carregarStatusClonagem() {
+            try {
+                const r = await fetch('/api/voice-clone/status');
+                if (r.ok) cloneStatus = await r.json();
+            } catch (_) {}
+            if (!cloneStatus.available) {
+                const banner = document.getElementById('cloneStatusBanner');
+                banner.innerHTML = '<strong>Clonagem descontinuada.</strong> ' + escapeHtml(cloneStatus.message || '') +
+                    ' As vozes abaixo ficam listadas só para você guardar nomes e descrições (use Exportar). ' +
+                    'Preview, Usar e MiniDAW não funcionam mais com elas; pode excluí-las quando quiser.';
+                banner.classList.remove('d-none');
+            }
+        }
 
         function showToast(title, description = '', variant = 'success') {
             const toast = document.createElement('div');
@@ -273,6 +293,10 @@
                 (voice.description && voice.description.toLowerCase().includes(searchQuery))
             );
 
+            // Sem provedor, os botões de ação ficam desligados com o motivo no title.
+            // (escapeHtml não escapa aspas — por isso o title vai sem aspas duplas dentro.)
+            const acoesOff = cloneStatus.available ? '' :
+                `disabled title="${escapeHtml((cloneStatus.message || '').replace(/"/g, ''))}"`;
             container.innerHTML = filteredVoices.map(voice => `
                 <div class="col-lg-4 col-md-6">
                     <div class="card p-4 h-100">
@@ -280,7 +304,7 @@
                             <div class="voice-icon">
                                 <i class="fas fa-user text-white"></i>
                             </div>
-                            <div class="flex-1 min-w-0">
+                            <div class="flex-fill min-w-0">
                                 <h5 class="mb-1 text-truncate">${escapeHtml(voice.name)}</h5>
                                 ${voice.description ? `<p class="text-muted small mb-2 text-truncate">${escapeHtml(voice.description)}</p>` : ''}
                                 <div class="d-flex gap-2 align-items-center">
@@ -293,19 +317,19 @@
                             </div>
                         </div>
                         <div class="d-flex gap-2 flex-wrap">
-                            <button class="btn btn-outline-light btn-sm flex-1" onclick="togglePlay('${voice.id}')" id="playBtn-${voice.id}">
+                            <button class="btn btn-outline-light btn-sm flex-fill" onclick="togglePlay('${voice.id}')" id="playBtn-${voice.id}" ${acoesOff}>
                                 <i class="fas fa-play me-1"></i>
                                 Preview
                             </button>
-                            <button class="btn btn-primary btn-sm flex-1" onclick="useVoice('${voice.id}')">
+                            <button class="btn btn-primary btn-sm flex-fill" onclick="useVoice('${voice.id}')" ${acoesOff}>
                                 <i class="fas fa-microphone me-1"></i>
                                 Usar
                             </button>
-                            <button class="btn btn-outline-light btn-sm flex-1" onclick="sendToMiniDAW('${voice.id}')">
+                            <button class="btn btn-outline-light btn-sm flex-fill" onclick="sendToMiniDAW('${voice.id}')" ${acoesOff}>
                                 <i class="fas fa-paper-plane me-1"></i>
                                 MiniDAW
                             </button>
-                            <button class="btn btn-outline-danger btn-sm" onclick="deleteVoice('${voice.id}', '${escapeHtml(voice.name)}')">
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteVoice('${voice.id}')">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -422,7 +446,10 @@
             }, 1000);
         }
 
-        function deleteVoice(voiceId, voiceName) {
+        function deleteVoice(voiceId) {
+            // Nome vem do array, não do atributo onclick: nome com aspa quebrava o HTML.
+            const voice = voices.find(v => v.id === voiceId);
+            const voiceName = voice ? voice.name : voiceId;
             if (!confirm(`Tem certeza que deseja excluir a voz "${voiceName}"?`)) return;
             
             voices = voices.filter(v => v.id !== voiceId);
@@ -488,7 +515,8 @@
             event.target.value = '';
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            await carregarStatusClonagem();
             loadVoices();
         });
     </script>

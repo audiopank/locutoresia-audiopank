@@ -7,7 +7,7 @@ Guia para agentes trabalhando neste repositório. **Responda ao usuário em port
 **Locutores IA** (marca interna: *Studio Audio Pank*) é uma aplicação web de **locução/produção de áudio com IA** + um **agente automático de notícias** que gera e publica posts na plataforma **NewPost-IA**.
 
 Dois grandes blocos funcionais:
-1. **Studio de áudio (TTS / MiniDAW)** — gera locuções a partir de roteiros, com múltiplos provedores TTS, clonagem de voz, mixagem client-side e export MP3.
+1. **Studio de áudio (TTS / MiniDAW)** — gera locuções a partir de roteiros, com múltiplos provedores TTS, mixagem client-side e export MP3. (Clonagem de voz foi **descontinuada** em 02/09/2026: o LMNT fechou e o dono decidiu não substituir. As telas `/voice-cloning` e `/cloned-voices` seguem no ar só como aviso honesto + exportar lista.)
 2. **News Agent** — coleta notícias via RSS, gera posts com IA e publica no feed da NewPost-IA (Supabase).
 
 ## Stack
@@ -16,7 +16,7 @@ Dois grandes blocos funcionais:
 - **Deploy:** Vercel (`@vercel/python`), config em [vercel.json](vercel.json). Redeploy automático via push no Git.
 - **Banco/Auth:** Supabase (REST). Cliente em [core/supabase_manager.py](core/supabase_manager.py) e [backend/supabase_client.py](backend/supabase_client.py).
 - **Frontend:** Jinja templates em [templates/](templates/) + app React/Vite **MiniDAW** em [minidaw-react/](minidaw-react/) (build copiado para [static/minidaw-react/](static/minidaw-react/)).
-- **TTS providers:** ElevenLabs, Google TTS, LMNT, edge-tts, gTTS, Gemini. Geradores em [core/tts_generator.py](core/tts_generator.py) e correlatos. Fallback típico: ElevenLabs → Google → OpenAI.
+- **TTS providers:** ElevenLabs, Google TTS, edge-tts, gTTS, Gemini. Geradores em [core/tts_generator.py](core/tts_generator.py) e correlatos. Fallback típico: ElevenLabs → Google → OpenAI. **LMNT não existe mais** (serviço encerrado; `core/lmnt_*` ficam só para responder "indisponível").
 
 ## Mapa do repositório
 

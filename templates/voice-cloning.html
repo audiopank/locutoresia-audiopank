@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -42,6 +42,7 @@
             background: rgba(30, 41, 59, 0.8);
             border: 1px solid var(--border-color);
             border-radius: 12px;
+            color: var(--text-primary);
         }
 
         .btn-primary {
@@ -178,6 +179,7 @@
     </header>
 
     <main class="container-fluid py-4">
+        <div id="cloneStatusBanner" class="alert alert-warning d-none" role="alert"></div>
         <div class="row">
             <div class="col-lg-6 mb-4">
                 <div class="card p-4">
@@ -221,10 +223,10 @@
                     </div>
 
                     <div class="d-flex gap-2 mb-4">
-                        <button class="btn btn-outline-light flex-1" id="uploadMethodBtn" onclick="setUploadMethod('upload')">
+                        <button class="btn btn-primary flex-fill" id="uploadMethodBtn" onclick="setUploadMethod('upload')">
                             <i class="fas fa-upload me-1"></i>Upload Áudio
                         </button>
-                        <button class="btn btn-outline-light flex-1" id="recordMethodBtn" onclick="setUploadMethod('record')">
+                        <button class="btn btn-outline-light flex-fill" id="recordMethodBtn" onclick="setUploadMethod('record')">
                             <i class="fas fa-microphone me-1"></i>Gravar Voz
                         </button>
                     </div>
@@ -317,6 +319,24 @@
         let stream = null;
         let recordingInterval = null;
         let recordingStart = 0;
+        // Estado da clonagem vindo do backend (/api/voice-clone/status).
+        // Enquanto não chega, assume disponível pra não travar a tela à toa.
+        let cloneStatus = { available: true, message: '' };
+
+        async function carregarStatusClonagem() {
+            try {
+                const r = await fetch('/api/voice-clone/status');
+                if (!r.ok) return;
+                cloneStatus = await r.json();
+            } catch (_) { return; }
+            if (cloneStatus.available) return;
+            const banner = document.getElementById('cloneStatusBanner');
+            banner.textContent = cloneStatus.message || 'Clonagem de voz indisponível no momento.';
+            banner.classList.remove('d-none');
+            const btn = document.getElementById('cloneBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-ban me-2"></i>Clonagem descontinuada';
+        }
 
         function showToast(title, description = '', variant = 'success') {
             const toast = document.createElement('div');
@@ -341,8 +361,8 @@
 
         function setUploadMethod(method) {
             uploadMethod = method;
-            document.getElementById('uploadMethodBtn').className = method === 'upload' ? 'btn btn-primary flex-1' : 'btn btn-outline-light flex-1';
-            document.getElementById('recordMethodBtn').className = method === 'record' ? 'btn btn-primary flex-1' : 'btn btn-outline-light flex-1';
+            document.getElementById('uploadMethodBtn').className = method === 'upload' ? 'btn btn-primary flex-fill' : 'btn btn-outline-light flex-fill';
+            document.getElementById('recordMethodBtn').className = method === 'record' ? 'btn btn-primary flex-fill' : 'btn btn-outline-light flex-fill';
             clearAudio();
         }
 
@@ -530,6 +550,11 @@
                 return;
             }
 
+            if (!cloneStatus.available) {
+                showToast('Clonagem indisponível', cloneStatus.message || '', 'destructive');
+                return;
+            }
+
             isCreating = true;
             document.getElementById('cloneBtn').disabled = true;
             document.getElementById('cloneBtn').innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Clonando...';
@@ -602,6 +627,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            carregarStatusClonagem();
             const uploadArea = document.getElementById('uploadArea');
             
             uploadArea.addEventListener('dragover', (e) => {

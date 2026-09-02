@@ -6877,29 +6877,34 @@ try:
 except ImportError:
     from upload_handler import handle_upload, handle_voice_upload
 
-# Importar integração LMNT (usar versão segura para Vercel)
-print("[DEBUG] Iniciando importação do lmnt_integration")
-lmnt_integration = None
-if os.environ.get('VERCEL'):
-    try:
-        print("[DEBUG] Vercel detectado, tentando importar core.lmnt_voice_cloner_vercel")
-        from core.lmnt_voice_cloner_vercel import lmnt_integration
-    except ImportError as e:
-        print(f"[DEBUG] Erro ao importar core.lmnt_voice_cloner_vercel: {e}")
-        lmnt_integration = None
-else:
-    try:
-        print("[DEBUG] Não Vercel, tentando importar backend.lmnt_integration")
-        from backend.lmnt_integration import lmnt_integration
-        print(f"[DEBUG] lmnt_integration importado com sucesso, available: {lmnt_integration.available}")
-    except ImportError as e:
-        print(f"[DEBUG] Erro ao importar backend.lmnt_integration: {e}")
-        try:
-            print("[DEBUG] Tentando importar lmnt_integration diretamente")
-            from lmnt_integration import lmnt_integration
-        except ImportError as e:
-            print(f"[DEBUG] Erro ao importar lmnt_integration diretamente: {e}")
-            lmnt_integration = None
+# Integração LMNT — desde 02/09/2026 o serviço não existe mais (ver
+# LMNT_ENCERRADO_MSG em core/lmnt_voice_cloner_vercel.py). A versão "safe"
+# reporta indisponível sem tentar rede; vale igual pra local e pra Vercel.
+try:
+    from core.lmnt_voice_cloner_vercel import lmnt_integration, LMNT_ENCERRADO_MSG
+except ImportError:
+    _core_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'core')
+    if _core_dir not in sys.path:
+        sys.path.insert(0, _core_dir)
+    from lmnt_voice_cloner_vercel import lmnt_integration, LMNT_ENCERRADO_MSG
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CLONAGEM DE VOZ — estado honesto
+# As telas /voice-cloning e /cloned-voices leem este endpoint antes de
+# prometer qualquer coisa. 02/09/2026: o LMNT fechou e o dono decidiu NÃO
+# substituir — clonagem descontinuada. As rotas e telas ficam de pé só para
+# quem tinha vozes salvas exportar a lista; não há provedor a anunciar aqui.
+# ═══════════════════════════════════════════════════════════════════════════
+@app.route('/api/voice-clone/status')
+def voice_clone_status():
+    return jsonify({
+        'available': False,
+        'discontinued': True,
+        'provider': None,
+        'previous_provider': 'lmnt',
+        'message': LMNT_ENCERRADO_MSG,
+    })
 
 # Endpoints LMNT Integration
 @app.route('/api/lmnt/status', methods=['GET'])
@@ -6914,145 +6919,14 @@ def lmnt_voices():
 
 @app.route('/api/lmnt/generate', methods=['POST'])
 def lmnt_generate():
-    """Gera áudio usando LMNT"""
-    try:
-        print("[DEBUG] Iniciando /api/lmnt/generate")
-        data = request.get_json()
-        if not data or 'text' not in data:
-            return jsonify({'error': 'Texto não fornecido'}), 400
-        
-        text = data['text'].strip()
-        voice_id = data.get('voice_id')
-        format_type = data.get('format', 'mp3')
-        
-        if len(text) == 0:
-            return jsonify({'error': 'Texto não pode estar vazio'}), 400
-        
-        if len(text) > 1000:  # Limite do LMNT
-            return jsonify({'error': 'Texto muito longo (máximo 1000 caracteres)'}), 400
-        
-        # Usar diretamente o LMNTVoiceCloner em vez de lmnt_integration
-        print("[DEBUG] Importando LMNTVoiceCloner diretamente")
-        from core.lmnt_voice_cloner import LMNTVoiceCloner
-        cloner = LMNTVoiceCloner()
-        print(f"[DEBUG] LMNTVoiceCloner inicializado, gerando áudio para voz: {voice_id}")
-        
-        audio_bytes = cloner.synthesize_with_cloned_voice(voice_id, text)
-        print(f"[DEBUG] Áudio gerado com sucesso, tamanho: {len(audio_bytes)} bytes")
-        
-        # Converter para base64
-        import base64
-        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-        
-        result = {
-            "success": True,
-            "audioContent": audio_base64,
-            "voice": voice_id,
-            "language": "pt",
-            "text": text
-        }
-        
-        print(f"[DEBUG] Retornando resultado com base64")
-        return jsonify(result)
-        
-    except Exception as e:
-        print(f"[DEBUG] Erro em /api/lmnt/generate: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Erro na geração: {str(e)}'}), 500
+    """Gerava áudio no LMNT. Serviço encerrado — responde o motivo na hora."""
+    return jsonify({'error': LMNT_ENCERRADO_MSG, 'success': False}), 503
 
 @app.route('/api/lmnt/clone', methods=['POST'])
 def lmnt_clone():
-    """Clona uma nova voz no LMNT - aceita form-data ou JSON base64"""
-    try:
-        audio_data = None
-        name = None
-        description = None
-        enhance = True
-
-        print("[DEBUG] Iniciando lmnt_clone")
-        print(f"[DEBUG] request.files: {request.files}")
-        print(f"[DEBUG] request.is_json: {request.is_json}")
-        print(f"[DEBUG] request.content_type: {request.content_type}")
-
-        # Verificar se é form-data
-        if request.files and 'audio' in request.files:
-            print("[DEBUG] Usando form-data")
-            audio_file = request.files['audio']
-            name = request.form.get('name', '').strip()
-            description = request.form.get('description', '').strip()
-            enhance = request.form.get('enhance', 'true').lower() == 'true'
-            if not audio_file.filename:
-                return jsonify({'error': 'Arquivo de áudio inválido'}), 400
-            audio_data = audio_file.read()
-            print(f"[DEBUG] audio_data len: {len(audio_data)}")
-        else:
-            # Caso contrário, tentar JSON com base64
-            print("[DEBUG] Usando JSON")
-            data = request.get_json()
-            if not data:
-                return jsonify({'error': 'Dados não fornecidos'}), 400
-
-            name = data.get('name', '').strip()
-            audio_base64 = data.get('audio_data')
-            description = data.get('description', '').strip()
-            enhance = data.get('enhance', True)
-
-            print(f"[DEBUG] name: {name}")
-            print(f"[DEBUG] audio_base64 len: {len(audio_base64) if audio_base64 else 0}")
-
-            if not audio_base64:
-                return jsonify({'error': 'audio_data não fornecido'}), 400
-
-            # Converter base64 para bytes diretamente (sem depender de lmnt_integration)
-            try:
-                if ',' in audio_base64:
-                    audio_base64 = audio_base64.split(',')[1]
-                audio_data = base64.b64decode(audio_base64)
-                print(f"[DEBUG] audio_data len after decode: {len(audio_data)}")
-            except Exception as e:
-                return jsonify({'error': f'Erro ao decodificar base64: {str(e)}'}), 400
-
-        if not name:
-            return jsonify({'error': 'Nome da voz não fornecido'}), 400
-
-        if not audio_data:
-            return jsonify({'error': 'Dados de áudio não fornecidos'}), 400
-
-        # ============================================
-        # USAR DIRETAMENTE O CÓDIGO ORIGINAL FUNCIONAL
-        # ============================================
-        try:
-            # Importar diretamente o LMNTVoiceCloner original
-            import sys
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from core.lmnt_voice_cloner import LMNTVoiceCloner
-            
-            print("[DEBUG] Usando LMNTVoiceCloner diretamente!")
-            
-            cloner = LMNTVoiceCloner()
-            result = cloner.clone_voice(name, audio_data, description, enhance)
-            
-            print(f"[DEBUG] Resultado do clone_voice: {result}")
-            
-            # Garantir que temos o voice_id na resposta
-            if 'voice' in result and 'id' in result['voice']:
-                result['voice_id'] = result['voice']['id']
-            elif 'id' in result:
-                result['voice_id'] = result['id']
-            
-            return jsonify(result)
-        except Exception as e:
-            print(f"[DEBUG] Erro no LMNTVoiceCloner diretamente: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': f'Erro na clonagem: {str(e)}'}), 500
-
-    except Exception as e:
-        print(f'Erro no endpoint lmnt/clone: {e}')
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+    """Clonava voz no LMNT. Serviço encerrado — responde o motivo na hora,
+    sem ler o áudio nem fingir progresso."""
+    return jsonify({'error': LMNT_ENCERRADO_MSG, 'success': False}), 503
 
 @app.route('/api/lmnt/voice/<voice_id>', methods=['GET'])
 def lmnt_voice_info(voice_id):

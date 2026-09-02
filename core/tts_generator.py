@@ -457,7 +457,7 @@ class TTSGenerator:
         if api == "elevenlabs" and not self.elevenlabs_available:
             raise ValueError("❌ ElevenLabs não disponível")
         if api == "lmnt" and not self.lmnt_available:
-            raise ValueError("❌ LMNT não disponível")
+            raise ValueError("❌ LMNT encerrou as atividades — as vozes clonadas nele não funcionam mais")
 
         # Log informativo
         print(f"🎙️  Gerando áudio com {api.upper()}...")
