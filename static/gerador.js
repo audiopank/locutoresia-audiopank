@@ -256,11 +256,36 @@
         };
     }
 
+    // ── Direcao de locucao ───────────────────────────────────────────────
+    // A instrucao do produtor ("fale rindo, cresca na assinatura") vai COLADA
+    // no texto so na hora de locutar. Nunca entra em estado.roteiro: se
+    // entrasse, a IA do roteiro a reescreveria, a checagem de duracao a
+    // contaria como fala e ela apareceria no texto entregue ao cliente.
+    // O Gemini so obedece ordem entre colchetes — o colchete entra aqui.
+    function comDirecao(texto) {
+        const el = document.getElementById('direcaoLocucao');
+        let d = (el ? el.value : '').trim();
+        if (!d) return texto;
+        // Uma linha so: o backend le a PRIMEIRA linha como a ordem de tom.
+        d = d.split('\n').join(' ').split(String.fromCharCode(13)).join(' ').trim();
+        while (d.startsWith('[')) d = d.slice(1).trim();
+        while (d.endsWith(']')) d = d.slice(0, -1).trim();
+        if (!d) return texto;
+        if ((texto || '').trimStart().startsWith('[')) {
+            avisar('O roteiro ja comeca com uma direcao entre colchetes — mantive a do texto e ignorei o campo Direcao de locucao.', 'atencao');
+            return texto;
+        }
+        if (providerDaVoz() !== 'google') {
+            avisar('A "Direcao de locucao" so vale no Modo Padrao (Google) — no Expressivo ela e ignorada.', 'atencao');
+            return texto;
+        }
+        return '[' + d + ']' + '\n' + texto;
+    }
     async function gerarVoz(texto) {
         const r = await fetch('/api/generate-audio', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                text: texto,
+                text: comDirecao(texto),
                 voice: document.getElementById('selectVoz').value,
                 api: providerDaVoz(),
                 // Estilo = interpretação (o "Pacing/Smile in voice" que faltava

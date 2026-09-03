@@ -16,6 +16,7 @@ import asyncio
 import io
 import mimetypes
 import os
+import re
 import struct
 import sys
 
@@ -263,6 +264,37 @@ def normalizar_estilo(style: str) -> str:
     return s
 
 
+# Marcacao de direcao entre colchetes: "[FALE EM TOM ALEGRE]", "[ELEVAR O TOM]".
+RE_MARCACAO_TOM = re.compile(r"\[[^\]\n]{0,160}\]")
+
+
+def texto_ja_traz_instrucao(text: str) -> bool:
+    """A primeira linha e uma ordem de tom escrita por gente?
+
+    Fonte unica da verdade: a checagem era copiada em aplicar_instrucao_de_tom
+    e no caminho de dialogo, e as duas copias tinham que andar juntas.
+    """
+    linhas = (text or "").lstrip().splitlines()
+    primeira = linhas[0].strip() if linhas else ""
+    return primeira.startswith("[") or primeira.upper().startswith(
+        ("FALE ", "DIGA ", "NARRE ", "LEIA "))
+
+
+def remover_marcacoes_de_tom(text: str) -> str:
+    """Apaga as marcacoes entre colchetes do texto.
+
+    So o Gemini entende colchete como DIRECAO. ElevenLabs e EdgeTTS leem o
+    texto ao pe da letra e locutariam "abre colchete, fale em tom alegre"
+    dentro do spot. Este e o coador antes desses dois.
+    """
+    limpo = RE_MARCACAO_TOM.sub("", text or "")
+    # Sobra espaco duplo onde a marcacao morava, e linha em branco a mais.
+    limpo = re.sub(r"[ \t]{2,}", " ", limpo)
+    limpo = re.sub(r"(?m)^[ \t]+$", "", limpo)
+    limpo = re.sub(r"\n{3,}", "\n\n", limpo)
+    return limpo.strip()
+
+
 def aplicar_instrucao_de_tom(text: str, style: str) -> str:
     """Prefixa a instrução de tom pro Gemini (controllable TTS).
 
@@ -270,9 +302,7 @@ def aplicar_instrucao_de_tom(text: str, style: str) -> str:
     texto JÁ começa com uma instrução escrita pelo usuário — senão teríamos
     duas ordens de tom brigando no mesmo prompt.
     """
-    primeira = (text or "").lstrip().split("\n", 1)[0].strip()
-    ja_tem = primeira.startswith("[") or primeira.upper().startswith(("FALE ", "DIGA ", "NARRE ", "LEIA "))
-    if ja_tem:
+    if texto_ja_traz_instrucao(text):
         print("[TTS] O texto ja traz instrucao de tom - mantendo a do usuario.")
         return text
 
@@ -492,6 +522,8 @@ class TTSGenerator:
         language: str
     ) -> bytes:
         """Gera áudio com EdgeTTS (gratuita!)."""
+        # EdgeTTS nao entende colchete como direcao: locutaria a marcacao.
+        text = remover_marcacoes_de_tom(text)
         voice = EDGE_VOICE_MAP.get(voice_model, EDGE_VOICE_MAP["default"])
         style_params = EDGE_STYLE_MAP[normalizar_estilo(style)]
         
@@ -639,13 +671,21 @@ class TTSGenerator:
         # simplesmente LER TUDO NUMA VOZ SÓ — foi o que aconteceu na primeira
         # narração revezada real (texto institucional, que não "parece"
         # conversa; o diálogo com personagens escapou por sorte).
-        primeira = (text or "").lstrip().split("\n", 1)[0].strip()
-        ja_tem = primeira.startswith("[") or primeira.upper().startswith(("FALE ", "DIGA ", "NARRE ", "LEIA "))
-        if not ja_tem:
-            instrucao = STYLE_INSTRUCTIONS.get(style)
-            preambulo = (instrucao + "\n") if instrucao else ""
-            text = (f"{preambulo}Leia em voz alta, exatamente como está escrito, o texto a seguir, "
-                    f"alternando entre as vozes de {speakers[0]} e {speakers[1]}:\n{text}")
+        # A ordem "alternando entre as vozes de X e Y" e OBRIGATORIA SEMPRE.
+        # Antes ela era pulada quando o texto ja trazia direcao do produtor,
+        # e sem ela o modelo le tudo NUMA VOZ SO. Agora as duas convivem: a
+        # direcao dele fica na frente (e quem manda no tom) e a ordem de
+        # revezar entra logo abaixo, imediatamente antes das falas.
+        if texto_ja_traz_instrucao(text):
+            linhas = (text or "").lstrip().splitlines()
+            direcao = linhas[0].strip()
+            corpo = "\n".join(linhas[1:]).lstrip()
+        else:
+            direcao = STYLE_INSTRUCTIONS.get(style) or ""
+            corpo = text
+        cabecalho = (direcao + "\n") if direcao else ""
+        text = (f"{cabecalho}Leia em voz alta, exatamente como está escrito, o texto a seguir, "
+                f"alternando entre as vozes de {speakers[0]} e {speakers[1]}:\n{corpo}")
 
         speech_config = types.SpeechConfig(
             multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
@@ -680,6 +720,9 @@ class TTSGenerator:
         style: str
     ) -> bytes:
         """Gera áudio com ElevenLabs."""
+        # ElevenLabs le o texto ao pe da letra: sem este coador, a direcao
+        # do produtor ("[FALE EM TOM ALEGRE]") sairia FALADA no meio do spot.
+        text = remover_marcacoes_de_tom(text)
         # Check if voice_model is already a real voice ID (not a name)
         if voice_model in ELEVENLABS_VOICE_MAP.values():
             voice_id = voice_model

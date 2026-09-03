@@ -212,6 +212,17 @@
                     <div class="hint mb-3">
                         É a interpretação do locutor — "Animado" pra promoção,
                         "Sério" pra institucional. Vale também no "Regerar só a voz".
+                        Se você escrever a direção abaixo, ela manda mais que isto.
+                    </div>
+
+                    <label class="form-label" for="direcaoLocucao">Direção de locução (opcional)</label>
+                    <textarea id="direcaoLocucao" class="form-control mb-1" rows="2" maxlength="240"
+                              placeholder="Ex.: fale rindo, bem perto do ouvinte, e cresça na assinatura"></textarea>
+                    <div class="hint mb-3">
+                        Escreva como você falaria com o locutor na cabine. Isto NÃO passa
+                        pela IA que escreve o roteiro, não conta na duração e não vai no
+                        texto entregue ao cliente — entra colado no roteiro só na hora de
+                        gravar. Só o Modo Padrão (Google) entende direção.
                     </div>
 
                     <label class="form-label" for="selectPlano">Duração do spot</label>
@@ -318,6 +329,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=13"></script>
+    <script src="/static/gerador.js?v=14"></script>
 </body>
 </html>
