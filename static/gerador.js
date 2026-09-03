@@ -256,6 +256,32 @@
         };
     }
 
+    // ── Checagem de duracao e frase legal ────────────────────────────────
+    // Vive fora do fluxo principal porque "Regerar so a voz" TAMBEM precisa
+    // dela: a locucao nova quase nunca tem a duracao da anterior. Sem isto um
+    // spot de 48s passava calado numa grade vendida de 30-45s (achado no teste
+    // real de 03/09, logo depois de regerar a voz). So avisa, nunca bloqueia.
+    async function checarQualidade(duracaoSegundos) {
+        try {
+            const rQ = await fetch('/api/qualidade/checar', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    roteiro: estado.roteiro,
+                    // Mesma fonte do roteiro: confere contra a MESMA grade que
+                    // a IA recebeu como alvo.
+                    plano: document.getElementById('selectPlano').value,
+                    duracao_segundos: duracaoSegundos
+                })
+            });
+            const dQ = await rQ.json();
+            (dQ.avisos || []).forEach(a => {
+                avisar((a.titulo || '') + (a.detalhe ? ': ' + a.detalhe : ''), a.nivel);
+            });
+        } catch (e) {
+            avisar('Não deu pra rodar a checagem de qualidade — confira na mão.', 'atencao');
+        }
+    }
+
     // ── Direcao de locucao ───────────────────────────────────────────────
     // A instrucao do produtor ("fale rindo, cresca na assinatura") vai COLADA
     // no texto so na hora de locutar. Nunca entra em estado.roteiro: se
@@ -614,24 +640,7 @@
 
             // [6] CHECAGEM — só avisa, nunca bloqueia.
             passo(6, TOTAL, 'Conferindo duração e frase legal...');
-            try {
-                const rQ = await fetch('/api/qualidade/checar', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        roteiro: estado.roteiro,
-                        // Mesma fonte do roteiro: a checagem confere contra a
-                        // MESMA grade que a IA recebeu como alvo.
-                        plano: document.getElementById('selectPlano').value,
-                        duracao_segundos: r.duracao
-                    })
-                });
-                const dQ = await rQ.json();
-                (dQ.avisos || []).forEach(a => {
-                    avisar((a.titulo || '') + (a.detalhe ? ': ' + a.detalhe : ''), a.nivel);
-                });
-            } catch (e) {
-                avisar('Não deu pra rodar a checagem de qualidade — confira na mão.', 'atencao');
-            }
+            await checarQualidade(r.duracao);
 
             mostrarResultado(r.duracao);
             passo(0, TOTAL, '✅ Pronto — ouça antes de enviar.');
@@ -664,6 +673,7 @@
             passo(2, 2, 'Remixando...');
             const r = await mixar(null);
             estado.mixBlob = r.blob;
+            await checarQualidade(r.duracao);
             mostrarResultado(r.duracao);
             passo(0, 2, '✅ Locução trocada.');
             guardarRascunho();
