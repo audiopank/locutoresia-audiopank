@@ -852,10 +852,26 @@ def gerador_page():
 # funcionando quando a cota do Gemini estoura (que falha em ~0,4s e em silêncio).
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Locução comercial roda por volta de 2,5 palavras por segundo. Não é exato —
-# voz mais pausada baixa isso — mas serve pra IA escrever no tamanho certo em
-# vez de entregar um texto de 60s pra um spot de 30s.
-PALAVRAS_POR_SEGUNDO = 2.5
+# Ritmo de locução. Era 2,5 pal/s — otimista. Medido em 03/09/2026 contra 4
+# takes reais do MESMO roteiro (108 palavras, voz Zephyr, Gemini): 2,57 /
+# 2,40 / 2,31 / 2,16 pal/s. O Gemini escolhe o proprio andamento a cada take,
+# entao nao existe um numero so — existe uma FAIXA. Dois usos, dois numeros:
+#
+#   MEDIO  -> palpite honesto de duracao (estimar_duracao_locucao).
+#   LENTO  -> tamanho do roteiro. O que dói é o TETO da grade (emissora
+#             recusa spot longo), e quem estoura o teto e o take arrastado.
+#             Dimensionar pela media deixaria metade dos takes fora da grade.
+PALAVRAS_POR_SEGUNDO = 2.35
+PALAVRAS_POR_SEGUNDO_LENTO = 2.15
+
+# Toda mixagem termina com a trilha descendo a zero DEPOIS da ultima palavra.
+# O arquivo entregue e sempre voz + esta cauda, e e o ARQUIVO que a checagem
+# mede contra a grade vendida — logo o roteiro tem que ser escrito ja
+# descontando isto. Sem o desconto o spot estourava por construcao (~5,7s
+# na grade de 30-45s, achado no teste real de 03/09/2026).
+# ⚠️ Espelhado em static/mix-engine.js, static/clip-model.js,
+# static/minidaw.js e static/gerador.js: mudou aqui, muda LA.
+CAUDA_TRILHA_SEGUNDOS = 3.05
 
 
 def estimar_duracao_locucao(texto):
@@ -1001,9 +1017,18 @@ def gerador_roteiro():
             return responder_base('sem GEMINI_API_KEY configurada')
 
         if faixa:
-            alvo_txt = (f"O spot precisa durar entre {faixa[0]} e {faixa[1]} segundos falados. "
-                        f"Isso significa aproximadamente {int(faixa[0] * PALAVRAS_POR_SEGUNDO)} a "
-                        f"{int(faixa[1] * PALAVRAS_POR_SEGUNDO)} palavras. Respeite esse tamanho.")
+            # A grade vendida vale pro ARQUIVO; o arquivo e voz + cauda da
+            # trilha. O alvo de palavras sai da faixa JA descontada da cauda.
+            fal_min = max(1.0, faixa[0] - CAUDA_TRILHA_SEGUNDOS)
+            fal_max = max(fal_min + 1.0, faixa[1] - CAUDA_TRILHA_SEGUNDOS)
+            pal_min = max(3, int(fal_min * PALAVRAS_POR_SEGUNDO_LENTO))
+            pal_max = max(pal_min + 2, int(fal_max * PALAVRAS_POR_SEGUNDO_LENTO))
+            alvo_txt = (f"A LOCUÇÃO FALADA precisa durar entre {fal_min:.0f} e {fal_max:.0f} segundos. "
+                        f"O arquivo final ganha mais {CAUDA_TRILHA_SEGUNDOS:.1f}s de cauda da trilha, "
+                        f"e o plano vendido é de {faixa[0]} a {faixa[1]}s — por isso a fala tem que "
+                        f"caber nesse tamanho menor. Isso significa aproximadamente {pal_min} a "
+                        f"{pal_max} palavras. Respeite esse tamanho: passar do teto faz a emissora "
+                        f"recusar o spot.")
         else:
             alvo_txt = "Não há duração fixa contratada — escreva no tamanho que o conteúdo pedir."
 

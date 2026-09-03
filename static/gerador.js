@@ -11,6 +11,19 @@
 (function () {
     'use strict';
 
+    // Espelho de backend/app.py — mudou la, muda aqui.
+    //
+    // O Gemini nao tem um ritmo, tem uma FAIXA: 4 takes do mesmo roteiro em
+    // 03/09/2026 deram 2,57 / 2,40 / 2,31 / 2,16 pal/s. Por isso a tela mostra
+    // um INTERVALO, e nao um numero unico que seria mentira metade das vezes —
+    // foi exatamente assim que um "~43,2s" virou um arquivo de 49,9s.
+    // A cauda e o fade da trilha que toda mixagem acrescenta depois da ultima
+    // palavra: o que se mostra e o ARQUIVO, que e o que a emissora recebe e a
+    // checagem mede.
+    const RITMO_RAPIDO = 2.55;
+    const RITMO_LENTO = 2.15;
+    const CAUDA_TRILHA = 3.05;
+
     const estado = {
         pedido: null,       // pedido escolhido
         pedidos: [],        // lista carregada
@@ -711,7 +724,9 @@
             : ta.value;
         const palavras = texto.trim().split(/\s+/).filter(Boolean).length;
         document.getElementById('tempoEstimado').textContent =
-            palavras ? `~${(palavras / 2.5).toFixed(1)}s de locução` : '';
+            palavras
+                ? `~${(palavras / RITMO_RAPIDO + CAUDA_TRILHA).toFixed(0)} a ${(palavras / RITMO_LENTO + CAUDA_TRILHA).toFixed(0)}s de spot (arquivo)`
+                : '';
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
