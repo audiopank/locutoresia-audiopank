@@ -32,6 +32,7 @@ import time
 import hashlib
 import logging
 import threading
+import unicodedata
 
 import requests
 
@@ -246,6 +247,18 @@ def listar(limit=20, author_id=None):
         return []
 
 
+def _slug_ascii(nome):
+    """Nome de arquivo seguro pro Storage do feed: só ASCII, dígitos e hífen.
+
+    O Storage do Supabase recusa chave com acento ("InvalidKey") — o primeiro
+    spot do Vida Saudável ("...Saudável #1: ... amamentação") quebrou aqui em
+    04/09/2026. `\\w` do Python aceita letra acentuada, por isso o slug antigo
+    deixava passar. Tira o acento (NFKD) antes de filtrar.
+    """
+    texto = unicodedata.normalize('NFKD', str(nome or 'spot')).encode('ascii', 'ignore').decode()
+    return re.sub(r'[^A-Za-z0-9-]+', '-', texto).strip('-')[:60] or 'spot'
+
+
 def subir_audio(nome, dados, conta='principal'):
     """Sobe um MP3 pro storage do FEED (bucket `post-audio`) e devolve a URL pública.
 
@@ -255,8 +268,7 @@ def subir_audio(nome, dados, conta='principal'):
     """
     s = sessao(conta)
     url, anon = _cfg()
-    base = re.sub(r'[^\w\-]+', '-', str(nome or 'spot')).strip('-')[:60] or 'spot'
-    caminho = f"{s['user_id']}/{int(time.time())}-{base}.mp3"
+    caminho = f"{s['user_id']}/{int(time.time())}-{_slug_ascii(nome)}.mp3"
     r = requests.post(f"{url}/storage/v1/object/post-audio/{caminho}",
                       headers={'apikey': anon,
                                'Authorization': f"Bearer {s['access_token']}",
