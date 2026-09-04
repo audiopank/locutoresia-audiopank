@@ -264,9 +264,18 @@
             effects: Object.assign(
                 { reverb: false, delay: false, compressor: false, eq: false,
                   hpf: tipo === 'voice', presence: false, limiter: true },
-                r.effects || {}
+                r.effects || {},
+                // Gate de respiração (mesmo silenciador da MiniDAW). Entra DEPOIS
+                // da receita de propósito: a chave da tela manda, não a IA — e a
+                // receita nem conhece 'gate'. Só na voz; trilha não respira.
+                { gate: tipo === 'voice' && gateLigado() }
             )
         };
+    }
+
+    function gateLigado() {
+        const chk = document.getElementById('chkGate');
+        return chk ? chk.checked : true;
     }
 
     // ── Checagem de duracao e frase legal ────────────────────────────────

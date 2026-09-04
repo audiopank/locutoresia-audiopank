@@ -225,6 +225,21 @@
                         gravar. Só o Modo Padrão (Google) entende direção.
                     </div>
 
+                    <!-- Gate de respiração: o mesmo silenciador da MiniDAW (aplicarGate no
+                         mix-engine). O Gerador nunca ligava a chave na voz — o produtor
+                         ouviu a locutora respirando alto no episódio 1 do Vida Saudável
+                         (04/09/2026). Liga por padrão: voz de IA respira alto e o limiter
+                         puxa o ar pra cima. -->
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="chkGate" checked>
+                        <label class="form-check-label" for="chkGate">Gate de respiração na voz</label>
+                    </div>
+                    <div class="hint mb-3">
+                        Abaixa a voz nos trechos sem fala pra respiração sumir por baixo
+                        (piso de -24 dB, nunca silêncio total). Vale no mix e no
+                        "Regerar só a voz". Pra EQ e ajuste fino, use "Abrir na MiniDAW".
+                    </div>
+
                     <label class="form-label" for="selectPlano">Duração do spot</label>
                     <!-- Valores precisam existir em DURACAO_POR_PLANO (backend/app.py):
                          é a grade dos planos VENDIDOS, não inventar opção aqui. -->
@@ -330,6 +345,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=17"></script>
+    <script src="/static/gerador.js?v=18"></script>
 </body>
 </html>
