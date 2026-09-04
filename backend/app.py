@@ -5965,9 +5965,14 @@ def api_gerador_publicar_feed():
         # no lugar de Vida Saudável). Melhor recusar e dizer o que falta.
         if conta != 'principal' and not newpost_feed.conta_configurada(conta):
             var_email, var_senha = newpost_feed.CONTAS[conta]
+            # Diz QUAL das duas falta: na Vercel o erro costuma ser nome digitado
+            # diferente, ambiente errado (Preview em vez de Production) ou
+            # variável criada depois do deploy — e ela só vale em deploy novo.
+            faltam = [v for v in (var_email, var_senha) if not os.getenv(v, '').strip()]
             return jsonify({"success": False,
-                            "error": f"Conta '{conta}' sem credenciais no ambiente "
-                                     f"({var_email} / {var_senha}). Cadastre na Vercel e tente de novo."}), 400
+                            "error": f"Conta '{conta}' sem credenciais no ambiente: falta {' e '.join(faltam)}. "
+                                     "Confira o nome exato na Vercel (ambiente Production) e faça Redeploy — "
+                                     "variável nova só vale em deploy novo."}), 400
         nome = str(data.get('nome') or 'Spot').strip()[:120]
         texto = str(data.get('texto') or '').strip()
         audio_b64 = str(data.get('audio_base64') or '')
