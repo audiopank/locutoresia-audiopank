@@ -5957,8 +5957,17 @@ def api_gerador_publicar_feed():
     try:
         data = request.get_json() or {}
         conta = str(data.get('conta') or 'locutores')
-        if conta not in ('locutores', 'principal', 'futuro'):
+        if conta not in ('locutores', 'principal', 'futuro', 'vida'):
             return jsonify({"success": False, "error": "Conta inválida."}), 400
+        from core import newpost_feed
+        # Sem as credenciais da conta escolhida o módulo cairia CALADO na
+        # principal, e o spot sairia assinado pelo perfil errado (NewPost-IA ✓
+        # no lugar de Vida Saudável). Melhor recusar e dizer o que falta.
+        if conta != 'principal' and not newpost_feed.conta_configurada(conta):
+            var_email, var_senha = newpost_feed.CONTAS[conta]
+            return jsonify({"success": False,
+                            "error": f"Conta '{conta}' sem credenciais no ambiente "
+                                     f"({var_email} / {var_senha}). Cadastre na Vercel e tente de novo."}), 400
         nome = str(data.get('nome') or 'Spot').strip()[:120]
         texto = str(data.get('texto') or '').strip()
         audio_b64 = str(data.get('audio_base64') or '')
@@ -5976,7 +5985,6 @@ def api_gerador_publicar_feed():
         if len(dados) > 3_500_000:
             return jsonify({"success": False, "error": "Áudio grande demais pra publicar por aqui (limite ~3,5MB)."}), 400
 
-        from core import newpost_feed
         audio_url = newpost_feed.subir_audio(nome, dados, conta=conta)
         trecho = re.sub(r'\s+', ' ', texto)[:220].strip()
         if len(texto) > 220 and ' ' in trecho:

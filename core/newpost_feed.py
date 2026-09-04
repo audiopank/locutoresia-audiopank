@@ -18,6 +18,10 @@ Configuração (só por variável de ambiente — senha nunca entra no código):
     NEWPOST_FEED_SENHA
     NEWPOST_FEED_EMAIL_FUTURO   opcional: conta "Futuro em Pauta" (Busca Notícias)
     NEWPOST_FEED_SENHA_FUTURO   — se faltar, cai na principal
+    NEWPOST_FEED_EMAIL_LOCUTORES  opcional: perfil da produtora (spots do Gerador)
+    NEWPOST_FEED_SENHA_LOCUTORES
+    NEWPOST_FEED_EMAIL_VIDA     opcional: programa "Vida Saudável" (podcast diário)
+    NEWPOST_FEED_SENHA_VIDA
 
 Sem fallback de URL de propósito: URL morta escondida como fallback foi o que
 deixou a integração quebrada em silêncio quando o projeto antigo desligou.
@@ -39,6 +43,9 @@ CONTAS = {
     # Perfil da produtora ("LOCUTORES IA - Áudio Pank") — assina os SPOTS do
     # Gerador no feed; contas que faltarem caem na principal.
     'locutores': ('NEWPOST_FEED_EMAIL_LOCUTORES', 'NEWPOST_FEED_SENHA_LOCUTORES'),
+    # Programa "Vida Saudável" — podcast diário de saúde e bem-estar, vitrine do
+    # produto "Podcast Diário com a marca do cliente" (decisão de 04/09/2026).
+    'vida': ('NEWPOST_FEED_EMAIL_VIDA', 'NEWPOST_FEED_SENHA_VIDA'),
 }
 
 # Cache de sessão por e-mail (vive enquanto a instância viver — na Vercel, por
@@ -69,6 +76,17 @@ def _credenciais(conta):
         email = os.getenv('NEWPOST_FEED_EMAIL', '').strip()
         senha = os.getenv('NEWPOST_FEED_SENHA', '')
     return email, senha
+
+
+def conta_configurada(conta):
+    """True quando a conta tem e-mail/senha PRÓPRIOS no ambiente.
+
+    Diferente de `_credenciais`, NÃO considera o fallback pra principal: serve
+    pra quem precisa recusar em vez de assinar com o perfil errado (ex.: spot
+    pedido "como Vida Saudável" saindo assinado NewPost-IA ✓ sem ninguém ver).
+    """
+    var_email, var_senha = CONTAS.get(conta, CONTAS['principal'])
+    return bool(os.getenv(var_email, '').strip() and os.getenv(var_senha, ''))
 
 
 def sessao(conta='principal'):

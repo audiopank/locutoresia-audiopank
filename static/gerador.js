@@ -758,7 +758,7 @@
         document.getElementById('btnPublicarFeed').onclick = async () => {
             if (!exigeAudio()) return;
             const conta = document.getElementById('selectContaFeed').value;
-            const rotulos = { locutores: 'LOCUTORES IA', principal: 'NewPost-IA ✓', futuro: 'Futuro em Pauta' };
+            const rotulos = { locutores: 'LOCUTORES IA', principal: 'NewPost-IA ✓', futuro: 'Futuro em Pauta', vida: 'Vida Saudável' };
             if (!confirm(`Publicar este spot no FEED PÚBLICO da NewPost-IA assinando como ${rotulos[conta]}?`)) return;
             const btn = document.getElementById('btnPublicarFeed');
             btn.disabled = true;
