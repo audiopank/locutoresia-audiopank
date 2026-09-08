@@ -791,7 +791,11 @@
                 });
                 const d = await resp.json();
                 if (d.success) {
-                    alert(`📡 Spot no ar no feed da NewPost-IA, assinado por ${rotulos[conta]}!\nConfira em www.newpostia.app`);
+                    // Série/episódio e tags vêm do backend (por conta) — o produtor
+                    // confere na hora se o podcast saiu como episódio numerado.
+                    const serie = d.serie ? `\nSérie "${d.serie}"${d.episodio ? ` · Ep. ${d.episodio}` : ''}` : '';
+                    const tags = (d.tags || []).length ? `\nTags: ${d.tags.map(t => '#' + t).join(' ')}` : '';
+                    alert(`📡 Spot no ar no feed da NewPost-IA, assinado por ${rotulos[conta]}!${serie}${tags}\nConfira em www.newpostia.app`);
                 } else {
                     alert('O feed recusou: ' + (d.error || 'falha desconhecida'));
                 }

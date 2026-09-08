@@ -49,6 +49,116 @@ CONTAS = {
     'vida': ('NEWPOST_FEED_EMAIL_VIDA', 'NEWPOST_FEED_SENHA_VIDA'),
 }
 
+# ── Tags e série por conta (Gerador → feed) ─────────────────────────────────
+# `tags` do post são os chips embaixo do texto. Mas o feed indexa hashtag
+# (tabela post_hashtags, página de hashtag, "para você") a partir do TEXTO do
+# post, não desse array — provado em 08/09/2026: o "#2" do título do episódio 2
+# virou a hashtag "2", e "LocutoresIA" (só no array) nunca virou hashtag.
+# Por isso quem publica manda as mesmas tags também no fim do content.
+TAGS_PADRAO = ['LocutoresIA', 'Spot']
+TAGS_POR_CONTA = {
+    'vida': ['VidaSaudavel', 'Podcast', 'Saúde'],
+}
+
+# Programa por conta = série na NewPost-IA (tabela `series`; o post leva
+# `series_id`/`episode_number` e o site mostra "🎙️ Série · Ep. N" com link).
+# Série é EXTRA: falhou qualquer passo, o post sai avulso — publicar nunca
+# trava por causa dela (mesma regra do VoiceFlow, que já usa essa tabela).
+SERIES_POR_CONTA = {
+    'vida': {
+        'titulo': 'Vida Saudável',
+        'descricao': 'Um minuto e meio por dia sobre saúde e bem-estar, de segunda a sexta. '
+                     'Conteúdo informativo, não substitui orientação médica. '
+                     'Produzido por Locutores IA, Áudio Pank Produtora — sua marca pode ser o oferecimento do dia.',
+    },
+}
+
+
+def tags_da_conta(conta):
+    """Chips do post pra conta (lista nova, pra quem chamar poder mexer)."""
+    return list(TAGS_POR_CONTA.get(conta, TAGS_PADRAO))
+
+
+def com_hashtags(conteudo, tags):
+    """Acrescenta `#Tag1 #Tag2` numa linha final do texto (é o que o feed indexa).
+
+    Não repete tag que já esteja no texto; sem tags devolve o texto como veio.
+    """
+    conteudo = (conteudo or '').rstrip()
+    faltam = [t for t in (tags or []) if t and f'#{t}'.lower() not in conteudo.lower()]
+    if not faltam:
+        return conteudo
+    return conteudo + '\n\n' + ' '.join(f'#{t}' for t in faltam)
+
+
+def numero_do_episodio(nome):
+    """Número do episódio a partir do nome do spot ("Vida Saudável #3: tema" → 3).
+
+    None quando não há `#N` — aí o trigger do feed numera na ordem da série.
+    """
+    m = re.search(r'#\s*(\d{1,4})\b', nome or '')
+    return int(m.group(1)) if m else None
+
+
+def _capa_do_perfil(user_id, cabecalhos, url):
+    """Capa (ou avatar) do perfil pra ilustrar a série. None se não achar."""
+    try:
+        r = requests.get(f'{url}/rest/v1/profiles', headers=cabecalhos,
+                         params={'id': f'eq.{user_id}', 'select': 'cover_url,avatar_url', 'limit': '1'}, timeout=15)
+        if r.ok and r.json():
+            p = r.json()[0] or {}
+            return p.get('cover_url') or p.get('avatar_url') or None
+    except Exception as e:
+        logger.warning(f'[newpost_feed] capa do perfil: {e}')
+    return None
+
+
+def serie_da_conta(conta):
+    """Acha (ou cria) a série do programa da conta: {'id','titulo'} ou None.
+
+    None = a conta não tem programa em SERIES_POR_CONTA, ou algo falhou (sem
+    sessão, RLS, rede). Quem chama publica avulso nesse caso. Busca por
+    (autor, título) exatos; se o INSERT for recusado (ex.: unique de
+    autor+título por corrida), rebusca uma vez.
+    """
+    cfg = SERIES_POR_CONTA.get(conta)
+    if not cfg:
+        return None
+    try:
+        s = sessao(conta)
+        url, anon = _cfg()
+        H = {'apikey': anon, 'Authorization': f"Bearer {s['access_token']}", 'Content-Type': 'application/json'}
+        params = {'author_id': f"eq.{s['user_id']}", 'title': f"eq.{cfg['titulo']}", 'select': 'id,title', 'limit': '1'}
+
+        def _busca():
+            r = requests.get(f'{url}/rest/v1/series', headers=H, params=params, timeout=20)
+            if r.ok:
+                linhas = r.json()
+                if isinstance(linhas, list) and linhas and linhas[0].get('id'):
+                    return {'id': linhas[0]['id'], 'titulo': linhas[0].get('title') or cfg['titulo']}
+            return None
+
+        achada = _busca()
+        if achada:
+            return achada
+        corpo = {'author_id': s['user_id'], 'title': cfg['titulo'],
+                 'description': cfg.get('descricao'), 'cover_url': _capa_do_perfil(s['user_id'], H, url)}
+        r = requests.post(f'{url}/rest/v1/series', headers={**H, 'Prefer': 'return=representation'},
+                          json=corpo, timeout=20)
+        if r.ok:
+            novas = r.json()
+            linha = novas[0] if isinstance(novas, list) and novas else (novas if isinstance(novas, dict) else {})
+            if linha.get('id'):
+                logger.info(f"[newpost_feed] série criada: {cfg['titulo']} ({linha['id']})")
+                return {'id': linha['id'], 'titulo': linha.get('title') or cfg['titulo']}
+        else:
+            logger.warning(f'[newpost_feed] criar série recusado ({r.status_code}): {(r.text or "")[:160]}')
+        return _busca()
+    except Exception as e:
+        logger.warning(f'[newpost_feed] série indisponível, post sai avulso: {e}')
+        return None
+
+
 # Cache de sessão por e-mail (vive enquanto a instância viver — na Vercel, por
 # instância quente; o pior caso é relogar, que custa uma chamada).
 _sessoes = {}
@@ -161,13 +271,20 @@ def _chave_idempotente(user_id, base):
 
 
 def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_types=None,
-             is_ia=True, chave=None, audio_url=None):
+             is_ia=True, chave=None, audio_url=None, series_id=None, episode_number=None,
+             privacy='public'):
     """Insere um post no feed como a conta indicada.
 
     `chave` (ex.: link da notícia) vira idempotency_key — o mesmo artigo não
     posta duas vezes. Devolve dict: success/post_id ou error (+ already=True
     quando o banco acusou duplicado, + nao_configurado=True quando falta env).
     Nunca levanta exceção: quem chama decide o que fazer com o status.
+
+    `series_id` faz o post sair como episódio da série (a chave só entra no
+    corpo quando há série — `series_id: null` explícito derrubaria TODO
+    insert se a coluna sumisse do feed, PGRST204). `episode_number` é
+    opcional: sem ele o trigger do feed numera na ordem. No sucesso devolve
+    também series_id/episode_number como o banco gravou.
     """
     conteudo = (conteudo or '').strip()
     if not conteudo:
@@ -184,7 +301,7 @@ def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_type
         'author_id': s['user_id'],
         'content': conteudo,
         'status': 'published',
-        'privacy': 'public',
+        'privacy': privacy if privacy in ('public', 'private') else 'public',
         'is_ia_generated': bool(is_ia),
         'tags': list(tags or []),
         'content_hash': hashlib.md5(conteudo.encode('utf-8')).hexdigest(),
@@ -195,6 +312,10 @@ def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_type
         payload['media_types'] = list(media_types or (['image'] * len(media_urls)))
     if audio_url:
         payload['audio_url'] = audio_url
+    if series_id:
+        payload['series_id'] = series_id
+        if episode_number:
+            payload['episode_number'] = int(episode_number)
 
     cabecalhos = {
         'apikey': anon,
@@ -208,12 +329,15 @@ def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_type
         return {'success': False, 'error': f'rede: {e}'}
 
     if r.status_code in (200, 201):
+        linha = {}
         try:
             d = r.json()
-            pid = d[0]['id'] if isinstance(d, list) and d else None
+            if isinstance(d, list) and d and isinstance(d[0], dict):
+                linha = d[0]
         except Exception:
-            pid = None
-        return {'success': True, 'post_id': pid, 'author_id': s['user_id']}
+            linha = {}
+        return {'success': True, 'post_id': linha.get('id'), 'author_id': s['user_id'],
+                'series_id': linha.get('series_id'), 'episode_number': linha.get('episode_number')}
 
     texto = r.text or ''
     if '23505' in texto:
@@ -287,10 +411,20 @@ def apagar(post_id, conta='principal'):
         logger.error(f'[newpost_feed] apagar sem sessão: {e}')
         return False
     url, anon = _cfg()
+    H = {'apikey': anon, 'Authorization': f"Bearer {s['access_token']}", 'Content-Type': 'application/json'}
+    # O feed tem duas FKs pra posts SEM cascata (achado na faxina de 04/09/2026):
+    # post_hashtags.post_id (hashtag extraída do texto) e
+    # scheduled_posts.published_post_id (post que saiu pelo agendador do site).
+    # Sem soltar as duas antes, o DELETE do post responde 409/23503.
+    try:
+        requests.delete(f'{url}/rest/v1/post_hashtags', params={'post_id': f'eq.{post_id}'}, headers=H, timeout=20)
+        requests.patch(f'{url}/rest/v1/scheduled_posts', params={'published_post_id': f'eq.{post_id}'},
+                       headers=H, json={'published_post_id': None}, timeout=20)
+    except Exception as e:
+        logger.warning(f'[newpost_feed] soltar FKs antes de apagar: {e}')
     try:
         r = requests.delete(f'{url}/rest/v1/posts', params={'id': f'eq.{post_id}'},
-                            headers={'apikey': anon, 'Authorization': f"Bearer {s['access_token']}",
-                                     'Prefer': 'return=representation'}, timeout=20)
+                            headers={**H, 'Prefer': 'return=representation'}, timeout=20)
         return r.ok and bool(r.json())
     except Exception as e:
         logger.error(f'[newpost_feed] apagar falhou: {e}')

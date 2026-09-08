@@ -5994,11 +5994,23 @@ def api_gerador_publicar_feed():
         trecho = re.sub(r'\s+', ' ', texto)[:220].strip()
         if len(texto) > 220 and ' ' in trecho:
             trecho = trecho.rsplit(' ', 1)[0] + '…'
+        # Tags por conta (chips) — e as mesmas no fim do texto, porque o feed
+        # indexa hashtag a partir do CONTENT, não do array `tags` (ver
+        # newpost_feed.TAGS_POR_CONTA). Podcast Vida Saudável ≠ spot.
+        tags = newpost_feed.tags_da_conta(conta)
         conteudo = f"🎙️ {nome}" + (f"\n\n{trecho}" if trecho else "")
-        r = newpost_feed.publicar(conteudo, conta=conta, tags=['LocutoresIA', 'Spot'],
-                                  audio_url=audio_url, chave=audio_url)
+        conteudo = newpost_feed.com_hashtags(conteudo, tags)
+        # Série do programa (ex.: Vida Saudável): acha ou cria; None = avulso, e a
+        # publicação nunca trava por causa dela. O número do episódio vem do "#N"
+        # no nome do spot; sem ele, o trigger do feed numera na ordem da série.
+        serie = newpost_feed.serie_da_conta(conta)
+        episodio = newpost_feed.numero_do_episodio(nome) if serie else None
+        r = newpost_feed.publicar(conteudo, conta=conta, tags=tags, audio_url=audio_url, chave=audio_url,
+                                  series_id=serie['id'] if serie else None, episode_number=episodio)
         if r.get('success'):
-            return jsonify({"success": True, "post_id": r.get('post_id'), "audio_url": audio_url})
+            return jsonify({"success": True, "post_id": r.get('post_id'), "audio_url": audio_url,
+                            "tags": tags, "serie": serie['titulo'] if serie else None,
+                            "episodio": r.get('episode_number') or episodio})
         return jsonify({"success": False, "error": r.get('error', 'falha ao publicar')}), 200
     except Exception as e:
         print(f"[gerador/publicar-feed] erro: {e}")
