@@ -35,7 +35,9 @@
         receita: null,      // resposta do mix-recipe
         mixBlob: null,      // resultado final
         trilhaCliente: null, // trilha subida NESTA aba: {id, name, file_url, buffer}
-        roteiroMontado: false // programa: o texto do comercial veio do "Montar roteiro"
+        roteiroMontado: false, // programa: o texto do comercial veio do "Montar roteiro"
+        rascunhoMeta: null,    // spot reaberto dos guardados: {nome, conta, episodio, ...}
+        duracaoMix: 0          // duração do último mix (vai no .txt gêmeo do rascunho)
     };
 
     // Valor do select quando a trilha do cliente decodificou mas NÃO ficou
@@ -405,6 +407,41 @@
             });
             if (!up.ok) throw new Error('falha no envio pro Storage');
 
+            // O roteiro e o "quem/qual episódio" vão num .txt de mesmo nome:
+            // é o que deixa "Reabrir" publicar amanhã o que foi gerado hoje
+            // (um episódio por dia, às 10h — regra do produtor). Só o áudio
+            // não bastava: o texto do post e a conta se perdiam com a aba.
+            // Melhor esforço: falhar aqui não desfaz o áudio guardado.
+            try {
+                const prog = programaAtual();
+                const meta = {
+                    v: 1,
+                    nome: (document.getElementById('inputNome').value || '').trim(),
+                    conta: document.getElementById('selectContaFeed').value,
+                    programa: prog ? prog.id : null,
+                    episodio: prog ? (parseInt(document.getElementById('inputEpisodio').value, 10) || null) : null,
+                    tema: prog ? document.getElementById('inputTema').value.trim() : '',
+                    trilha: estado.trilha ? estado.trilha.name : null,
+                    duracao: Math.round((estado.duracaoMix || 0) * 10) / 10,
+                    gerado_em: new Date().toISOString()
+                };
+                const corpo = JSON.stringify(meta) + '\n\n' + (estado.roteiro || document.getElementById('textoComercial').value || '');
+                const rt = await fetch('/api/client-deliveries/upload-url', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: nome.replace(/\.(mp3|wav)$/i, '') + '.txt', kind: 'rascunho', twin_of: u.path })
+                });
+                const ut = await rt.json();
+                if (!ut.success) throw new Error(ut.error || 'sem URL pro roteiro');
+                const fdt = new FormData();
+                fdt.append('file', new Blob([corpo], { type: 'text/plain' }), 'roteiro.txt');
+                const upt = await fetch(ut.upload_url, {
+                    method: 'PUT', headers: { 'apikey': ut.apikey, 'Authorization': `Bearer ${ut.apikey}` }, body: fdt
+                });
+                if (!upt.ok) throw new Error('falha ao guardar o roteiro');
+            } catch (e) {
+                avisar('O áudio ficou guardado, mas o roteiro não (' + e.message + '): ao reabrir, cole o texto na mão.', 'atencao');
+            }
+
             avisar('💾 Spot guardado — some da tela, mas não do Storage.', 'ok');
             carregarRascunhos();
         } catch (e) {
@@ -415,6 +452,67 @@
 
     // Lista os spots já produzidos, pra achar o de ontem sem depender da aba
     // continuar aberta.
+    // Traz um spot guardado de volta pra bancada: áudio no player (Feed,
+    // Enviar, Download funcionam), roteiro no texto, nome e conta do .txt
+    // gêmeo. Não restaura voz/trilha separadas — pra isso é gerar de novo.
+    async function reabrirRascunho(x) {
+        limparAvisos();
+        passo(0, 0, `Reabrindo "${x.titulo}"...`);
+        try {
+            const ra = await fetch(x.url);
+            if (!ra.ok) throw new Error('não consegui baixar o áudio guardado');
+            const bytes = await ra.arrayBuffer();
+            const ehWav = /\.wav$/i.test(x.arquivo || '');
+            estado.mixBlob = new Blob([bytes], { type: ehWav ? 'audio/wav' : 'audio/mpeg' });
+            estado.vozBuffer = null;
+            estado.trilhaBuffer = null;
+            estado.receita = null;
+            estado.rascunhoMeta = null;
+
+            let meta = null;
+            let roteiro = '';
+            if (x.texto_url) {
+                try {
+                    const rt = await fetch(x.texto_url);
+                    if (rt.ok) {
+                        const txt = await rt.text();
+                        const quebra = txt.indexOf('\n');
+                        try { meta = JSON.parse(quebra >= 0 ? txt.slice(0, quebra) : txt); } catch (e) { meta = null; }
+                        roteiro = quebra >= 0 ? txt.slice(quebra).trim() : '';
+                    }
+                } catch (e) { meta = null; }
+            }
+
+            let duracao = 0;
+            try {
+                const buf = await ctx.decodeAudioData(bytes.slice(0));
+                duracao = buf.duration;
+            } catch (e) {
+                duracao = (meta && meta.duracao) || 0;
+            }
+
+            document.getElementById('inputNome').value = (meta && meta.nome) || x.titulo;
+            if (roteiro) {
+                document.getElementById('textoComercial').value = roteiro;
+                estado.roteiro = roteiro;
+                atualizarContador();
+            }
+            document.getElementById('checkTextoPronto').checked = true;
+            if (meta && meta.conta) document.getElementById('selectContaFeed').value = meta.conta;
+            estado.trilha = (meta && meta.trilha) ? { name: meta.trilha } : null;
+            estado.rascunhoMeta = meta;
+            mostrarResultado(duracao);
+            const rot = { locutores: 'LOCUTORES IA', principal: 'NewPost-IA ✓', futuro: 'Futuro em Pauta', vida: 'Vida Saudável' };
+            avisar(`📂 Spot reaberto${meta && meta.episodio ? ` — episódio ${meta.episodio}` : ''}${meta && meta.conta ? `, conta do Feed: ${rot[meta.conta] || meta.conta}` : ''}. `
+                   + (roteiro ? 'Roteiro e nome restaurados. ' : 'Este spot foi guardado sem o roteiro: confira o nome e cole o texto do post se quiser. ')
+                   + 'Ouça e use Feed, Enviar ou Download. Pra mexer na voz ou na trilha, gere de novo.', 'ok');
+            passo(0, 0, '✅ Spot reaberto — ouça antes de publicar.');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e) {
+            passo(0, 0, '❌ ' + e.message);
+        }
+    }
+
     async function carregarRascunhos() {
         const box = document.getElementById('listaRascunhos');
         if (!box) return;
@@ -426,18 +524,24 @@
                 box.innerHTML = '<div class="hint">Nada guardado ainda — o primeiro spot que você gerar aparece aqui.</div>';
                 return;
             }
-            box.innerHTML = itens.map(x => `
+            box.innerHTML = itens.map((x, i) => `
                 <div class="rascunho-item">
                     <div class="rascunho-nome">
                         ${esc(x.titulo)}
                         <span class="hint ms-2">${esc(x.quando)}</span>
                     </div>
                     <audio controls preload="none" src="${esc(x.url)}"></audio>
+                    <button class="btn btn-sm btn-outline-info" data-reabrir="${i}"
+                            title="Reabrir na bancada: publicar no Feed, enviar ou baixar sem gerar de novo"><i class="fas fa-folder-open me-1"></i>Reabrir</button>
                     <a class="btn btn-sm btn-outline-light" download="${esc(x.titulo)}.mp3"
                        href="${esc(x.url)}"><i class="fas fa-download"></i></a>
                     <button class="btn btn-sm btn-outline-danger" data-excluir="${esc(x.path)}"
                             title="Excluir esta versão"><i class="fas fa-trash"></i></button>
                 </div>`).join('');
+
+            box.querySelectorAll('[data-reabrir]').forEach(btn => {
+                btn.onclick = () => reabrirRascunho(itens[Number(btn.dataset.reabrir)]);
+            });
 
             // Versão errada na lista é risco de mandar o arquivo trocado pro
             // cliente — daí o botão. Some do Storage de verdade, sem volta.
@@ -465,6 +569,7 @@
     }
 
     function mostrarResultado(duracao) {
+        estado.duracaoMix = duracao;
         document.getElementById('playerResultado').src = URL.createObjectURL(estado.mixBlob);
         document.getElementById('barraResultado').style.display = 'flex';
         const min = Math.floor(duracao / 60);
@@ -615,6 +720,7 @@
         const btn = document.getElementById('btnGerar');
         btn.disabled = true;
         limparAvisos();
+        estado.rascunhoMeta = null;   // spot novo não herda episódio de um reaberto
         document.getElementById('infoMix').style.display = 'none';
         const TOTAL = 6;
 
@@ -848,8 +954,11 @@
     }
 
     function nomeArquivo() {
+        // Tira o acento ANTES de trocar por hífen: "Saudável" virava "Saud-vel"
+        // e o título do spot guardado saía picado (achado do produtor, 09/09).
         const base = (document.getElementById('inputNome').value || 'spot').trim()
-            .replace(/[^\w\-]+/g, '-') || 'spot';
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^\w\-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '') || 'spot';
         const ext = (estado.mixBlob && estado.mixBlob.type === 'audio/wav') ? '.wav' : '.mp3';
         return base + ext;
     }
@@ -950,7 +1059,7 @@
                         // nome do spot não tem mais "#N" — o badge da série mostra).
                         episodio: programaAtual()
                             ? (parseInt(document.getElementById('inputEpisodio').value, 10) || undefined)
-                            : undefined,
+                            : ((estado.rascunhoMeta && estado.rascunhoMeta.episodio) || undefined),
                         audio_base64: b64
                     })
                 });

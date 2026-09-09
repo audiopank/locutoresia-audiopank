@@ -1532,6 +1532,67 @@ def gerador_programa_roteiro():
         return jsonify({"success": False, "error": "Não consegui montar o roteiro agora."}), 500
 
 
+def _caminho_rascunho(filename, twin_of=None, agora=None):
+    """Caminho no Storage de um rascunho do Gerador (pasta rascunhos/).
+
+    O NOME vai no caminho: essa pasta é listada na tela e uuid puro não diz
+    de quem é o spot. `twin_of` = caminho do áudio já guardado: o arquivo
+    novo (só .txt — roteiro + metadados) ganha o MESMO nome com outra
+    extensão, pra tela parear sem adivinhar. Levanta ValueError em caminho
+    forjado — o nome vem do navegador e vira chave no Storage.
+    """
+    ext = os.path.splitext(filename or '')[1].lower()
+    if twin_of:
+        if ext != '.txt':
+            raise ValueError('o par de um rascunho só pode ser .txt')
+        if not re.fullmatch(r'rascunhos/[\w\-]+\.(mp3|wav)', str(twin_of)):
+            raise ValueError('twin_of inválido')
+        return os.path.splitext(str(twin_of))[0] + '.txt'
+    # 90 e não 60: com acento tirado no navegador, "Vida-Saudavel-episodio-4-
+    # Pressao-alta-o-inimigo-silencioso" já passa de 60 e cortava o tema.
+    base = re.sub(r'[^\w\-]+', '-', os.path.splitext(filename or '')[0])[:90].strip('-') or 'spot'
+    carimbo = (agora or datetime.now()).strftime('%Y%m%d-%H%M%S')
+    return f"rascunhos/{carimbo}_{base}{ext}"
+
+
+def montar_itens_rascunhos(arquivos, limite=20):
+    """Listagem do Storage → itens da tela: só áudio, pareado com o .txt gêmeo.
+
+    O .txt (roteiro + metadados, gravado junto com o MP3 desde 09/09/2026) não
+    aparece como item: vira `texto_path` do áudio de mesmo nome. Título com
+    espaço no lugar do hífen — o nome com acento de verdade está no .txt.
+    """
+    nomes = {(a.get('name') or '') for a in arquivos}
+    itens = []
+    for a in arquivos:
+        nome_arq = a.get('name') or ''
+        if not nome_arq or nome_arq.startswith('.'):
+            continue        # o Supabase devolve um placeholder em pasta vazia
+        raiz, ext = os.path.splitext(nome_arq)
+        if ext.lower() not in ('.mp3', '.wav'):
+            continue
+        # "20260730-171203_spot-padaria.mp3" -> data legível + nome do spot
+        titulo, quando = raiz, ''
+        if '_' in nome_arq:
+            carimbo, _, resto = nome_arq.partition('_')
+            titulo = os.path.splitext(resto)[0]
+            try:
+                quando = datetime.strptime(carimbo, '%Y%m%d-%H%M%S').strftime('%d/%m/%Y %H:%M')
+            except ValueError:
+                quando = ''
+        gemeo = raiz + '.txt'
+        meta = a.get('metadata') or {}
+        itens.append({
+            "path": f"rascunhos/{nome_arq}", "arquivo": nome_arq,
+            "titulo": re.sub(r'\s+', ' ', titulo.replace('-', ' ')).strip() or nome_arq, "quando": quando,
+            "tamanho": meta.get('size'),
+            "texto_path": f"rascunhos/{gemeo}" if gemeo in nomes else None,
+        })
+        if len(itens) >= limite:
+            break
+    return itens
+
+
 @app.route('/api/gerador/rascunhos', methods=['GET'])
 def gerador_rascunhos():
     """Spots que o Gerador produziu, tenham sido enviados ao cliente ou não.
@@ -1551,41 +1612,26 @@ def gerador_rascunhos():
         limite = min(int(request.args.get('limite', 20) or 20), 100)
         storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
 
+        # Cada áudio pode ter um .txt gêmeo na mesma pasta: pede o dobro pra
+        # `limite` áudios continuarem cabendo depois do pareamento.
         arquivos = storage.list('rascunhos', {
-            "limit": limite,
+            "limit": limite * 2 + 10,
             "sortBy": {"column": "created_at", "order": "desc"}
         }) or []
 
         SETE_DIAS = 7 * 24 * 3600
-        itens = []
-        for a in arquivos:
-            nome_arq = a.get('name') or ''
-            if not nome_arq or nome_arq.startswith('.'):
-                continue        # o Supabase devolve um placeholder em pasta vazia
-            caminho = f"rascunhos/{nome_arq}"
+
+        def assinar(caminho):
             try:
                 assinada = storage.create_signed_url(caminho, SETE_DIAS)
-                url = assinada.get('signedURL') or assinada.get('signedUrl')
+                return assinada.get('signedURL') or assinada.get('signedUrl')
             except Exception:
-                url = None       # um arquivo problemático não derruba a lista
+                return None      # um arquivo problemático não derruba a lista
 
-            # "20260730-171203_spot-padaria.mp3" -> data legível + nome do spot
-            titulo, quando = nome_arq, ''
-            if '_' in nome_arq:
-                carimbo, _, resto = nome_arq.partition('_')
-                titulo = os.path.splitext(resto)[0]
-                try:
-                    dt = datetime.strptime(carimbo, '%Y%m%d-%H%M%S')
-                    quando = dt.strftime('%d/%m/%Y %H:%M')
-                except ValueError:
-                    quando = ''
-
-            meta = a.get('metadata') or {}
-            itens.append({
-                "path": caminho, "arquivo": nome_arq,
-                "titulo": titulo, "quando": quando,
-                "tamanho": meta.get('size'), "url": url
-            })
+        itens = montar_itens_rascunhos(arquivos, limite)
+        for it in itens:
+            it["url"] = assinar(it["path"])
+            it["texto_url"] = assinar(it["texto_path"]) if it.get("texto_path") else None
 
         return jsonify({"success": True, "rascunhos": itens})
     except Exception as e:
@@ -1611,6 +1657,12 @@ def gerador_rascunho_excluir():
 
         storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
         storage.remove([caminho])
+        raiz, ext = os.path.splitext(caminho)
+        if ext.lower() in ('.mp3', '.wav'):
+            try:
+                storage.remove([raiz + '.txt'])   # o roteiro gêmeo, se houver
+            except Exception:
+                pass
         return jsonify({"success": True})
     except Exception as e:
         print(f"Erro ao excluir rascunho do Gerador: {e}", flush=True)
@@ -2191,13 +2243,11 @@ def get_client_delivery_upload_url():
         import uuid
         file_extension = os.path.splitext(filename)[1]
         if kind == 'rascunho':
-            # Rascunho do Gerador guarda o NOME no caminho: essa pasta é listada
-            # pra tela ("gerados recentemente") e uuid puro não diz nada de quem
-            # é o spot. Sanitiza duro — o nome vem do navegador e vai virar
-            # caminho no Storage.
-            base = re.sub(r'[^\w\-]+', '-', os.path.splitext(filename)[0])[:60].strip('-') or 'spot'
-            carimbo = datetime.now().strftime('%Y%m%d-%H%M%S')
-            storage_path = f"{pasta}/{carimbo}_{base}{file_extension}"
+            # Nome no caminho + par .txt opcional (ver _caminho_rascunho).
+            try:
+                storage_path = _caminho_rascunho(filename, twin_of=data.get('twin_of'))
+            except ValueError as e:
+                return jsonify({"success": False, "error": str(e)}), 400
         else:
             storage_path = f"{pasta}/{uuid.uuid4()}{file_extension}"
 
