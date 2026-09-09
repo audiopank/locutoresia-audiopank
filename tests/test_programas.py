@@ -120,6 +120,7 @@ def test_contar_palavras_e_alvo():
     assert pr.contar_palavras('  um  dois\ntrês ') == 3
     assert pr.miolo_dentro_do_alvo('vida', ' '.join(['p'] * 145))
     assert pr.miolo_dentro_do_alvo('vida', ' '.join(['p'] * 120))       # folga de 20
+    assert pr.miolo_dentro_do_alvo('vida', ' '.join(['p'] * 160))       # o que a IA entrega na prática (89s reais)
     assert not pr.miolo_dentro_do_alvo('vida', ' '.join(['p'] * 60))
     assert not pr.miolo_dentro_do_alvo('vida', ' '.join(['p'] * 220))
 
@@ -147,7 +148,7 @@ def test_lista_para_tela_traz_ajustes_que_a_tela_trava():
     assert lista[0]['id'] == 'vida' and lista[0]['conta_feed'] == 'vida'
     a = lista[0]['ajustes']
     assert a['voz_contem'] == 'Charon' and a['modo'] == 'padrao' and a['gate'] is True
-    assert lista[0]['miolo_palavras'] == [135, 155]
+    assert lista[0]['miolo_palavras'] == [135, 165]
 
 
 # ── endpoints ────────────────────────────────────────────────────────────────
@@ -198,7 +199,7 @@ def test_roteiro_com_miolo_pronto_nao_chama_a_ia(cliente, monkeypatch):
     assert d['roteiro'].startswith('Vida Saudável, um minuto e meio por dia sobre saúde e bem-estar. Episódio três.')
     assert d['roteiro'].endswith('dois dois nove sete.')
     assert d['nome_spot'] == 'Vida Saudável, episódio 3: sono'
-    assert d['palavras_miolo'] == 140 and d['alvo_miolo'] == [135, 155]
+    assert d['palavras_miolo'] == 140 and d['alvo_miolo'] == [135, 165]
     assert d['conta_feed'] == 'vida' and d['avisos'] == []
     assert d['tempo_leitura_estimado'] > 60
 

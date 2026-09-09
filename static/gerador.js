@@ -34,7 +34,8 @@
         trilhaBuffer: null,
         receita: null,      // resposta do mix-recipe
         mixBlob: null,      // resultado final
-        trilhaCliente: null // trilha subida NESTA aba: {id, name, file_url, buffer}
+        trilhaCliente: null, // trilha subida NESTA aba: {id, name, file_url, buffer}
+        roteiroMontado: false // programa: o texto do comercial veio do "Montar roteiro"
     };
 
     // Valor do select quando a trilha do cliente decodificou mas NÃO ficou
@@ -529,6 +530,7 @@
     async function aplicarPrograma() {
         const p = programaAtual();
         document.getElementById('camposPrograma').style.display = p ? '' : 'none';
+        estado.roteiroMontado = false;
         if (!p) return;
         const a = p.ajustes || {};
         const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
@@ -593,6 +595,7 @@
             document.getElementById('inputNome').value = d.nome_spot;
             document.getElementById('checkTextoPronto').checked = true;
             document.getElementById('selectContaFeed').value = d.conta_feed;
+            estado.roteiroMontado = true;
             atualizarContador();
             atualizarContadorMiolo();
             (d.avisos || []).forEach(a => avisar('⚠️ ' + a, 'atencao'));
@@ -888,6 +891,15 @@
             document.getElementById('selectPrograma').addEventListener('change', aplicarPrograma);
             document.getElementById('textoMiolo').addEventListener('input', atualizarContadorMiolo);
             document.getElementById('btnMontarRoteiro').onclick = montarRoteiro;
+            // Patrocinador ou número do episódio mudou DEPOIS de montar: remonta
+            // na hora. O miolo já está no campo, então não gasta IA — só troca
+            // o fecho / a vinheta. (Achado no teste do ep.4: ele digitou o
+            // patrocinador depois e o fecho continuou "esse espaço pode ser seu".)
+            const remontar = () => {
+                if (estado.roteiroMontado && document.getElementById('textoMiolo').value.trim()) montarRoteiro();
+            };
+            document.getElementById('inputPatrocinador').addEventListener('change', remontar);
+            document.getElementById('inputEpisodio').addEventListener('change', remontar);
         } catch (e) {
             console.warn('programa: fiação falhou', e);
         }

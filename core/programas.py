@@ -27,9 +27,14 @@ PROGRAMAS = {
         'patrocinio_vazio': 'Esse espaço pode ser da sua marca.',
         'patrocinio_com': 'Um oferecimento de {marca}.',
         # Alvo do MIOLO em palavras. Partes fixas somam ~58 palavras; com o
-        # miolo nesse alvo o episódio fecha em ~200 palavras ≈ 90s no ritmo
-        # medido do Charon (ep.1: 215 palavras = 90,1s; ep.2: 204 = 94,0s).
-        'miolo_palavras': (135, 155),
+        # miolo nesse alvo o episódio fecha em ~200-220 palavras ≈ 90s no
+        # ritmo medido do Charon (ep.1: 215 palavras = 90,1s; ep.2: 204 =
+        # 94,0s; ep.4: miolo de 160 = 89,1s). A faixa aceita vai a 165 porque
+        # a IA entrega ~160 quando se pede 135-155 — e 160 deu 89s na prática;
+        # avisar "fora do alvo" nesse caso era alarme falso (09/09/2026).
+        'miolo_palavras': (135, 165),
+        # O que se PEDE à IA (ela passa uns 5-10 do teto pedido).
+        'miolo_pedido_ia': (135, 155),
         # Chamada ao ouvinte no TEXTO do post (não no áudio): é o convite ao
         # primeiro comentário humano do feed.
         'cta_post': 'Qual tema de saúde você quer ouvir no próximo episódio? Comenta aqui ou manda um áudio.',
@@ -215,9 +220,9 @@ def prompt_miolo(pid, tema, patrocinador=None):
     p = programa(pid)
     if not p:
         raise ValueError(f'programa desconhecido: {pid!r}')
-    lo, hi = p['miolo_palavras']
+    lo, hi = p.get('miolo_pedido_ia') or p['miolo_palavras']
     marca = str(patrocinador or '').strip()
-    linha_patrocinio = (f'O episódio tem patrocinador ("{marca}"), mas NÃO o cite no miolo: o fecho fixo já faz isso.\n'
+    linha_patrocinio =(f'O episódio tem patrocinador ("{marca}"), mas NÃO o cite no miolo: o fecho fixo já faz isso.\n'
                         if marca else '')
     return f"""Você é redator de rádio no Brasil e escreve o MIOLO de um episódio do programa "{p['nome']}".
 {p['linha_editorial']}
