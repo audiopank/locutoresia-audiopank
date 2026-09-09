@@ -49,6 +49,51 @@ def test_montar_roteiro_limpa_direcao_e_rotulo_do_miolo():
     assert 'Texto do miolo.\n\nSegunda parte.' in r
 
 
+ROTEIRO_SUNO = """[Falado - Ritmo jornalístico]
+Vida Saudável, um minuto e meio por dia sobre saúde e bem-estar. Episódio TRÊS:
+
+Você bate a meta de 5 porções de frutas e verduras por dia? Atenção!
+Um novo estudo revela que só isso pode não ser suficiente para proteger o seu coração.
+
+O segredo está nos flavonoides![45-80s - DADO DE IMPACTO + SOLUÇÃO][Falado - Tom de alerta + esperança]
+O problema? A maioria das pessoas não alcança a ingestão ideal dessas substâncias!
+
+Fica a dica! Mais cor no prato, mais vida no coração!
+Este conteúdo é informativo e não substitui a orientação do seu médico.
+
+Vida Saudável é produzido por Locutores IA, Áudio Pank Produtora. Esse espaço pode ser da sua marca. Informações pelo WhatsApp: oitenta e cinco, nove, nove dois dois seis, dois dois nove sete.
+[SFX: Vinheta de saída]"""
+
+
+def test_limpar_miolo_tira_marcacoes_em_qualquer_posicao():
+    t = pr.limpar_miolo('Frase um.[45-80s - DADO][Falado - alerta]\nFrase dois.\n[SFX: saída]')
+    assert '[' not in t and ']' not in t
+    assert t == 'Frase um.\nFrase dois.'
+
+
+def test_extrair_miolo_do_roteiro_inteiro_colado_do_suno():
+    miolo, removidas = pr.extrair_miolo('vida', ROTEIRO_SUNO)
+    assert removidas == ['vinheta', 'aviso', 'fecho']
+    assert miolo.startswith('Você bate a meta de 5 porções')
+    assert miolo.endswith('Mais cor no prato, mais vida no coração!')
+    assert 'Episódio' not in miolo and 'orientação do seu médico' not in miolo
+    assert 'Locutores IA' not in miolo and 'nove sete' not in miolo and '[' not in miolo
+    # remontado, o roteiro tem cada parte fixa UMA vez só
+    r = pr.montar_roteiro('vida', 3, miolo)
+    assert r.count('Episódio três') == 1 and r.count('orientação do seu médico') == 1 and r.count('nove sete') == 1
+
+
+def test_extrair_miolo_com_patrocinador_no_fecho_colado():
+    texto = ('Miolo aqui.\n\nVida Saudável é produzido por Locutores IA, Áudio Pank Produtora. '
+             'Um oferecimento de Farmácia X. Informações pelo WhatsApp: oitenta e cinco, nove, nove dois dois seis, dois dois nove sete')
+    miolo, removidas = pr.extrair_miolo('vida', texto)
+    assert miolo == 'Miolo aqui.' and removidas == ['fecho']
+
+
+def test_extrair_miolo_sem_partes_fixas_devolve_limpo():
+    assert pr.extrair_miolo('vida', '  Só o miolo.  ') == ('Só o miolo.', [])
+
+
 def test_montar_roteiro_programa_desconhecido():
     with pytest.raises(ValueError):
         pr.montar_roteiro('nao-existe', 1, 'x')
@@ -182,6 +227,17 @@ def test_roteiro_ia_falhou_diz_para_colar_o_miolo(cliente, monkeypatch):
     monkeypatch.setattr(m, '_escrever_miolo_com_ia', ia)
     d = cliente.post('/api/gerador/programa/roteiro', json={'programa': 'vida', 'tema': 't', 'episodio': 2}).get_json()
     assert not d['success'] and 'cota estourada' in d['error'] and 'miolo' in d['error'].lower()
+
+
+def test_roteiro_com_roteiro_inteiro_colado_nao_duplica_partes_fixas(cliente):
+    d = cliente.post('/api/gerador/programa/roteiro', json={
+        'programa': 'vida', 'tema': 'flavonoides', 'episodio': 3, 'miolo': ROTEIRO_SUNO}).get_json()
+    assert d['success'] and d['fonte'] == 'pronto'
+    assert d['roteiro'].count('Episódio três') == 1
+    assert d['roteiro'].count('orientação do seu médico') == 1
+    assert d['roteiro'].count('nove sete') == 1
+    assert '[' not in d['roteiro']
+    assert any('partes fixas' in a for a in d['avisos'])
 
 
 def test_roteiro_avisa_miolo_fora_do_alvo_e_palavra_proibida(cliente, monkeypatch):

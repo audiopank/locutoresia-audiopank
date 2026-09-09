@@ -115,12 +115,56 @@ def contar_palavras(texto):
 
 
 def limpar_miolo(miolo):
-    """Tira colchetes de direção, rótulo de locutor e espaço sobrando."""
+    """Tira marcações de produção, rótulo de locutor e espaço sobrando.
+
+    Roteiro vindo do Suno ou de outro gerador chega cheio de "[Falado - Ritmo
+    jornalístico]", "[45-80s - DADO DE IMPACTO]", "[SFX: Vinheta de saída]".
+    Nada disso é fala: no Gemini vira direção, no ElevenLabs é LIDO em voz
+    alta (bug conhecido). Some tudo que está entre colchetes, em qualquer
+    posição.
+    """
     t = str(miolo or '').strip()
-    t = re.sub(r'^\s*\[[^\]]*\]\s*', '', t)                  # "[fale calmo]" no começo
-    t = re.sub(r'^\s*LOCUTOR[A]?\s*:\s*', '', t, flags=re.I)  # "LOCUTOR:" no começo
+    t = re.sub(r'\[[^\]\n]*\]', ' ', t)                         # qualquer [marcação]
+    t = re.sub(r'^\s*LOCUTOR[A]?\s*:\s*', '', t, flags=re.I | re.M)  # "LOCUTOR:" no início de linha
+    t = re.sub(r'[ \t]+', ' ', t)
+    t = re.sub(r' *\n *', '\n', t)
     t = re.sub(r'\n{3,}', '\n\n', t)
     return t.strip()
+
+
+def extrair_miolo(pid, texto):
+    """Se veio o roteiro INTEIRO colado, tira as partes fixas do programa.
+
+    Devolve (miolo, removidas): `removidas` lista o que saiu ('vinheta',
+    'aviso', 'fecho') pra tela avisar. Sem partes fixas no texto, devolve o
+    texto limpo e lista vazia. Tolerante a maiúsculas e à pontuação final.
+    """
+    p = programa(pid)
+    if not p:
+        raise ValueError(f'programa desconhecido: {pid!r}')
+    t = limpar_miolo(texto)
+    removidas = []
+
+    inicio_vinheta = p['vinheta'].split('{episodio}')[0].strip()      # "... Episódio"
+    vinheta_re = re.compile(re.escape(inicio_vinheta) + r'[ \t]*[^\n.:!]{0,25}[.:!]?', re.I)
+    t, n = vinheta_re.subn(' ', t)
+    if n:
+        removidas.append('vinheta')
+
+    aviso_re = re.compile(re.escape(p['aviso'].rstrip('.')) + r'\.?', re.I)
+    t, n = aviso_re.subn(' ', t)
+    if n:
+        removidas.append('aviso')
+
+    inicio_fecho = p['fecho'].split('{patrocinio}')[0].strip()        # "... Áudio Pank Produtora."
+    fim_fecho = ' '.join(p['fecho'].rsplit(' ', 2)[-2:]).rstrip('.')   # últimas 2 palavras, sem o ponto
+    # (o ponto sai ANTES do escape: tirar depois deixava uma barra solta no padrão)
+    fecho_re = re.compile(re.escape(inicio_fecho) + r'.*?' + re.escape(fim_fecho) + r'\.?', re.I | re.S)
+    t, n = fecho_re.subn(' ', t)
+    if n:
+        removidas.append('fecho')
+
+    return limpar_miolo(t), removidas
 
 
 def montar_roteiro(pid, episodio, miolo, patrocinador=None):

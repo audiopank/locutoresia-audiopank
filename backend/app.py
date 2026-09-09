@@ -1487,11 +1487,18 @@ def gerador_programa_roteiro():
         if episodio < 1:
             return jsonify({"success": False, "error": "Informe o número do episódio."}), 400
         tema = str(data.get('tema') or '').strip()[:200]
-        miolo = _programas.limpar_miolo(str(data.get('miolo') or '')[:4000])
+        # Roteiro inteiro colado (com vinheta, aviso, fecho e marcações de
+        # produção de outro gerador) é o caso real do episódio 3: tira as
+        # partes fixas antes de montar, senão saem duas vezes.
+        miolo, removidas = _programas.extrair_miolo(pid, str(data.get('miolo') or '')[:6000])
         patrocinador = str(data.get('patrocinador') or '').strip()[:80]
 
         resumo = ''
         fonte = 'pronto'
+        avisos = []
+        if removidas:
+            avisos.append('Removi do miolo as partes fixas que vieram coladas (' + ', '.join(removidas)
+                          + ') e as marcações entre colchetes — o programa já coloca tudo isso.')
         if not miolo:
             if not tema:
                 return jsonify({"success": False, "error": "Escreva o tema do episódio, ou cole o miolo pronto."}), 400
@@ -1508,7 +1515,6 @@ def gerador_programa_roteiro():
         roteiro = _programas.montar_roteiro(pid, episodio, miolo, patrocinador)
         lo, hi = p['miolo_palavras']
         n_miolo = _programas.contar_palavras(miolo)
-        avisos = []
         if not (lo <= n_miolo <= hi):
             avisos.append(f'Miolo com {n_miolo} palavras; o alvo é {lo} a {hi} pra caber em um minuto e meio.')
         avisos += _programas.alertas_editoriais(miolo)
