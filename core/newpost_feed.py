@@ -159,6 +159,32 @@ def serie_da_conta(conta):
         return None
 
 
+def proximo_episodio(conta):
+    """Próximo número de episódio da série da conta (maior gravado + 1), ou None.
+
+    None = conta sem programa, série não achada, ou rede/RLS falhou — a tela
+    pede o número na mão. Lê logado (a série pode ter post privado de teste).
+    """
+    serie = serie_da_conta(conta)
+    if not serie:
+        return None
+    try:
+        s = sessao(conta)
+        url, anon = _cfg()
+        r = requests.get(f'{url}/rest/v1/posts',
+                         headers={'apikey': anon, 'Authorization': f"Bearer {s['access_token']}"},
+                         params={'series_id': f"eq.{serie['id']}", 'select': 'episode_number',
+                                 'order': 'episode_number.desc.nullslast', 'limit': '1'}, timeout=20)
+        if r.ok:
+            linhas = r.json()
+            maior = (linhas[0].get('episode_number') if isinstance(linhas, list) and linhas else 0) or 0
+            return int(maior) + 1
+        logger.warning(f'[newpost_feed] próximo episódio: HTTP {r.status_code}')
+    except Exception as e:
+        logger.warning(f'[newpost_feed] próximo episódio indisponível: {e}')
+    return None
+
+
 # Cache de sessão por e-mail (vive enquanto a instância viver — na Vercel, por
 # instância quente; o pior caso é relogar, que custa uma chamada).
 _sessoes = {}

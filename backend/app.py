@@ -1389,6 +1389,143 @@ def carimbo_atual():
         return jsonify({"success": False, "error": "Não consegui buscar a voz de carimbo."}), 500
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# PROGRAMAS (presets de rádio) — vinheta + miolo + aviso + fecho
+#
+# Ideia do produtor (08/09/2026), depois do episódio 2 do Vida Saudável sair
+# sem o aviso legal: o "relógio" do programa é fixo e só o miolo muda. As
+# partes fixas, o alvo de palavras e a linha editorial moram em
+# core/programas.py (puro); aqui é só IA e feed.
+# ═══════════════════════════════════════════════════════════════════════════
+from core import programas as _programas
+
+
+@app.route('/api/gerador/programas', methods=['GET'])
+def gerador_programas():
+    return jsonify({"success": True, "programas": _programas.lista_para_tela()})
+
+
+@app.route('/api/gerador/programa/<pid>/proximo-episodio', methods=['GET'])
+def gerador_programa_proximo_episodio(pid):
+    """Lê a série do programa no feed e devolve o próximo número. Sem feed, pede o número."""
+    p = _programas.programa(pid)
+    if not p:
+        return jsonify({"success": False, "error": "Programa desconhecido."}), 404
+    numero = None
+    try:
+        from core import newpost_feed
+        numero = newpost_feed.proximo_episodio(p['conta_feed'])
+    except Exception as e:
+        print(f'[programa/proximo-episodio] {e}', flush=True)
+    if numero:
+        return jsonify({"success": True, "episodio": int(numero), "fonte": "feed"})
+    return jsonify({"success": True, "episodio": None, "fonte": "indisponivel",
+                    "aviso": "Não consegui ler a série no feed — informe o número do episódio."})
+
+
+def _escrever_miolo_com_ia(pid, tema, patrocinador=''):
+    """Miolo do episódio pela IA: devolve (miolo, resumo) ou levanta exceção.
+
+    Duas tentativas, thinking desligado (mesma lição do /api/gerador/roteiro).
+    Fora do alvo de palavras vale segunda tentativa; se as duas saírem fora,
+    devolve a última mesmo assim — a tela avisa a contagem e o produtor edita.
+    """
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+    if not api_key:
+        raise RuntimeError('sem GEMINI_API_KEY configurada')
+    prompt = _programas.prompt_miolo(pid, tema, patrocinador)
+    ultimo_erro = ''
+    fora_do_alvo = None
+    for tentativa in (1, 2):
+        try:
+            from google import genai
+            from google.genai import types as genai_types
+            client = genai.Client(api_key=api_key)
+            gem = client.models.generate_content(
+                model='gemini-2.5-flash', contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    thinking_config=genai_types.ThinkingConfig(thinking_budget=0)
+                )
+            )
+            texto = (gem.text or '').replace('```json', '').replace('```', '').strip()
+            if not texto:
+                raise ValueError('resposta vazia do modelo')
+            cand = json.loads(texto)
+            miolo = _programas.limpar_miolo(cand.get('miolo') or '')
+            if not miolo:
+                raise ValueError('JSON sem o campo miolo')
+            resumo = str(cand.get('resumo') or '').strip()[:300]
+            if not _programas.miolo_dentro_do_alvo(pid, miolo):
+                fora_do_alvo = (miolo, resumo)
+                raise ValueError(f'miolo com {_programas.contar_palavras(miolo)} palavras, fora do alvo')
+            return miolo, resumo
+        except Exception as ia_err:
+            ultimo_erro = f'{type(ia_err).__name__}: {ia_err}'
+            print(f'IA do miolo falhou (tentativa {tentativa}/2): {ultimo_erro}', flush=True)
+    if fora_do_alvo:
+        return fora_do_alvo
+    raise RuntimeError(ultimo_erro or 'a IA não respondeu')
+
+
+@app.route('/api/gerador/programa/roteiro', methods=['POST'])
+def gerador_programa_roteiro():
+    """Monta o roteiro do episódio: vinheta + miolo + aviso + fecho.
+
+    Miolo vazio → a IA escreve a partir do tema. Miolo colado → vai como está
+    (só limpeza de rubrica). Nunca reescreve as partes fixas.
+    """
+    try:
+        data = request.get_json() or {}
+        pid = str(data.get('programa') or '')
+        p = _programas.programa(pid)
+        if not p:
+            return jsonify({"success": False, "error": "Programa desconhecido."}), 400
+        try:
+            episodio = int(data.get('episodio') or 0)
+        except (TypeError, ValueError):
+            episodio = 0
+        if episodio < 1:
+            return jsonify({"success": False, "error": "Informe o número do episódio."}), 400
+        tema = str(data.get('tema') or '').strip()[:200]
+        miolo = _programas.limpar_miolo(str(data.get('miolo') or '')[:4000])
+        patrocinador = str(data.get('patrocinador') or '').strip()[:80]
+
+        resumo = ''
+        fonte = 'pronto'
+        if not miolo:
+            if not tema:
+                return jsonify({"success": False, "error": "Escreva o tema do episódio, ou cole o miolo pronto."}), 400
+            try:
+                miolo, resumo = _escrever_miolo_com_ia(pid, tema, patrocinador)
+                fonte = 'ia'
+            except Exception as e:
+                # Sem miolo não há o que montar — e não existe fallback honesto
+                # pra texto que não foi escrito. O motivo vai junto (cota x rede).
+                return jsonify({"success": False,
+                                "error": f"A IA não escreveu o miolo agora ({str(e)[:160]}). "
+                                         "Cole o miolo pronto no campo e monte de novo."}), 200
+
+        roteiro = _programas.montar_roteiro(pid, episodio, miolo, patrocinador)
+        lo, hi = p['miolo_palavras']
+        n_miolo = _programas.contar_palavras(miolo)
+        avisos = []
+        if not (lo <= n_miolo <= hi):
+            avisos.append(f'Miolo com {n_miolo} palavras; o alvo é {lo} a {hi} pra caber em um minuto e meio.')
+        avisos += _programas.alertas_editoriais(miolo)
+        return jsonify({
+            "success": True, "fonte": fonte, "roteiro": roteiro, "miolo": miolo, "resumo": resumo,
+            "nome_spot": _programas.nome_do_spot(pid, episodio, tema),
+            "episodio": episodio, "conta_feed": p['conta_feed'],
+            "palavras_miolo": n_miolo, "alvo_miolo": [lo, hi],
+            "palavras_total": _programas.contar_palavras(roteiro),
+            "tempo_leitura_estimado": estimar_duracao_locucao(roteiro),
+            "avisos": avisos,
+        })
+    except Exception as e:
+        print(f"Erro no roteiro do programa: {e}", flush=True)
+        return jsonify({"success": False, "error": "Não consegui montar o roteiro agora."}), 500
+
+
 @app.route('/api/gerador/rascunhos', methods=['GET'])
 def gerador_rascunhos():
     """Spots que o Gerador produziu, tenham sido enviados ao cliente ou não.
@@ -5999,12 +6136,25 @@ def api_gerador_publicar_feed():
         # newpost_feed.TAGS_POR_CONTA). Podcast Vida Saudável ≠ spot.
         tags = newpost_feed.tags_da_conta(conta)
         conteudo = f"🎙️ {nome}" + (f"\n\n{trecho}" if trecho else "")
+        # Chamada ao ouvinte do programa (ex.: "qual tema você quer ouvir?"):
+        # vai no TEXTO do post, antes das hashtags — é o convite ao comentário.
+        cta = _programas.cta_da_conta(conta)
+        if cta:
+            conteudo += "\n\n" + cta
         conteudo = newpost_feed.com_hashtags(conteudo, tags)
         # Série do programa (ex.: Vida Saudável): acha ou cria; None = avulso, e a
         # publicação nunca trava por causa dela. O número do episódio vem do "#N"
         # no nome do spot; sem ele, o trigger do feed numera na ordem da série.
         serie = newpost_feed.serie_da_conta(conta)
-        episodio = newpost_feed.numero_do_episodio(nome) if serie else None
+        episodio = None
+        if serie:
+            # O programa manda o número explícito (campo Episódio da tela);
+            # sem ele vale o "#N" do nome; sem os dois, o trigger do feed numera.
+            try:
+                episodio = int(data.get('episodio') or 0) or None
+            except (TypeError, ValueError):
+                episodio = None
+            episodio = episodio or newpost_feed.numero_do_episodio(nome)
         r = newpost_feed.publicar(conteudo, conta=conta, tags=tags, audio_url=audio_url, chave=audio_url,
                                   series_id=serie['id'] if serie else None, episode_number=episodio)
         if r.get('success'):

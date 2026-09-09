@@ -128,6 +128,57 @@
             </p>
         </div>
 
+        <!-- Programa (preset de rádio): vinheta, aviso e fecho fixos; só o miolo
+             muda. Escolher trava voz/direção/gate/duração/conta do Feed e marca
+             "texto pronto" — o roteiro montado é sagrado, a IA não reescreve. -->
+        <div class="section-card" id="cardPrograma">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label" for="selectPrograma">Programa</label>
+                    <select id="selectPrograma" class="form-select">
+                        <option value="" selected>— nenhum (spot avulso) —</option>
+                    </select>
+                    <div class="hint mt-1">
+                        Preset de rádio: vinheta, aviso legal e fecho já vêm prontos;
+                        você cuida só do miolo. Escolher um programa trava voz, direção,
+                        gate, duração e a conta que assina no Feed.
+                    </div>
+                </div>
+                <div class="col-md-8" id="camposPrograma" style="display:none">
+                    <div class="row g-2">
+                        <div class="col-md-7">
+                            <label class="form-label" for="inputTema">Tema do episódio</label>
+                            <input id="inputTema" type="text" class="form-control" maxlength="200"
+                                   placeholder="Ex.: sono e imunidade">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="inputEpisodio">Episódio</label>
+                            <input id="inputEpisodio" type="number" min="1" max="999" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="inputPatrocinador">Patrocinador</label>
+                            <input id="inputPatrocinador" type="text" class="form-control" maxlength="80"
+                                   placeholder="opcional">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="textoMiolo">Miolo (a informação do dia)</label>
+                            <textarea id="textoMiolo" class="form-control" rows="4" maxlength="4000"
+                                      placeholder="Vazio = a IA escreve a partir do tema. Ou cole aqui o miolo pronto."></textarea>
+                            <div class="d-flex justify-content-between mt-1">
+                                <span class="hint" id="contadorMiolo"></span>
+                                <span class="hint" id="infoEpisodio"></span>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button id="btnMontarRoteiro" class="btn btn-outline-light w-100">
+                                <i class="fas fa-list-ol me-1"></i>Montar roteiro do episódio
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Pedido + disparo -->
         <div class="section-card">
             <div class="row g-3 align-items-end">
@@ -345,6 +396,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=19"></script>
+    <script src="/static/gerador.js?v=20"></script>
 </body>
 </html>

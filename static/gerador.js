@@ -476,6 +476,138 @@
 
     // ── O pipeline ───────────────────────────────────────────────────────
 
+    // ── Programa (preset de rádio) ───────────────────────────────────────
+    // Vinheta + miolo + aviso + fecho: as partes fixas moram no backend
+    // (core/programas.py). A tela só trava os ajustes e monta o roteiro.
+    let programas = [];
+
+    function programaAtual() {
+        const sel = document.getElementById('selectPrograma');
+        if (!sel) return null;
+        return programas.find(p => p.id === sel.value) || null;
+    }
+
+    async function carregarProgramas() {
+        const sel = document.getElementById('selectPrograma');
+        if (!sel) return;
+        try {
+            const r = await fetch('/api/gerador/programas');
+            const d = await r.json();
+            programas = d.programas || [];
+        } catch (e) {
+            programas = [];
+        }
+        sel.innerHTML = '<option value="">— nenhum (spot avulso) —</option>' +
+            programas.map(p => `<option value="${esc(p.id)}">${esc(p.nome)} · ${esc(p.descricao)}</option>`).join('');
+    }
+
+    // Acha a voz pelo pedaço do nome ("Charon"): o id muda entre catálogos, o
+    // nome não. Devolve false se o catálogo não tem a voz.
+    function selecionarVozPorNome(trecho) {
+        const sel = document.getElementById('selectVoz');
+        const alvo = String(trecho || '').toLowerCase();
+        for (const o of sel.options) {
+            if (o.text.toLowerCase().includes(alvo)) { sel.value = o.value; return true; }
+        }
+        return false;
+    }
+
+    function atualizarContadorMiolo() {
+        const p = programaAtual();
+        const el = document.getElementById('contadorMiolo');
+        if (!p || !el) return;
+        const n = document.getElementById('textoMiolo').value.trim().split(/\s+/).filter(Boolean).length;
+        const [lo, hi] = p.miolo_palavras || [0, 0];
+        el.textContent = n
+            ? `miolo: ${n} palavras (alvo ${lo}–${hi})`
+            : `miolo vazio — a IA escreve a partir do tema (alvo ${lo}–${hi} palavras)`;
+    }
+
+    // Escolher o programa trava os ajustes do produtor (decisão de 04/09/2026:
+    // Charon Informative, Modo Padrão, direção de rádio da manhã, gate ligado)
+    // e lê no feed qual é o próximo episódio da série.
+    async function aplicarPrograma() {
+        const p = programaAtual();
+        document.getElementById('camposPrograma').style.display = p ? '' : 'none';
+        if (!p) return;
+        const a = p.ajustes || {};
+        const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+        set('selectFormato', a.formato);
+        set('selectModo', a.modo);
+        aplicarFiltroDeVozes();
+        if (a.voz_contem && !selecionarVozPorNome(a.voz_contem)) {
+            avisar(`A voz "${a.voz_contem}" do programa não está no catálogo — escolha a voz na mão.`, 'atencao');
+        }
+        set('selectEstilo', a.estilo);
+        set('direcaoLocucao', a.direcao);
+        set('selectPlano', a.plano);
+        if (a.gate != null) document.getElementById('chkGate').checked = !!a.gate;
+        set('selectContaFeed', p.conta_feed);
+        document.getElementById('checkTextoPronto').checked = true;
+        document.getElementById('selectFormato').dispatchEvent(new Event('change'));
+        avisar(`📻 Programa "${p.nome}": vinheta, aviso e fecho já vêm prontos; voz, direção, gate e conta do Feed travados. Escreva o tema (ou cole o miolo) e monte o roteiro.`, 'info');
+
+        const info = document.getElementById('infoEpisodio');
+        info.textContent = 'Lendo a série no feed...';
+        try {
+            const r = await fetch(`/api/gerador/programa/${encodeURIComponent(p.id)}/proximo-episodio`);
+            const d = await r.json();
+            if (d.episodio) {
+                document.getElementById('inputEpisodio').value = d.episodio;
+                info.textContent = `próximo pela série do feed: episódio ${d.episodio}`;
+            } else {
+                info.textContent = d.aviso || 'Informe o número do episódio.';
+            }
+        } catch (e) {
+            info.textContent = 'Não li a série no feed — informe o número do episódio.';
+        }
+        atualizarContadorMiolo();
+    }
+
+    // Monta vinheta + miolo + aviso + fecho no backend e joga no texto do
+    // comercial como TEXTO PRONTO. Devolve true quando montou.
+    async function montarRoteiro() {
+        const p = programaAtual();
+        if (!p) return false;
+        const btn = document.getElementById('btnMontarRoteiro');
+        btn.disabled = true;
+        try {
+            const episodio = parseInt(document.getElementById('inputEpisodio').value, 10) || 0;
+            if (episodio < 1) throw new Error('Informe o número do episódio.');
+            const tema = document.getElementById('inputTema').value.trim();
+            const miolo = document.getElementById('textoMiolo').value.trim();
+            if (!tema && !miolo) throw new Error('Escreva o tema do episódio, ou cole o miolo pronto.');
+            passo(0, 0, miolo ? 'Montando o roteiro...' : 'A IA está escrevendo o miolo...');
+            const r = await fetch('/api/gerador/programa/roteiro', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    programa: p.id, tema, episodio, miolo,
+                    patrocinador: document.getElementById('inputPatrocinador').value.trim()
+                })
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'Não consegui montar o roteiro.');
+            document.getElementById('textoMiolo').value = d.miolo;
+            document.getElementById('textoComercial').value = d.roteiro;
+            estado.roteiro = d.roteiro;
+            document.getElementById('inputNome').value = d.nome_spot;
+            document.getElementById('checkTextoPronto').checked = true;
+            document.getElementById('selectContaFeed').value = d.conta_feed;
+            atualizarContador();
+            atualizarContadorMiolo();
+            (d.avisos || []).forEach(a => avisar('⚠️ ' + a, 'atencao'));
+            avisar(`📻 Roteiro do episódio ${d.episodio} montado (${d.fonte === 'ia' ? 'miolo escrito pela IA' : 'miolo como você colou'}): `
+                   + `${d.palavras_total} palavras, ~${Math.round(d.tempo_leitura_estimado)}s de fala. Revise o texto e clique em Gerar anúncio.`, 'ok');
+            passo(0, 0, '');
+            return true;
+        } catch (e) {
+            passo(0, 0, '❌ ' + e.message);
+            return false;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
     async function gerarAnuncio() {
         const btn = document.getElementById('btnGerar');
         btn.disabled = true;
@@ -484,6 +616,12 @@
         const TOTAL = 6;
 
         try {
+            // Programa escolhido e roteiro ainda não montado: monta antes. O
+            // texto do episódio vai como "texto pronto" — a IA já fez sua parte.
+            if (programaAtual() && !document.getElementById('textoComercial').value.trim()) {
+                if (!(await montarRoteiro())) throw new Error('Monte o roteiro do episódio antes de gerar.');
+            }
+
             // Diálogo só existe no Gemini (multi-speaker): barrar ANTES de
             // gastar roteiro/TTS. O backend valida de novo (fonte da verdade).
             if (duasVozes() && providerDaVoz() !== 'google') {
@@ -744,6 +882,16 @@
         await Promise.all([carregarPedidos(), carregarVozes(), carregarTrilhas()]);
         carregarRascunhos();
 
+        // Programa (preset de rádio) — tudo guardado: sem os elementos, nada quebra.
+        try {
+            carregarProgramas();
+            document.getElementById('selectPrograma').addEventListener('change', aplicarPrograma);
+            document.getElementById('textoMiolo').addEventListener('input', atualizarContadorMiolo);
+            document.getElementById('btnMontarRoteiro').onclick = montarRoteiro;
+        } catch (e) {
+            console.warn('programa: fiação falhou', e);
+        }
+
         document.getElementById('btnGerar').onclick = gerarAnuncio;
         document.getElementById('btnRegerarVoz').onclick = regerarVoz;
 
@@ -786,6 +934,11 @@
                         conta,
                         nome: (document.getElementById('inputNome').value || 'Spot').trim(),
                         texto: document.getElementById('textoComercial').value || '',
+                        // Com programa, o número do episódio vai explícito (o
+                        // nome do spot não tem mais "#N" — o badge da série mostra).
+                        episodio: programaAtual()
+                            ? (parseInt(document.getElementById('inputEpisodio').value, 10) || undefined)
+                            : undefined,
                         audio_base64: b64
                     })
                 });
