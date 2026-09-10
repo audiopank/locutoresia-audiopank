@@ -197,6 +197,12 @@
                     <button id="btnGerar" class="btn btn-primary w-100 py-2">
                         <i class="fas fa-bolt me-2"></i>Gerar anúncio
                     </button>
+                    <!-- Preset do cliente: texto + voz, estilo, direção, plano e trilha,
+                         sem gastar locução. Vai pros Spots guardados com Reabrir. -->
+                    <button id="btnGuardarBancada" class="btn btn-outline-light btn-sm w-100 mt-2"
+                            title="Guarda o texto e os ajustes (voz, estilo, direção, plano, trilha) sem gerar áudio">
+                        <i class="fas fa-floppy-disk me-1"></i>Guardar bancada (sem áudio)
+                    </button>
                 </div>
             </div>
             <div id="progresso" class="mt-3"></div>
@@ -354,7 +360,7 @@
                 <a href="/entregas-clientes" class="hint">Entregas do cliente →</a>
             </div>
             <div class="hint mb-3">
-                Tudo que o Gerador produziu fica aqui, mesmo sem enviar. "Reabrir" traz o
+                Tudo que o Gerador produziu fica aqui, mesmo sem enviar — e as bancadas guardadas sem áudio (texto + ajustes). "Reabrir" traz o
                 spot de volta pra publicar no Feed ou enviar, sem gerar de novo. Para o que já
                 foi ao cliente (com link e aprovação), veja Entregas de Clientes.
             </div>
@@ -398,7 +404,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=5"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=23"></script>
+    <script src="/static/gerador.js?v=24"></script>
     <!-- VoxCraft: acima da barra fixa do resultado (#barraResultado). -->
     <style>.voxcraft-widget { bottom: 150px; }</style>
     {% include '_voxcraft_widget.html' %}

@@ -387,6 +387,129 @@
     //
     // Falha aqui NUNCA interrompe — o produtor tem o áudio tocando na tela e o
     // botão de Download. Só avisa que a cópia de segurança não subiu.
+    function slugAscii(s) {
+        return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^\w\-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
+    }
+
+    // Tudo que a bancada tem além do texto. É o que faz um spot guardado virar
+    // "preset do cliente": mês que vem, reabrir, trocar o texto, gerar — sem
+    // redescobrir a voz que ficou boa (pedido do produtor, 10/09/2026, Crato).
+    function metaDaBancada(extra) {
+        const g = id => { const el = document.getElementById(id); return el ? (el.value || '') : ''; };
+        const txt = id => {
+            const el = document.getElementById(id);
+            return (el && el.options && el.selectedIndex >= 0) ? el.options[el.selectedIndex].text : '';
+        };
+        const prog = programaAtual();
+        const selTrilha = g('selectTrilha');
+        return Object.assign({
+            v: 2,
+            nome: g('inputNome').trim(),
+            conta: g('selectContaFeed'),
+            programa: prog ? prog.id : null,
+            episodio: prog ? (parseInt(g('inputEpisodio'), 10) || null) : null,
+            tema: prog ? g('inputTema').trim() : '',
+            patrocinador: prog ? g('inputPatrocinador').trim() : '',
+            miolo: prog ? g('textoMiolo').trim() : '',
+            formato: g('selectFormato'), modo: g('selectModo'),
+            voz: g('selectVoz'), voz_nome: txt('selectVoz'),
+            voz2: duasVozes() ? g('selectVoz2') : null,
+            estilo: g('selectEstilo'), direcao: g('direcaoLocucao').trim(),
+            plano: g('selectPlano'),
+            trilha_sel: selTrilha,
+            trilha: estado.trilha ? estado.trilha.name
+                : (['auto', 'nenhuma', 'upload', ''].includes(selTrilha) ? null : txt('selectTrilha')),
+            gate: !!(document.getElementById('chkGate') || {}).checked,
+            texto_pronto: !!(document.getElementById('checkTextoPronto') || {}).checked,
+            pedido: g('selectPedido') || null,
+            gerado_em: new Date().toISOString()
+        }, extra || {});
+    }
+
+    // Guarda texto + ajustes SEM gerar áudio. Vira um item de texto nos Spots
+    // guardados, com o mesmo Reabrir dos spots.
+    async function guardarBancada() {
+        const btn = document.getElementById('btnGuardarBancada');
+        const sugestao = (document.getElementById('inputNome').value || '').trim() || 'bancada';
+        const nome = (window.prompt('Nome pra guardar esta bancada (texto + voz, estilo, direção, plano, trilha):', sugestao) || '').trim();
+        if (!nome) return;
+        if (btn) btn.disabled = true;
+        try {
+            const meta = metaDaBancada({ tipo: 'bancada' });
+            if (!meta.nome) meta.nome = nome;
+            const corpo = JSON.stringify(meta) + '\n\n' + (document.getElementById('textoComercial').value || '');
+            const ru = await fetch('/api/client-deliveries/upload-url', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: (slugAscii(nome) || 'bancada') + '.txt', kind: 'rascunho' })
+            });
+            const u = await ru.json();
+            if (!u.success) throw new Error(u.error || 'sem URL de upload');
+            const fd = new FormData();
+            fd.append('file', new Blob([corpo], { type: 'text/plain' }), 'bancada.txt');
+            const up = await fetch(u.upload_url, {
+                method: 'PUT', headers: { 'apikey': u.apikey, 'Authorization': `Bearer ${u.apikey}` }, body: fd
+            });
+            if (!up.ok) throw new Error('falha no envio pro Storage');
+            avisar(`💾 Bancada "${nome}" guardada (texto + ajustes, sem áudio). Está nos Spots guardados, com Reabrir.`, 'ok');
+            carregarRascunhos();
+        } catch (e) {
+            avisar('Não consegui guardar a bancada: ' + e.message, 'atencao');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // Devolve à bancada os ajustes guardados no .txt (v2). Voz e trilha por
+    // id, com aviso quando o catálogo carregado não tem mais; tudo guardado.
+    async function aplicarBancada(meta) {
+        if (!meta || typeof meta !== 'object') return;
+        const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
+        const selProg = document.getElementById('selectPrograma');
+        if (meta.programa && selProg) {
+            selProg.value = meta.programa;
+            await aplicarPrograma();
+            set('inputTema', meta.tema);
+            if (meta.episodio) set('inputEpisodio', meta.episodio);
+            set('inputPatrocinador', meta.patrocinador);
+            set('textoMiolo', meta.miolo);
+            atualizarContadorMiolo();
+        } else if (selProg && meta.v >= 2) {
+            selProg.value = '';
+            const campos = document.getElementById('camposPrograma');
+            if (campos) campos.style.display = 'none';
+        }
+        if (meta.formato) {
+            set('selectFormato', meta.formato);
+            document.getElementById('selectFormato').dispatchEvent(new Event('change'));
+        }
+        if (meta.modo) { set('selectModo', meta.modo); aplicarFiltroDeVozes(); }
+        if (meta.voz) {
+            const sv = document.getElementById('selectVoz');
+            sv.value = meta.voz;
+            if (sv.value !== meta.voz) {
+                const nomeVoz = String(meta.voz_nome || '').replace(/\s*[♀♂]\s*$/, '');
+                if (!(nomeVoz && selecionarVozPorNome(nomeVoz))) {
+                    avisar(`A voz guardada (${meta.voz_nome || meta.voz}) não está no catálogo — escolha na mão.`, 'atencao');
+                }
+            }
+        }
+        if (meta.voz2 && duasVozes()) set('selectVoz2', meta.voz2);
+        if (meta.estilo) set('selectEstilo', meta.estilo);
+        if (meta.direcao != null) document.getElementById('direcaoLocucao').value = meta.direcao;
+        if (meta.plano) set('selectPlano', meta.plano);
+        if (meta.trilha_sel) {
+            const st = document.getElementById('selectTrilha');
+            st.value = meta.trilha_sel;
+            if (st.value !== meta.trilha_sel) {
+                avisar(`A trilha guardada (${meta.trilha || meta.trilha_sel}) não está no catálogo — escolha na mão.`, 'atencao');
+            }
+        }
+        if (meta.gate != null) document.getElementById('chkGate').checked = !!meta.gate;
+        if (meta.texto_pronto != null) document.getElementById('checkTextoPronto').checked = !!meta.texto_pronto;
+        if (meta.conta) set('selectContaFeed', meta.conta);
+    }
+
     async function guardarRascunho() {
         if (!estado.mixBlob) return;
         try {
@@ -413,18 +536,7 @@
             // não bastava: o texto do post e a conta se perdiam com a aba.
             // Melhor esforço: falhar aqui não desfaz o áudio guardado.
             try {
-                const prog = programaAtual();
-                const meta = {
-                    v: 1,
-                    nome: (document.getElementById('inputNome').value || '').trim(),
-                    conta: document.getElementById('selectContaFeed').value,
-                    programa: prog ? prog.id : null,
-                    episodio: prog ? (parseInt(document.getElementById('inputEpisodio').value, 10) || null) : null,
-                    tema: prog ? document.getElementById('inputTema').value.trim() : '',
-                    trilha: estado.trilha ? estado.trilha.name : null,
-                    duracao: Math.round((estado.duracaoMix || 0) * 10) / 10,
-                    gerado_em: new Date().toISOString()
-                };
+                const meta = metaDaBancada({ duracao: Math.round((estado.duracaoMix || 0) * 10) / 10 });
                 const corpo = JSON.stringify(meta) + '\n\n' + (estado.roteiro || document.getElementById('textoComercial').value || '');
                 const rt = await fetch('/api/client-deliveries/upload-url', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -455,20 +567,13 @@
     // Traz um spot guardado de volta pra bancada: áudio no player (Feed,
     // Enviar, Download funcionam), roteiro no texto, nome e conta do .txt
     // gêmeo. Não restaura voz/trilha separadas — pra isso é gerar de novo.
+    // Traz um item guardado de volta pra bancada. Com áudio: player (Feed,
+    // Enviar, Download funcionam). Com ou sem áudio: roteiro, nome, conta e —
+    // desde o .txt v2 — voz, estilo, direção, plano, trilha e gate.
     async function reabrirRascunho(x) {
         limparAvisos();
         passo(0, 0, `Reabrindo "${x.titulo}"...`);
         try {
-            const ra = await fetch(x.url);
-            if (!ra.ok) throw new Error('não consegui baixar o áudio guardado');
-            const bytes = await ra.arrayBuffer();
-            const ehWav = /\.wav$/i.test(x.arquivo || '');
-            estado.mixBlob = new Blob([bytes], { type: ehWav ? 'audio/wav' : 'audio/mpeg' });
-            estado.vozBuffer = null;
-            estado.trilhaBuffer = null;
-            estado.receita = null;
-            estado.rascunhoMeta = null;
-
             let meta = null;
             let roteiro = '';
             if (x.texto_url) {
@@ -483,30 +588,54 @@
                 } catch (e) { meta = null; }
             }
 
-            let duracao = 0;
-            try {
-                const buf = await ctx.decodeAudioData(bytes.slice(0));
-                duracao = buf.duration;
-            } catch (e) {
-                duracao = (meta && meta.duracao) || 0;
+            const temAudio = !!x.url;
+            let bytes = null;
+            if (temAudio) {
+                const ra = await fetch(x.url);
+                if (!ra.ok) throw new Error('não consegui baixar o áudio guardado');
+                bytes = await ra.arrayBuffer();
+                const ehWav = /\.wav$/i.test(x.arquivo || '');
+                estado.mixBlob = new Blob([bytes], { type: ehWav ? 'audio/wav' : 'audio/mpeg' });
+                estado.vozBuffer = null;
+                estado.trilhaBuffer = null;
+                estado.receita = null;
             }
+            estado.rascunhoMeta = null;
 
+            await aplicarBancada(meta);
             document.getElementById('inputNome').value = (meta && meta.nome) || x.titulo;
             if (roteiro) {
                 document.getElementById('textoComercial').value = roteiro;
                 estado.roteiro = roteiro;
                 atualizarContador();
             }
-            document.getElementById('checkTextoPronto').checked = true;
-            if (meta && meta.conta) document.getElementById('selectContaFeed').value = meta.conta;
+            if (temAudio) document.getElementById('checkTextoPronto').checked = true;   // o texto é o que foi gravado
             estado.trilha = (meta && meta.trilha) ? { name: meta.trilha } : null;
             estado.rascunhoMeta = meta;
-            mostrarResultado(duracao);
+
+            if (temAudio) {
+                let duracao = 0;
+                try {
+                    const buf = await ctx.decodeAudioData(bytes.slice(0));
+                    duracao = buf.duration;
+                } catch (e) {
+                    duracao = (meta && meta.duracao) || 0;
+                }
+                mostrarResultado(duracao);
+            }
+
             const rot = { locutores: 'LOCUTORES IA', principal: 'NewPost-IA ✓', futuro: 'Futuro em Pauta', vida: 'Vida Saudável' };
-            avisar(`📂 Spot reaberto${meta && meta.episodio ? ` — episódio ${meta.episodio}` : ''}${meta && meta.conta ? `, conta do Feed: ${rot[meta.conta] || meta.conta}` : ''}. `
-                   + (roteiro ? 'Roteiro e nome restaurados. ' : 'Este spot foi guardado sem o roteiro: confira o nome e cole o texto do post se quiser. ')
-                   + 'Ouça e use Feed, Enviar ou Download. Pra mexer na voz ou na trilha, gere de novo.', 'ok');
-            passo(0, 0, '✅ Spot reaberto — ouça antes de publicar.');
+            const ep = (meta && meta.episodio) ? ` — episódio ${meta.episodio}` : '';
+            const conta = (meta && meta.conta) ? `, conta do Feed: ${rot[meta.conta] || meta.conta}` : '';
+            const ajustes = (meta && meta.v >= 2) ? ' Voz, estilo, direção, plano e trilha voltaram como estavam.' : '';
+            if (temAudio) {
+                avisar(`📂 Spot reaberto${ep}${conta}. ` + (roteiro ? 'Roteiro e nome restaurados.' : 'Guardado sem roteiro: confira o nome e cole o texto.')
+                       + ajustes + ' Ouça e use Feed, Enviar ou Download. Pra mexer na voz ou na trilha, gere de novo.', 'ok');
+                passo(0, 0, '✅ Spot reaberto — ouça antes de publicar.');
+            } else {
+                avisar(`📝 Bancada "${(meta && meta.nome) || x.titulo}" reaberta: texto e ajustes de volta.${ajustes} Revise e clique em Gerar anúncio.`, 'ok');
+                passo(0, 0, '✅ Bancada reaberta — pronta pra gerar.');
+            }
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
             passo(0, 0, '❌ ' + e.message);
@@ -519,7 +648,7 @@
         try {
             const r = await fetch('/api/gerador/rascunhos?limite=12');
             const d = await r.json();
-            const itens = (d.rascunhos || []).filter(x => x.url);
+            const itens = (d.rascunhos || []).filter(x => x.url || x.tipo === 'texto');
             if (!itens.length) {
                 box.innerHTML = '<div class="hint">Nada guardado ainda — o primeiro spot que você gerar aparece aqui.</div>';
                 return;
@@ -530,11 +659,13 @@
                         ${esc(x.titulo)}
                         <span class="hint ms-2">${esc(x.quando)}</span>
                     </div>
-                    <audio controls preload="none" src="${esc(x.url)}"></audio>
+                    ${x.url
+                        ? `<audio controls preload="none" src="${esc(x.url)}"></audio>`
+                        : `<span class="hint" style="flex: 1 1 260px;"><i class="fas fa-file-lines me-1"></i>bancada guardada: texto + ajustes, sem áudio</span>`}
                     <button class="btn btn-sm btn-outline-info" data-reabrir="${i}"
-                            title="Reabrir na bancada: publicar no Feed, enviar ou baixar sem gerar de novo"><i class="fas fa-folder-open me-1"></i>Reabrir</button>
-                    <a class="btn btn-sm btn-outline-light" download="${esc(x.titulo)}.mp3"
-                       href="${esc(x.url)}"><i class="fas fa-download"></i></a>
+                            title="${x.url ? 'Reabrir na bancada: publicar no Feed, enviar ou baixar sem gerar de novo' : 'Reabrir: texto, voz, estilo, direção, plano e trilha de volta na bancada'}"><i class="fas fa-folder-open me-1"></i>Reabrir</button>
+                    ${x.url ? `<a class="btn btn-sm btn-outline-light" download="${esc(x.titulo)}.mp3"
+                       href="${esc(x.url)}"><i class="fas fa-download"></i></a>` : ''}
                     <button class="btn btn-sm btn-outline-danger" data-excluir="${esc(x.path)}"
                             title="Excluir esta versão"><i class="fas fa-trash"></i></button>
                 </div>`).join('');
@@ -547,7 +678,7 @@
             // cliente — daí o botão. Some do Storage de verdade, sem volta.
             box.querySelectorAll('[data-excluir]').forEach(btn => {
                 btn.onclick = async () => {
-                    if (!confirm('Excluir esta versão do spot? Não dá pra desfazer.')) return;
+                    if (!confirm('Excluir este item guardado? Não dá pra desfazer.')) return;
                     btn.disabled = true;
                     try {
                         const rd = await fetch('/api/gerador/rascunhos', {
@@ -1083,6 +1214,8 @@
         }
 
         document.getElementById('btnGerar').onclick = gerarAnuncio;
+        const btnBancada = document.getElementById('btnGuardarBancada');
+        if (btnBancada) btnBancada.onclick = guardarBancada;
         document.getElementById('btnRegerarVoz').onclick = regerarVoz;
 
         document.getElementById('btnDownload').onclick = () => {

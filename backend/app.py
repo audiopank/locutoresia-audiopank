@@ -1569,7 +1569,19 @@ def montar_itens_rascunhos(arquivos, limite=20):
         if not nome_arq or nome_arq.startswith('.'):
             continue        # o Supabase devolve um placeholder em pasta vazia
         raiz, ext = os.path.splitext(nome_arq)
-        if ext.lower() not in ('.mp3', '.wav'):
+        ext = ext.lower()
+        if ext in ('.mp3', '.wav'):
+            tipo = 'audio'
+            texto_path = f"rascunhos/{raiz}.txt" if (raiz + '.txt') in nomes else None
+        elif ext == '.txt':
+            # .txt com áudio gêmeo é o roteiro DAQUELE áudio (não vira item);
+            # sozinho é a "bancada guardada" sem áudio — texto + ajustes, o
+            # preset do cliente (pedido do produtor em 10/09/2026).
+            if (raiz + '.mp3') in nomes or (raiz + '.wav') in nomes:
+                continue
+            tipo = 'texto'
+            texto_path = f"rascunhos/{nome_arq}"
+        else:
             continue
         # "20260730-171203_spot-padaria.mp3" -> data legível + nome do spot
         titulo, quando = raiz, ''
@@ -1580,13 +1592,13 @@ def montar_itens_rascunhos(arquivos, limite=20):
                 quando = datetime.strptime(carimbo, '%Y%m%d-%H%M%S').strftime('%d/%m/%Y %H:%M')
             except ValueError:
                 quando = ''
-        gemeo = raiz + '.txt'
         meta = a.get('metadata') or {}
         itens.append({
+            "tipo": tipo,
             "path": f"rascunhos/{nome_arq}", "arquivo": nome_arq,
             "titulo": re.sub(r'\s+', ' ', titulo.replace('-', ' ')).strip() or nome_arq, "quando": quando,
             "tamanho": meta.get('size'),
-            "texto_path": f"rascunhos/{gemeo}" if gemeo in nomes else None,
+            "texto_path": texto_path,
         })
         if len(itens) >= limite:
             break
@@ -1630,7 +1642,7 @@ def gerador_rascunhos():
 
         itens = montar_itens_rascunhos(arquivos, limite)
         for it in itens:
-            it["url"] = assinar(it["path"])
+            it["url"] = assinar(it["path"]) if it.get("tipo") == "audio" else None
             it["texto_url"] = assinar(it["texto_path"]) if it.get("texto_path") else None
 
         return jsonify({"success": True, "rascunhos": itens})

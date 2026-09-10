@@ -27,7 +27,7 @@ def test_widget_renderiza_nas_duas_telas(cliente, rota):
 
 def test_gerador_carrega_o_js_novo_e_define_contexto(cliente):
     html = cliente.get('/gerador').get_data(as_text=True)
-    assert 'gerador.js?v=23' in html
+    assert 'gerador.js?v=24' in html
     js = open(os.path.join(os.path.dirname(__file__), '..', 'static', 'gerador.js'), encoding='utf-8').read()
     assert 'window.voxcraftContexto = function' in js and 'window.aplicarPrefillVoxcraft = async function' in js
     assert "sessionStorage.getItem('voxcraft_prefill')" in js
