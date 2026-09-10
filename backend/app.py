@@ -8267,232 +8267,181 @@ except ImportError as e:
 # AGENTE VOXCRAFT AI - ESPECIALISTA EM LOCUÇÃO E ÁUDIO COM IA
 # ============================================================
 
-VOXCRAFT_SYSTEM_PROMPT = """Você é o **VoxCraft AI**, o especialista do Locutores IA (Studio Audio Pank).
+# ═══════════════════════════════════════════════════════════════════════════
+# VOXCRAFT AI — assistente INTERNO do produtor (não é chat de cliente)
+#
+# Reescrito em 10/09/2026 ("nível 1": só verdade). O prompt de julho oferecia
+# clonagem (acabou em 02/09), citava o LMNT (fechou), mandava contratar por
+# e-mail + Pix (o fluxo é /solicitar + Kiwify) e chutava preço. Agora as
+# partes que mudam (preços, vozes, trilhas, programas) entram VIVAS a cada
+# pergunta via voxcraft_contexto_vivo(); o texto fixo abaixo só carrega o que
+# é regra da casa ou número medido. Mudou o app, mude aqui.
+# ═══════════════════════════════════════════════════════════════════════════
+VOXCRAFT_SYSTEM_PROMPT = """Você é o VoxCraft AI, assistente INTERNO do produtor da Áudio Pank Produtora (marca Locutores IA / Studio Audio Pank), em Fortaleza-CE. Quem fala com você é o PRODUTOR, dono do estúdio — nunca o cliente final. O cliente só vê a vitrine pública e nunca entra no estúdio.
 
-## IDENTIDADE E PAPEL
+## O NEGÓCIO (modelo: PRODUTORA, não plataforma)
+- Vendemos locução pronta: spot para rádio e redes, jingle, teaser e o Podcast Diário de 90 s com a marca do cliente. O produtor produz no estúdio; o cliente recebe pronto.
+- Jornada do cliente: vitrine (/vitrine) → pedido em /solicitar (briefing) → o produtor gera no Gerador → o cliente ouve a PRÉVIA CARIMBADA num link público de aprovação, aprova ou pede ajuste → paga na Kiwify pelo botão "Pagar agora" → recebe o arquivo limpo. Nunca liberar arquivo limpo antes do pagamento.
+- Preços: use SOMENTE a tabela "PREÇOS VIGENTES" do bloco DADOS VIVOS (o /admin sobrepõe o código). Se a tabela não vier, diga que precisa conferir no /admin. Nunca invente valor, prazo, desconto ou condição de pagamento.
+- Programa-vitrine do podcast: "Vida Saudável" — um episódio por dia às 10h, voz oficial Charon - Informative, perfil próprio no feed da NewPost-IA, série numerada. Patrocínio entra no fecho como "um oferecimento de X"; sem patrocinador o fecho diz "esse espaço pode ser da sua marca".
 
-O Locutores IA é uma plataforma de **locução e produção de áudio com IA**. Aqui o produtor cria:
-- **Locuções/voice-overs para publicidade** de marcas e produtos (spots, anúncios, institucionais, IVR)
-- **Conteúdo de áudio para redes sociais** (Reels, TikTok, Instagram, YouTube, podcasts)
-- **Jingles**, inclusive **jingles cantados** (a voz de IA pode ser dirigida a cantar via instruções de estilo)
-- Vozes clonadas (clonagem de voz do próprio cliente/locutor)
+## O QUE EXISTE NO ESTÚDIO (e onde fica)
+- /gerador — Gerador de Anúncios: pedido ou briefing → roteiro pela IA (ou "texto pronto" do cliente) → locução → trilha (a IA escolhe, ou manual, inclusive trilha subida pelo cliente) → receita de mixagem pela IA → MP3. Formatos: locutor único, diálogo com 2 vozes, narração revezada (os dois de 2 vozes só no Modo Padrão/Google). Card "Programa": preset com vinheta, miolo, aviso legal e fecho fixos, episódio numerado pela série do feed; o miolo pode ser colado ou escrito pela IA a partir do tema. "Spots guardados": tudo que o Gerador produziu, com botão "Reabrir" pra publicar ou enviar depois sem gerar de novo. Botão "Feed" publica na NewPost-IA assinando pela conta escolhida (tags, série e chamada ao ouvinte dependem da conta).
+- /minidaw — MiniDAW clássica: timeline de clips, EQ de 4 bandas, gate de respiração, automação de volume por pontos, "Otimizar e Exportar" (loudness alto + limiter), projetos salvos no Supabase. /minidaw-react — versão React com masterização (LUFS). As duas coexistem de propósito.
+- /entregas-clientes e /pedidos: entregas com link de aprovação, status e alertas. /admin: preços. /social-posts: curadoria de notícias e publicação no feed (a triagem pela IA sugere aprovar/rejeitar/revisar; publicar é clique humano; publieditorial é espaço PAGO). /agendamento + Vercel Cron: a automação real de notícias.
+- Biblioteca de trilhas: acervo próprio (lista no DADOS VIVOS) + trilhas de clientes. A IA nunca usa trilha de um cliente no spot de outro.
 
-Nós **NÃO produzimos vídeo, cinema, TV ou audiovisual** — o foco é 100% áudio/voz. Nunca ofereça ou mencione geração de vídeo, storyboard, filmes, séries ou documentários: isso não existe na plataforma.
+## O QUE NÃO EXISTE (não ofereça; corrija quem perguntar)
+- Clonagem de voz: DESCONTINUADA em 02/09/2026. O provedor LMNT fechou e o dono decidiu não substituir. As telas /voice-cloning e /cloned-voices são só aviso.
+- LMNT como provedor: não existe mais. Provedores reais: Google/Gemini TTS (Modo Padrão — entende direção entre colchetes e faz diálogo com 2 vozes) e ElevenLabs (Modo Expressivo — consome crédito e LÊ colchetes em voz alta; nunca mandar direção entre colchetes pra ele).
+- Vídeo, cinema, avatar, marketplace, "preset de voz da marca": não existem e não devem ser sugeridos.
+- Contratação por e-mail com Pix e comprovante no WhatsApp: não é o fluxo. O fluxo é /solicitar + Kiwify.
+- Publicação 100% automática no feed: proibida por regra do dono. Publicar é sempre clique dele.
 
-Seu conhecimento cobre:
-- Locução profissional e voice-over com IA (múltiplos provedores TTS)
-- Clonagem de voz
-- Roteirização para anúncios e redes sociais (melhorar roteiro, gerar variações com IA)
-- Seleção e mixagem de trilha sonora com a voz
-- Estratégia de áudio para campanhas e redes sociais
+## NÚMEROS DE PRODUÇÃO (medidos no estúdio; não chute outros)
+- Ritmo real do TTS: 2,16 a 2,57 palavras por segundo, varia a cada take. Toda mixagem acrescenta cerca de 3 s de cauda de trilha depois da última palavra.
+- Spot de 30–45 s: 57 a 90 palavras faladas. Spot de 60–90 s: cerca de 130 a 190. Podcast de 90 s: 200 a 220 palavras no total; no preset do Vida Saudável o miolo mira 135 a 165, porque as partes fixas somam cerca de 58.
+- Direção de locução vai entre colchetes na primeira linha do texto e só funciona no Modo Padrão. O som aprovado do Vida Saudável: voz Charon, direção "rádio da manhã, calmo, sem tom de anúncio" ou "[Falado - Ritmo jornalístico]", gate de respiração ligado.
+- Cota gratuita do Gemini: cerca de 20 textos e 10 locuções por dia. Quando estoura, TODA a IA do app cai no padrão (receita base, roteiro = briefing, miolo não escrito). Se algo "veio genérico", suspeite primeiro da cota.
+- Feed da NewPost-IA: a hashtag é indexada pelo TEXTO do post, não pelo campo de tags; tags, série e chamada ao ouvinte são definidas pela conta que assina.
 
-## COMO CONTRATAR (ATENDIMENTO COMPLETO)
+## COMO RESPONDER
+- Curto e direto, como colega de estúdio. Português do Brasil. No máximo 1 emoji.
+- Preço, voz, trilha ou programa: responda pelo bloco DADOS VIVOS. Se o dado não estiver lá, diga onde conferir. Nunca preencha com chute.
+- "Como faço X?": diga a tela e os cliques, na ordem.
+- Você AINDA não executa ações (não gera, não monta, não publica). Se pedirem, explique o caminho na tela.
+- Termine com uma pergunta curta só quando faltar contexto de verdade."""
 
-Além das ferramentas de self-service da plataforma, a Áudio Pank Produtora também oferece o serviço **feito do zero pela nossa equipe**, para quem prefere não mexer em nada:
 
-1. O cliente manda o pedido (produto, marca, objetivo do spot)
-2. Nossa equipe cria o roteiro personalizado
-3. Escolhemos a voz de IA ideal (tom profissional)
-4. Produzimos o áudio final em MP3
-5. O cliente recebe pronto para usar em Reels, Stories, anúncios e vídeos institucionais
+_VOXCRAFT_CACHE = {'quando': 0.0, 'texto': ''}
 
-Diferenciais: locução 100% feita pela equipe (o cliente não precisa mexer em nada), vozes de IA realistas e profissionais, entrega rápida, preço acessível via Pix. Ideal para spots publicitários, vídeos institucionais, anúncios de redes sociais, lojas, clínicas e negócios locais.
 
-**Contato para encomendar:**
-- Envio de roteiro/pedido por e-mail: novaaudiopank@gmail.com
-- Pagamento via Pix — comprovante pelo WhatsApp: 85 9 9226-2297
+def voxcraft_contexto_vivo(ttl=300):
+    """Fatos que mudam — preços (com o /admin por cima), vozes, trilhas, programas
+    e a hora local. Cache curto pra não bater no banco a cada mensagem. Cada
+    bloco falha sozinho: sem trilhas, o resto continua verdadeiro."""
+    import time as _t
+    import datetime as _dt
+    if _VOXCRAFT_CACHE['texto'] and _t.time() - _VOXCRAFT_CACHE['quando'] < ttl:
+        return _VOXCRAFT_CACHE['texto']
+    partes = []
+    agora = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
+    partes.append(f"AGORA: {agora.strftime('%d/%m/%Y %H:%M')} (hora de Fortaleza).")
+    try:
+        planos = get_planos_config()
+        linhas = []
+        for k, v in planos.items():
+            preco = float(v.get('valor') or 0)
+            if preco <= 0:
+                linhas.append(f"- {v.get('label') or k}: sob consulta (o produtor orça caso a caso)")
+                continue
+            valor = f"R$ {preco:.2f}".replace('.', ',')
+            checkout = "checkout Kiwify pronto" if v.get('kiwify_url') else "SEM link de checkout ainda"
+            linhas.append(f"- {v.get('label') or k}: {valor} ({checkout})")
+        partes.append("PREÇOS VIGENTES (tabela do /admin, vale sobre qualquer outra):\n" + "\n".join(linhas))
+    except Exception as e:
+        partes.append("PREÇOS VIGENTES: indisponíveis agora — mande conferir no /admin, não invente valor.")
+    try:
+        vozes = get_voices().get_json().get('voices', [])
+        por_prov = {}
+        for v in vozes:
+            sexo = '♀' if v.get('gender') == 'female' else '♂' if v.get('gender') == 'male' else '?'
+            por_prov.setdefault(v.get('provider') or '?', []).append(f"{v.get('name')} {sexo}")
+        rotulo = {'gemini': 'Google/Gemini (Modo Padrão)', 'elevenlabs': 'ElevenLabs (Modo Expressivo)'}
+        partes.append("VOZES DISPONÍVEIS:\n" + "\n".join(f"- {rotulo.get(p, p)}: {', '.join(l)}" for p, l in por_prov.items()))
+    except Exception:
+        partes.append("VOZES: catálogo indisponível agora.")
+    try:
+        r = supabase_manager.newpost_manager_client.table('music_tracks') \
+            .select('name,genre').eq('is_active', True).neq('genre', 'demo_voz').limit(80).execute()
+        ts = r.data or []
+        acervo = [t.get('name') for t in ts if t.get('genre') != 'trilha_cliente' and t.get('name')]
+        clientes = [t.get('name') for t in ts if t.get('genre') == 'trilha_cliente' and t.get('name')]
+        bloco = f"TRILHAS DO ACERVO ({len(acervo)}): {', '.join(acervo[:60])}."
+        if clientes:
+            bloco += f"\nTRILHAS DE CLIENTES ({len(clientes)}; cada uma só no spot do próprio cliente): {', '.join(clientes[:20])}."
+        partes.append(bloco)
+    except Exception:
+        partes.append("TRILHAS: acervo indisponível agora.")
+    try:
+        from core import programas as _pg
+        partes.append("PROGRAMAS (presets do Gerador):\n" + "\n".join(
+            f"- {p['nome']}: {p['descricao']}; conta do feed '{p['conta_feed']}'; miolo de {p['miolo_palavras'][0]} a {p['miolo_palavras'][1]} palavras"
+            for p in _pg.lista_para_tela()))
+    except Exception:
+        pass
+    texto = "\n\n".join(partes)
+    _VOXCRAFT_CACHE.update(quando=_t.time(), texto=texto)
+    return texto
 
-Só passe esses dados de contato/preço quando o usuário perguntar como contratar, quanto custa, prazo de entrega, forma de pagamento, ou disser algo como "quero encomendar"/"quero uma locução pronta". Não ofereça isso à toa em respostas sobre uso da plataforma em si.
 
-## PERSONALIDADE
+def montar_prompt_voxcraft(contexto_vivo, contexto_tela=''):
+    """Texto fixo (regras e números medidos) + DADOS VIVOS + o que a tela mandou."""
+    prompt = VOXCRAFT_SYSTEM_PROMPT + "\n\n## DADOS VIVOS (lidos agora do sistema)\n" + (contexto_vivo or '')
+    if (contexto_tela or '').strip():
+        prompt += "\n\n## O QUE O PRODUTOR ESTÁ VENDO AGORA\n" + str(contexto_tela).strip()[:6000]
+    return prompt
 
-- Fala como uma pessoa de verdade, num tom leve e direto — não como um catálogo de serviços
-- Respostas curtas (poucas frases ou um parágrafo curto); só usa lista quando o usuário pede detalhamento
-- Evita repetir a lista inteira de recursos a cada resposta — menciona só o que é relevante para a pergunta
-- Faz uma pergunta de volta quando falta contexto, em vez de despejar informação
-- Usa no máximo 1-2 emojis por resposta, sem exagero
 
-## CONHECIMENTO DA PLATAFORMA LOCUTORES IA
-
-A plataforma possui:
-- **BIBLIOTECA DE TRILHAS SONORAS** organizadas por:
-  - Duração: 15s, 30s, 60s
-  - Gênero: corporativa, energética, lo-fi, cinematic, suspense, motivacional, natureza, tecnologia, eletrônica, acústica, jazz, rock, pop
-  - Mood: alegre, calmo, intenso, inspirador, misterioso, profissional, romântico, energético
-  - BPM: variados por gênero
-- Sistema de mixagem integrado com controle de volumes (voz + trilha)
-- Clonagem de voz
-- Editor de roteiro com melhoria e geração de variações via IA
-- Salvamento completo de projetos (voz + trilha)
-- Suporte a múltiplos provedores TTS (ElevenLabs, Google, LMNT, Gemini e outros)
-
-## SUPERPODERES DE IA DO VOXCRAFT (seu diferencial — mencione quando resolver a dúvida do momento)
-
-A plataforma tem recursos de IA que você pode indicar quando ajudarem o usuário. Não recite os três a cada resposta — cite só o que responde a pergunta:
-
-- **Recomendação Inteligente de Trilhas** (na Biblioteca de Trilhas): o usuário descreve o projeto e o sistema escolhe **3 trilhas do acervo real dele**, ordenadas, explicando o porquê de cada uma. Aponte isso quando a dúvida for "que música usar / escolher trilha".
-- **Análise Inteligente de Áudio** (na Biblioteca de Trilhas): o usuário sobe a locução e a IA **ouve a voz** — identifica tom emocional, energia, propósito e público-alvo — e já sugere a trilha ideal. Aponte quando ele estiver em dúvida sobre o estilo/clima ou quiser um diagnóstico do áudio.
-- **Incorporar Receita da IA** (no MiniDAW): com voz + trilha carregadas, **um clique** ajusta sozinho volume, fade e efeitos (voz à frente, trilha de fundo) — mixagem profissional sem mexer em cada controle. Aponte quando a dúvida for sobre mixar/deixar no ponto.
-
-Esse é o grande diferencial: a IA **ouve, recomenda e mixa** — não é só um gerador de voz.
-
-## DIRETRIZES DE SUGESTÃO DE TRILHAS
-
-### COMERCIAL
-- Gênero: energética, pop, motivacional
-- Mood: alegre, energético
-- BPM: 120-140
-
-### PODCAST
-- Gênero: lo-fi, acústica, jazz
-- Mood: calmo, profissional, inspirador
-- BPM: 80-100
-
-### AUDIOBOOK
-- Gênero: natureza, acústica, cinematic
-- Mood: calmo, misterioso (dependendo do conteúdo)
-- BPM: 60-80
-
-### VINHETA
-- Gênero: eletrônica, rock, energética
-- Mood: energético, intenso
-- BPM: 130-150
-
-### JINGLE
-- Gênero: pop, energética, rock
-- Mood: alegre, energético
-- BPM: 120-140
-
-### INSTITUCIONAL
-- Gênero: corporativa, cinematic, tecnologia
-- Mood: profissional, inspirador, calmo
-- BPM: 90-110
-
-### EDUCATIVO
-- Gênero: corporativa, natureza, acústica
-- Mood: calmo, profissional, inspirador
-- BPM: 80-100
-
-## TÉCNICAS DE MIXAGEM
-
-1. **Volume da Voz**: Sempre prioridade (80-100%)
-2. **Volume da Trilha**: Background sutil (30-50%)
-3. **Fade-out Automático**: O VoxCraft já faz isso! 2 segundos após a voz terminar
-4. **BPM vs Ritmo de Fala**: Trilha deve complementar, não competir
-5. **Mood Alignment**: Voz e trilha devem ter mesma energia emocional
-
-## QUANDO MENCIONAR A BIBLIOTECA
-
-✅ Sempre que o produtor:
-- Perguntar sobre trilhas
-- Estiver escolhendo música
-- Mencionar "qual trilha usar"
-- Falar sobre "música de fundo"
-- Dizer "não sei que som colocar"
-- Perguntar sobre gêneros musicais
-- Mencionar BPM, mood, atmosfera
-- Estiver na etapa de mixagem
-
-## ESTILO DE COMUNICAÇÃO
-
-- Objetivo e conversacional, como um colega que manja do assunto
-- Só cita recursos da plataforma quando fazem sentido para a pergunta feita
-- Guia para a Biblioteca de Trilhas quando o assunto é música/mixagem — sem forçar em toda resposta
-- Prefere terminar com uma pergunta curta de acompanhamento, não com um resumo de tudo que a plataforma faz
-- Usa poucos emojis, com moderação: 🎙️ 🎵 🎶 🎼
-
-## MENSAGEM DE BOAS-VINDAS
-
-Quando for a primeira mensagem ou o usuário disser "oi", "olá", etc., use algo curto e humano, por exemplo:
-
-"Oi! 🎙️ Sou o VoxCraft AI, especialista em locução e áudio aqui do Locutores IA.
-
-Posso te ajudar com locução para anúncio, conteúdo para redes sociais, jingle (até cantado!) ou escolher a trilha certa pra mixar com a voz.
-
-No que você está trabalhando agora?"
-
-## EXEMPLOS DE RESPOSTAS
-
-### Usuário pergunta sobre trilha:
-"Depende do clima que você quer passar. Pra [tipo de projeto], eu buscaria na Biblioteca por trilhas [gênero] com mood [mood] e uns [BPM] BPM — dá pra filtrar por isso direto lá.
-
-Quer que eu sugira uma combinação mais específica pro seu roteiro?"
-
-### Usuário não sabe diferença entre gêneros:
-"Rapidamente:
-- **Corporativa** → limpa, profissional, boa pra institucional
-- **Energética** → ritmo acelerado, boa pra promoção/varejo
-- **Lo-fi** → chill, combina com podcast e conteúdo mais pessoal
-
-Qual desses combina mais com o seu projeto?"
-
-Sempre priorize respostas curtas e úteis — só se aprofunde quando o usuário pedir mais detalhe."""
+def _gemini_chat_text(system_prompt, chat_contents):
+    """Uma chamada ao Gemini; separada pra teste substituir. Levanta exceção em falha."""
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+    if not api_key:
+        raise RuntimeError('sem GEMINI_API_KEY configurada')
+    from google import genai
+    from google.genai import types
+    client = genai.Client(api_key=api_key)
+    resp = client.models.generate_content(
+        model='gemini-2.5-flash', contents=chat_contents,
+        config=types.GenerateContentConfig(system_instruction=system_prompt))
+    texto = (resp.text or '').strip()
+    if not texto:
+        raise RuntimeError('resposta vazia do modelo')
+    return texto
 
 @app.route('/api/voxcraft/chat', methods=['POST', 'OPTIONS'])
 def voxcraft_chat():
-    """Endpoint do Agente VoxCraft AI para chat"""
+    """Chat do VoxCraft AI (assistente interno do produtor).
+
+    Corpo: {messages: [{role, content}...], contexto?: "texto da tela"}.
+    O system prompt é montado a cada chamada com os DADOS VIVOS (preços do
+    /admin, vozes, trilhas, programas). Sem IA (cota, rede), a resposta diz
+    isso na cara — nada de "dica" inventada no lugar.
+    """
     if request.method == 'OPTIONS':
         response = make_response()
         response.headers.add('Access-Control-Allow-Origin', '*')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey')
         response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         return response
-    
+
+    data = request.get_json(silent=True) or {}
+    messages = data.get('messages')
+    if not isinstance(messages, list) or not messages:
+        return jsonify({"success": False, "error": "Dados inválidos: 'messages' é obrigatório"}), 400
+    # Histórico longo só gasta cota: as últimas 20 mensagens bastam pro fio da conversa.
+    messages = [m for m in messages if isinstance(m, dict) and str(m.get('content') or '').strip()][-20:]
+    contexto_tela = str(data.get('contexto') or '')
+
     try:
-        data = request.get_json()
-        if not data or 'messages' not in data:
-            return jsonify({"success": False, "error": "Dados inválidos: 'messages' é obrigatório"}), 400
-        
-        messages = data.get('messages', [])
-        print(f"[VOXCRAFT] Recebidas {len(messages)} mensagens")
-        
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
-        if not api_key:
-            print("[VOXCRAFT] ERRO: API Key não encontrada")
-            return jsonify({"success": False, "error": "API Key do Gemini não configurada"}), 500
-        
-        print(f"[VOXCRAFT] API Key encontrada (primeiros 20 chars): {api_key[:20]}...")
-
-        from google import genai
         from google.genai import types
-
-        client = genai.Client(api_key=api_key)
-
-        model_name = 'gemini-2.5-flash'
-        print(f"[VOXCRAFT] Tentando usar modelo: {model_name}")
-
-        # Preparar histórico da conversa (system prompt vai via config, não como turno)
         chat_contents = [
-            types.Content(role=("user" if msg.get("role") == "user" else "model"),
-                          parts=[types.Part.from_text(text=msg.get("content", ""))])
-            for msg in messages
+            types.Content(role=("user" if m.get("role") == "user" else "model"),
+                          parts=[types.Part.from_text(text=str(m.get("content", "")))])
+            for m in messages
         ]
-
-        generate_content_config = types.GenerateContentConfig(
-            system_instruction=VOXCRAFT_SYSTEM_PROMPT
-        )
-
-        print(f"[VOXCRAFT] Enviando requisição para o Gemini...")
-        response = client.models.generate_content(
-            model=model_name,
-            contents=chat_contents,
-            config=generate_content_config
-        )
-        print(f"[VOXCRAFT] Resposta recebida do Gemini com sucesso!")
-        
-        return jsonify({
-            "success": True,
-            "message": response.text
-        })
-        
+        system_prompt = montar_prompt_voxcraft(voxcraft_contexto_vivo(), contexto_tela)
+        texto = _gemini_chat_text(system_prompt, chat_contents)
+        return jsonify({"success": True, "message": texto})
     except Exception as e:
-        print(f"[VOXCRAFT] ERRO DETALHADO: {e}")
-        import traceback
-        print(f"[VOXCRAFT] STACK TRACE: {traceback.format_exc()}")
-        # Fallback: resposta manual se o Gemini não funcionar
-        last_user_msg = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
-        fallback_response = f"Olá! Eu sou o VoxCraft AI! 😊\n\nPercebi que houve um problema com a conexão do Gemini, mas posso te ajudar com dicas rápidas sobre:\n- Trilhas sonoras para comerciais (use a Biblioteca!)\n- Mixagem de voz e música (80% voz, 30% música)\n- Geração de locuções com IA\n\nComo posso te ajudar? 🎙️"
-        return jsonify({"success": True, "message": fallback_response})
+        print(f"[VOXCRAFT] IA indisponível: {type(e).__name__}: {e}", flush=True)
+        return jsonify({
+            "success": True, "ia_indisponivel": True,
+            "message": ("A IA está fora do ar agora (provavelmente a cota diária do Gemini, ou rede). "
+                        "Prefiro não responder com chute: preço está no /admin, vozes e trilhas no Gerador. "
+                        f"Motivo técnico: {type(e).__name__}.")
+        })
+
 
 def _parse_variations(content: str, count: int) -> list:
     """Extrai uma lista de variações de texto da resposta do Gemini.
