@@ -140,12 +140,6 @@ def compute_news_metrics(hours=24, limit=2000):
         'pending': len([p for p in news if p.get('status') in ('ready', 'pending')]),
         'draft': len([p for p in news if p.get('status') == 'draft']),
     }
-    # sentimento: placeholder proporcional (sem IA de NLP por enquanto)
-    sentiment_distribution = {
-        'positivo': round(total * 0.40, 1),
-        'neutro': round(total * 0.45, 1),
-        'negativo': round(total * 0.15, 1),
-    }
 
     return {
         'posts': news,
@@ -153,7 +147,6 @@ def compute_news_metrics(hours=24, limit=2000):
         'by_source': dict(by_source.most_common()),
         'by_category': dict(by_category.most_common(15)),
         'by_status': by_status,
-        'sentiment_distribution': sentiment_distribution,
         'global_keywords': global_keywords,
         'trending_topics': trending_topics,
         'recent': news[:10],

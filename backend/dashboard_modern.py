@@ -481,9 +481,6 @@ MODERN_DASHBOARD_HTML = '''
                 </div>
                 <div class="stat-value" id="total-news">0</div>
                 <div class="stat-label">Total de Notícias</div>
-                <div class="stat-change positive" id="news-change">
-                    <i class="fas fa-arrow-up"></i> 0% vs período anterior
-                </div>
             </div>
             
             <div class="stat-card success">
@@ -492,9 +489,6 @@ MODERN_DASHBOARD_HTML = '''
                 </div>
                 <div class="stat-value" id="sources-count">0</div>
                 <div class="stat-label">Fontes Ativas</div>
-                <div class="stat-change neutral" id="sources-change">
-                    <i class="fas fa-minus"></i> Estável
-                </div>
             </div>
             
             <div class="stat-card warning">
@@ -503,21 +497,8 @@ MODERN_DASHBOARD_HTML = '''
                 </div>
                 <div class="stat-value" id="topics-count">0</div>
                 <div class="stat-label">Tópicos em Alta</div>
-                <div class="stat-change positive" id="topics-change">
-                    <i class="fas fa-arrow-up"></i> Tendência positiva
-                </div>
             </div>
             
-            <div class="stat-card info">
-                <div class="stat-icon">
-                    <i class="fas fa-chart-line"></i>
-                </div>
-                <div class="stat-value" id="sentiment-general">-</div>
-                <div class="stat-label">Sentimento Geral</div>
-                <div class="stat-change neutral" id="sentiment-change">
-                    <i class="fas fa-equals"></i> Equilibrado
-                </div>
-            </div>
         </div>
         
         <!-- Gráficos -->
@@ -534,17 +515,6 @@ MODERN_DASHBOARD_HTML = '''
                 </div>
             </div>
             
-            <div class="chart-card">
-                <div class="chart-header">
-                    <div>
-                        <div class="chart-title">Análise de Sentimentos</div>
-                        <div class="chart-subtitle">Distribuição emocional das notícias</div>
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <canvas id="sentimentChart"></canvas>
-                </div>
-            </div>
         </div>
         
         <div class="charts-grid">
@@ -599,7 +569,7 @@ MODERN_DASHBOARD_HTML = '''
         Chart.defaults.plugins.legend.labels.usePointStyle = true;
         Chart.defaults.plugins.legend.labels.padding = 20;
         
-        let sourcesChart, sentimentChart, categoriesChart, keywordsChart;
+        let sourcesChart, categoriesChart, keywordsChart;
         let refreshing = false;
         
         async function refreshData() {
@@ -630,20 +600,9 @@ MODERN_DASHBOARD_HTML = '''
                 animateValue('sources-count', Object.keys(trends.by_source || {}).length);
                 animateValue('topics-count', trends.trending_topics?.length || 0);
                 
-                // Determinar sentimento geral
-                const sentiments = trends.sentiment_distribution || {};
-                const maxSentiment = Object.keys(sentiments).reduce((a, b) => 
-                    sentiments[a] > sentiments[b] ? a : b, 'neutro');
-                const sentimentLabels = {
-                    'positivo': 'Positivo',
-                    'negativo': 'Negativo', 
-                    'neutro': 'Neutro'
-                };
-                document.getElementById('sentiment-general').textContent = sentimentLabels[maxSentiment] || '—';
                 
                 // Atualizar gráficos
                 updateSourcesChart(trends.by_source || {});
-                updateSentimentChart(sentiments);
                 updateCategoriesChart(trends.by_category || {});
                 updateKeywordsChart(trends.global_keywords || []);
                 updateTrendingTopics(trends.trending_topics || []);
@@ -745,85 +704,6 @@ MODERN_DASHBOARD_HTML = '''
                         }
                     },
                     cutout: '60%'
-                }
-            });
-        }
-        
-        function updateSentimentChart(data) {
-            const ctx = document.getElementById('sentimentChart').getContext('2d');
-            
-            if (sentimentChart) {
-                sentimentChart.destroy();
-            }
-            
-            sentimentChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Positivo', 'Negativo', 'Neutro'],
-                    datasets: [{
-                        data: [
-                            data.positivo || 0,
-                            data.negativo || 0,
-                            data.neutro || 0
-                        ],
-                        backgroundColor: [
-                            'rgba(16, 185, 129, 0.8)',
-                            'rgba(239, 68, 68, 0.8)',
-                            'rgba(100, 116, 139, 0.8)'
-                        ],
-                        borderColor: [
-                            'rgb(16, 185, 129)',
-                            'rgb(239, 68, 68)',
-                            'rgb(100, 116, 139)'
-                        ],
-                        borderWidth: 2,
-                        borderRadius: 8,
-                        barThickness: 60
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                            callbacks: {
-                                label: function(context) {
-                                    const value = context.parsed.y;
-                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                    const percentage = ((value / total) * 100).toFixed(1);
-                                    return `Notícias: ${value} (${percentage}%)`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(100, 116, 139, 0.1)'
-                            },
-                            ticks: {
-                                font: {
-                                    size: 12
-                                }
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false
-                            },
-                            ticks: {
-                                font: {
-                                    size: 12,
-                                    weight: 600
-                                }
-                            }
-                        }
-                    }
                 }
             });
         }
@@ -1032,7 +912,6 @@ def get_trends():
                 'total_news': m['total_news'],
                 'by_source': m['by_source'],
                 'by_category': m['by_category'],
-                'sentiment_distribution': m['sentiment_distribution'],
                 'global_keywords': m['global_keywords'],
                 'trending_topics': m['trending_topics'][:10],
                 'by_day': m['by_day'],

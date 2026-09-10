@@ -218,7 +218,7 @@ DASHBOARD_HTML = '''
     <div class="container">
         <div class="header">
             <h1>📊 Dashboard NewsAgent</h1>
-            <p>Análise avançada de tendências, sentimentos e tópicos em alta</p>
+            <p>Tendências e tópicos em alta — contados nos posts reais do feed</p>
         </div>
         
         <div class="controls">
@@ -255,11 +255,6 @@ DASHBOARD_HTML = '''
                 <div class="card-label">tendências detectadas</div>
             </div>
             
-            <div class="card">
-                <h3>Sentimento Geral</h3>
-                <div class="card-value" id="sentiment-general">-</div>
-                <div class="card-label">agregado</div>
-            </div>
         </div>
         
         <!-- Gráficos -->
@@ -267,11 +262,6 @@ DASHBOARD_HTML = '''
             <div class="chart-container">
                 <div class="chart-title">Notícias por Fonte</div>
                 <canvas id="sourcesChart"></canvas>
-            </div>
-            
-            <div class="chart-container">
-                <div class="chart-title">Distribuição de Sentimentos</div>
-                <canvas id="sentimentChart"></canvas>
             </div>
         </div>
         
@@ -298,7 +288,6 @@ DASHBOARD_HTML = '''
     
     <script>
         let sourcesChartObj = null;
-        let sentimentChartObj = null;
         let categoriesChartObj = null;
         let keywordsChartObj = null;
         
@@ -324,17 +313,9 @@ DASHBOARD_HTML = '''
                 document.getElementById('topics-count').textContent = 
                     trends.trending_topics?.length || 0;
                 
-                // Determinar sentimento geral
-                const sentiments = trends.sentiment_distribution || {};
-                let generalSentiment = '—';
-                const maxSentiment = Object.keys(sentiments).reduce((a, b) => 
-                    sentiments[a] > sentiments[b] ? a : b, 'neutro');
-                generalSentiment = maxSentiment.charAt(0).toUpperCase() + maxSentiment.slice(1);
-                document.getElementById('sentiment-general').textContent = generalSentiment;
                 
                 // Atualizar gráficos
                 updateSourcesChart(trends.by_source || {});
-                updateSentimentChart(sentiments);
                 updateCategoriesChart(trends.by_category || {});
                 updateKeywordsChart(trends.global_keywords || []);
                 updateTrendingTopics(trends.trending_topics || []);
@@ -376,48 +357,6 @@ DASHBOARD_HTML = '''
                     plugins: {
                         legend: {
                             position: 'bottom'
-                        }
-                    }
-                }
-            });
-        }
-        
-        function updateSentimentChart(data) {
-            const ctx = document.getElementById('sentimentChart').getContext('2d');
-            
-            if (sentimentChartObj) {
-                sentimentChartObj.destroy();
-            }
-            
-            sentimentChartObj = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Positivo', 'Negativo', 'Neutro'],
-                    datasets: [{
-                        label: 'Notícias',
-                        data: [
-                            data.positivo || 0,
-                            data.negativo || 0,
-                            data.neutro || 0
-                        ],
-                        backgroundColor: [
-                            '#43e97b',
-                            '#fa7231',
-                            '#a8a8a8'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true
                         }
                     }
                 }
@@ -545,7 +484,6 @@ def get_trends():
                 'total_news': m['total_news'],
                 'by_source': m['by_source'],
                 'by_category': m['by_category'],
-                'sentiment_distribution': m['sentiment_distribution'],
                 'global_keywords': m['global_keywords'],
                 'trending_topics': m['trending_topics'][:10],
                 'by_day': m['by_day'],

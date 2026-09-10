@@ -3697,8 +3697,10 @@ def noticias():
 
 @app.route('/painel')
 def painel():
-    """Página do Painel"""
-    return render_template('painel.html')
+    """Era o "Painel de Controle": 12 vozes, 156 áudios, 8,5 horas, 23 projetos —
+    números fixos no HTML, mais um bloco do agente antigo (off na Vercel).
+    Apagado em 10/09/2026 a pedido do produtor ("apague só as mentiras")."""
+    return redirect('/studio')
 
 @app.route('/contato')
 def contato():
@@ -3707,8 +3709,11 @@ def contato():
 
 @app.route('/draft_approval')
 def draft_approval():
-    """Dashboard de Rascunhos & Aprovação"""
-    return render_template('draft_approval.html')
+    """Era o "Dashboard de Rascunhos & Aprovação": lia os mesmos posts da
+    curadoria, mas "Aprovar e Publicar" só mudava um objeto na memória do
+    navegador e dizia "publicado com sucesso" — nada ia pro banco nem pro feed.
+    Apagado em 10/09/2026. A curadoria de verdade é /social-posts."""
+    return redirect('/social-posts')
 
 @app.route('/news-auto-post')
 def news_auto_post():
@@ -5279,8 +5284,11 @@ def api_status_page():
 
 @app.route('/automation')
 def automation_page():
-    """Página de Automação"""
-    return render_template('automation.html')
+    """Era o "Centro de Automação": barras de progresso, "próxima execução",
+    "Limpeza de Logs", "Backup Automático" e a "Atividade Recente" — tudo fixo
+    no HTML, e os interruptores não gravavam nada na Vercel. Apagado em
+    10/09/2026. O agendamento real é /agendamento + Vercel Cron."""
+    return redirect('/agendamento')
 
 @app.route('/dashboard')
 def dashboard_page():
@@ -5300,7 +5308,7 @@ def api_health_check():
     
     # 2. Testar Supabase (dois projetos)
     supabase_status = "online"
-    supabase_latency = 120
+    supabase_latency = None   # None = não medido (sem env), nunca um número inventado
     try:
         # Testar projeto NewPost-IA
         newpost_url = os.getenv("NEWPOST_SUPABASE_URL")
@@ -5312,68 +5320,37 @@ def api_health_check():
     except Exception as e:
         print(f"Supabase health check error: {e}")
         supabase_status = "warning"
-        supabase_latency = 500
+        supabase_latency = None
     
-    # 3. Testar Gemini IA
-    gemini_status = "operational"
-    gemini_tokens = "1.2M/mês"
-    try:
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
-        if not api_key:
-            gemini_status = "warning"
-            gemini_tokens = "Chave não configurada"
-    except Exception as e:
-        gemini_status = "offline"
-    
-    # 4. Testar TTS Engine
-    tts_status = "operational"
-    tts_usage = "45%"
-    try:
-        # Verificar se temos pelo menos um provedor TTS configurado
-        tts_providers = [
-            os.getenv("ELEVENLABS_API_KEY"),
-            os.getenv("LMNT_API_KEY"),
-            os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        ]
-        if not any(tts_providers):
-            tts_status = "warning"
-            tts_usage = "Nenhum provedor configurado"
-    except Exception as e:
-        tts_status = "offline"
-        tts_usage = "Erro na configuração"
-    
+    # 3. Gemini IA — sem gastar chamada só dá pra afirmar uma coisa: a chave
+    # existe ou não. (Antes: "Tokens: 1.2M/mês", número fixo — apagado em
+    # 10/09/2026 a pedido do produtor: "apague só as mentiras".)
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+    gemini_status = "operational" if api_key else "warning"
+    gemini_detalhe = "chave configurada" if api_key else "sem chave (GEMINI_API_KEY)"
+
+    # 4. TTS — quais provedores têm chave. LMNT saiu da lista: o serviço fechou
+    # (ver core/lmnt_*). "Uso: 45%" era constante — também apagado.
+    provedores = [nome for nome, ok in (
+        ("ElevenLabs", os.getenv("ELEVENLABS_API_KEY")),
+        ("Google/Gemini TTS", api_key),
+        ("Google Cloud TTS", os.getenv("GOOGLE_APPLICATION_CREDENTIALS")),
+    ) if ok]
+    tts_status = "operational" if provedores else "warning"
+    tts_detalhe = ", ".join(provedores) if provedores else "nenhum provedor configurado"
+
+    # Só entra aqui o que é MEDIDO (API, Supabase) ou CONFERIDO (chaves). A
+    # tabela de endpoints com 45/120/250 ms e as barras de CPU/memória/disco
+    # eram números fixos e foram embora junto com a tela que os mostrava.
     health_status = {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",
         "services": {
-            "api": {
-                "status": api_status,
-                "response_time_ms": api_response_time
-            },
-            "supabase": {
-                "status": supabase_status,
-                "latency_ms": supabase_latency
-            },
-            "gemini": {
-                "status": gemini_status,
-                "tokens": gemini_tokens
-            },
-            "tts": {
-                "status": tts_status,
-                "usage": tts_usage
-            }
-        },
-        "endpoints": {
-            "api_health": {"url": "/api/health", "method": "GET", "status": "online", "response_time": api_response_time},
-            "news_fetch": {"url": "/api/news/fetch", "method": "GET", "status": "online", "response_time": 45},
-            "news_generate": {"url": "/api/news/generate-post", "method": "POST", "status": "online", "response_time": 120},
-            "news_publish": {"url": "/api/news/publish-to-newpost", "method": "POST", "status": "online", "response_time": 250}
-        },
-        "system_metrics": {
-            "cpu": 45,
-            "memory": 62,
-            "storage": 28
+            "api": {"status": api_status, "response_time_ms": api_response_time},
+            "supabase": {"status": supabase_status, "latency_ms": supabase_latency},
+            "gemini": {"status": gemini_status, "detalhe": gemini_detalhe},
+            "tts": {"status": tts_status, "detalhe": tts_detalhe}
         },
         "operations": operation_tracker.get_summary()
     }
@@ -7666,58 +7643,6 @@ def api_automation_status():
 
 
 
-@app.route('/api/automation/<type>', methods=['POST'])
-def api_toggle_automation(type):
-    """Liga/desliga uma automação específica"""
-    try:
-        data = request.get_json()
-        enabled = data.get('enabled', False)
-        
-        # Validar tipo
-        valid_types = ['news', 'social', 'voxcraft']
-        if type not in valid_types:
-            return jsonify({
-                'success': False,
-                'error': f'Tipo inválido. Tipos válidos: {valid_types}'
-            }), 400
-        
-        # Salvar estado no arquivo de configuração (apenas se não estiver no Vercel)
-        import json
-        if not os.environ.get('VERCEL'):
-            config_file = 'automation_state.json'
-            try:
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    state = json.load(f)
-            except:
-                state = {}
-            
-            state[f'{type}_enabled'] = enabled
-            
-            try:
-                with open(config_file, 'w', encoding='utf-8') as f:
-                    json.dump(state, f, indent=2)
-            except Exception as e:
-                print(f"⚠️ Não foi possível salvar estado (Read-only): {e}")
-        else:
-            # No Vercel, não salvar estado em arquivo
-            print("ℹ️ No Vercel, estado não é salvo em arquivo")
-        
-        print(f"✅ Automação {type} {'ativada' if enabled else 'desativada'}")
-        
-        return jsonify({
-            'success': True,
-            'type': type,
-            'enabled': enabled,
-            'message': f'Automação {type} {"ativada" if enabled else "desativada"} com sucesso'
-        })
-        
-    except Exception as e:
-        print(f"Erro ao alternar automação: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
 @app.route('/api/automation/run-now', methods=['POST'])
 def api_automation_run_now():
     """Dispara o job de publicação imediatamente (para testes)."""
@@ -7858,107 +7783,6 @@ def api_scheduler_status():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@app.route('/api/automation/state', methods=['GET'])
-def api_automation_state():
-    """Retorna o estado atual de todas as automações"""
-    try:
-        import json
-        config_file = 'automation_state.json'
-        
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                state = json.load(f)
-        except:
-            state = {
-                'news_enabled': True,
-                'social_enabled': True,
-                'voxcraft_enabled': False
-            }
-        
-        # Ler estatísticas do scheduler se existirem
-        stats_file = 'scheduler_stats.json'
-        try:
-            with open(stats_file, 'r', encoding='utf-8') as f:
-                stats = json.load(f)
-        except:
-            stats = {
-                'total_collections': 0,
-                'successful_collections': 0,
-                'failed_collections': 0,
-                'total_news_collected': 0,
-                'last_collection': None
-            }
-        
-        return jsonify({
-            'success': True,
-            'state': state,
-            'stats': stats
-        })
-        
-    except Exception as e:
-        print(f"Erro ao obter estado das automações: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/automation/execute/<type>', methods=['POST'])
-def api_execute_automation(type):
-    """Executa uma automação imediatamente"""
-    try:
-        # Validar tipo
-        valid_types = ['news', 'social', 'voxcraft']
-        if type not in valid_types:
-            return jsonify({
-                'success': False,
-                'error': f'Tipo inválido. Tipos válidos: {valid_types}'
-            }), 400
-        
-        print(f"🚀 Executando automação {type} manualmente...")
-        
-        if type == 'news':
-            # Executar coleta de notícias
-            if HAS_NEWS_AGENT:
-                # Usar a instância global news_agent em vez da classe NewsAgent
-                result = news_agent.execute_collection(
-                    enabled_sources={'g1': True, 'folha': True, 'exame': True, 'veja': True},
-                    categories=['brasil', 'economia', 'tecnologia'],
-                    limit=50
-                )
-                return jsonify({
-                    'success': True,
-                    'type': type,
-                    'result': result
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': 'NewsAgent não disponível'
-                }), 500
-        
-        elif type == 'social':
-            # Executar publicação social
-            return jsonify({
-                'success': True,
-                'type': type,
-                'message': 'Publicação social executada (simulação)'
-            })
-        
-        elif type == 'voxcraft':
-            # Executar VoxCraft
-            return jsonify({
-                'success': True,
-                'type': type,
-                'message': 'VoxCraft executado (simulação)'
-            })
-        
-    except Exception as e:
-        print(f"Erro ao executar automação: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
 
 @app.route('/api/scheduled-posts', methods=['GET'])
 def api_get_scheduled_posts():
