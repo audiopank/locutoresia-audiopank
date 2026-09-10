@@ -716,6 +716,75 @@
         }
     }
 
+    // ── VoxCraft: o que a tela mostra, e o que o chat manda preencher ────
+    // O widget (static/voxcraft-widget.js) chama voxcraftContexto() a cada
+    // mensagem; o backend calcula o diagnóstico (duração x grade, frase legal,
+    // miolo) e a IA critica com número. aplicarPrefillVoxcraft() recebe o que
+    // uma ferramenta do chat montou (episódio, roteiro, trilha) e preenche a
+    // bancada — gerar, enviar e publicar continuam sendo cliques do produtor.
+    window.voxcraftContexto = function () {
+        const g = id => { const el = document.getElementById(id); return el ? (el.value || '') : ''; };
+        const txt = id => {
+            const el = document.getElementById(id);
+            return (el && el.options && el.selectedIndex >= 0) ? el.options[el.selectedIndex].text : g(id);
+        };
+        const chk = id => { const el = document.getElementById(id); return !!(el && el.checked); };
+        const p = programaAtual();
+        return {
+            tela: '/gerador',
+            pedido: txt('selectPedido'),
+            programa: p ? p.id : '', tema: p ? g('inputTema') : '', episodio: p ? g('inputEpisodio') : '',
+            patrocinador: p ? g('inputPatrocinador') : '', miolo: p ? g('textoMiolo') : '',
+            formato: g('selectFormato'), modo: g('selectModo'), voz: txt('selectVoz'), estilo: txt('selectEstilo'),
+            direcao: g('direcaoLocucao'), plano: g('selectPlano'), trilha: txt('selectTrilha'),
+            nome: g('inputNome'), conta_feed: txt('selectContaFeed'),
+            gate: chk('chkGate'), texto_pronto: chk('checkTextoPronto'),
+            roteiro: g('textoComercial'), duracao_mix: estado.duracaoMix || 0
+        };
+    };
+
+    window.aplicarPrefillVoxcraft = async function (c) {
+        c = c || {};
+        limparAvisos();
+        try {
+            if (c.programa) {
+                document.getElementById('selectPrograma').value = c.programa;
+                await aplicarPrograma();
+                if (c.tema != null) document.getElementById('inputTema').value = c.tema;
+                if (c.episodio) document.getElementById('inputEpisodio').value = c.episodio;
+                if (c.patrocinador != null) document.getElementById('inputPatrocinador').value = c.patrocinador;
+                if (c.miolo) document.getElementById('textoMiolo').value = c.miolo;
+                atualizarContadorMiolo();
+                if (c.roteiro) estado.roteiroMontado = true;
+            }
+            if (c.plano) document.getElementById('selectPlano').value = c.plano;
+            if (c.formato) {
+                document.getElementById('selectFormato').value = c.formato;
+                document.getElementById('selectFormato').dispatchEvent(new Event('change'));
+            }
+            if (c.roteiro) {
+                document.getElementById('textoComercial').value = c.roteiro;
+                estado.roteiro = c.roteiro;
+                atualizarContador();
+            }
+            if (c.texto_pronto) document.getElementById('checkTextoPronto').checked = true;
+            if (c.nome) document.getElementById('inputNome').value = c.nome;
+            if (c.conta_feed) document.getElementById('selectContaFeed').value = c.conta_feed;
+            if (c.trilha_id != null) {
+                const st = document.getElementById('selectTrilha');
+                st.value = String(c.trilha_id);
+                if (st.value !== String(c.trilha_id)) {
+                    avisar(`Trilha "${c.trilha_nome || c.trilha_id}" não está no catálogo carregado — escolha na mão.`, 'atencao');
+                }
+            }
+            const oque = c.programa ? `o episódio ${c.episodio || ''} do programa` : (c.roteiro ? 'o roteiro' : 'os campos');
+            avisar(`🤖 VoxCraft preencheu a bancada com ${oque}${c.trilha_nome ? ` e a trilha "${c.trilha_nome}"` : ''}. Revise e clique em Gerar anúncio.`, 'ok');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e) {
+            avisar('Não consegui aplicar o que o VoxCraft mandou: ' + e.message, 'atencao');
+        }
+    };
+
     async function gerarAnuncio() {
         const btn = document.getElementById('btnGerar');
         btn.disabled = true;
@@ -1219,5 +1288,17 @@
 
         document.getElementById('textoComercial').addEventListener('input', atualizarContador);
         atualizarContador();
+
+        // Veio de outra tela com algo montado pelo VoxCraft? Aplica e limpa.
+        try {
+            const raw = sessionStorage.getItem('voxcraft_prefill');
+            if (raw) {
+                sessionStorage.removeItem('voxcraft_prefill');
+                await carregarProgramas();
+                await window.aplicarPrefillVoxcraft(JSON.parse(raw));
+            }
+        } catch (e) {
+            console.warn('prefill do VoxCraft', e);
+        }
     });
 })();

@@ -1,0 +1,219 @@
+{# VoxCraft AI — widget compartilhado. Fonte única pra Gerador e MiniDAW
+   (a home ainda usa a cópia antiga, sem ações). Lógica em static/voxcraft-widget.js. #}
+<style>
+        .voxcraft-widget {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+
+        .voxcraft-toggle-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .voxcraft-toggle-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.5);
+        }
+
+        .voxcraft-chat {
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 380px;
+            max-width: calc(100vw - 40px);
+            height: 500px;
+            max-height: calc(100vh - 120px);
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .voxcraft-chat.open {
+            display: flex;
+        }
+
+        .voxcraft-header {
+            padding: 16px 20px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .voxcraft-header i {
+            font-size: 1.5rem;
+        }
+
+        .voxcraft-header h6 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .voxcraft-header p {
+            margin: 0;
+            font-size: 0.8rem;
+            opacity: 0.9;
+        }
+
+        .voxcraft-messages {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .voxcraft-message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.5;
+        }
+
+        .voxcraft-message.assistant {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--text-primary);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            align-self: flex-start;
+        }
+
+        .voxcraft-message.user {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            align-self: flex-end;
+        }
+
+        .voxcraft-input-container {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 12px;
+        }
+
+        .voxcraft-input {
+            flex: 1;
+            background: var(--dark-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 10px;
+            padding: 10px 16px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .voxcraft-input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+        }
+
+        .voxcraft-send-btn {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .voxcraft-send-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .voxcraft-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .voxcraft-typing {
+            display: none;
+            gap: 4px;
+            padding: 12px 16px;
+            align-self: flex-start;
+        }
+
+        .voxcraft-typing.show {
+            display: flex;
+        }
+
+        .voxcraft-typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .voxcraft-typing-dot:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .voxcraft-typing-dot:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes typing {
+            0%, 80%, 100% {
+                transform: scale(0);
+            }
+            40% {
+                transform: scale(1);
+            }
+        }
+
+        /* Timeline Styles */
+        .voxcraft-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .voxcraft-acao { border: 1px solid rgba(139, 92, 246, 0.6); background: rgba(139, 92, 246, 0.18);
+            color: #e9d5ff; border-radius: 8px; padding: 6px 10px; font-size: .8rem; cursor: pointer; }
+        .voxcraft-acao:hover { background: rgba(139, 92, 246, 0.35); }
+</style>
+    <div class="voxcraft-widget">
+        <div class="voxcraft-chat" id="voxcraftChat">
+            <div class="voxcraft-header">
+                <i class="fas fa-headphones"></i>
+                <div>
+                    <h6>VoxCraft AI</h6>
+                    <p>Assistente de produção — vê a tela e age</p>
+                </div>
+            </div>
+            <div class="voxcraft-messages" id="voxcraftMessages">
+                <div class="voxcraft-message assistant">
+                    Oi, produtor. 🎙️ Sou o VoxCraft. Eu vejo a tela: posso criticar o roteiro, montar episódio, escolher trilha ou conferir duração e frase legal. O que precisa?
+                </div>
+            </div>
+            <div class="voxcraft-typing" id="voxcraftTyping">
+                <div class="voxcraft-typing-dot"></div>
+                <div class="voxcraft-typing-dot"></div>
+                <div class="voxcraft-typing-dot"></div>
+            </div>
+            <div class="voxcraft-input-container">
+                <input type="text" class="voxcraft-input" id="voxcraftInput" placeholder="Digite sua mensagem...">
+                <button class="voxcraft-send-btn" id="voxcraftSendBtn">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+        <button class="voxcraft-toggle-btn" id="voxcraftToggleBtn">
+            <i class="fas fa-headphones"></i>
+        </button>
+    </div>
+<script src="/static/voxcraft-widget.js?v=1"></script>

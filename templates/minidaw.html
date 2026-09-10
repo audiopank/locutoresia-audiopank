@@ -1196,5 +1196,24 @@
             }, 1000); // Aguarda 1s para MiniDAW inicializar
         });
     </script>
+    <!-- VoxCraft: contexto mínimo da MiniDAW (faixas com nome/duração). `minidaw`
+         é o `let` de topo do minidaw.js — acessível daqui; tudo guardado. -->
+    <script>
+        window.voxcraftContexto = function () {
+            const ctx = { tela: '/minidaw' };
+            try {
+                if (typeof minidaw !== 'undefined' && minidaw && Array.isArray(minidaw.tracks)) {
+                    ctx.faixas = minidaw.tracks.map(t => ({
+                        nome: t.name || t.type || 'faixa',
+                        duracao: t.audioBuffer ? t.audioBuffer.duration : 0,
+                        mudo: !!t.muted
+                    }));
+                }
+            } catch (e) { /* contexto é extra */ }
+            return ctx;
+        };
+    </script>
+    <style>.voxcraft-widget { bottom: 90px; }</style>
+    {% include '_voxcraft_widget.html' %}
 </body>
 </html>
