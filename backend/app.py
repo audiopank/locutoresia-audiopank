@@ -8309,7 +8309,15 @@ VOXCRAFT_SYSTEM_PROMPT = """Você é o VoxCraft AI, assistente INTERNO do produt
 - Curto e direto, como colega de estúdio. Português do Brasil. No máximo 1 emoji.
 - Preço, voz, trilha ou programa: responda pelo bloco DADOS VIVOS. Se o dado não estiver lá, diga onde conferir. Nunca preencha com chute.
 - "Como faço X?": diga a tela e os cliques, na ordem.
-- Você AINDA não executa ações (não gera, não monta, não publica). Se pedirem, explique o caminho na tela.
+- Você tem FERRAMENTAS (abaixo). Use-as em vez de responder de cabeça sempre que o pedido for escrever roteiro, montar episódio, escolher trilha ou conferir duração/frase legal. Você NÃO gera áudio, NÃO envia e NÃO publica: isso é clique do produtor no Gerador. Nunca diga que gerou, enviou ou publicou.
+- Quando vier o bloco "O QUE O PRODUTOR ESTÁ VENDO AGORA", ele traz um DIAGNÓSTICO CALCULADO pelo sistema (palavras, duração estimada, grade, frase legal, miolo). Confie nesses números e não os recalcule; use-os pra criticar o roteiro e sugerir voz, direção e ajustes.
+
+## FERRAMENTAS
+- escrever_roteiro_spot(briefing, plano, formato): roteiro de spot pela IA do Gerador, no tamanho da grade. plano: spot_30_45, spot_60_90, teaser_5s ou outro (livre). formato: unico, dialogo (2 personagens) ou narracao (2 vozes revezando). Use quando ele der o briefing de um cliente.
+- montar_episodio(programa, tema, episodio, miolo, patrocinador): monta o episódio de um programa (vinheta + miolo + aviso + fecho). programa: id do DADOS VIVOS (ex.: vida). Sem episodio, a série do feed numera. Sem miolo, a IA escreve a partir do tema.
+- escolher_trilha(descricao): 3 trilhas do acervo real, com o porquê de cada uma.
+- checar_roteiro(roteiro, plano): duração estimada contra a grade e frase legal por setor.
+Depois que uma ferramenta devolver roteiro ou episódio, mostre o TEXTO COMPLETO na resposta e diga que o botão "Abrir no Gerador" logo abaixo já leva tudo preenchido. Se a ferramenta falhar, diga o motivo que ela devolveu.
 - Termine com uma pergunta curta só quando faltar contexto de verdade."""
 
 
@@ -8376,11 +8384,284 @@ def voxcraft_contexto_vivo(ttl=300):
 
 
 def montar_prompt_voxcraft(contexto_vivo, contexto_tela=''):
-    """Texto fixo (regras e números medidos) + DADOS VIVOS + o que a tela mandou."""
+    """Texto fixo (regras e números medidos) + DADOS VIVOS + o que a tela mandou.
+
+    `contexto_tela` pode ser texto livre ou o objeto estruturado que o widget
+    manda ({tela, roteiro, plano, ...}); no segundo caso entra o diagnóstico
+    calculado (voxcraft_diagnostico), pra IA criticar com número de verdade.
+    """
     prompt = VOXCRAFT_SYSTEM_PROMPT + "\n\n## DADOS VIVOS (lidos agora do sistema)\n" + (contexto_vivo or '')
-    if (contexto_tela or '').strip():
+    if isinstance(contexto_tela, dict):
+        texto = voxcraft_diagnostico(contexto_tela)
+        if texto:
+            prompt += ("\n\n## O QUE O PRODUTOR ESTÁ VENDO AGORA (com DIAGNÓSTICO CALCULADO pelo sistema — "
+                       "confie nestes números, não recalcule)\n" + texto[:8000])
+    elif str(contexto_tela or '').strip():
         prompt += "\n\n## O QUE O PRODUTOR ESTÁ VENDO AGORA\n" + str(contexto_tela).strip()[:6000]
     return prompt
+
+
+def _chamar_view_json(view, data):
+    """Chama uma view Flask por dentro, com um request context próprio carregando
+    `data` como JSON. É como as ferramentas do VoxCraft reusam /api/gerador/roteiro,
+    /api/gerador/programa/roteiro, recommend-tracks e checar — sem refatorar
+    nenhuma delas (dia de spot real: risco zero nas views). Devolve (dict, status)."""
+    with app.test_request_context('/interno/voxcraft', method='POST', json=data):
+        r = view()
+    resp, status = (r if isinstance(r, tuple) else (r, 200))
+    try:
+        corpo = resp.get_json() or {}
+    except Exception:
+        corpo = {}
+    return corpo, status
+
+
+# Espelho de static/gerador.js (RITMO_RAPIDO/RITMO_LENTO/CAUDA_TRILHA): mudou lá, muda aqui.
+_RITMO_RAPIDO = 2.55
+_RITMO_LENTO = 2.15
+
+
+def _estimativa_fala(texto):
+    """Palavras e faixa de duração (fala e arquivo com cauda) — o mesmo cálculo da tela."""
+    palavras = len([w for w in re.split(r'\s+', str(texto or '').strip()) if w])
+    seg_min = palavras / _RITMO_RAPIDO
+    seg_max = palavras / _RITMO_LENTO
+    return {
+        'palavras': palavras,
+        'fala_min_s': round(seg_min, 1), 'fala_max_s': round(seg_max, 1),
+        'arquivo_min_s': round(seg_min + CAUDA_TRILHA_SEGUNDOS, 1),
+        'arquivo_max_s': round(seg_max + CAUDA_TRILHA_SEGUNDOS, 1),
+        'arquivo_medio_s': round((seg_min + seg_max) / 2 + CAUDA_TRILHA_SEGUNDOS, 1),
+    }
+
+
+def voxcraft_diagnostico(ctx):
+    """Texto do que o produtor vê + números calculados aqui (não pelo modelo)."""
+    if not isinstance(ctx, dict):
+        return str(ctx or '')
+    linhas = [f"Tela: {ctx.get('tela') or '?'}"]
+    rotulos = (('pedido', 'Pedido'), ('programa', 'Programa'), ('tema', 'Tema'), ('episodio', 'Episódio'),
+               ('patrocinador', 'Patrocinador'), ('formato', 'Formato'), ('modo', 'Modo'), ('voz', 'Voz'),
+               ('estilo', 'Estilo de fala'), ('direcao', 'Direção de locução'), ('plano', 'Plano/duração'),
+               ('trilha', 'Trilha'), ('nome', 'Nome do áudio'), ('conta_feed', 'Conta do Feed'),
+               ('gate', 'Gate de respiração'), ('texto_pronto', 'Texto pronto marcado'))
+    for k, rot in rotulos:
+        v = ctx.get(k)
+        if v not in (None, '', []):
+            linhas.append(f"{rot}: {v}")
+    try:
+        dur_mix = float(ctx.get('duracao_mix') or 0)
+    except (TypeError, ValueError):
+        dur_mix = 0.0
+    if dur_mix > 0:
+        linhas.append(f"Último áudio gerado: {dur_mix:.1f} s")
+
+    roteiro = str(ctx.get('roteiro') or '').strip()
+    plano = str(ctx.get('plano') or 'outro')
+    if roteiro:
+        est = _estimativa_fala(roteiro)
+        linhas.append(f"Roteiro atual: {est['palavras']} palavras → fala estimada {est['fala_min_s']:.0f} a "
+                      f"{est['fala_max_s']:.0f} s; arquivo com cauda {est['arquivo_min_s']:.0f} a {est['arquivo_max_s']:.0f} s")
+        faixa = DURACAO_POR_PLANO.get(plano)
+        if faixa:
+            lo, hi = faixa
+            if est['arquivo_min_s'] > hi:
+                linhas.append(f"VEREDITO: ESTOURA a grade de {lo}–{hi} s mesmo no take mais rápido — cortar ~{int((est['arquivo_min_s'] - hi) * _RITMO_RAPIDO)} palavras.")
+            elif est['arquivo_max_s'] < lo:
+                linhas.append(f"VEREDITO: CURTO pra grade de {lo}–{hi} s — faltam ~{int((lo - est['arquivo_max_s']) * _RITMO_LENTO)} palavras.")
+            elif est['arquivo_max_s'] > hi:
+                linhas.append(f"VEREDITO: no limite — cabe na grade de {lo}–{hi} s só se o take sair rápido; ~{int((est['arquivo_max_s'] - hi) * _RITMO_LENTO)} palavras a menos deixam seguro.")
+            else:
+                linhas.append(f"VEREDITO: dentro da grade de {lo}–{hi} s.")
+        else:
+            linhas.append("Plano sem grade fixa (livre).")
+        try:
+            d, _ = _chamar_view_json(checar_qualidade, {'roteiro': roteiro, 'plano': plano,
+                                                        'duracao_segundos': dur_mix or est['arquivo_medio_s']})
+            for a in d.get('avisos') or []:
+                if 'legal' in str(a.get('titulo', '')).lower() or 'frase' in str(a.get('titulo', '')).lower() \
+                        or str(a.get('nivel')) == 'erro' or 'setor' in str(a.get('titulo', '')).lower():
+                    linhas.append(f"Checagem: {a.get('titulo')} — {a.get('detalhe', '')}")
+        except Exception as e:
+            linhas.append(f"Checagem de frase legal indisponível ({type(e).__name__}).")
+        linhas.append("--- ROTEIRO ATUAL ---\n" + roteiro[:4000])
+
+    miolo = str(ctx.get('miolo') or '').strip()
+    pid = str(ctx.get('programa') or '')
+    if miolo and _programas.programa(pid):
+        lo, hi = _programas.programa(pid)['miolo_palavras']
+        n = _programas.contar_palavras(miolo)
+        linhas.append(f"Miolo do programa: {n} palavras (alvo {lo}–{hi})" + ("" if lo <= n <= hi else " — FORA DO ALVO"))
+        for a in _programas.alertas_editoriais(miolo):
+            linhas.append("Editorial: " + a)
+
+    faixas = ctx.get('faixas')
+    if isinstance(faixas, list) and faixas:
+        linhas.append("Faixas na MiniDAW: " + "; ".join(
+            f"{f.get('nome', '?')} ({float(f.get('duracao') or 0):.1f} s{', mudo' if f.get('mudo') else ''})" for f in faixas[:12]))
+    return "\n".join(linhas)
+
+
+# ── Ferramentas do VoxCraft (function calling) ──────────────────────────────
+VOXCRAFT_TOOLS_DECL = [
+    {
+        'name': 'escrever_roteiro_spot',
+        'description': 'Escreve o roteiro de um spot pela IA do Gerador, no tamanho da grade do plano. Use quando o produtor der o briefing de um cliente.',
+        'parameters': {'type': 'OBJECT', 'properties': {
+            'briefing': {'type': 'STRING', 'description': 'O que o cliente quer anunciar: produto, marca, oferta, endereço, telefone, tom.'},
+            'plano': {'type': 'STRING', 'enum': ['spot_30_45', 'spot_60_90', 'teaser_5s', 'outro'], 'description': 'Grade vendida. Sem informação, spot_30_45.'},
+            'formato': {'type': 'STRING', 'enum': ['unico', 'dialogo', 'narracao'], 'description': 'Locutor único (padrão), diálogo entre 2 personagens ou narração revezada por 2 vozes.'},
+        }, 'required': ['briefing']},
+    },
+    {
+        'name': 'montar_episodio',
+        'description': 'Monta o episódio de um programa (vinheta + miolo + aviso + fecho). Sem número, a série do feed numera. Sem miolo, a IA escreve a partir do tema.',
+        'parameters': {'type': 'OBJECT', 'properties': {
+            'programa': {'type': 'STRING', 'description': 'Id do programa (ex.: vida).'},
+            'tema': {'type': 'STRING', 'description': 'Tema do episódio.'},
+            'episodio': {'type': 'INTEGER', 'description': 'Número do episódio, se o produtor disser.'},
+            'miolo': {'type': 'STRING', 'description': 'Miolo pronto, se o produtor colar.'},
+            'patrocinador': {'type': 'STRING', 'description': 'Marca do patrocinador, se houver.'},
+        }, 'required': ['programa', 'tema']},
+    },
+    {
+        'name': 'escolher_trilha',
+        'description': 'Escolhe 3 trilhas do acervo real pra um roteiro ou descrição de projeto, explicando o porquê.',
+        'parameters': {'type': 'OBJECT', 'properties': {
+            'descricao': {'type': 'STRING', 'description': 'O roteiro ou a descrição do clima do spot.'},
+        }, 'required': ['descricao']},
+    },
+    {
+        'name': 'checar_roteiro',
+        'description': 'Confere um roteiro: duração estimada contra a grade do plano e frase legal obrigatória por setor.',
+        'parameters': {'type': 'OBJECT', 'properties': {
+            'roteiro': {'type': 'STRING'},
+            'plano': {'type': 'STRING', 'enum': ['spot_30_45', 'spot_60_90', 'teaser_5s', 'outro']},
+        }, 'required': ['roteiro']},
+    },
+]
+
+
+def _tools_sdk():
+    from google.genai import types
+    return [types.Tool(function_declarations=[types.FunctionDeclaration(**d) for d in VOXCRAFT_TOOLS_DECL])]
+
+
+def _executar_ferramenta(nome, args):
+    """Roda a ferramenta e devolve (resultado_para_o_modelo, acao_para_a_tela_ou_None)."""
+    args = dict(args or {})
+    try:
+        if nome == 'escrever_roteiro_spot':
+            plano = args.get('plano') or 'spot_30_45'
+            formato = args.get('formato') or 'unico'
+            d, _ = _chamar_view_json(gerador_roteiro, {'briefing': args.get('briefing') or '', 'plano': plano, 'formato': formato})
+            if d.get('success'):
+                est = _estimativa_fala(d.get('roteiro', ''))
+                d['estimativa'] = est
+                acao = {'tipo': 'abrir_gerador', 'rotulo': 'Abrir no Gerador com este roteiro',
+                        'campos': {'roteiro': d.get('roteiro', ''), 'plano': plano, 'formato': formato, 'texto_pronto': True}}
+                return d, acao
+            return d, None
+
+        if nome == 'montar_episodio':
+            pid = str(args.get('programa') or 'vida')
+            prog = _programas.programa(pid)
+            if not prog:
+                return {'success': False, 'error': f'programa desconhecido: {pid}'}, None
+            ep = args.get('episodio')
+            try:
+                ep = int(ep) if ep else 0
+            except (TypeError, ValueError):
+                ep = 0
+            if ep < 1:
+                from core import newpost_feed
+                ep = newpost_feed.proximo_episodio(prog['conta_feed']) or 0
+            if ep < 1:
+                return {'success': False, 'error': 'Não consegui ler o próximo episódio na série do feed. Peça o número ao produtor.'}, None
+            d, _ = _chamar_view_json(gerador_programa_roteiro, {
+                'programa': pid, 'tema': args.get('tema') or '', 'episodio': ep,
+                'miolo': args.get('miolo') or '', 'patrocinador': args.get('patrocinador') or ''})
+            if d.get('success'):
+                acao = {'tipo': 'abrir_gerador', 'rotulo': f"Abrir no Gerador: {prog['nome']}, episódio {ep}",
+                        'campos': {'programa': pid, 'tema': args.get('tema') or '', 'episodio': ep,
+                                   'patrocinador': args.get('patrocinador') or '', 'miolo': d.get('miolo', ''),
+                                   'roteiro': d.get('roteiro', ''), 'nome': d.get('nome_spot', ''),
+                                   'conta_feed': d.get('conta_feed', ''), 'texto_pronto': True}}
+                return d, acao
+            return d, None
+
+        if nome == 'escolher_trilha':
+            d, _ = _chamar_view_json(voxcraft_recommend_tracks, {'descricao': args.get('descricao') or ''})
+            tracks = d.get('tracks') or []
+            resumo = {'success': d.get('success', False), 'status': d.get('status'), 'fonte': d.get('fonte'),
+                      'tracks': [{'id': t.get('id'), 'name': t.get('name'), 'genre': t.get('genre'),
+                                  'motivo': t.get('motivo') or t.get('reason') or ''} for t in tracks[:3]],
+                      'error': d.get('error')}
+            acao = None
+            if tracks:
+                acao = {'tipo': 'abrir_gerador', 'rotulo': f"Usar \"{tracks[0].get('name')}\" no Gerador",
+                        'campos': {'trilha_id': tracks[0].get('id'), 'trilha_nome': tracks[0].get('name')}}
+            return resumo, acao
+
+        if nome == 'checar_roteiro':
+            roteiro = args.get('roteiro') or ''
+            plano = args.get('plano') or 'outro'
+            est = _estimativa_fala(roteiro)
+            d, _ = _chamar_view_json(checar_qualidade, {'roteiro': roteiro, 'plano': plano, 'duracao_segundos': est['arquivo_medio_s']})
+            return {'success': True, 'estimativa': est, 'grade': DURACAO_POR_PLANO.get(plano), 'avisos': d.get('avisos') or []}, None
+
+        return {'success': False, 'error': f'ferramenta desconhecida: {nome}'}, None
+    except Exception as e:
+        print(f'[VOXCRAFT] ferramenta {nome} falhou: {type(e).__name__}: {e}', flush=True)
+        return {'success': False, 'error': f'{type(e).__name__}: {e}'}, None
+
+
+def _gemini_chat_turn(system_prompt, contents, tools=True):
+    """Uma rodada com o Gemini. Devolve {'texto', 'chamadas': [(nome, args)], 'content'}.
+    Separada pra teste substituir. Levanta exceção em falha."""
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+    if not api_key:
+        raise RuntimeError('sem GEMINI_API_KEY configurada')
+    from google import genai
+    from google.genai import types
+    client = genai.Client(api_key=api_key)
+    config = types.GenerateContentConfig(system_instruction=system_prompt, tools=_tools_sdk() if tools else None)
+    resp = client.models.generate_content(model='gemini-2.5-flash', contents=contents, config=config)
+    cand = (resp.candidates or [None])[0]
+    if cand is None or cand.content is None:
+        raise RuntimeError('resposta vazia do modelo')
+    chamadas, textos = [], []
+    for part in (cand.content.parts or []):
+        fc = getattr(part, 'function_call', None)
+        if fc and fc.name:
+            chamadas.append((fc.name, dict(fc.args or {})))
+        elif getattr(part, 'text', None):
+            textos.append(part.text)
+    return {'texto': ''.join(textos).strip(), 'chamadas': chamadas, 'content': cand.content}
+
+
+def _voxcraft_dialogo(system_prompt, chat_contents, max_rodadas=4):
+    """Loop de ferramentas: modelo pede → executa → devolve → até vir texto.
+    Retorna (texto, acoes, ferramentas_usadas)."""
+    from google.genai import types
+    contents = list(chat_contents)
+    acoes, usadas = [], []
+    for _ in range(max_rodadas):
+        turno = _gemini_chat_turn(system_prompt, contents, tools=True)
+        if not turno['chamadas']:
+            return turno['texto'], acoes, usadas
+        contents.append(turno['content'])
+        partes = []
+        for nome, args in turno['chamadas']:
+            resultado, acao = _executar_ferramenta(nome, args)
+            usadas.append(nome)
+            if acao:
+                acoes.append(acao)
+            partes.append(types.Part.from_function_response(name=nome, response={'result': resultado}))
+        contents.append(types.Content(role='user', parts=partes))
+    # Estourou as rodadas com ferramenta ainda pedindo mais: fecha com o que já tem.
+    turno = _gemini_chat_turn(system_prompt, contents, tools=False)
+    return turno['texto'] or 'Fiz o que dava com as ferramentas; me diga o que ajustar.', acoes, usadas
 
 
 def _gemini_chat_text(system_prompt, chat_contents):
@@ -8403,10 +8684,13 @@ def _gemini_chat_text(system_prompt, chat_contents):
 def voxcraft_chat():
     """Chat do VoxCraft AI (assistente interno do produtor).
 
-    Corpo: {messages: [{role, content}...], contexto?: "texto da tela"}.
+    Corpo: {messages: [{role, content}...], contexto?: texto | {tela, roteiro, plano, ...}}.
     O system prompt é montado a cada chamada com os DADOS VIVOS (preços do
-    /admin, vozes, trilhas, programas). Sem IA (cota, rede), a resposta diz
-    isso na cara — nada de "dica" inventada no lugar.
+    /admin, vozes, trilhas, programas) e, se a tela mandou contexto, com o
+    DIAGNÓSTICO CALCULADO. O modelo pode chamar ferramentas (roteiro, episódio,
+    trilha, checagem); o que elas produzem volta em `acoes` pra tela oferecer
+    "Abrir no Gerador" já preenchido. Sem IA (cota, rede), a resposta diz isso
+    na cara — nada de "dica" inventada no lugar.
     """
     if request.method == 'OPTIONS':
         response = make_response()
@@ -8421,7 +8705,9 @@ def voxcraft_chat():
         return jsonify({"success": False, "error": "Dados inválidos: 'messages' é obrigatório"}), 400
     # Histórico longo só gasta cota: as últimas 20 mensagens bastam pro fio da conversa.
     messages = [m for m in messages if isinstance(m, dict) and str(m.get('content') or '').strip()][-20:]
-    contexto_tela = str(data.get('contexto') or '')
+    contexto_tela = data.get('contexto') or ''
+    if not isinstance(contexto_tela, dict):
+        contexto_tela = str(contexto_tela)
 
     try:
         from google.genai import types
@@ -8431,12 +8717,12 @@ def voxcraft_chat():
             for m in messages
         ]
         system_prompt = montar_prompt_voxcraft(voxcraft_contexto_vivo(), contexto_tela)
-        texto = _gemini_chat_text(system_prompt, chat_contents)
-        return jsonify({"success": True, "message": texto})
+        texto, acoes, usadas = _voxcraft_dialogo(system_prompt, chat_contents)
+        return jsonify({"success": True, "message": texto, "acoes": acoes, "ferramentas": usadas})
     except Exception as e:
         print(f"[VOXCRAFT] IA indisponível: {type(e).__name__}: {e}", flush=True)
         return jsonify({
-            "success": True, "ia_indisponivel": True,
+            "success": True, "ia_indisponivel": True, "acoes": [], "ferramentas": [],
             "message": ("A IA está fora do ar agora (provavelmente a cota diária do Gemini, ou rede). "
                         "Prefiro não responder com chute: preço está no /admin, vozes e trilhas no Gerador. "
                         f"Motivo técnico: {type(e).__name__}.")
