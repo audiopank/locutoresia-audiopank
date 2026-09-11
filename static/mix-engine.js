@@ -510,7 +510,8 @@
                     // Nível da faixa (fades agora são por clip, no clipGain).
                     trackGain.gain.setValueAtTime(track.volume / 100, 0);
 
-                    if (track.type === 'music' && clipsDeVoz.length > 0) {
+                    // Efeito sonoro (sfx) não ducka nem some no fim — igual à prévia.
+                    if (track.type === 'music' && !track.sfx && clipsDeVoz.length > 0) {
                         // DUCKING por posição: a trilha abaixa quando a voz ENTRA
                         // de verdade na timeline, não a partir do zero.
                         const trechosDeVoz = detectarTrechosDeClips(clipsDeVoz, duck.hold);

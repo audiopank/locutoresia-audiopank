@@ -352,6 +352,14 @@
                         <input type="text" class="form-control" id="trackArtist" value="Locutores IA" placeholder="Ex: Locutores IA">
                     </div>
                     <div class="col-md-4">
+                        <label class="form-label">Tipo *</label>
+                        <select class="form-select" id="trackTipo" onchange="ajustarFormPorTipo()">
+                            <option value="trilha">Trilha de fundo</option>
+                            <option value="sfx">🔊 Efeito sonoro</option>
+                        </select>
+                        <div class="form-text text-muted">Vários arquivos de uma vez = lote; cada um entra com o nome do arquivo.</div>
+                    </div>
+                    <div class="col-md-4">
                         <label class="form-label">Gênero *</label>
                         <select class="form-select" id="trackGenre">
                             <option value="pop">Pop</option>
@@ -403,6 +411,13 @@
             </div>
         </div>
 
+        <!-- Trilhas x Efeitos sonoros: mesma tabela (music_tracks), genre='sfx'.
+             Efeito nunca aparece como trilha de fundo no Gerador nem pra IA;
+             na MiniDAW entra sempre numa faixa de Efeito (pedido de 11/09/2026). -->
+        <div class="d-flex gap-2 mb-3" id="tipoTabs">
+            <button class="btn btn-primary-custom" id="tabTrilhas" onclick="mudarTipo('trilhas')"><i class="fas fa-music me-1"></i>Trilhas</button>
+            <button class="btn btn-outline-light" id="tabSfx" onclick="mudarTipo('sfx')"><i class="fas fa-volume-high me-1"></i>Efeitos sonoros</button>
+        </div>
         <!-- Filtros e Busca -->
         <div class="filter-section">
             <input type="text" class="form-control search-box" id="searchInput" placeholder="Pesquise por nome, gênero ou mood...">
@@ -469,6 +484,26 @@
             restoreRecomendacao();
         });
 
+        // ── Trilhas x Efeitos sonoros ──────────────────────────────────
+        let TIPO_ATUAL = 'trilhas';
+        function mudarTipo(tipo) {
+            TIPO_ATUAL = tipo === 'sfx' ? 'sfx' : 'trilhas';
+            const a = document.getElementById('tabTrilhas'), b = document.getElementById('tabSfx');
+            a.className = TIPO_ATUAL === 'trilhas' ? 'btn btn-primary-custom' : 'btn btn-outline-light';
+            b.className = TIPO_ATUAL === 'sfx' ? 'btn btn-primary-custom' : 'btn btn-outline-light';
+            const sel = document.getElementById('trackTipo');
+            if (sel) { sel.value = TIPO_ATUAL === 'sfx' ? 'sfx' : 'trilha'; ajustarFormPorTipo(); }
+            filterTracks();
+        }
+        // Efeito não tem gênero musical, mood nem BPM: some do formulário.
+        function ajustarFormPorTipo() {
+            const ehSfx = (document.getElementById('trackTipo') || {}).value === 'sfx';
+            ['trackGenre', 'trackMood', 'trackBpm'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.disabled = ehSfx; el.closest('.col-md-4, .col-md-6, .col-12, div').style.opacity = ehSfx ? '.45' : '1'; }
+            });
+        }
+
         function setupEventListeners() {
             document.getElementById('searchInput').addEventListener('input', filterTracks);
             document.getElementById('genreSelect').addEventListener('change', filterTracks);
@@ -478,12 +513,12 @@
 
         async function loadTracks() {
             try {
-                const response = await fetch('/api/tracks');
+                const response = await fetch('/api/tracks?tipo=todos');   // Biblioteca vê tudo; a aba filtra
                 const data = await response.json();
                 
                 if (data.success) {
                     TRACKS = data.tracks;
-                    renderTracks(TRACKS);
+                    filterTracks();   // respeita a aba (Trilhas x Efeitos)
                 }
             } catch (error) {
                 console.error('Erro ao carregar trilhas:', error);
@@ -584,10 +619,10 @@
                                 ? document.getElementById('trackName').value || file.name
                                 : file.name.replace(/\.[^/.]+$/, ''),
                             artist: document.getElementById('trackArtist').value,
-                            genre: document.getElementById('trackGenre').value,
-                            mood: document.getElementById('trackMood').value,
+                            genre: document.getElementById('trackTipo').value === 'sfx' ? 'sfx' : document.getElementById('trackGenre').value,
+                            mood: document.getElementById('trackTipo').value === 'sfx' ? 'sfx' : document.getElementById('trackMood').value,
                             duration: duration,
-                            bpm: document.getElementById('trackBpm').value,
+                            bpm: document.getElementById('trackTipo').value === 'sfx' ? 0 : document.getElementById('trackBpm').value,
                             description: document.getElementById('trackDescription').value,
                             file_url: urlResult.public_url,
                             file_size: file.size,
@@ -646,6 +681,8 @@
             const duration = document.getElementById('durationSelect').value;
 
             let filtered = TRACKS.filter(track => {
+                // Aba: efeito sonoro (genre 'sfx') só na aba de efeitos, e vice-versa.
+                if ((TIPO_ATUAL === 'sfx') !== (track.genre === 'sfx')) return false;
                 const matchesSearch = (track.name?.toLowerCase().includes(search) || 
                                       track.genre?.toLowerCase().includes(search) || 
                                       track.mood?.toLowerCase().includes(search) ||
@@ -685,7 +722,9 @@
                             <p class="mb-1 text-muted small">${escapeHtml(track.artist)}</p>
                             ${track.description ? `<p class="mb-1 text-muted small">${escapeHtml(track.description)}</p>` : ''}
                             <div class="track-meta">
-                                <span class="meta-tag"><i class="fas fa-tag me-1"></i>${escapeHtml(track.genre)}</span>
+                                ${track.genre === 'sfx'
+                                    ? '<span class="meta-tag"><i class="fas fa-volume-high me-1"></i>efeito sonoro</span>'
+                                    : `<span class="meta-tag"><i class="fas fa-tag me-1"></i>${escapeHtml(track.genre)}</span>`}
                                 <span class="meta-tag"><i class="fas fa-heart me-1"></i>${escapeHtml(track.mood)}</span>
                                 <span class="meta-tag"><i class="fas fa-clock me-1"></i>${track.duration}s</span>
                                 <span class="meta-tag"><i class="fas fa-tachometer-alt me-1"></i>${track.bpm || 120} BPM</span>
@@ -705,8 +744,8 @@
                                 Usar no MiniDAW
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton" style="background: var(--card-bg); border-color: var(--border-color);">
-                                <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw', '${track.file_url}', '${escapeHtml(track.name)}')">MiniDAW Clássica</a></li>
-                                <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw-react', '${track.file_url}', '${escapeHtml(track.name)}')">MiniDAW React</a></li>
+                                <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw', '${track.file_url}', '${escapeHtml(track.name)}', '${track.genre === 'sfx' ? 'sfx' : 'music'}')">MiniDAW Clássica</a></li>
+                                <li><a class="dropdown-item" href="#" style="color: var(--text-primary);" onclick="useTrack('minidaw-react', '${track.file_url}', '${escapeHtml(track.name)}', '${track.genre === 'sfx' ? 'sfx' : 'music'}')">MiniDAW React</a></li>
                             </ul>
                         </div>
                         <button class="delete-btn" onclick="deleteTrack('${track.id}')" title="Excluir trilha">
@@ -770,9 +809,10 @@
             };
         }
 
-        function useTrack(targetMinidaw, url, name) {
+        function useTrack(targetMinidaw, url, name, tipo) {
             localStorage.setItem('selectedTrackUrl', url);
             localStorage.setItem('selectedTrackName', name);
+            localStorage.setItem('selectedTrackTipo', tipo === 'sfx' ? 'sfx' : 'music');   // efeito → faixa de Efeito
             window.location.href = targetMinidaw === 'minidaw-react' ? '/minidaw-react' : '/minidaw';
         }
 

@@ -92,6 +92,8 @@
             color: #a855f7;
             border: 1px solid #a855f7;
         }
+        /* Faixa de Efeito sonoro: é music por baixo (mesma mixagem), sem ducking nem fade final. */
+        .track-type.sfx { background: #f59e0b; color: #1a1300; }
 
         .waveform-container {
             background: rgba(15, 23, 42, 0.6);
@@ -1049,9 +1051,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
-    <script src="/static/mix-engine.js?v=5"></script>
+    <script src="/static/mix-engine.js?v=6"></script>
     <script src="/static/clip-model.js?v=3"></script>
-    <script src="/static/minidaw.js?v=46"></script>
+    <script src="/static/minidaw.js?v=47"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
@@ -1138,8 +1140,10 @@
                 if (selectedTrackUrl && minidaw) {
                     console.log('Carregando trilha da biblioteca...');
                     
-                    // Adiciona track de música e carrega áudio da URL
-                    minidaw.addTrack('music');
+                    // Adiciona a faixa do tipo certo: efeito sonoro entra como
+                    // faixa de Efeito (sem ducking), nunca como Voz/Trilha.
+                    minidaw.addTrack(localStorage.getItem('selectedTrackTipo') === 'sfx' ? 'sfx' : 'music');
+                    localStorage.removeItem('selectedTrackTipo');
                     const trackId = minidaw.tracks[minidaw.tracks.length - 1].id;
                     
                     minidaw.loadAudioFromUrl(selectedTrackUrl, trackId, selectedTrackName || 'Trilha').then(() => {

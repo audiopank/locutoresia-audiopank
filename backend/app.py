@@ -1162,15 +1162,23 @@ def get_tracks():
         # Tentativa de usar o Supabase
         try:
             if supabase_manager and supabase_manager.newpost_manager_client:
-                response = supabase_manager.newpost_manager_client.table('music_tracks') \
-                    .select('*') \
-                    .eq('is_active', True) \
-                    .neq('genre', 'demo_voz') \
-                    .order('created_at', desc=True) \
-                    .execute()
                 # .neq('genre','demo_voz'): as demos de VOZ moram nesta mesma
                 # tabela (ver /api/voice-demos). Sem este filtro elas apareceriam
                 # como trilha de fundo na Biblioteca da MiniDAW.
+                # tipo (10/09/2026, efeitos sonoros): 'trilhas' (padrão) esconde os
+                # SFX — o select do Gerador e a IA de trilha não podem tratar um
+                # "carro passando" como trilha de fundo; 'sfx' devolve só efeitos
+                # (aba/modal de Efeitos); 'todos' é a Biblioteca inteira.
+                tipo = str(request.args.get('tipo') or 'trilhas')
+                consulta = supabase_manager.newpost_manager_client.table('music_tracks') \
+                    .select('*') \
+                    .eq('is_active', True) \
+                    .neq('genre', 'demo_voz')
+                if tipo == 'sfx':
+                    consulta = consulta.eq('genre', 'sfx')
+                elif tipo != 'todos':
+                    consulta = consulta.neq('genre', 'sfx')
+                response = consulta.order('created_at', desc=True).execute()
                 return jsonify({
                     "success": True,
                     "tracks": response.data
@@ -1712,6 +1720,7 @@ def voxcraft_recommend_tracks():
             .eq('is_active', True) \
             .neq('genre', 'demo_voz') \
             .neq('genre', 'trilha_cliente') \
+            .neq('genre', 'sfx') \
             .execute()
         acervo = tracks_resp.data or []
 

@@ -221,13 +221,20 @@ class MiniDAW {
     }
 
     addTrack(type = 'voice') {
+        // 'sfx' (efeito sonoro) é uma faixa 'music' por baixo — passa pela
+        // mesma mixagem, export e projeto — com a marca `sfx: true`, que tira
+        // o ducking e o fade final e muda o rótulo. Assim nada do motor muda.
+        const ehSfx = (type === 'sfx');
+        if (ehSfx) type = 'music';
         const trackId = 'track_' + Date.now();
-        const trackName = type === 'voice' ? `Voz ${this.tracks.filter(t => t.type === 'voice').length + 1}` : `Trilha ${this.tracks.filter(t => t.type === 'music').length + 1}`;
+        const trackName = ehSfx ? `Efeito ${this.tracks.filter(t => t.sfx).length + 1}`
+            : (type === 'voice' ? `Voz ${this.tracks.filter(t => t.type === 'voice').length + 1}` : `Trilha ${this.tracks.filter(t => t.type === 'music' && !t.sfx).length + 1}`);
         
         const track = {
             id: trackId,
             name: trackName,
             type: type,
+            sfx: ehSfx,
             audioUrl: null,
             audioBuffer: null,
             sourceNode: null,
@@ -264,7 +271,7 @@ class MiniDAW {
             // vista, igual `compacto`: vive no localStorage, não no projeto.
             altura: MiniDAW.ALTURA_LANE_PADRAO,
             ganhoOnda: 1,   // multiplicador só do DESENHO da onda (1x/2x/4x/8x)
-            color: type === 'voice' ? '#3b82f6' : '#a855f7'
+            color: ehSfx ? '#f59e0b' : (type === 'voice' ? '#3b82f6' : '#a855f7')
         };
 
         this.tracks.push(track);
@@ -292,9 +299,9 @@ class MiniDAW {
                     Auto Fade Ativo
                 </div>
                 <div class="d-flex align-items-center gap-3">
-                    <div class="track-type ${track.type}" onclick="minidaw.alternarTipoFaixa('${track.id}')"
-                         title="Clique para trocar entre Voz e Trilha. Isto NÃO é só um rótulo: só faixa de Voz aciona o ducking e o auto fade-out da trilha.">
-                        ${track.type === 'voice' ? 'Voz' : 'Trilha'}
+                    <div class="track-type ${track.type}${track.sfx ? ' sfx' : ''}" onclick="minidaw.alternarTipoFaixa('${track.id}')"
+                         title="${track.sfx ? 'Efeito sonoro: não abaixa embaixo da voz nem some no fim. Clique para virar Voz.' : 'Clique para trocar entre Voz e Trilha. Isto NÃO é só um rótulo: só faixa de Voz aciona o ducking e o auto fade-out da trilha.'}">
+                        ${track.type === 'voice' ? 'Voz' : (track.sfx ? 'Efeito' : 'Trilha')}
                         <i class="fas fa-repeat ms-1" style="font-size:.7em;opacity:.7;"></i>
                     </div>
                     <input type="text" class="form-control form-control-sm" value="${track.name}" 
@@ -2107,7 +2114,8 @@ class MiniDAW {
         g.setValueAtTime(nivel, base);
 
         const haVoz = this.tracks.some(t => t.type === 'voice' && t.audioBuffer);
-        if (track.type === 'music' && haVoz) {
+        // Efeito sonoro (sfx) não ducka nem some no fim: é um "hit", não cama.
+        if (track.type === 'music' && !track.sfx && haVoz) {
             const clipsDeVoz = this._clipsDeVoz();
             const fimDaVoz = ClipModel.fimDaFaixa(clipsDeVoz);
             const trechosDeVoz = MixEngine.detectarTrechosDeClips(clipsDeVoz, this.duckHold);
@@ -3539,6 +3547,7 @@ class MiniDAW {
         const track = this.tracks.find(t => t.id === trackId);
         if (!track) return;
 
+        track.sfx = false;   // efeito que vira Voz/Trilha deixa de ser efeito
         track.type = (track.type === 'voice') ? 'music' : 'voice';
         track.color = (track.type === 'voice') ? '#3b82f6' : '#a855f7';
 
@@ -4104,7 +4113,7 @@ class MiniDAW {
                 const t = comAudio[i];
                 const clips = this._clipsDaFaixa(t);
                 const td = {
-                    name: t.name, type: t.type,
+                    name: t.name, type: t.type, sfx: !!t.sfx,
                     volume: t.volume, pan: t.pan,
                     fadeIn: t.fadeIn, fadeOut: t.fadeOut,
                     effects: t.effects, eqSettings: t.eqSettings,
@@ -4303,9 +4312,11 @@ class MiniDAW {
     // ═══════════════════════════════════════════════════════════════════
     async abrirBibliotecaModal() {
         try {
-            const r = await fetch('/api/tracks');
-            const d = await r.json();
-            const tracks = (d && d.tracks) ? d.tracks : [];
+            const [rT, rS] = await Promise.all([fetch('/api/tracks'), fetch('/api/tracks?tipo=sfx')]);
+            const dT = await rT.json();
+            const dS = await rS.json();
+            const trilhas = (dT && dT.tracks) ? dT.tracks : [];
+            const efeitos = (dS && dS.tracks) ? dS.tracks : [];
             const esc = (s) => String(s == null ? '' : s)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -4314,45 +4325,63 @@ class MiniDAW {
             modal.id = 'modal-biblioteca';
             modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);' +
                 'display:flex;align-items:center;justify-content:center;padding:1rem;';
-            const linhas = tracks.length ? tracks.map(t => `
+            const linhas = (lista, tipo, vazio) => lista.length ? lista.map(t => `
                 <div style="background:#0e1424;border:1px solid #2a3350;border-radius:8px;padding:.6rem .8rem;margin-bottom:.5rem;">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;">
                         <div style="color:#e6e8f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.name)}</div>
-                        <button data-usar="${esc(t.file_url)}" data-nome="${esc(t.name)}"
-                            style="background:#22c55e;color:#052e16;border:none;border-radius:6px;padding:.4rem .8rem;font-weight:600;cursor:pointer;flex-shrink:0;">
+                        <button data-usar="${esc(t.file_url)}" data-nome="${esc(t.name)}" data-tipo="${tipo}"
+                            style="background:${tipo === 'sfx' ? '#f59e0b' : '#22c55e'};color:#052e16;border:none;border-radius:6px;padding:.4rem .8rem;font-weight:600;cursor:pointer;flex-shrink:0;">
                             + Usar
                         </button>
                     </div>
                     <audio controls preload="none" src="${esc(t.file_url)}" style="width:100%;margin-top:.4rem;height:32px;"></audio>
-                </div>`).join('') : '<div style="color:#8b93a7;text-align:center;padding:1.5rem;">Nenhuma trilha na biblioteca ainda.</div>';
+                </div>`).join('') : `<div style="color:#8b93a7;text-align:center;padding:1.5rem;">${vazio}</div>`;
+            const aba = (ativa) => `background:${ativa ? '#8b5cf6' : '#2a3350'};color:#fff;border:none;border-radius:6px;padding:.4rem .8rem;cursor:pointer;font-weight:600;`;
 
             modal.innerHTML = `
                 <div style="background:#141a2e;border:1px solid #2a3350;border-radius:14px;max-width:560px;width:100%;padding:1.25rem;max-height:85vh;overflow:auto;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
-                        <h5 style="margin:0;color:#e6e8f0;">📚 Biblioteca de Trilhas</h5>
+                        <h5 style="margin:0;color:#e6e8f0;">📚 Biblioteca</h5>
                         <button id="bib-fechar" style="background:#2a3350;color:#e6e8f0;border:none;border-radius:6px;padding:.35rem .7rem;cursor:pointer;">Fechar</button>
                     </div>
-                    <p style="color:#8b93a7;font-size:.78rem;margin:0 0 .75rem;">A trilha entra como uma nova faixa — a voz e os efeitos que já estão continuam.</p>
-                    <div>${linhas}</div>
+                    <div style="display:flex;gap:.5rem;margin-bottom:.6rem;">
+                        <button id="bib-tab-trilhas" style="${aba(true)}">🎵 Trilhas (${trilhas.length})</button>
+                        <button id="bib-tab-sfx" style="${aba(false)}">🔊 Efeitos sonoros (${efeitos.length})</button>
+                    </div>
+                    <p id="bib-dica" style="color:#8b93a7;font-size:.78rem;margin:0 0 .75rem;">A trilha entra como uma nova faixa — a voz e os efeitos que já estão continuam.</p>
+                    <div id="bib-lista-trilhas">${linhas(trilhas, 'music', 'Nenhuma trilha na biblioteca ainda.')}</div>
+                    <div id="bib-lista-sfx" style="display:none;">${linhas(efeitos, 'sfx', 'Nenhum efeito sonoro ainda — suba na Biblioteca, aba "Efeitos sonoros".')}</div>
                 </div>`;
             document.body.appendChild(modal);
 
             const fechar = () => modal.remove();
             modal.querySelector('#bib-fechar').onclick = fechar;
             modal.onclick = (e) => { if (e.target === modal) fechar(); };
+            const mostrar = (sfx) => {
+                modal.querySelector('#bib-lista-trilhas').style.display = sfx ? 'none' : '';
+                modal.querySelector('#bib-lista-sfx').style.display = sfx ? '' : 'none';
+                modal.querySelector('#bib-tab-trilhas').style.cssText = aba(!sfx);
+                modal.querySelector('#bib-tab-sfx').style.cssText = aba(sfx);
+                modal.querySelector('#bib-dica').textContent = sfx
+                    ? 'O efeito entra numa faixa própria de Efeito: não abaixa embaixo da voz nem some no fim. Arraste o clip pro ponto certo na timeline.'
+                    : 'A trilha entra como uma nova faixa — a voz e os efeitos que já estão continuam.';
+            };
+            modal.querySelector('#bib-tab-trilhas').onclick = () => mostrar(false);
+            modal.querySelector('#bib-tab-sfx').onclick = () => mostrar(true);
             modal.querySelectorAll('[data-usar]').forEach(b =>
                 b.onclick = async () => {
                     const url = b.getAttribute('data-usar');
                     const nome = b.getAttribute('data-nome') || 'Trilha';
+                    const tipo = b.getAttribute('data-tipo') === 'sfx' ? 'sfx' : 'music';
                     fechar();
                     try {
-                        this.showNotification('Carregando trilha...', 'info');
-                        this.addTrack('music');                 // ADICIONA — não limpa nada
+                        this.showNotification(tipo === 'sfx' ? 'Carregando efeito...' : 'Carregando trilha...', 'info');
+                        this.addTrack(tipo);                    // ADICIONA — não limpa nada; sfx vira faixa de Efeito
                         const track = this.tracks[this.tracks.length - 1];
                         await this.loadAudioFromUrl(url, track.id, nome);
-                        this.showNotification(`Trilha "${nome}" adicionada!`, 'success');
+                        this.showNotification(`${tipo === 'sfx' ? 'Efeito' : 'Trilha'} "${nome}" adicionado!`, 'success');
                     } catch (e) {
-                        this.showNotification('Erro ao carregar a trilha: ' + e.message, 'error');
+                        this.showNotification('Erro ao carregar: ' + e.message, 'error');
                     }
                 });
         } catch (e) {
