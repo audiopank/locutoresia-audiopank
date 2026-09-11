@@ -1540,6 +1540,131 @@ def gerador_programa_roteiro():
         return jsonify({"success": False, "error": "Não consegui montar o roteiro agora."}), 500
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ESTÚDIO DE NARRATIVA (/narrativa) — multivoz por parágrafo
+#
+# Página NOVA (11/09/2026): não toca em Gerador, MiniDAW nem tts_generator.
+# Reusa /api/voices, /api/generate-audio (1 chamada por bloco), o MixEngine
+# do navegador pra montar/exportar, o handoff pra MiniDAW e o upload de
+# rascunho (o MP3 final cai nos "Spots guardados" do Gerador). Aqui só a
+# divisão em blocos (core/narrativa.py) e a persistência do projeto (JSON
+# pequeno em narrativas/ no bucket de entregas).
+# ═══════════════════════════════════════════════════════════════════════════
+from core import narrativa as _narrativa
+
+NARRATIVAS_PASTA = 'narrativas'
+
+
+@app.route('/narrativa')
+def narrativa_page():
+    """Estúdio de Narrativa: várias vozes, uma por parágrafo."""
+    return render_template('narrativa.html')
+
+
+@app.route('/api/narrativa/dividir', methods=['POST'])
+def api_narrativa_dividir():
+    data = request.get_json(silent=True) or {}
+    blocos = _narrativa.dividir_em_blocos(str(data.get('texto') or '')[:20000])
+    return jsonify({"success": True, "blocos": blocos, "personagens": _narrativa.personagens(blocos),
+                    "palavras": sum(_narrativa.contar_palavras(b['texto']) for b in blocos)})
+
+
+def _caminho_narrativa(arquivo):
+    """Valida e monta o caminho dentro de narrativas/ (nunca fora da pasta)."""
+    arquivo = str(arquivo or '').strip()
+    if not re.fullmatch(r'[\w\-]+\.json', arquivo):
+        raise ValueError('arquivo inválido')
+    return f'{NARRATIVAS_PASTA}/{arquivo}'
+
+
+@app.route('/api/narrativas', methods=['GET'])
+def api_narrativas_listar():
+    """Narrativas guardadas (JSON pequeno, sem áudio), mais recentes primeiro."""
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Storage não configurado"}), 500
+        storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+        arquivos = storage.list(NARRATIVAS_PASTA, {"limit": 100, "sortBy": {"column": "created_at", "order": "desc"}}) or []
+        itens = []
+        for a in arquivos:
+            nome_arq = a.get('name') or ''
+            if not nome_arq.endswith('.json') or nome_arq.startswith('.'):
+                continue
+            carimbo, _, resto = nome_arq.partition('_')
+            try:
+                quando = datetime.strptime(carimbo, '%Y%m%d-%H%M%S').strftime('%d/%m/%Y %H:%M')
+            except ValueError:
+                quando, resto = '', nome_arq
+            itens.append({"arquivo": nome_arq, "titulo": re.sub(r'\s+', ' ', os.path.splitext(resto)[0].replace('-', ' ')).strip(),
+                          "quando": quando, "tamanho": (a.get('metadata') or {}).get('size')})
+        return jsonify({"success": True, "narrativas": itens})
+    except Exception as e:
+        print(f"Erro ao listar narrativas: {e}", flush=True)
+        return jsonify({"success": False, "error": "Não consegui listar as narrativas."}), 500
+
+
+@app.route('/api/narrativas', methods=['POST'])
+def api_narrativas_guardar():
+    """Guarda {nome, dados} como narrativas/<carimbo>_<slug>.json. Devolve o arquivo."""
+    try:
+        if not supabase_manager or not supabase_manager.newpost_manager_client:
+            return jsonify({"success": False, "error": "Storage não configurado"}), 500
+        data = request.get_json(silent=True) or {}
+        nome = str(data.get('nome') or '').strip()[:80]
+        dados = data.get('dados')
+        if not nome or not isinstance(dados, dict):
+            return jsonify({"success": False, "error": "Nome e dados são obrigatórios."}), 400
+        corpo = json.dumps({"nome": nome, "dados": dados, "guardado_em": datetime.now().isoformat()},
+                           ensure_ascii=False).encode('utf-8')
+        if len(corpo) > 2_000_000:
+            return jsonify({"success": False, "error": "Narrativa grande demais pra guardar (2MB)."}), 400
+        arquivo = str(data.get('arquivo') or '').strip()
+        if arquivo:
+            caminho = _caminho_narrativa(arquivo)        # regravar a mesma
+        else:
+            caminho = f"{NARRATIVAS_PASTA}/{datetime.now().strftime('%Y%m%d-%H%M%S')}_{_narrativa.slug(nome)}.json"
+        storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+        # Regravar = update (o "upsert" do upload não sobrescreveu no teste real de 11/09).
+        if arquivo:
+            storage.update(caminho, corpo, {"content-type": "application/json", "x-upsert": "true"})
+        else:
+            storage.upload(caminho, corpo, {"content-type": "application/json"})
+        return jsonify({"success": True, "arquivo": caminho.split('/', 1)[1], "path": caminho})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        print(f"Erro ao guardar narrativa: {e}", flush=True)
+        return jsonify({"success": False, "error": "Não consegui guardar a narrativa."}), 500
+
+
+@app.route('/api/narrativas/<arquivo>', methods=['GET'])
+def api_narrativas_ler(arquivo):
+    try:
+        caminho = _caminho_narrativa(arquivo)
+        storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+        corpo = storage.download(caminho)
+        return jsonify({"success": True, "arquivo": arquivo, **json.loads(corpo.decode('utf-8'))})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        print(f"Erro ao ler narrativa: {e}", flush=True)
+        return jsonify({"success": False, "error": "Não achei essa narrativa."}), 404
+
+
+@app.route('/api/narrativas', methods=['DELETE'])
+def api_narrativas_apagar():
+    try:
+        caminho = _caminho_narrativa((request.get_json(silent=True) or {}).get('arquivo'))
+        storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+        storage.remove([caminho])
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        print(f"Erro ao apagar narrativa: {e}", flush=True)
+        return jsonify({"success": False, "error": "Não consegui apagar."}), 500
+
+
 def _caminho_rascunho(filename, twin_of=None, agora=None):
     """Caminho no Storage de um rascunho do Gerador (pasta rascunhos/).
 

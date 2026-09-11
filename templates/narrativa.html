@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estúdio de Narrativa - Locutores IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Mesma pele do Gerador (templates/gerador.html) — o produtor não deve
+           sentir que mudou de app. Página NOVA de propósito: não toca no Gerador
+           nem na MiniDAW ("o que temos é sagrado", 11/09/2026). */
+        :root {
+            --primary-color: #6366f1;
+            --dark-bg: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+        body {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            padding-bottom: 150px;
+        }
+        .page-container { padding: 2rem; max-width: 1150px; margin: 0 auto; }
+        .section-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .form-label { color: var(--text-secondary); font-size: .875rem; }
+        .form-control, .form-select { background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); color: var(--text-primary); }
+        .form-control:focus, .form-select:focus { background: rgba(15, 23, 42, 0.8); border-color: var(--primary-color); color: var(--text-primary); box-shadow: none; }
+        .back-link { color: var(--text-secondary); text-decoration: none; }
+        .back-link:hover { color: var(--text-primary); }
+        .hint { font-size: .78rem; color: var(--text-secondary); }
+        #roteiroBruto { min-height: 200px; resize: vertical; line-height: 1.6; }
+        #progresso { font-size: .9rem; color: var(--text-secondary); min-height: 1.4em; }
+        .aviso { border-radius: 8px; padding: .55rem .8rem; margin-top: .5rem; font-size: .85rem; border: 1px solid transparent; }
+        .aviso-info    { background: rgba(99,102,241,.12); border-color: rgba(99,102,241,.35); color: #c7d2fe; }
+        .aviso-ok      { background: rgba(34,197,94,.12);  border-color: rgba(34,197,94,.35);  color: #bbf7d0; }
+        .aviso-atencao { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.35); color: #fde68a; }
+        .aviso-erro    { background: rgba(239,68,68,.12);  border-color: rgba(239,68,68,.35);  color: #fca5a5; }
+
+        /* Vozes por personagem */
+        .voz-linha { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .5rem 0; border-bottom: 1px dashed var(--border-color); }
+        .voz-linha:last-child { border-bottom: 0; }
+        .voz-nome { min-width: 130px; font-weight: 600; }
+        .voz-linha select { flex: 1 1 240px; }
+        .voz-linha input { flex: 1 1 220px; }
+
+        /* Blocos (um parágrafo = uma locução) */
+        .bloco { border: 1px solid var(--border-color); border-left: 4px solid var(--primary-color); border-radius: 10px; padding: .75rem .9rem; margin-bottom: .75rem; background: rgba(15, 23, 42, 0.45); }
+        .bloco-cab { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .4rem; }
+        .bloco-num { font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: .8rem; min-width: 2.2em; }
+        .bloco-cab input.personagem { max-width: 170px; font-weight: 600; }
+        .bloco-cab input.direcao { flex: 1 1 200px; }
+        .bloco textarea { min-height: 64px; resize: vertical; line-height: 1.5; }
+        .bloco-rodape { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .4rem; }
+        .status { font-size: .74rem; padding: .15rem .5rem; border-radius: 999px; border: 1px solid transparent; }
+        .status-pendente      { background: rgba(148,163,184,.15); color: #cbd5e1; border-color: rgba(148,163,184,.35); }
+        .status-gerado        { background: rgba(34,197,94,.15);   color: #bbf7d0; border-color: rgba(34,197,94,.35); }
+        .status-desatualizado { background: rgba(245,158,11,.15);  color: #fde68a; border-color: rgba(245,158,11,.35); }
+        .status-gerando       { background: rgba(99,102,241,.15);  color: #c7d2fe; border-color: rgba(99,102,241,.35); }
+
+        /* Barra fixa do resultado (igual ao Gerador) */
+        #barraResultado { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, .97); border-top: 1px solid var(--border-color); padding: .9rem 1.25rem; display: none; align-items: center; gap: 1rem; flex-wrap: wrap; z-index: 50; }
+        #barraResultado audio { flex: 1 1 320px; min-width: 260px; height: 40px; }
+        .resultado-nome { font-weight: 600; font-size: .9rem; }
+
+        .narrativa-item { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .5rem .75rem; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: .5rem; background: rgba(15, 23, 42, 0.5); }
+        .narrativa-nome { flex: 1 1 220px; font-size: .9rem; }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <a href="/" class="back-link"><i class="fas fa-arrow-left me-2"></i>Voltar ao Studio</a>
+        <a href="/gerador" class="back-link ms-3"><i class="fas fa-wand-magic-sparkles me-1"></i>Gerador</a>
+        <a href="/minidaw" class="back-link ms-3" target="_blank"><i class="fas fa-sliders me-1"></i>MiniDAW</a>
+
+        <div class="text-center my-4">
+            <h2 class="mb-1"><i class="fas fa-book-open me-2" style="color: var(--primary-color);"></i>Estúdio de Narrativa</h2>
+            <p class="hint mb-0">
+                Várias vozes, uma por parágrafo. Cole o roteiro com "Nome: fala", escolha a voz de cada
+                personagem, gere bloco a bloco e ouça a montagem. O que ficar bom vai pros Spots guardados
+                e pra MiniDAW.
+            </p>
+        </div>
+
+        <!-- Narrativa: nome, pausa, guardar/abrir -->
+        <div class="section-card">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label" for="inputNome">Nome da narrativa</label>
+                    <input id="inputNome" type="text" class="form-control" maxlength="80" placeholder="Ex.: O Estúdio Selado, capítulo 1">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="inputPausa">Pausa entre blocos (s)</label>
+                    <input id="inputPausa" type="number" class="form-control" min="0" max="5" step="0.1" value="0.6">
+                </div>
+                <div class="col-md-5 d-flex gap-2 flex-wrap">
+                    <button id="btnGuardar" class="btn btn-outline-light"><i class="fas fa-floppy-disk me-1"></i>Guardar narrativa</button>
+                    <button id="btnAbrir" class="btn btn-outline-light"><i class="fas fa-folder-open me-1"></i>Abrir</button>
+                    <button id="btnNova" class="btn btn-outline-secondary"><i class="fas fa-file me-1"></i>Nova</button>
+                </div>
+            </div>
+            <div class="hint mt-2">
+                "Guardar narrativa" salva texto, vozes e direções (sem áudio) no Storage, pra reabrir em qualquer máquina.
+                O áudio pronto vai pelos botões da barra de baixo.
+            </div>
+            <div id="listaNarrativas" class="mt-3" style="display:none;"></div>
+        </div>
+
+        <!-- Roteiro bruto -->
+        <div class="section-card">
+            <label class="form-label" for="roteiroBruto">Roteiro</label>
+            <textarea id="roteiroBruto" class="form-control" maxlength="20000"
+                      placeholder="Um parágrafo por bloco, separados por linha em branco.&#10;&#10;Inspetor: Diga-me exatamente o que você viu ontem à noite.&#10;&#10;Governanta: Levei o chá dele às nove, como sempre.&#10;&#10;Parágrafo sem nome é do Narrador."></textarea>
+            <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+                <span class="hint">Marcações entre colchetes no texto são descartadas — a direção de cada bloco tem campo próprio.</span>
+                <button id="btnDividir" class="btn btn-primary"><i class="fas fa-list-ol me-1"></i>Dividir em blocos</button>
+            </div>
+        </div>
+
+        <!-- Vozes por personagem -->
+        <div class="section-card" id="cardVozes" style="display:none;">
+            <h6 class="mb-2"><i class="fas fa-users me-2"></i>Vozes</h6>
+            <div class="hint mb-2">Uma voz por personagem. A direção padrão vale pra todos os blocos dele; cada bloco pode ter a sua. Direção entre colchetes só funciona no Google/Gemini.</div>
+            <div id="listaVozes"></div>
+        </div>
+
+        <!-- Blocos -->
+        <div class="section-card" id="cardBlocos" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <h6 class="mb-0"><i class="fas fa-paragraph me-2"></i>Blocos</h6>
+                <span class="hint" id="spanContador"></span>
+                <button id="btnGerarTudo" class="btn btn-primary"><i class="fas fa-bolt me-1"></i>Gerar e montar</button>
+            </div>
+            <div id="progresso"></div>
+            <div id="avisos"></div>
+            <div id="listaBlocos" class="mt-2"></div>
+        </div>
+    </div>
+
+    <!-- Barra fixa do resultado -->
+    <div id="barraResultado">
+        <div>
+            <div class="resultado-nome"><i class="fas fa-headphones me-1"></i>Narrativa montada</div>
+            <div class="hint" id="resultadoInfo"></div>
+        </div>
+        <audio id="playerResultado" controls></audio>
+        <button id="btnExportar" class="btn btn-outline-light btn-sm"><i class="fas fa-download me-1"></i>Exportar MP3</button>
+        <button id="btnGuardarSpot" class="btn btn-outline-light btn-sm" title="Vai pros Spots guardados do Gerador: de lá dá pra publicar no Feed ou enviar ao cliente"><i class="fas fa-box-archive me-1"></i>Guardar nos Spots</button>
+        <button id="btnAbrirMiniDAW" class="btn btn-outline-light btn-sm"><i class="fas fa-sliders me-1"></i>Abrir na MiniDAW</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
+    <script src="/static/mix-engine.js?v=6"></script>
+    <script src="/static/narrativa.js?v=1"></script>
+    <style>.voxcraft-widget { bottom: 150px; }</style>
+    {% include '_voxcraft_widget.html' %}
+</body>
+</html>
