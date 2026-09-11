@@ -27,7 +27,8 @@
         vozes: {},            // personagem → {voz, direcao}
         blocos: [],           // {id, personagem, direcao, texto, buffer, chaveGerada, gerando}
         catalogo: [],
-        mixBuffer: null, mixBlob: null, duracao: 0
+        mixBuffer: null, mixBlob: null, duracao: 0,
+        chaveMontada: null    // com quais blocos/pausa o mixBlob foi montado (ver montagemAtual)
     };
 
     // ── utilidades de tela ─────────────────────────────────────────────
@@ -127,6 +128,7 @@
                 direcao: igual ? a.direcao : '',
                 buffer: igual ? a.buffer : null,
                 chaveGerada: igual ? a.chaveGerada : null,
+                geracao: igual ? (a.geracao || 0) : 0,
                 gerando: false
             };
         });
@@ -199,8 +201,12 @@
             });
             el.querySelector('[data-acao="gerar"]').onclick = async () => {
                 limparAvisos();
-                try { await gerarBloco(b); passo(''); }
-                catch (e) { avisar(`Bloco ${estado.blocos.indexOf(b) + 1}: ${e.message}`, 'erro'); passo(''); }
+                try {
+                    await gerarBloco(b);
+                    passo('Montando a narrativa...');
+                    await exportar();
+                    passo(mensagemMontagem());
+                } catch (e) { avisar(`Bloco ${estado.blocos.indexOf(b) + 1}: ${e.message}`, 'erro'); passo(''); }
                 render();
             };
             el.querySelector('[data-acao="ouvir"]').onclick = () => ouvirBloco(b);
@@ -232,11 +238,32 @@
         const pal = estado.blocos.reduce((s, b) => s + palavras(b.texto), 0);
         const est = pal / RITMO + Math.max(0, n - 1) * estado.pausa;
         $('spanContador').textContent = n
-            ? `${n} blocos · ${pal} palavras · ~${Math.round(est)} s · ${pend} locução(ões) a gerar (cota grátis do Gemini: ~10/dia)`
+            ? `${n} blocos · ${pal} palavras · ~${Math.round(est)} s · ${pend} locução(ões) a gerar (Gemini grátis: 3 por minuto, e a cota do dia é curta)`
             : '';
     }
 
     // ── geração ────────────────────────────────────────────────────────
+    // O 429 do Gemini grátis vem de DOIS limites: por MINUTO (3 locuções/min,
+    // "Please retry in 40s" — visto no teste de 11/09/2026, bloco 6 de 11) e por
+    // DIA. O primeiro se resolve esperando; o segundo, não.
+    function segundosParaTentarDeNovo(msg) {
+        if (!/429|RESOURCE_EXHAUSTED/i.test(msg)) return null;
+        const m = /retry in ([\d.]+)\s*s/i.exec(msg) || /retryDelay'?\s*:\s*'?(\d+)s/i.exec(msg);
+        if (!m) return /PerMinute/i.test(msg) ? 30 : null;
+        const seg = Math.ceil(parseFloat(m[1]));
+        return seg <= 120 ? seg : null;      // mais que isso é cota do dia
+    }
+    function resumirErro(msg) {
+        if (!/429|RESOURCE_EXHAUSTED/i.test(msg)) return String(msg).slice(0, 300);
+        if (/PerMinute|retry in/i.test(msg)) return 'limite por minuto do Gemini (3 locuções/min) — 429 mesmo depois de esperar; aguarde 1 minuto e clique "Gerar este".';
+        return 'cota do DIA do Gemini esgotada (429) — volta em algumas horas; ou troque a voz do personagem pra uma do ElevenLabs.';
+    }
+    async function esperar(seg, rotulo) {
+        for (let r = seg; r > 0; r--) {
+            passo(`${rotulo} — o Gemini grátis aceita 3 locuções por minuto; tento de novo em ${r} s...`);
+            await new Promise(res => setTimeout(res, 1000));
+        }
+    }
     async function gerarBloco(b) {
         const v = estado.vozes[b.personagem];
         if (!v || !v.voz) throw new Error(`escolha a voz de "${b.personagem}"`);
@@ -248,15 +275,24 @@
         b.gerando = true; renderStatus();
         passo(`Gravando bloco ${estado.blocos.indexOf(b) + 1} (${b.personagem}, ${nomeDaVoz(v.voz)})...`);
         try {
-            const r = await fetch('/api/generate-audio', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: texto, voice: v.voz, api: prov, style: 'normal', language: 'pt-BR' })
-            });
-            const d = await r.json();
-            if (!d.success) throw new Error(d.error || 'falha na locução');
+            let d;
+            for (let tentativa = 1; ; tentativa++) {
+                const r = await fetch('/api/generate-audio', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: texto, voice: v.voz, api: prov, style: 'normal', language: 'pt-BR' })
+                });
+                d = await r.json().catch(() => ({}));
+                if (d.success) break;
+                const msg = d.error || `falha na locução (HTTP ${r.status})`;
+                const seg = segundosParaTentarDeNovo(msg);
+                if (seg == null || tentativa >= 3) throw new Error(resumirErro(msg));
+                await esperar(seg + 2, `Bloco ${estado.blocos.indexOf(b) + 1} (${b.personagem}) bateu no limite`);
+                passo(`Gravando bloco ${estado.blocos.indexOf(b) + 1} (${b.personagem}, ${nomeDaVoz(v.voz)})... tentativa ${tentativa + 1}`);
+            }
             const ab = await (await fetch(d.download_url)).arrayBuffer();   // /tmp da Vercel é efêmero: buscar já
             b.buffer = await ctx.decodeAudioData(ab);
             b.chaveGerada = chaveGeracao(b);
+            b.geracao = (b.geracao || 0) + 1;     // regravar o mesmo texto muda o áudio: a montagem tem que saber
         } finally {
             b.gerando = false;
         }
@@ -272,7 +308,7 @@
         const btn = $('btnGerarTudo');
         const pend = estado.blocos.filter(b => statusBloco(b) !== 'gerado');
         if (!estado.blocos.length) { alert('Divida o roteiro em blocos primeiro.'); return; }
-        if (pend.length && !confirm(`Vou gravar ${pend.length} locução(ões) (uma por bloco). Cota grátis do Gemini: ~10 por dia. Continuar?`)) return;
+        if (pend.length && !confirm(`Vou gravar ${pend.length} locução(ões), uma por bloco. O Gemini grátis aceita 3 por minuto: quando bater no limite eu espero e sigo sozinho (uns ${Math.ceil(pend.length / 3)} min no total). Continuar?`)) return;
         btn.disabled = true;
         limparAvisos();
         let falhou = 0;
@@ -286,7 +322,7 @@
             if (!prontos.length) { passo('❌ Nenhum bloco gerado.'); return; }
             passo('Montando a narrativa...');
             await exportar();
-            passo(falhou ? `✅ Montado com ${prontos.length} de ${estado.blocos.length} blocos — ${falhou} falharam.` : '✅ Narrativa montada — ouça na barra de baixo.');
+            passo(mensagemMontagem() + (falhou ? ` ${falhou} falharam — clique "Gerar este" neles.` : ''));
         } catch (e) {
             passo('❌ ' + e.message);
         } finally {
@@ -296,6 +332,27 @@
     }
 
     // ── montagem e export ──────────────────────────────────────────────
+    function chaveMontagem() {
+        return JSON.stringify([estado.pausa, estado.blocos.filter(b => b.buffer).map(b => `${b.id}|${b.geracao || 0}`)]);
+    }
+    function mensagemMontagem() {
+        const prontos = estado.blocos.filter(b => b.buffer).length, n = estado.blocos.length;
+        return prontos === n
+            ? '✅ Narrativa montada com todos os blocos — ouça na barra de baixo.'
+            : `✅ Montado com ${prontos} de ${n} blocos — os pendentes ficam de fora até serem gerados.`;
+    }
+    // Exportar, Guardar nos Spots e MiniDAW saem SEMPRE da montagem atual: se um
+    // bloco foi gerado, regravado ou removido (ou a pausa mudou) depois da última
+    // montagem, remonta antes. Foi o que travou em 5 de 11 blocos em 11/09/2026.
+    async function montagemAtual() {
+        if (!estado.blocos.some(b => b.buffer)) throw new Error('Gere pelo menos um bloco.');
+        if (!estado.mixBlob || estado.chaveMontada !== chaveMontagem()) {
+            passo('Remontando a narrativa com os blocos atuais...');
+            await exportar();
+            passo(mensagemMontagem());
+        }
+        return estado.mixBlob;
+    }
     function montar() {
         const prontos = estado.blocos.filter(b => b.buffer);
         if (!prontos.length) return null;
@@ -319,6 +376,7 @@
         MixEngine.masterizarBuffer(buf, -15);
         estado.mixBuffer = buf;
         estado.mixBlob = await MixEngine.bufferToMp3(buf, 192);
+        estado.chaveMontada = chaveMontagem();
         estado.duracao = buf.duration;
         $('playerResultado').src = URL.createObjectURL(estado.mixBlob);
         $('barraResultado').style.display = 'flex';
@@ -333,7 +391,7 @@
     // Vai pros "Spots guardados" do Gerador (mesmo caminho do guardarRascunho de lá):
     // MP3 + .txt v2. Lá, "Reabrir" dá Feed, Enviar e Download.
     async function guardarNosSpots() {
-        if (!estado.mixBlob) { alert('Monte a narrativa primeiro.'); return; }
+        try { await montagemAtual(); } catch (e) { alert(e.message); return; }
         const btn = $('btnGuardarSpot');
         btn.disabled = true;
         try {
@@ -380,9 +438,10 @@
 
     // MiniDAW: a narração montada entra como UMA faixa de voz; trilha e efeitos
     // ele coloca lá. Mesmo handoff do Gerador (a MiniDAW já sabe receber).
-    function abrirNaMiniDAW() {
-        if (!estado.mixBlob) { alert('Monte a narrativa primeiro.'); return; }
+    async function abrirNaMiniDAW() {
+        if (!estado.blocos.some(b => b.buffer)) { alert('Gere pelo menos um bloco.'); return; }
         const aba = window.open('about:blank', '_blank');   // dentro do gesto do clique
+        try { await montagemAtual(); } catch (e) { if (aba) aba.close(); alert(e.message); return; }
         const fr = new FileReader();
         fr.onloadend = () => {
             try {
@@ -398,8 +457,8 @@
         };
         fr.readAsDataURL(estado.mixBlob);
     }
-    function exportarDownload() {
-        if (!estado.mixBlob) { alert('Monte a narrativa primeiro.'); return; }
+    async function exportarDownload() {
+        try { await montagemAtual(); } catch (e) { alert(e.message); return; }
         const a = document.createElement('a');
         a.href = URL.createObjectURL(estado.mixBlob);
         a.download = nomeArquivo();
@@ -428,6 +487,8 @@
             id: 'b' + Date.now() + '_' + i, personagem: b.personagem || 'Narrador', direcao: b.direcao || '',
             texto: b.texto || '', buffer: null, chaveGerada: null, gerando: false
         }));
+        estado.mixBlob = null; estado.mixBuffer = null; estado.chaveMontada = null;
+        $('barraResultado').style.display = 'none';
         $('inputNome').value = estado.nome;
         $('inputPausa').value = estado.pausa;
         $('roteiroBruto').value = dados.roteiro_bruto || roteiroPlano();
@@ -485,7 +546,7 @@
     }
     function nova() {
         if (estado.blocos.length && !confirm('Começar uma narrativa nova? O que está na tela some (o que foi guardado continua no Storage).')) return;
-        estado.arquivo = null; estado.blocos = []; estado.vozes = {}; estado.mixBlob = null; estado.mixBuffer = null;
+        estado.arquivo = null; estado.blocos = []; estado.vozes = {}; estado.mixBlob = null; estado.mixBuffer = null; estado.chaveMontada = null;
         $('inputNome').value = ''; $('roteiroBruto').value = ''; $('barraResultado').style.display = 'none';
         limparAvisos(); passo('');
         render();
