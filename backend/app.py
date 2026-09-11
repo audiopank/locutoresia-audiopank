@@ -8775,7 +8775,19 @@ def _gemini_chat_turn(system_prompt, contents, tools=True):
     from google.genai import types
     client = genai.Client(api_key=api_key)
     config = types.GenerateContentConfig(system_instruction=system_prompt, tools=_tools_sdk() if tools else None)
-    resp = client.models.generate_content(model='gemini-2.5-flash', contents=contents, config=config)
+    # 503 UNAVAILABLE ("high demand") é passageiro: o miolo do preset só passou
+    # na 2ª tentativa em 10/09 e o chat caía direto no "fora do ar" (11/09).
+    # Uma segunda chance depois de 2 s; cota (429) não se repete.
+    resp = None
+    for tentativa in (1, 2):
+        try:
+            resp = client.models.generate_content(model='gemini-2.5-flash', contents=contents, config=config)
+            break
+        except Exception as e:
+            if tentativa == 2 or '503' not in str(e) and 'UNAVAILABLE' not in str(e):
+                raise
+            print(f'[VOXCRAFT] 503 do Gemini na tentativa 1, repetindo em 2 s', flush=True)
+            time.sleep(2)
     cand = (resp.candidates or [None])[0]
     if cand is None or cand.content is None:
         raise RuntimeError('resposta vazia do modelo')
