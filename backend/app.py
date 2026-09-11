@@ -1592,7 +1592,7 @@ def api_narrativas_listar():
                 continue
             carimbo, _, resto = nome_arq.partition('_')
             try:
-                quando = datetime.strptime(carimbo, '%Y%m%d-%H%M%S').strftime('%d/%m/%Y %H:%M')
+                quando = datetime.strptime(carimbo[:15], '%Y%m%d-%H%M%S').strftime('%d/%m/%Y %H:%M')
             except ValueError:
                 quando, resto = '', nome_arq
             itens.append({"arquivo": nome_arq, "titulo": re.sub(r'\s+', ' ', os.path.splitext(resto)[0].replace('-', ' ')).strip(),
@@ -1619,16 +1619,19 @@ def api_narrativas_guardar():
         if len(corpo) > 2_000_000:
             return jsonify({"success": False, "error": "Narrativa grande demais pra guardar (2MB)."}), 400
         arquivo = str(data.get('arquivo') or '').strip()
-        if arquivo:
-            caminho = _caminho_narrativa(arquivo)        # regravar a mesma
-        else:
-            caminho = f"{NARRATIVAS_PASTA}/{datetime.now().strftime('%Y%m%d-%H%M%S')}_{_narrativa.slug(nome)}.json"
+        anterior = _caminho_narrativa(arquivo) if arquivo else None
+        # Regravar NUNCA sobrescreve o mesmo caminho: o Storage devolvia o conteúdo
+        # velho depois do update/upsert (cache, visto no teste real de 11/09/2026).
+        # Cada gravação é um arquivo novo (carimbo novo) e o anterior é apagado —
+        # ler o caminho novo nunca vem desatualizado.
+        caminho = f"{NARRATIVAS_PASTA}/{datetime.now().strftime('%Y%m%d-%H%M%S-%f')[:-3]}_{_narrativa.slug(nome)}.json"
         storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
-        # Regravar = update (o "upsert" do upload não sobrescreveu no teste real de 11/09).
-        if arquivo:
-            storage.update(caminho, corpo, {"content-type": "application/json", "x-upsert": "true"})
-        else:
-            storage.upload(caminho, corpo, {"content-type": "application/json"})
+        storage.upload(caminho, corpo, {"content-type": "application/json", "cache-control": "0"})
+        if anterior and anterior != caminho:
+            try:
+                storage.remove([anterior])
+            except Exception as e:
+                print(f"[narrativas] não apaguei a versão anterior {anterior}: {e}", flush=True)
         return jsonify({"success": True, "arquivo": caminho.split('/', 1)[1], "path": caminho})
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), 400

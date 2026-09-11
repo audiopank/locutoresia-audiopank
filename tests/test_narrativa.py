@@ -91,12 +91,14 @@ def test_guardar_listar_ler_apagar_no_storage_real(cliente):
     assert lista['success'] and any(i['arquivo'] == g['arquivo'] for i in lista['narrativas'])
     lido = cliente.get(f"/api/narrativas/{g['arquivo']}").get_json()
     assert lido['success'] and lido['nome'] == nome and lido['dados']['blocos'][0]['texto'] == 'Olá.'
-    # regravar a mesma
+    # regravar: vira arquivo NOVO (o Storage devolvia conteúdo velho ao sobrescrever) e o antigo some
     g2 = cliente.post('/api/narrativas', json={'nome': nome, 'dados': {**dados, 'pausa': 1.0}, 'arquivo': g['arquivo']}).get_json()
-    assert g2['success'] and g2['arquivo'] == g['arquivo']
-    assert cliente.get(f"/api/narrativas/{g['arquivo']}").get_json()['dados']['pausa'] == 1.0
-    assert cliente.delete('/api/narrativas', json={'arquivo': g['arquivo']}).get_json()['success']
-    assert not any(i['arquivo'] == g['arquivo'] for i in cliente.get('/api/narrativas').get_json()['narrativas'])
+    assert g2['success'] and g2['arquivo'] != g['arquivo'] and g2['arquivo'].endswith('.json')
+    assert cliente.get(f"/api/narrativas/{g2['arquivo']}").get_json()['dados']['pausa'] == 1.0
+    nomes = [i['arquivo'] for i in cliente.get('/api/narrativas').get_json()['narrativas']]
+    assert g2['arquivo'] in nomes and g['arquivo'] not in nomes
+    assert cliente.delete('/api/narrativas', json={'arquivo': g2['arquivo']}).get_json()['success']
+    assert not any(i['arquivo'] == g2['arquivo'] for i in cliente.get('/api/narrativas').get_json()['narrativas'])
 
 
 def test_caminho_forjado_e_recusado(cliente):
