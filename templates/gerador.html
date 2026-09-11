@@ -86,7 +86,10 @@
             left: 0; right: 0; bottom: 0;
             background: rgba(15, 23, 42, .97);
             border-top: 1px solid var(--border-color);
-            padding: .9rem 1.25rem;
+            /* padding-right maior: o balão flutuante do VoxCraft mora em
+               bottom:20/right:20 e SENTAVA em cima do botão Feed — o dono
+               clicava em "Enviar" (entrega) achando que publicava no feed. */
+            padding: .9rem 88px .9rem 1.25rem;
             display: none;
             align-items: center;
             gap: 1rem;
