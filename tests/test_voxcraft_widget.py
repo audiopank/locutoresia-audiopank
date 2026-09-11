@@ -41,3 +41,17 @@ def test_minidaw_define_contexto_com_faixas(cliente):
 def test_home_continua_com_o_widget_antigo(cliente):
     html = cliente.get('/').get_data(as_text=True)
     assert 'id="voxcraftChat"' in html and 'voxcraft-widget.js' not in html
+
+
+@pytest.mark.parametrize('rota', ['/gerador', '/narrativa', '/minidaw'])
+def test_widget_nao_depende_de_cor_que_a_pagina_nao_define(cliente, rota):
+    """11/09/2026: o botão do VoxCraft era invisível no Gerador e na Narrativa porque o
+    CSS usava var(--secondary-color) sem reserva e só a MiniDAW define essa cor.
+    Toda var() do widget tem que trazer o valor de reserva."""
+    import re
+    html = cliente.get(rota).get_data(as_text=True)
+    ini = html.index('voxcraft-toggle-btn')
+    trecho = html[html.rfind('<style>', 0, ini):html.index('</style>', ini)]
+    sem_reserva = re.findall(r'var\(--[a-z-]+\)', trecho)
+    assert not sem_reserva, sem_reserva
+    assert 'var(--secondary-color, #8b5cf6)' in trecho
