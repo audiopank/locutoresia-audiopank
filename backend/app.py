@@ -8512,11 +8512,15 @@ def voxcraft_contexto_vivo(ttl=300):
         r = supabase_manager.newpost_manager_client.table('music_tracks') \
             .select('name,genre').eq('is_active', True).neq('genre', 'demo_voz').limit(80).execute()
         ts = r.data or []
-        acervo = [t.get('name') for t in ts if t.get('genre') != 'trilha_cliente' and t.get('name')]
+        acervo = [t.get('name') for t in ts if t.get('genre') not in ('trilha_cliente', 'sfx') and t.get('name')]
         clientes = [t.get('name') for t in ts if t.get('genre') == 'trilha_cliente' and t.get('name')]
+        efeitos = [t.get('name') for t in ts if t.get('genre') == 'sfx' and t.get('name')]
         bloco = f"TRILHAS DO ACERVO ({len(acervo)}): {', '.join(acervo[:60])}."
         if clientes:
             bloco += f"\nTRILHAS DE CLIENTES ({len(clientes)}; cada uma só no spot do próprio cliente): {', '.join(clientes[:20])}."
+        if efeitos:
+            # Efeito NÃO é trilha (regra dele, 11/09/2026): entra só como faixa de Efeito na MiniDAW.
+            bloco += f"\nEFEITOS SONOROS ({len(efeitos)}; pancadas curtas pra faixa de Efeito na MiniDAW — nunca sugerir como trilha de fundo): {', '.join(efeitos[:20])}."
         partes.append(bloco)
     except Exception:
         partes.append("TRILHAS: acervo indisponível agora.")
