@@ -28,8 +28,16 @@
         blocos: [],           // {id, personagem, direcao, texto, buffer, chaveGerada, gerando}
         catalogo: [],
         mixBuffer: null, mixBlob: null, duracao: 0,
-        chaveMontada: null    // com quais blocos/pausa o mixBlob foi montado (ver montagemAtual)
+        chaveMontada: null,   // com quais blocos/pausa o mixBlob foi montado (ver montagemAtual)
+        lote: false           // "Gerar e montar" rodando: "Gerar este" espera
     };
+    function ocupado() {
+        if (estado.lote || estado.blocos.some(x => x.gerando)) {
+            avisar('Ainda estou gravando um bloco — espere terminar antes de mandar outro (o Gemini grátis só aceita 3 por minuto).', 'atencao');
+            return true;
+        }
+        return false;
+    }
 
     // ── utilidades de tela ─────────────────────────────────────────────
     function avisar(texto, tipo) {
@@ -200,6 +208,7 @@
                 renderStatus(); atualizarContador(); salvarLocal();
             });
             el.querySelector('[data-acao="gerar"]').onclick = async () => {
+                if (ocupado()) return;
                 limparAvisos();
                 try {
                     await gerarBloco(b);
@@ -246,17 +255,24 @@
     // O 429 do Gemini grátis vem de DOIS limites: por MINUTO (3 locuções/min,
     // "Please retry in 40s" — visto no teste de 11/09/2026, bloco 6 de 11) e por
     // DIA. O primeiro se resolve esperando; o segundo, não.
-    function segundosParaTentarDeNovo(msg) {
+    // Qual 429 é: 'dia' (parar, não adianta esperar), 'minuto' (esperar e tentar
+    // de novo) ou null (não é 429). O Google manda "retry in 26s" nos DOIS casos,
+    // então quem decide é o nome da cota (quotaId ...PerDay... / ...PerMinute...).
+    function tipoDe429(msg) {
         if (!/429|RESOURCE_EXHAUSTED/i.test(msg)) return null;
-        const m = /retry in ([\d.]+)\s*s/i.exec(msg) || /retryDelay'?\s*:\s*'?(\d+)s/i.exec(msg);
-        if (!m) return /PerMinute/i.test(msg) ? 30 : null;
-        const seg = Math.ceil(parseFloat(m[1]));
-        return seg <= 120 ? seg : null;      // mais que isso é cota do dia
+        if (/PerDay/i.test(msg)) return 'dia';
+        if (/PerMinute/i.test(msg)) return 'minuto';
+        const seg = segundosParaTentarDeNovo(msg);
+        return (seg != null && seg <= 120) ? 'minuto' : 'dia';
     }
-    function resumirErro(msg) {
-        if (!/429|RESOURCE_EXHAUSTED/i.test(msg)) return String(msg).slice(0, 300);
-        if (/PerMinute|retry in/i.test(msg)) return 'limite por minuto do Gemini (3 locuções/min) — 429 mesmo depois de esperar; aguarde 1 minuto e clique "Gerar este".';
-        return 'cota do DIA do Gemini esgotada (429) — volta em algumas horas; ou troque a voz do personagem pra uma do ElevenLabs.';
+    function segundosParaTentarDeNovo(msg) {
+        const m = /retry in ([\d.]+)\s*s/i.exec(msg) || /retryDelay'?\s*:\s*'?(\d+)s/i.exec(msg);
+        return m ? Math.ceil(parseFloat(m[1])) : null;
+    }
+    function resumirErro(msg, tipo) {
+        if (tipo === 'dia') return 'cota do DIA do Gemini TTS esgotada (429 PerDay) — não adianta esperar: volta por volta das 4h da manhã (Brasil). Hoje: vozes do ElevenLabs nos personagens, ou continue amanhã (os blocos gerados ficam).';
+        if (tipo === 'minuto') return 'limite por minuto do Gemini (3 locuções/min) — 429 mesmo depois de esperar 3 vezes; aguarde 1 minuto e clique "Gerar este".';
+        return String(msg).slice(0, 300);
     }
     async function esperar(seg, rotulo) {
         for (let r = seg; r > 0; r--) {
@@ -284,9 +300,10 @@
                 d = await r.json().catch(() => ({}));
                 if (d.success) break;
                 const msg = d.error || `falha na locução (HTTP ${r.status})`;
-                const seg = segundosParaTentarDeNovo(msg);
-                if (seg == null || tentativa >= 3) throw new Error(resumirErro(msg));
-                await esperar(seg + 2, `Bloco ${estado.blocos.indexOf(b) + 1} (${b.personagem}) bateu no limite`);
+                const tipo = tipoDe429(msg);
+                if (tipo !== 'minuto' || tentativa >= 3) throw new Error(resumirErro(msg, tipo));
+                const seg = Math.min(segundosParaTentarDeNovo(msg) || 30, 120);
+                await esperar(seg + 2, `Bloco ${estado.blocos.indexOf(b) + 1} (${b.personagem}) bateu no limite por minuto`);
                 passo(`Gravando bloco ${estado.blocos.indexOf(b) + 1} (${b.personagem}, ${nomeDaVoz(v.voz)})... tentativa ${tentativa + 1}`);
             }
             const ab = await (await fetch(d.download_url)).arrayBuffer();   // /tmp da Vercel é efêmero: buscar já
@@ -308,8 +325,9 @@
         const btn = $('btnGerarTudo');
         const pend = estado.blocos.filter(b => statusBloco(b) !== 'gerado');
         if (!estado.blocos.length) { alert('Divida o roteiro em blocos primeiro.'); return; }
+        if (ocupado()) return;
         if (pend.length && !confirm(`Vou gravar ${pend.length} locução(ões), uma por bloco. O Gemini grátis aceita 3 por minuto: quando bater no limite eu espero e sigo sozinho (uns ${Math.ceil(pend.length / 3)} min no total). Continuar?`)) return;
-        btn.disabled = true;
+        btn.disabled = true; estado.lote = true;
         limparAvisos();
         let falhou = 0;
         try {
@@ -326,7 +344,7 @@
         } catch (e) {
             passo('❌ ' + e.message);
         } finally {
-            btn.disabled = false;
+            btn.disabled = false; estado.lote = false;
             render();
         }
     }
