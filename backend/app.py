@@ -4495,10 +4495,28 @@ def run_audio_generation(payload, trigger_source='api'):
         with open(filepath, 'wb') as f:
             f.write(audio_data)
 
+        # /tmp na Vercel é POR INSTÂNCIA de lambda: o /api/download pode cair
+        # noutra máquina onde este arquivo nunca existiu ("Falha ao buscar o
+        # áudio (HTTP 500)" intermitente — mordeu o Ep.5 do Vida Saudável em
+        # 11/09/2026). A casa durável é o Storage: sobe a locução e entrega a
+        # URL assinada direto; o /api/download fica como fallback local.
+        download_url = f'/api/download/{filename}'
+        try:
+            if supabase_manager and supabase_manager.newpost_manager_client:
+                _storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+                _caminho = f"locucoes/{filename}"
+                _storage.upload(_caminho, audio_data, {"content-type": "audio/wav", "cache-control": "3600"})
+                _assinada = _storage.create_signed_url(_caminho, 24 * 3600)
+                _url = _assinada.get('signedURL') or _assinada.get('signedUrl')
+                if _url:
+                    download_url = _url
+        except Exception as e:
+            print(f"⚠️ Locução ficou só no /tmp (upload ao Storage falhou): {e}", flush=True)
+
         response_payload = {
             'success': True,
             'filename': filename,
-            'download_url': f'/api/download/{filename}',
+            'download_url': download_url,
             'message': 'Áudio gerado com sucesso!'
         }
         operation_tracker.complete_job(
@@ -4892,6 +4910,19 @@ def download_file(filename):
     try:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         if not os.path.exists(filepath):
+            # /tmp é por-instância na Vercel: se a geração rodou noutra lambda,
+            # o arquivo mora no Storage (locucoes/) — busca lá antes de negar.
+            try:
+                if supabase_manager and supabase_manager.newpost_manager_client:
+                    _storage = supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET)
+                    dados = _storage.download(f"locucoes/{filename}")
+                    if dados:
+                        mimetype = 'audio/mpeg' if filename.endswith('.mp3') else 'audio/wav'
+                        resp = make_response(dados)
+                        resp.headers['Content-Type'] = mimetype
+                        return resp
+            except Exception as e:
+                print(f"⚠️ Fallback do Storage falhou pro download {filename}: {e}", flush=True)
             return jsonify({'error': 'Arquivo não encontrado'}), 404
         mimetype = 'audio/mpeg' if filename.endswith('.mp3') else 'audio/wav'
         return send_file(filepath, as_attachment=False, download_name=filename, mimetype=mimetype)
