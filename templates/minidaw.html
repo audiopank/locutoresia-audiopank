@@ -693,6 +693,21 @@
             color: #8b93a7; font-size: .62rem; padding-left: 3px;
             pointer-events: none;
         }
+        /* Marcadores numerados (estilo Samplitude): bandeira na régua + linha nas lanes. */
+        .timeline-regua .marcador {
+            position: absolute; top: 2px; transform: translateX(-1px);
+            min-width: 16px; height: 16px; padding: 0 4px;
+            background: #f59e0b; color: #1a1a1a; font-size: .66rem; font-weight: 700;
+            line-height: 16px; text-align: center; border-radius: 3px 3px 3px 0;
+            border-left: 2px solid #fbbf24; cursor: pointer; z-index: 7;
+            pointer-events: auto; user-select: none;
+        }
+        .timeline-regua .marcador:hover { background: #fbbf24; }
+        .clips-lane .marcador-linha {
+            position: absolute; top: 0; bottom: 0; width: 0;
+            border-left: 1px dashed rgba(245,158,11,.75);
+            pointer-events: none; z-index: 5;
+        }
         .clips-lane {
             position: relative; height: 84px; overflow-x: auto; overflow-y: hidden;
             background: linear-gradient(180deg, rgba(59,130,246,.08), rgba(168,85,247,.08));
@@ -836,6 +851,11 @@
             <button class="quick-action-btn" onclick="toggleScissorMode()" id="scissorBtn">
                 <i class="fas fa-cut me-1"></i>
                 Tesoura
+            </button>
+            <button class="quick-action-btn" onclick="adicionarMarcador()"
+                    title="Marcador no cursor de reprodução (tecla M). Duplo clique na régua também cria. Clique no número: vai até ele. Botão direito: apaga. Clips grudam nos marcadores ao arrastar e aparar. Salvo com o projeto.">
+                <i class="fas fa-map-pin me-1"></i>
+                Marcador
             </button>
             <button class="quick-action-btn" onclick="normalizeVolumes()">
                 <i class="fas fa-sliders-h me-1"></i>
@@ -1053,7 +1073,7 @@
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
     <script src="/static/mix-engine.js?v=7"></script>
     <script src="/static/clip-model.js?v=4"></script>
-    <script src="/static/minidaw.js?v=48"></script>
+    <script src="/static/minidaw.js?v=49"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

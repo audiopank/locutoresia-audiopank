@@ -86,6 +86,9 @@ class MiniDAW {
         };
 
         this.voiceEndDetected = new Map();
+        // Marcadores de posição na régua ({id, t}), numerados por ordem de tempo
+        // (estilo Samplitude, pedido de 16/09/2026). Imã dos clips, salvos no projeto.
+        this.marcadores = [];
         
         this.init();
     }
@@ -170,6 +173,11 @@ class MiniDAW {
             else if (e.key === 'c' || e.key === 'C') {
                 e.preventDefault();
                 this.toggleScissorMode();
+            }
+            // M para marcador no cursor de reprodução
+            else if (e.key === 'm' || e.key === 'M') {
+                e.preventDefault();
+                this.adicionarMarcador();
             }
         });
 
@@ -876,6 +884,10 @@ class MiniDAW {
         for (let t = 0; t * this.pxPorSegundo <= largura; t += passo) {
             html += `<div class="marca" style="left:${t * this.pxPorSegundo}px">${this.formatTime(t)}</div>`;
         }
+        // Marcadores numerados por ordem de tempo (estilo Samplitude).
+        this._marcadoresOrdenados().forEach((m, i) => {
+            html += `<div class="marcador" data-id="${m.id}" style="left:${m.t * this.pxPorSegundo}px" title="Marcador ${i + 1} — ${m.t.toFixed(2)}s · clique: ir até ele · botão direito: apagar">${i + 1}</div>`;
+        });
         // O marcador do playhead vai no innerHTML porque ele é reescrito a
         // cada redesenho — elemento criado por fora seria apagado aqui.
         html += '<div class="playhead-regua"></div>';
@@ -884,13 +896,85 @@ class MiniDAW {
         // Listener no elemento, não nas marcas: sobrevive ao innerHTML.
         if (!regua._clique) {
             regua._clique = true;
-            regua.addEventListener('click', (e) => {
+            const tempoNoPonto = (e) => {
                 const r = regua.getBoundingClientRect();
                 // + scrollLeft: a régua rola junto com as lanes.
-                this.irPara((e.clientX - r.left + regua.scrollLeft) / this.pxPorSegundo);
+                return (e.clientX - r.left + regua.scrollLeft) / this.pxPorSegundo;
+            };
+            regua.addEventListener('click', (e) => {
+                const flag = e.target.closest && e.target.closest('.marcador');
+                if (flag) {                        // clique no número: vai até o marcador
+                    const m = this.marcadores.find(x => x.id === flag.dataset.id);
+                    if (m) this.irPara(m.t);
+                    return;
+                }
+                this.irPara(tempoNoPonto(e));
+            });
+            // Duplo clique na régua = marcador ali; botão direito no número = apaga.
+            regua.addEventListener('dblclick', (e) => {
+                if (e.target.closest && e.target.closest('.marcador')) return;
+                this.adicionarMarcador(tempoNoPonto(e));
+            });
+            regua.addEventListener('contextmenu', (e) => {
+                const flag = e.target.closest && e.target.closest('.marcador');
+                if (!flag) return;
+                e.preventDefault();
+                this.removerMarcador(flag.dataset.id);
             });
         }
         this._desenharPlayhead();
+    }
+
+    // ── MARCADORES ───────────────────────────────────────────────────────
+    // Pedido de 16/09/2026 (tela do Samplitude): marcadores numerados na régua
+    // pra alinhar a vinheta de assinatura e outros objetos. Clips grudam neles
+    // ao arrastar/aparar; vão pro projeto salvo (coluna `marcadores`) e pro
+    // rascunho local.
+    _marcadoresOrdenados() {
+        return (this.marcadores || []).slice().sort((a, b) => a.t - b.t);
+    }
+    _normalizarMarcadores(lista) {
+        return (Array.isArray(lista) ? lista : [])
+            .filter(m => m && typeof m.t === 'number' && isFinite(m.t) && m.t >= 0)
+            .map(m => ({ id: String(m.id || ('m' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6))), t: Math.round(m.t * 1000) / 1000 }));
+    }
+    _temposDosMarcadores() {
+        return (this.marcadores || []).map(m => m.t);
+    }
+    adicionarMarcador(tempo) {
+        const t = Math.max(0, (tempo != null) ? tempo : (this.currentTime || 0));
+        if (this.marcadores.some(m => Math.abs(m.t - t) < 0.02)) {
+            this.showNotification('Já tem marcador aqui.', 'info');
+            return;
+        }
+        this.marcadores.push({ id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Math.round(t * 1000) / 1000 });
+        this.desenharRegua();
+        this._desenharMarcadoresNasLanes();
+        this.saveToLocalStorage();
+        const n = this._marcadoresOrdenados().findIndex(m => Math.abs(m.t - t) < 0.02) + 1;
+        this.showNotification(`Marcador ${n} em ${this.formatTime(t)} (${t.toFixed(2)}s). Clique no número pra ir até ele; botão direito apaga.`, 'info');
+    }
+    removerMarcador(id) {
+        const i = this.marcadores.findIndex(m => m.id === id);
+        if (i < 0) return;
+        this.marcadores.splice(i, 1);
+        this.desenharRegua();
+        this._desenharMarcadoresNasLanes();
+        this.saveToLocalStorage();
+    }
+    // Linha vertical em cada lane, pra enxergar o alinhamento por baixo dos clips.
+    _desenharMarcadoresNasLanes() {
+        const ms = this._marcadoresOrdenados();
+        document.querySelectorAll('.clips-lane .lane-conteudo').forEach(conteudo => {
+            conteudo.querySelectorAll('.marcador-linha').forEach(el => el.remove());
+            ms.forEach((m, i) => {
+                const el = document.createElement('div');
+                el.className = 'marcador-linha';
+                el.style.left = (m.t * this.pxPorSegundo) + 'px';
+                el.title = `Marcador ${i + 1}`;
+                conteudo.appendChild(el);
+            });
+        });
     }
 
     // ── CURSOR DE REPRODUÇÃO (playhead) ──────────────────────────────────
@@ -1212,6 +1296,22 @@ class MiniDAW {
             const topo = meio - mx * meio;
             ctx.fillRect(px, topo, 1, Math.max(1, (mx - mn) * meio));
         }
+        // Rampas de fade do clip por cima da onda (16/09/2026: ver a suavização
+        // da vinheta como no Samplitude). Só desenho — o áudio é o clipGain.
+        const pxPorSeg = width / Math.max(0.001, clip.duracao);
+        ctx.strokeStyle = 'rgba(251,191,36,.95)';
+        ctx.lineWidth = 1.5;
+        ctx.fillStyle = 'rgba(251,191,36,.14)';
+        if (clip.fadeIn > 0) {
+            const w = Math.min(width, clip.fadeIn * pxPorSeg);
+            ctx.beginPath(); ctx.moveTo(0, height); ctx.lineTo(w, 0); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(0, height); ctx.lineTo(w, 0); ctx.stroke();
+        }
+        if (clip.fadeOut > 0) {
+            const w = Math.min(width, clip.fadeOut * pxPorSeg);
+            ctx.beginPath(); ctx.moveTo(width, height); ctx.lineTo(width - w, 0); ctx.lineTo(width, 0); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(width, height); ctx.lineTo(width - w, 0); ctx.stroke();
+        }
     }
 
     // ── ARRASTO DE CLIP (tempo + entre faixas) ───────────────────────────
@@ -1263,6 +1363,8 @@ class MiniDAW {
                     alvos.push(c.inicio - clip.duracao, ClipModel.fimDoClip(c) - clip.duracao);
                 }
             }
+            // Marcadores também são imã: o INÍCIO ou o FIM do clip gruda neles.
+            for (const mt of this._temposDosMarcadores()) alvos.push(mt, mt - clip.duracao);
             const tol = 8 / this.pxPorSegundo;    // 8px de imã, em segundos
             let novoInicio = ClipModel.calcularSnap(
                 Math.max(0, inicioOriginal + dx / this.pxPorSegundo), alvos, tol);
@@ -1349,6 +1451,7 @@ class MiniDAW {
                     alvos.push(c.inicio, ClipModel.fimDoClip(c));
                 }
             }
+            for (const mt of this._temposDosMarcadores()) alvos.push(mt);   // borda gruda no marcador
             const ajustado = ClipModel.calcularSnap(t, alvos, 8 / this.pxPorSegundo);
 
             const novo = ClipModel.aplicarTrim(clip, borda, ajustado);
@@ -1704,6 +1807,7 @@ class MiniDAW {
         // (arrasto pra outra faixa) precisa limpar os blocos velhos da lane —
         // renderizarClips com _clipsDaFaixa vazio já remove sem desenhar nada.
         for (const t of this.tracks) this.renderizarClips(t);
+        this._desenharMarcadoresNasLanes();
     }
 
     // Coalescência: várias chamadas no mesmo tick (import, updateTrackUI,
@@ -1805,6 +1909,7 @@ class MiniDAW {
             if (clips.length) {
                 ClipModel.ordenarClips(clips)[0].fadeIn = track.fadeIn;
             }
+            this.renderizarTimeline();   // a rampa aparece no clip
             if (this.isPlaying) {
                 // stop() zera currentTime; preserva a posição pra não jogar o
                 // produtor de volta pro início ao ajustar de ouvido.
@@ -1826,6 +1931,7 @@ class MiniDAW {
                 const ord = ClipModel.ordenarClips(clips);
                 ord[ord.length - 1].fadeOut = track.fadeOut;
             }
+            this.renderizarTimeline();   // a rampa aparece no clip
             if (this.isPlaying) {
                 // stop() zera currentTime; preserva a posição pra não jogar o
                 // produtor de volta pro início ao ajustar de ouvido.
@@ -2370,6 +2476,7 @@ class MiniDAW {
         
         // Clear array
         this.tracks = [];
+        this.marcadores = [];
 
         // Show empty state
         const emptyState = document.getElementById('emptyState');
@@ -3388,7 +3495,8 @@ class MiniDAW {
                 _clipsBuffer: undefined
             })),
             exportFormat: this.exportFormat,
-            mp3Bitrate: this.mp3Bitrate
+            mp3Bitrate: this.mp3Bitrate,
+            marcadores: this.marcadores
         };
         
         localStorage.setItem('minidaw_project', JSON.stringify(data));
@@ -3403,6 +3511,7 @@ class MiniDAW {
                 // Restore settings
                 this.exportFormat = data.exportFormat || 'wav';
                 this.mp3Bitrate = data.mp3Bitrate || 192;
+                this.marcadores = this._normalizarMarcadores(data.marcadores);
                 
                 // Restore tracks (without audio)
                 data.tracks.forEach(trackData => {
@@ -4196,7 +4305,7 @@ class MiniDAW {
             }
             passo = 'gravar o projeto no banco';
             console.log('[projeto] ' + passo);
-            const body = { name: nome, tracks };
+            const body = { name: nome, tracks, marcadores: this.marcadores };
             if (this.projetoId) body.id = this.projetoId;   // atualiza em vez de duplicar
             const r = await fetch('/api/projects', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4207,6 +4316,10 @@ class MiniDAW {
             this.projetoId = d.project.id;
             this.projetoNome = nome;
             console.log('[projeto] salvo:', d.project.id);
+            if (d.marcadores_salvos === false && this.marcadores.length) {
+                // A tabela ainda não tem a coluna: o projeto salvou, os marcadores não.
+                this.showNotification('Projeto salvo, mas os MARCADORES não: a tabela ainda não tem a coluna. Rode MINIDAW_MARCADORES.sql no Supabase (uma linha) e salve de novo.', 'warning');
+            }
             this.showNotification(`Projeto "${nome}" salvo! Reabra por "Meus Projetos".`, 'success');
         } catch (e) {
             console.error('[projeto] FALHOU em:', passo, e);
@@ -4284,6 +4397,7 @@ class MiniDAW {
             // áudio de outro spot depois de abrir um projeto seria surpresa.
             this.clipSelecionado = null;
             this.clipboardClip = null;
+            this.marcadores = this._normalizarMarcadores(proj.marcadores);
 
             for (const td of (proj.tracks || [])) {
                 this.addTrack(td.type || 'music');
@@ -4487,6 +4601,7 @@ window.desfazerEncurtar = () => minidaw.desfazerEncurtar();
 window.pacoteDeStems = () => minidaw.pacoteDeStems();
 window.normalizeVolumes = () => minidaw.normalizeVolumes();
 window.applyAutoFade = () => minidaw.applyAutoFade();
+window.adicionarMarcador = () => minidaw.adicionarMarcador();
 window.clearAllTracks = () => minidaw.clearAllTracks();
 window.importFromTTS = () => minidaw.importFromTTS();
 window.zoomIn = () => minidaw.zoomIn();

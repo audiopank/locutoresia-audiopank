@@ -9557,6 +9557,24 @@ def list_vip_projects():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _sanear_marcadores(lista):
+    """Marcadores da MiniDAW: lista de {id, t}. None = a tela não mandou (não mexe)."""
+    if not isinstance(lista, list):
+        return None
+    saida = []
+    for m in lista[:200]:
+        if not isinstance(m, dict):
+            continue
+        try:
+            t = float(m.get('t'))
+        except (TypeError, ValueError):
+            continue
+        if t < 0 or t != t:      # negativo ou NaN
+            continue
+        saida.append({'id': str(m.get('id') or '')[:40], 't': round(t, 3)})
+    return saida
+
+
 @app.route('/api/projects', methods=['POST', 'OPTIONS'])
 def save_vip_project():
     if request.method == 'OPTIONS':
@@ -9585,14 +9603,29 @@ def save_vip_project():
         }
         if is_new_project:
             row['created_at'] = now
+        marcadores = _sanear_marcadores(data.get('marcadores'))
+        if marcadores is not None:
+            row['marcadores'] = marcadores
 
-        supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
-            .upsert(row).execute()
+        marcadores_salvos = True
+        tabela = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE)
+        try:
+            tabela.upsert(row).execute()
+        except Exception as e:
+            # Coluna `marcadores` ainda não existe (MINIDAW_MARCADORES.sql não rodou):
+            # o projeto NUNCA pode deixar de salvar por causa disso — salva o resto
+            # e avisa a tela (marcadores_salvos=False).
+            if 'marcadores' in row and 'marcadores' in str(e):
+                row.pop('marcadores')
+                marcadores_salvos = False
+                tabela.upsert(row).execute()
+            else:
+                raise
 
         if is_new_project:
             supabase_manager.log_usage_event('project_saved')
 
-        return jsonify({'success': True, 'project': row})
+        return jsonify({'success': True, 'project': row, 'marcadores_salvos': marcadores_salvos})
     except Exception as e:
         print(f'[VIP] ERRO ao salvar: {e}')
         import traceback
