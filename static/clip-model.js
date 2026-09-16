@@ -46,14 +46,18 @@
     // era 1.05s, depois 2.02s). Sem voz nenhuma, vale o clip mais tardio.
     // ⚠️ Espelhado em mix-engine.js (fade final) e minidaw.js (playback):
     // mudou aqui, muda LÁ — senão prévia e arquivo terminam em horas diferentes.
+    // Faixa LIVRE do fade final (efeito sonoro, ou trilha com auto fade
+    // desligado — a vinheta de assinatura depois da locução, 16/09/2026)
+    // toca até o fim dela: o projeto cresce pra caber.
     function duracaoDoProjeto(faixas) {
-        let fimVoz = 0, fimTudo = 0;
+        let fimVoz = 0, fimTudo = 0, fimLivres = 0;
         for (const f of (faixas || [])) {
             const fim = fimDaFaixa(f.clips);
             fimTudo = Math.max(fimTudo, fim);
             if (f.type === 'voice') fimVoz = Math.max(fimVoz, fim);
+            else if (f.sfx || f.autoFade === false) fimLivres = Math.max(fimLivres, fim);
         }
-        return fimVoz > 0 ? fimVoz + 3.05 : fimTudo;
+        return fimVoz > 0 ? Math.max(fimVoz + 3.05, fimLivres) : fimTudo;
     }
 
     function ordenarClips(clips) {

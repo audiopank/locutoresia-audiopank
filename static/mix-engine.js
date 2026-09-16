@@ -343,6 +343,15 @@
             let finalDuration = o.duration;
             if (clipsDeVoz.length > 0) {
                 finalDuration = fimDaVoz + 3.05;
+                // Faixa LIVRE do fade final (efeito sonoro, ou trilha com auto
+                // fade desligado) toca até o fim dela — a vinheta de assinatura
+                // depois da locução precisa caber no arquivo (16/09/2026).
+                // Espelho de ClipModel.duracaoDoProjeto.
+                for (const t of tracksWithAudio) {
+                    if (t.type === 'music' && (t.sfx || t.autoFade === false)) {
+                        finalDuration = Math.max(finalDuration, fimDosClips(clipsDe(t)));
+                    }
+                }
             } else {
                 let fimTudo = 0;
                 for (const t of tracksWithAudio) fimTudo = Math.max(fimTudo, fimDosClips(clipsDe(t)));
@@ -522,8 +531,11 @@
                             trackGain.gain.linearRampToValueAtTime(track.volume / 100, fimDaVoz);
                         }
                         // Fade final: desce ao zero em 3.05s depois do fim da voz
-                        // (calibrado pelo produtor contra o Samplitude).
-                        trackGain.gain.linearRampToValueAtTime(0, fimDaVoz + 3.05);
+                        // (calibrado pelo produtor contra o Samplitude). Com o auto
+                        // fade DESLIGADO na faixa, ela segue no nível dela até o fim.
+                        if (track.autoFade !== false) {
+                            trackGain.gain.linearRampToValueAtTime(0, fimDaVoz + 3.05);
+                        }
                     }
                 }
 

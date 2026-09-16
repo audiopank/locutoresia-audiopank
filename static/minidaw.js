@@ -235,6 +235,7 @@ class MiniDAW {
             name: trackName,
             type: type,
             sfx: ehSfx,
+            autoFade: true,     // fade final no fim da voz (só trilha). false = toca até o fim dela
             audioUrl: null,
             audioBuffer: null,
             sourceNode: null,
@@ -431,9 +432,11 @@ class MiniDAW {
                             <button class="effect-btn" onclick="minidaw.normalizeVolumes()" title="Normalizar">
                                 <i class="fas fa-sliders-h"></i> Normalizar
                             </button>
-                            <button class="effect-btn" onclick="minidaw.applyAutoFade()" title="Auto Fade">
+                            ${(track.type === 'music' && !track.sfx) ? `<button class="effect-btn${track.autoFade !== false ? ' active' : ''}" id="btnautofade_${track.id}"
+                                    onclick="minidaw.alternarAutoFade('${track.id}')"
+                                    title="Auto fade no fim da voz. LIGADO: esta trilha desce ao zero 3,05 s depois da última palavra e o arquivo termina ali. DESLIGADO: ela toca até o fim dela (vinheta de assinatura, jingle com janela) e o arquivo cresce pra caber. Vale igual na prévia e no export.">
                                 <i class="fas fa-wave-square"></i> Auto Fade
-                            </button>
+                            </button>` : ''}
                             <button class="effect-btn" onclick="minidaw.copiarEfeitosParaIguais('${track.id}')"
                                     title="Aplica os efeitos DESTA faixa em todas as outras do mesmo tipo (voz para vozes, trilha para trilhas). Serve quando a faixa de destino já tinha objeto — faixa vazia herda sozinha ao receber um clip.">
                                 <i class="fas fa-clone"></i> Copiar Efeitos
@@ -2040,7 +2043,7 @@ class MiniDAW {
     calculateDuration() {
         const faixas = this.tracks
             .filter(t => t.audioBuffer)
-            .map(t => ({ type: t.type, clips: this._clipsDaFaixa(t) }));
+            .map(t => ({ type: t.type, sfx: !!t.sfx, autoFade: t.autoFade, clips: this._clipsDaFaixa(t) }));
         this.duration = ClipModel.duracaoDoProjeto(faixas);
         this.updateDuration();
     }
@@ -2124,8 +2127,11 @@ class MiniDAW {
                 g.linearRampToValueAtTime(nivel, base + fimDaVoz);
             }
             // Fade final: desce ao zero em 3.05s depois do fim da voz (igual
-            // ao export — calibrado pelo produtor contra o Samplitude).
-            g.linearRampToValueAtTime(0, base + fimDaVoz + 3.05);
+            // ao export — calibrado pelo produtor contra o Samplitude). Com o
+            // auto fade DESLIGADO na faixa, ela segue no nível até o fim dela.
+            if (track.autoFade !== false) {
+                g.linearRampToValueAtTime(0, base + fimDaVoz + 3.05);
+            }
         }
     }
 
@@ -3878,7 +3884,15 @@ class MiniDAW {
         this.autoFadeEnabled = true;
         
         // Aplica fade out de 3.05s nas trilhas musicais (mesma folga do motor)
+        // e RELIGA o auto fade do motor em todas (o liga/desliga por faixa
+        // fica no botão de cada trilha — ver alternarAutoFade).
         musicTracks.forEach(track => {
+            if (!track.sfx && track.autoFade === false) {
+                track.autoFade = true;
+                const btn = document.getElementById(`btnautofade_${track.id}`);
+                if (btn) btn.classList.add('active');
+                this.aplicarVolumeAgora(track, this.trackNodes.get(track.id));
+            }
             this.updateTrackFadeOut(track.id, 3.05);
             
             // Mostra indicador
@@ -3891,7 +3905,30 @@ class MiniDAW {
         // Inicia monitoramento de silêncio
         this.startSilenceDetection();
 
+        this.calculateDuration();
         this.showNotification('Auto Fade ativado (3.05s)', 'success');
+    }
+
+    // Liga/desliga o fade final do MOTOR numa trilha (16/09/2026: a vinheta
+    // de assinatura do jingle entrava depois da locução e nunca tocava — o
+    // motor cortava tudo 3,05 s depois da última palavra). Vale igual na
+    // prévia e no export, e o projeto salva.
+    alternarAutoFade(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || track.type !== 'music' || track.sfx) return;
+        track.autoFade = (track.autoFade === false);   // ausente = ligado
+        const btn = document.getElementById(`btnautofade_${trackId}`);
+        if (btn) btn.classList.toggle('active', track.autoFade);
+        if (!track.autoFade) {
+            const indicator = document.getElementById(`autoFade_${trackId}`);
+            if (indicator) indicator.classList.remove('active');
+            this.voiceEndDetected.clear();
+        }
+        this.calculateDuration();
+        this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
+        this.showNotification(track.autoFade
+            ? `Auto fade LIGADO em "${track.name}": some 3,05 s depois da voz.`
+            : `Auto fade DESLIGADO em "${track.name}": toca até o fim dela.`, 'info');
     }
 
     startSilenceDetection() {
@@ -3945,6 +3982,7 @@ class MiniDAW {
         // fade legado escreve direto no gainNode.gain por fora dela e
         // brigaria com a curva desenhada pelo produtor. Pula.
         if (musicTrack.automacaoVolume && musicTrack.automacaoVolume.ativo && musicTrack.automacaoVolume.pontos.length) return;
+        if (musicTrack.autoFade === false) return;   // desligado na faixa: nada de sumir no fim da voz
 
         const nodes = this.trackNodes.get(musicTrack.id);
         if (!nodes || !nodes.gainNode) return;
@@ -4114,6 +4152,7 @@ class MiniDAW {
                 const clips = this._clipsDaFaixa(t);
                 const td = {
                     name: t.name, type: t.type, sfx: !!t.sfx,
+                    autoFade: t.autoFade !== false,
                     volume: t.volume, pan: t.pan,
                     fadeIn: t.fadeIn, fadeOut: t.fadeOut,
                     effects: t.effects, eqSettings: t.eqSettings,
@@ -4252,6 +4291,8 @@ class MiniDAW {
                 // Restaura SÓ os ajustes — NÃO o id (manter o id novo evita o
                 // descasamento de DOM que o load do .vip tinha).
                 track.name      = td.name ?? track.name;
+                track.sfx       = !!td.sfx;                 // a marca de efeito era salva mas não voltava
+                track.autoFade  = td.autoFade !== false;    // projeto antigo (sem o campo) = ligado
                 track.volume    = (td.volume    != null) ? td.volume    : 100;
                 track.pan       = (td.pan       != null) ? td.pan       : 0;
                 track.fadeIn    = (td.fadeIn    != null) ? td.fadeIn    : 0;
