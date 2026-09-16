@@ -65,9 +65,10 @@ def test_master_bus_e_ganchos_sem_tocar_no_som():
     assert "MasterSuite.instalar(minidaw);" in js
     suite = _ler('static', 'master-suite.js')
     assert "daw.masterOut.connect(splitter);" in suite and "daw.masterOut.connect(anSpec);" in suite
-    assert "global.MasterSuite = { instalar, ligar, desligar, medirArquivo, BANDAS_HZ };" in suite
-    for proibido in ('.connect(ctx.destination)', 'masterIn.disconnect', 'masterOut.disconnect'):
-        assert proibido not in suite, proibido        # o painel NUNCA entra no caminho do som
+    assert "global.MasterSuite = { instalar, ligar, desligar, medirArquivo, BANDAS_HZ, estadoParaSalvar, carregar, eqParaRender };" in suite
+    for proibido in ('.connect(ctx.destination)', 'masterOut.disconnect'):
+        assert proibido not in suite, proibido        # a suíte nunca fala direto com a saída
+    assert "daw.masterIn.disconnect(daw.masterOut);" in suite   # só o EQ (B) entra entre masterIn e masterOut
 
 
 @pytest.fixture(scope='module')
@@ -83,8 +84,8 @@ def cliente():
 def test_pagina_carrega_painel_e_scripts_na_ordem(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('id="masterSuite"', 'id="msEspectro"', 'id="msCobreL"', 'id="msPicoR"', 'id="msLufsM"', 'id="msClip"', 'id="msArquivo"',
-              '.master-suite {', 'minidaw.js?v=52'):
+              '.master-suite {', 'minidaw.js?v=53'):
         assert t in html, t
-    assert html.index('loudness.js?v=1') < html.index('master-suite.js?v=1') < html.index('minidaw.js?v=52')
+    assert html.index('loudness.js?v=1') < html.index('master-suite.js?v=2') < html.index('minidaw.js?v=53')
     assert cliente.get('/static/loudness.js').status_code == 200
     assert cliente.get('/static/master-suite.js').status_code == 200

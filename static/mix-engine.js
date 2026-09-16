@@ -367,7 +367,22 @@
 
             // Create master gain
             const masterGain = offlineContext.createGain();
-            masterGain.connect(offlineContext.destination);
+            {
+                // EQ master (Suíte Master, módulo B — 16/09/2026): os MESMOS 4
+                // biquads da prévia entre o somatório das faixas e a saída.
+                // Sem o.masterEq (Gerador, Narrativa, stems), nada muda.
+                let no = masterGain;
+                for (const b of (Array.isArray(o.masterEq) ? o.masterEq : [])) {
+                    const f = offlineContext.createBiquadFilter();
+                    f.type = b.tipo;
+                    f.frequency.value = b.freq;
+                    f.Q.value = b.q;
+                    f.gain.value = b.ganho;
+                    no.connect(f);
+                    no = f;
+                }
+                no.connect(offlineContext.destination);
+            }
 
             // Mix all tracks
             for (let i = 0; i < tracksParaRenderizar.length; i++) {

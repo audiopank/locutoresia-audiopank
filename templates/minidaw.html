@@ -396,7 +396,14 @@
         .ms-titulo { font-weight: 600; color: #c7d2fe; font-size: .9rem; }
         .ms-arquivo { font-size: .78rem; color: #94a3b8; }
         .ms-arquivo.medido { color: #bbf7d0; }
-        .ms-corpo { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(250px, 330px); gap: 1rem; align-items: stretch; }
+        .ms-corpo { display: grid; grid-template-columns: minmax(280px, 360px) minmax(220px, 1fr) minmax(240px, 300px); gap: 1rem; align-items: stretch; }
+        .ms-eq canvas { width: 100%; height: 118px; display: block; background: #060a16; border-radius: 6px; cursor: crosshair; }
+        .ms-eq-cab { display: flex; justify-content: space-between; align-items: center; margin-bottom: .3rem; }
+        .ms-btn { background: #1f2937; border: 1px solid #374151; color: #9ca3af; border-radius: 4px; padding: .1rem .45rem; font-size: .75rem; cursor: pointer; }
+        .ms-btn:hover { color: #e2e8f0; }
+        .ms-btn.active { background: #4f46e5; border-color: #6366f1; color: #fff; }
+        .ms-eq-bandas { display: grid; grid-template-columns: 1fr 1fr; gap: .15rem .6rem; font-size: .72rem; color: #94a3b8; margin-top: .35rem; font-variant-numeric: tabular-nums; }
+        .ms-eq-bandas .ativa { color: #bfdbfe; }
         .ms-espectro canvas { width: 100%; height: 118px; display: block; background: #060a16; border-radius: 6px; }
         .ms-vu { display: grid; grid-template-columns: 14px 1fr 58px; gap: .5rem; align-items: center; font-size: .75rem; color: #94a3b8; margin-bottom: .4rem; }
         .ms-barra { position: relative; height: 12px; border-radius: 3px; overflow: hidden;
@@ -408,6 +415,7 @@
         .ms-valor { font-size: 1.05rem; font-weight: 700; color: #e2e8f0; font-variant-numeric: tabular-nums; }
         .ms-clip { margin-left: auto; padding: .05rem .45rem; border-radius: 3px; background: #374151; color: #9ca3af; font-size: .68rem; font-weight: 700; }
         .ms-clip.on { background: #ef4444; color: #fff; }
+        @media (max-width: 1100px) { .ms-corpo { grid-template-columns: 1fr 1fr; } }
         @media (max-width: 720px) { .ms-corpo { grid-template-columns: 1fr; } }
 
         .mixing-status {
@@ -1080,10 +1088,23 @@
              EQ com curva (B) e limiter/loudness (C) entram aqui depois. -->
         <div class="master-suite" id="masterSuite">
             <div class="ms-cab">
-                <span class="ms-titulo"><i class="fas fa-wave-square me-1"></i>Master · Analisador e medidores</span>
+                <span class="ms-titulo"><i class="fas fa-wave-square me-1"></i>Master · EQ, analisador e medidores</span>
                 <span class="ms-arquivo" id="msArquivo">Exporte um mix pra medir o arquivo: LUFS integrado · pico real · faixa dinâmica.</span>
             </div>
             <div class="ms-corpo">
+                <!-- Módulo B: EQ master de 4 bandas. Os pontos são a resposta REAL dos
+                     biquads vivos; o export usa os mesmos parâmetros (prévia = arquivo). -->
+                <div class="ms-eq" title="EQ master de 4 bandas: arraste o ponto (esquerda/direita = frequência, cima/baixo = ganho, até ±12 dB). Roda do mouse nos pontos 2 e 3 muda o Q. Duplo clique zera a banda. Vale na prévia e no arquivo; stems isolados saem crus.">
+                    <div class="ms-eq-cab">
+                        <span class="ms-titulo">EQ master</span>
+                        <span>
+                            <button type="button" class="ms-btn active" id="msEqBypass" title="Liga/desliga o EQ (bypass). Aceso = ligado."><i class="fas fa-power-off"></i></button>
+                            <button type="button" class="ms-btn" id="msEqReset" title="Zera as 4 bandas"><i class="fas fa-rotate-left"></i></button>
+                        </span>
+                    </div>
+                    <canvas id="msEqCanvas"></canvas>
+                    <div class="ms-eq-bandas" id="msEqBandas"></div>
+                </div>
                 <div class="ms-espectro" title="Espectro da saída (60 Hz a 16 kHz), com pico retido por banda"><canvas id="msEspectro"></canvas></div>
                 <div class="ms-medidores">
                     <div class="ms-vu" title="Pico por amostra do canal esquerdo, em dBFS"><span>L</span>
@@ -1116,11 +1137,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
-    <script src="/static/mix-engine.js?v=7"></script>
+    <script src="/static/mix-engine.js?v=8"></script>
     <script src="/static/clip-model.js?v=4"></script>
     <script src="/static/loudness.js?v=1"></script>
-    <script src="/static/master-suite.js?v=1"></script>
-    <script src="/static/minidaw.js?v=52"></script>
+    <script src="/static/master-suite.js?v=2"></script>
+    <script src="/static/minidaw.js?v=53"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

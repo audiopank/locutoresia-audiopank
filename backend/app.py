@@ -9575,6 +9575,26 @@ def _sanear_marcadores(lista):
     return saida
 
 
+def _sanear_master(d):
+    """Suíte Master da MiniDAW: {eq: {bypass, bandas:[{tipo, freq, ganho, q}]}}. None = não mandou."""
+    if not isinstance(d, dict):
+        return None
+    eq = d.get('eq') if isinstance(d.get('eq'), dict) else {}
+    bandas = []
+    for m in (eq.get('bandas') or [])[:8]:
+        if not isinstance(m, dict) or m.get('tipo') not in ('lowshelf', 'peaking', 'highshelf'):
+            continue
+        try:
+            freq = float(m.get('freq')); ganho = float(m.get('ganho', 0)); q = float(m.get('q', 1))
+        except (TypeError, ValueError):
+            continue
+        if not (20 <= freq <= 20000) or freq != freq or ganho != ganho or q != q:
+            continue
+        bandas.append({'tipo': m['tipo'], 'freq': round(freq, 1), 'ganho': round(max(-12.0, min(12.0, ganho)), 2),
+                       'q': round(max(0.1, min(10.0, q)), 2)})
+    return {'eq': {'bypass': bool(eq.get('bypass')), 'bandas': bandas}}
+
+
 @app.route('/api/projects', methods=['POST', 'OPTIONS'])
 def save_vip_project():
     if request.method == 'OPTIONS':
@@ -9606,26 +9626,33 @@ def save_vip_project():
         marcadores = _sanear_marcadores(data.get('marcadores'))
         if marcadores is not None:
             row['marcadores'] = marcadores
+        master = _sanear_master(data.get('master'))
+        if master is not None:
+            row['master'] = master
 
-        marcadores_salvos = True
+        # Colunas OPCIONAIS (marcadores 16/09, master 16/09): se a migração ainda
+        # não rodou (MINIDAW_MARCADORES.sql / MINIDAW_MASTER.sql), o projeto NUNCA
+        # pode deixar de salvar por isso — tira a coluna, grava o resto e avisa.
+        salvos = {'marcadores': True, 'master': True}
         tabela = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE)
-        try:
-            tabela.upsert(row).execute()
-        except Exception as e:
-            # Coluna `marcadores` ainda não existe (MINIDAW_MARCADORES.sql não rodou):
-            # o projeto NUNCA pode deixar de salvar por causa disso — salva o resto
-            # e avisa a tela (marcadores_salvos=False).
-            if 'marcadores' in row and 'marcadores' in str(e):
-                row.pop('marcadores')
-                marcadores_salvos = False
+        for _tentativa in range(3):
+            try:
                 tabela.upsert(row).execute()
-            else:
-                raise
+                break
+            except Exception as e:
+                faltando = next((c for c in ('marcadores', 'master') if c in row and c in str(e)), None)
+                if not faltando:
+                    raise
+                row.pop(faltando)
+                salvos[faltando] = False
+        else:
+            raise RuntimeError('não consegui gravar o projeto')
 
         if is_new_project:
             supabase_manager.log_usage_event('project_saved')
 
-        return jsonify({'success': True, 'project': row, 'marcadores_salvos': marcadores_salvos})
+        return jsonify({'success': True, 'project': row,
+                        'marcadores_salvos': salvos['marcadores'], 'master_salvo': salvos['master']})
     except Exception as e:
         print(f'[VIP] ERRO ao salvar: {e}')
         import traceback

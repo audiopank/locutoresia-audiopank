@@ -28,7 +28,7 @@ def test_minidaw_js_marcadores_de_ponta_a_ponta():
         "lane.addEventListener('dblclick'",                                          # marcador por duplo clique na faixa
         "for (const mt of this._temposDosMarcadores()) alvos.push(mt, mt - clip.duracao);",   # imã ao arrastar
         "for (const mt of this._temposDosMarcadores()) alvos.push(mt);",             # imã ao aparar
-        "marcadores: this.marcadores\n        };",                                   # rascunho local
+        "marcadores: this.marcadores,\n            master: window.MasterSuite ? MasterSuite.estadoParaSalvar() : undefined\n        };",   # rascunho local
         "this.marcadores = this._normalizarMarcadores(data.marcadores);",
         "const body = { name: nome, tracks, marcadores: this.marcadores };",         # projeto salvo
         "this.marcadores = this._normalizarMarcadores(proj.marcadores);",           # projeto reaberto
@@ -66,7 +66,7 @@ def cliente():
 
 def test_pagina_tem_botao_css_e_versao(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    for t in ('onclick="adicionarMarcador()"', '.timeline-regua .marcador {', '.clips-lane .marcador-linha {', 'minidaw.js?v=52'):
+    for t in ('onclick="adicionarMarcador()"', '.timeline-regua .marcador {', '.clips-lane .marcador-linha {', 'minidaw.js?v=53'):
         assert t in html, t
 
 

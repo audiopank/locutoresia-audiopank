@@ -2755,7 +2755,7 @@ class MiniDAW {
     // sozinha (stem) devolve exatamente o que ela é DENTRO do mix, então
     // os stems somam de volta no mix final — é isso que faz stem ser stem.
     // ═══════════════════════════════════════════════════════════════════
-    async _renderizarParaExport(tracksParaRenderizar, aoProgredir) {
+    async _renderizarParaExport(tracksParaRenderizar, aoProgredir, opcoes = {}) {
         // Clips podem estar OBSOLETOS se o buffer trocou depois do último play
         // (Encurtar Pausas, corte): a migração preguiçosa só roda na leitura.
         // Refresca aqui pra o export nunca renderizar áudio velho (prévia = arquivo).
@@ -2769,7 +2769,9 @@ class MiniDAW {
             duck: {
                 gain: this.duckGain, attack: this.duckAttack,
                 release: this.duckRelease, hold: this.duckHold
-            }
+            },
+            // EQ master (Suíte Master B): vai no MIX; stem isolado pede semMaster.
+            masterEq: (!opcoes.semMaster && window.MasterSuite) ? MasterSuite.eqParaRender() : null
         });
     }
 
@@ -3003,7 +3005,7 @@ class MiniDAW {
             for (let i = 0; i < comAudio.length; i++) {
                 const t = comAudio[i];
                 this.updateMixingProgress(5 + (i / comAudio.length) * 45, `Stem: ${t.name}...`);
-                const buf = await this._renderizarParaExport([t]);
+                const buf = await this._renderizarParaExport([t], null, { semMaster: true });   // stem cru
                 let nome = this._slugArquivo(t.name);
                 usados[nome] = (usados[nome] || 0) + 1;
                 if (usados[nome] > 1) nome += '-' + usados[nome];
@@ -3567,7 +3569,8 @@ class MiniDAW {
             })),
             exportFormat: this.exportFormat,
             mp3Bitrate: this.mp3Bitrate,
-            marcadores: this.marcadores
+            marcadores: this.marcadores,
+            master: window.MasterSuite ? MasterSuite.estadoParaSalvar() : undefined
         };
         
         localStorage.setItem('minidaw_project', JSON.stringify(data));
@@ -3583,6 +3586,8 @@ class MiniDAW {
                 this.exportFormat = data.exportFormat || 'wav';
                 this.mp3Bitrate = data.mp3Bitrate || 192;
                 this.marcadores = this._normalizarMarcadores(data.marcadores);
+                // A suíte só é instalada depois do construtor: guarda pra ela aplicar.
+                this._masterPendente = data.master || null;
                 
                 // Restore tracks (without audio)
                 data.tracks.forEach(trackData => {
@@ -4394,7 +4399,8 @@ class MiniDAW {
             }
             passo = 'gravar o projeto no banco';
             console.log('[projeto] ' + passo);
-            const body = { name: nome, tracks, marcadores: this.marcadores };
+            const body = { name: nome, tracks, marcadores: this.marcadores,
+                           master: window.MasterSuite ? MasterSuite.estadoParaSalvar() : undefined };
             if (this.projetoId) body.id = this.projetoId;   // atualiza em vez de duplicar
             const r = await fetch('/api/projects', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4405,6 +4411,9 @@ class MiniDAW {
             this.projetoId = d.project.id;
             this.projetoNome = nome;
             console.log('[projeto] salvo:', d.project.id);
+            if (d.master_salvo === false) {
+                this.showNotification('Projeto salvo, mas o EQ master não: a tabela ainda não tem a coluna. Rode MINIDAW_MASTER.sql no Supabase (uma linha) e salve de novo.', 'warning');
+            }
             if (d.marcadores_salvos === false && this.marcadores.length) {
                 // A tabela ainda não tem a coluna: o projeto salvou, os marcadores não.
                 this.showNotification('Projeto salvo, mas os MARCADORES não: a tabela ainda não tem a coluna. Rode MINIDAW_MARCADORES.sql no Supabase (uma linha) e salve de novo.', 'warning');
@@ -4487,6 +4496,7 @@ class MiniDAW {
             this.clipSelecionado = null;
             this.clipboardClip = null;
             this.marcadores = this._normalizarMarcadores(proj.marcadores);
+            if (window.MasterSuite) MasterSuite.carregar(proj.master || null);   // sem master salvo = EQ zerado
 
             for (const td of (proj.tracks || [])) {
                 this.addTrack(td.type || 'music');
