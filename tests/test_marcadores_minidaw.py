@@ -25,6 +25,7 @@ def test_minidaw_js_marcadores_de_ponta_a_ponta():
         "e.key === 'm' || e.key === 'M'",                                          # tecla M
         'html += `<div class="marcador" data-id="${m.id}"',                          # bandeira na régua
         "regua.addEventListener('dblclick'", "regua.addEventListener('contextmenu'",
+        "lane.addEventListener('dblclick'",                                          # marcador por duplo clique na faixa
         "for (const mt of this._temposDosMarcadores()) alvos.push(mt, mt - clip.duracao);",   # imã ao arrastar
         "for (const mt of this._temposDosMarcadores()) alvos.push(mt);",             # imã ao aparar
         "marcadores: this.marcadores\n        };",                                   # rascunho local
@@ -65,7 +66,7 @@ def cliente():
 
 def test_pagina_tem_botao_css_e_versao(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    for t in ('onclick="adicionarMarcador()"', '.timeline-regua .marcador {', '.clips-lane .marcador-linha {', 'minidaw.js?v=50'):
+    for t in ('onclick="adicionarMarcador()"', '.timeline-regua .marcador {', '.clips-lane .marcador-linha {', 'minidaw.js?v=51'):
         assert t in html, t
 
 

@@ -1091,6 +1091,15 @@ class MiniDAW {
                 if (e.target.closest && (e.target.closest('.clip-bloco') || e.target.closest('.automacao-svg'))) return;
                 this.irPara(this._tempoNoPonto(e, track));
             });
+            // Duplo clique em QUALQUER faixa (até em cima do clip) cria um
+            // marcador ali — a régua só existe em cima da primeira faixa, e ele
+            // marca olhando a trilha (16/09/2026). Fora da Tesoura e da Automação.
+            lane.addEventListener('dblclick', (e) => {
+                if (this.trackTesoura === track.id || this.trackAutomacao === track.id) return;
+                if (e.target.closest && (e.target.closest('.clip-alca') || e.target.closest('.automacao-svg'))) return;
+                e.preventDefault();
+                this.adicionarMarcador(this._tempoNoPonto(e, track));
+            });
         }
         // Zoom vertical: a lane nasce com a altura do CSS e o card é recriado a
         // cada updateTrackUI, então reaplicar aqui é o que faz a altura escolhida
