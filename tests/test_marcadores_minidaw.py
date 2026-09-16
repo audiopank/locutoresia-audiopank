@@ -41,7 +41,9 @@ def test_fades_aparecem_no_clip():
     js = _ler('static', 'minidaw.js')
     assert "if (clip.fadeIn > 0) {\n            const w = Math.min(width, clip.fadeIn * pxPorSeg);" in js
     assert "if (clip.fadeOut > 0) {\n            const w = Math.min(width, clip.fadeOut * pxPorSeg);" in js
-    assert js.count("this.renderizarTimeline();   // a rampa aparece no clip") == 2
+    assert "this.previaFade(trackId, 'fadeIn', track.fadeIn);" in js and "this.previaFade(trackId, 'fadeOut', track.fadeOut);" in js
+    assert 'id="fadein_val_${track.id}"' in js and 'id="fadeout_val_${track.id}"' in js   # valor em segundos ao lado do slider
+    assert 'oninput="minidaw.previaFade(' in js
 
 
 def test_sanear_marcadores():
@@ -63,7 +65,7 @@ def cliente():
 
 def test_pagina_tem_botao_css_e_versao(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    for t in ('onclick="adicionarMarcador()"', '.timeline-regua .marcador {', '.clips-lane .marcador-linha {', 'minidaw.js?v=49'):
+    for t in ('onclick="adicionarMarcador()"', '.timeline-regua .marcador {', '.clips-lane .marcador-linha {', 'minidaw.js?v=50'):
         assert t in html, t
 
 
@@ -84,3 +86,15 @@ def test_projeto_salva_com_ou_sem_a_coluna_e_apaga(cliente):
             assert 'marcadores' not in g['project']
     finally:
         assert cliente.delete(f'/api/projects/{pid}').get_json()['success']
+
+
+
+def test_regua_alinhada_e_automacao_limpavel():
+    """16/09/2026: cursor da régua adiantado em relação ao das lanes (régua rolava
+    menos e nascia 24px à esquerda); e não havia como apagar todos os pontos de automação."""
+    js = _ler('static', 'minidaw.js')
+    assert 'html += `<div class="regua-largura" style="width:${largura}px;height:1px"></div>`;' in js
+    assert "_alinharRegua() {" in js and js.count("this._alinharRegua()") >= 2      # no render e no resize
+    assert "regua.scrollLeft = lane.scrollLeft;" in js
+    assert "limparAutomacaoVolume(trackId) {" in js
+    assert "oncontextmenu=\"minidaw.limparAutomacaoVolume('${track.id}'); return false;\"" in js

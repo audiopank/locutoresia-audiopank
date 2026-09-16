@@ -89,6 +89,7 @@ class MiniDAW {
         // Marcadores de posição na régua ({id, t}), numerados por ordem de tempo
         // (estilo Samplitude, pedido de 16/09/2026). Imã dos clips, salvos no projeto.
         this.marcadores = [];
+        window.addEventListener('resize', () => this._alinharRegua());
         
         this.init();
     }
@@ -411,13 +412,19 @@ class MiniDAW {
                     </div>
                     <div class="control-group">
                         <span class="control-label">Fade In:</span>
-                        <input type="range" class="form-range fade-slider" min="0" max="5" step="0.1" value="${track.fadeIn}"
+                        <input type="range" class="form-range fade-slider" min="0" max="8" step="0.1" value="${track.fadeIn}"
+                               title="Suaviza a ENTRADA do primeiro clip desta faixa (rampa âmbar no clip). Vale na prévia e no export."
+                               oninput="minidaw.previaFade('${track.id}', 'fadeIn', this.value)"
                                onchange="minidaw.updateTrackFadeIn('${track.id}', this.value)">
+                        <span class="control-label" id="fadein_val_${track.id}">${(Number(track.fadeIn) || 0).toFixed(1)} s</span>
                     </div>
                     <div class="control-group">
                         <span class="control-label">Fade Out:</span>
-                        <input type="range" class="form-range fade-slider" min="0" max="5" step="0.1" value="${track.fadeOut}"
+                        <input type="range" class="form-range fade-slider" min="0" max="8" step="0.1" value="${track.fadeOut}"
+                               title="Suaviza a SAÍDA do último clip desta faixa (rampa âmbar no clip). Vale na prévia e no export."
+                               oninput="minidaw.previaFade('${track.id}', 'fadeOut', this.value)"
                                onchange="minidaw.updateTrackFadeOut('${track.id}', this.value)">
+                        <span class="control-label" id="fadeout_val_${track.id}">${(Number(track.fadeOut) || 0).toFixed(1)} s</span>
                     </div>
                 </div>
                 <div class="track-effects">
@@ -434,7 +441,9 @@ class MiniDAW {
                             </button>
                             <button class="effect-btn ${this.trackAutomacao === track.id ? 'active' : ''} ${(track.automacaoVolume && track.automacaoVolume.ativo) ? 'tem-automacao' : ''}"
                                     id="btnautomacao_${track.id}"
-                                    onclick="minidaw.toggleAutomacaoVolume('${track.id}')" title="Automação de volume (pontos manuais — substitui o Ducking nesta faixa enquanto tiver pontos)">
+                                    onclick="minidaw.toggleAutomacaoVolume('${track.id}')"
+                                    oncontextmenu="minidaw.limparAutomacaoVolume('${track.id}'); return false;"
+                                    title="Automação de volume (pontos manuais — substitui o fader e o Ducking nesta faixa enquanto tiver pontos). Clique: liga/desliga a edição. Duplo clique num ponto: apaga o ponto. BOTÃO DIREITO aqui: apaga TODOS os pontos e devolve o fader.">
                                 <i class="fas fa-wave-square"></i> Automação
                             </button>
                             <button class="effect-btn" onclick="minidaw.normalizeVolumes()" title="Normalizar">
@@ -884,6 +893,10 @@ class MiniDAW {
         for (let t = 0; t * this.pxPorSegundo <= largura; t += passo) {
             html += `<div class="marca" style="left:${t * this.pxPorSegundo}px">${this.formatTime(t)}</div>`;
         }
+        // Espaçador com a largura da timeline: as marcas são position:absolute
+        // e a régua rolava MENOS que as lanes (scrollLeft travava antes) —
+        // era isso que deixava o cursor de cima adiantado (16/09/2026).
+        html += `<div class="regua-largura" style="width:${largura}px;height:1px"></div>`;
         // Marcadores numerados por ordem de tempo (estilo Samplitude).
         this._marcadoresOrdenados().forEach((m, i) => {
             html += `<div class="marcador" data-id="${m.id}" style="left:${m.t * this.pxPorSegundo}px" title="Marcador ${i + 1} — ${m.t.toFixed(2)}s · clique: ir até ele · botão direito: apagar">${i + 1}</div>`;
@@ -923,6 +936,25 @@ class MiniDAW {
             });
         }
         this._desenharPlayhead();
+    }
+
+    // A régua é irmã do #tracksContainer, mas as lanes moram DENTRO do card
+    // (padding 1.5rem): sem este ajuste o t=0 da régua ficava ~24px à
+    // esquerda do t=0 das lanes, e cursor/marcadores não batiam (16/09/2026).
+    _alinharRegua() {
+        const regua = document.getElementById('timelineRegua');
+        const lane = document.querySelector('.clips-lane');
+        if (!regua) return;
+        regua.style.marginLeft = '0px';
+        regua.style.marginRight = '0px';
+        if (!lane) return;
+        const rr = regua.getBoundingClientRect();
+        const lr = lane.getBoundingClientRect();
+        const esq = Math.round(lr.left - rr.left);
+        const dir = Math.round(rr.right - lr.right);
+        if (esq > 0 && esq < 400) regua.style.marginLeft = esq + 'px';
+        if (dir > 0 && dir < 400) regua.style.marginRight = dir + 'px';
+        regua.scrollLeft = lane.scrollLeft;
     }
 
     // ── MARCADORES ───────────────────────────────────────────────────────
@@ -1808,6 +1840,7 @@ class MiniDAW {
         // renderizarClips com _clipsDaFaixa vazio já remove sem desenhar nada.
         for (const t of this.tracks) this.renderizarClips(t);
         this._desenharMarcadoresNasLanes();
+        this._alinharRegua();
     }
 
     // Coalescência: várias chamadas no mesmo tick (import, updateTrackUI,
@@ -1899,6 +1932,22 @@ class MiniDAW {
         }
     }
 
+    // Enquanto o slider anda: rótulo em segundos + rampa desenhada no clip.
+    // Só desenho — o áudio muda no onchange (updateTrackFadeIn/Out).
+    previaFade(trackId, campo, valor) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const v = Math.max(0, parseFloat(valor) || 0);
+        const rot = document.getElementById(`${campo.toLowerCase()}_val_${trackId}`);
+        if (rot) rot.textContent = v.toFixed(1) + ' s';
+        const clips = ClipModel.ordenarClips(this._clipsDaFaixa(track));
+        if (!clips.length) return;
+        const clip = campo === 'fadeIn' ? clips[0] : clips[clips.length - 1];
+        clip[campo] = v;
+        const el = document.getElementById(`clip_el_${clip.id}`);
+        if (el) this.desenharOndaDoClip(track, clip, el.querySelector('canvas'));
+    }
+
     updateTrackFadeIn(trackId, fadeIn) {
         const track = this.tracks.find(t => t.id === trackId);
         if (track) {
@@ -1909,7 +1958,7 @@ class MiniDAW {
             if (clips.length) {
                 ClipModel.ordenarClips(clips)[0].fadeIn = track.fadeIn;
             }
-            this.renderizarTimeline();   // a rampa aparece no clip
+            this.previaFade(trackId, 'fadeIn', track.fadeIn);   // rótulo + rampa no clip
             if (this.isPlaying) {
                 // stop() zera currentTime; preserva a posição pra não jogar o
                 // produtor de volta pro início ao ajustar de ouvido.
@@ -1931,7 +1980,7 @@ class MiniDAW {
                 const ord = ClipModel.ordenarClips(clips);
                 ord[ord.length - 1].fadeOut = track.fadeOut;
             }
-            this.renderizarTimeline();   // a rampa aparece no clip
+            this.previaFade(trackId, 'fadeOut', track.fadeOut);   // rótulo + rampa no clip
             if (this.isPlaying) {
                 // stop() zera currentTime; preserva a posição pra não jogar o
                 // produtor de volta pro início ao ajustar de ouvido.
@@ -3593,6 +3642,24 @@ class MiniDAW {
     // Modo por faixa, mesmo padrão da Tesoura: liga só numa faixa por vez.
     // Nunca liga junto com a Tesoura NA MESMA faixa -- a lane não teria
     // como distinguir "clique pra marcar corte" de "clique pra criar ponto".
+    // Apaga TODOS os pontos de automação da faixa (16/09/2026: ele desenhou
+    // pontos errados e não tinha como voltar atrás de uma vez). Fader e
+    // Ducking voltam a valer na hora.
+    limparAutomacaoVolume(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        const pontos = (track && track.automacaoVolume) ? (track.automacaoVolume.pontos || []) : [];
+        if (!track || !pontos.length) { this.showNotification('Esta faixa não tem pontos de automação.', 'info'); return; }
+        if (!confirm(`Apagar TODOS os ${pontos.length} pontos de automação de "${track.name}"? O fader de volume e o Ducking voltam a valer.`)) return;
+        track.automacaoVolume = { ativo: false, pontos: [] };
+        if (this.trackAutomacao === trackId) this.trackAutomacao = null;   // sai do modo de edição
+        const btn = document.getElementById(`btnautomacao_${trackId}`);
+        if (btn) btn.classList.remove('active', 'tem-automacao');
+        this.desenharAutomacaoVolume(track);
+        this.saveToLocalStorage();
+        this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
+        this.showNotification(`Automação de "${track.name}" apagada — fader e Ducking de volta.`, 'success');
+    }
+
     toggleAutomacaoVolume(trackId) {
         const track = this.tracks.find(t => t.id === trackId);
         if (!track) return;
