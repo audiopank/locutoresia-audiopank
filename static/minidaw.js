@@ -22,7 +22,15 @@ class MiniDAW {
         this.mp3Bitrate = 192;
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.masterGain = this.audioContext.createGain();
-        this.masterGain.connect(this.audioContext.destination);
+        // Barramento master (Suíte Master, 16/09/2026): masterGain → masterIn →
+        // masterOut → destination. Dois ganhos unitários, transparentes: entre
+        // eles entram EQ (módulo B) e limiter (módulo C); o analisador do painel
+        // (módulo A, static/master-suite.js) só ESCUTA masterOut.
+        this.masterIn = this.audioContext.createGain();
+        this.masterOut = this.audioContext.createGain();
+        this.masterGain.connect(this.masterIn);
+        this.masterIn.connect(this.masterOut);
+        this.masterOut.connect(this.audioContext.destination);
         this.trackNodes = new Map();
         this.updateInterval = null;
         
@@ -2229,6 +2237,7 @@ class MiniDAW {
         // De onde esta reprodução partiu — o stop volta pra cá.
         this._inicioDaReproducao = this.currentTime || 0;
         this.isPlaying = true;
+        if (window.MasterSuite) MasterSuite.ligar();
         this.setPlayIcon('fas fa-pause');
 
         // Start all tracks
@@ -2390,6 +2399,7 @@ class MiniDAW {
 
     stop() {
         this.isPlaying = false;
+        if (window.MasterSuite) MasterSuite.desligar();
         // Volta pro ponto de ONDE O PLAY PARTIU, não pro 0:00 — ouvir a partir
         // dos 19s, apertar espaço e dar play de novo tem que voltar aos 19s
         // (padrão de DAW). O botão ⏹ é quem zera de verdade (stopPlayback).
@@ -2826,6 +2836,9 @@ class MiniDAW {
             // cadastro do cliente, sem o vaivém de baixar e subir o mesmo arquivo.
             this.ultimoMixBlob = blob;
             this.ultimoMixNome = filename;
+            // Suíte Master: LUFS integrado + pico real do arquivo que SAIU
+            // (depois do Otimizar, se houve) — medido, nunca o pedido.
+            if (window.MasterSuite) MasterSuite.medirArquivo(renderedBuffer, filename);
             const btnEnviar = document.getElementById('btnEnviarEntrega');
             if (btnEnviar) btnEnviar.style.display = '';
 
@@ -4636,6 +4649,7 @@ let minidaw;
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     minidaw = new MiniDAW();
+    if (window.MasterSuite) MasterSuite.instalar(minidaw);   // painel Master (só escuta)
     // 'let' no topo do script NÃO vira propriedade de window — e o receptor
     // do projeto do Gerador (minidaw.html) checa window.minidaw. Sem esta
     // linha ele desistia em silêncio e o "Abrir na MiniDAW" nunca entregava.

@@ -390,6 +390,26 @@
             width: 80px;
         }
 
+        /* Suíte Master (módulo A): analisador + medidores. Só escuta o barramento. */
+        .master-suite { margin-top: 1rem; border: 1px solid var(--border-color); border-radius: 10px; background: #0b1020; padding: .75rem 1rem; }
+        .ms-cab { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline; margin-bottom: .5rem; }
+        .ms-titulo { font-weight: 600; color: #c7d2fe; font-size: .9rem; }
+        .ms-arquivo { font-size: .78rem; color: #94a3b8; }
+        .ms-arquivo.medido { color: #bbf7d0; }
+        .ms-corpo { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(250px, 330px); gap: 1rem; align-items: stretch; }
+        .ms-espectro canvas { width: 100%; height: 118px; display: block; background: #060a16; border-radius: 6px; }
+        .ms-vu { display: grid; grid-template-columns: 14px 1fr 58px; gap: .5rem; align-items: center; font-size: .75rem; color: #94a3b8; margin-bottom: .4rem; }
+        .ms-barra { position: relative; height: 12px; border-radius: 3px; overflow: hidden;
+                    background: linear-gradient(90deg, #16a34a 0%, #22c55e 72%, #eab308 88%, #ef4444 100%); }
+        .ms-cobre { position: absolute; right: 0; top: 0; bottom: 0; width: 100%; background: #111827; }
+        .ms-pico { position: absolute; top: 0; bottom: 0; width: 2px; background: #f8fafc; left: 0; opacity: 0; }
+        .ms-db { text-align: right; font-variant-numeric: tabular-nums; color: #e2e8f0; }
+        .ms-linha { display: flex; gap: .6rem; align-items: baseline; font-size: .78rem; color: #94a3b8; margin-top: .45rem; }
+        .ms-valor { font-size: 1.05rem; font-weight: 700; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+        .ms-clip { margin-left: auto; padding: .05rem .45rem; border-radius: 3px; background: #374151; color: #9ca3af; font-size: .68rem; font-weight: 700; }
+        .ms-clip.on { background: #ef4444; color: #fff; }
+        @media (max-width: 720px) { .ms-corpo { grid-template-columns: 1fr; } }
+
         .mixing-status {
             background: rgba(16, 185, 129, 0.1);
             border: 1px solid #10b981;
@@ -1055,6 +1075,31 @@
         </div>
 
         <!-- Mixing Status -->
+        <!-- SUÍTE MASTER — módulo A (16/09/2026): analisador + medidores do barramento
+             de saída. SÓ ESCUTA (AnalyserNodes em masterOut); não altera o som.
+             EQ com curva (B) e limiter/loudness (C) entram aqui depois. -->
+        <div class="master-suite" id="masterSuite">
+            <div class="ms-cab">
+                <span class="ms-titulo"><i class="fas fa-wave-square me-1"></i>Master · Analisador e medidores</span>
+                <span class="ms-arquivo" id="msArquivo">Exporte um mix pra medir o arquivo: LUFS integrado · pico real · faixa dinâmica.</span>
+            </div>
+            <div class="ms-corpo">
+                <div class="ms-espectro" title="Espectro da saída (60 Hz a 16 kHz), com pico retido por banda"><canvas id="msEspectro"></canvas></div>
+                <div class="ms-medidores">
+                    <div class="ms-vu" title="Pico por amostra do canal esquerdo, em dBFS"><span>L</span>
+                        <div class="ms-barra"><div class="ms-cobre" id="msCobreL"></div><div class="ms-pico" id="msPicoL"></div></div>
+                        <span class="ms-db" id="msDbL">−∞</span></div>
+                    <div class="ms-vu" title="Pico por amostra do canal direito, em dBFS"><span>R</span>
+                        <div class="ms-barra"><div class="ms-cobre" id="msCobreR"></div><div class="ms-pico" id="msPicoR"></div></div>
+                        <span class="ms-db" id="msDbR">−∞</span></div>
+                    <div class="ms-linha" title="Loudness momentâneo (K-weighting BS.1770, bloco de ~0,4 s). É o 'M' — o integrado do arquivo aparece depois do export.">
+                        <span>LUFS-M</span><span class="ms-valor" id="msLufsM">−∞</span>
+                        <span class="ms-clip" id="msClip" title="Acende se algum pico chegou a -0,1 dBFS nesta reprodução">CLIP</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="mixing-status" id="mixingStatus">
             <h5 class="mb-2">
                 <i class="fas fa-cog fa-spin me-2"></i>
@@ -1073,7 +1118,9 @@
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
     <script src="/static/mix-engine.js?v=7"></script>
     <script src="/static/clip-model.js?v=4"></script>
-    <script src="/static/minidaw.js?v=51"></script>
+    <script src="/static/loudness.js?v=1"></script>
+    <script src="/static/master-suite.js?v=1"></script>
+    <script src="/static/minidaw.js?v=52"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
