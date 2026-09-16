@@ -30,7 +30,7 @@ def test_minidaw_js_marcadores_de_ponta_a_ponta():
         "for (const mt of this._temposDosMarcadores()) alvos.push(mt);",             # imã ao aparar
         "marcadores: this.marcadores,\n            master: window.MasterSuite ? MasterSuite.estadoParaSalvar() : undefined\n        };",   # rascunho local
         "this.marcadores = this._normalizarMarcadores(data.marcadores);",
-        "const body = { name: nome, tracks, marcadores: this.marcadores };",         # projeto salvo
+        "const body = { name: nome, tracks, marcadores: this.marcadores,",          # projeto salvo
         "this.marcadores = this._normalizarMarcadores(proj.marcadores);",           # projeto reaberto
         "d.marcadores_salvos === false",                                             # aviso da coluna
         "window.adicionarMarcador = () => minidaw.adicionarMarcador();",
