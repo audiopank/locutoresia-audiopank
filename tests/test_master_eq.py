@@ -16,7 +16,7 @@ def _ler(*partes):
 
 def test_previa_e_arquivo_usam_os_mesmos_biquads():
     suite = _ler('static', 'master-suite.js')
-    for marca in ("const f = ctx.createBiquadFilter();", "no.connect(daw.masterOut);", "f.getFrequencyResponse(freqs, mag, fase);",
+    for marca in ("const f = ctx.createBiquadFilter();", "lim.compGain.connect(daw.masterOut);", "f.getFrequencyResponse(freqs, mag, fase);",
                   "function eqParaRender() {", "if (eq.bypass || eq.bandas.every(b => Math.abs(b.ganho) < 0.05)) return null;",
                   "canvas.addEventListener('mousedown', mousedownEq);", "canvas.addEventListener('wheel', wheelEq, { passive: false });",
                   "f.gain.setTargetAtTime(g, t, 0.02);"):
@@ -64,7 +64,7 @@ def cliente():
 def test_painel_eq_e_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('id="msEqCanvas"', 'id="msEqBypass"', 'id="msEqReset"', 'id="msEqBandas"', '.ms-eq canvas {',
-              'mix-engine.js?v=8', 'master-suite.js?v=2', 'minidaw.js?v=53'):
+              'mix-engine.js?v=9', 'master-suite.js?v=3', 'minidaw.js?v=54'):
         assert t in html, t
     assert os.path.exists(os.path.join(RAIZ, 'MINIDAW_MASTER.sql'))
 

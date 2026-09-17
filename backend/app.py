@@ -9592,7 +9592,13 @@ def _sanear_master(d):
             continue
         bandas.append({'tipo': m['tipo'], 'freq': round(freq, 1), 'ganho': round(max(-12.0, min(12.0, ganho)), 2),
                        'q': round(max(0.1, min(10.0, q)), 2)})
-    return {'eq': {'bypass': bool(eq.get('bypass')), 'bandas': bandas}}
+    saida = {'eq': {'bypass': bool(eq.get('bypass')), 'bandas': bandas}}
+    lim = d.get('limiter')
+    if isinstance(lim, dict):      # módulo C (17/09/2026): limiter + destino + Otimizar por LUFS
+        destino = lim.get('destino') if lim.get('destino') in ('radio', 'redes', 'whatsapp', 'pdv') else 'whatsapp'
+        saida['limiter'] = {'ligado': lim.get('ligado') is not False, 'destino': destino,
+                            'otimizarLufs': lim.get('otimizarLufs') is not False}
+    return saida
 
 
 @app.route('/api/projects', methods=['POST', 'OPTIONS'])

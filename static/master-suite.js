@@ -1,20 +1,27 @@
 /**
- * Suíte Master da MiniDAW clássica (16/09/2026).
+ * Suíte Master da MiniDAW clássica (16-17/09/2026).
  *
  *  Módulo A — analisador de espectro + medidores do barramento de saída.
  *    SÓ ESCUTA: AnalyserNodes pendurados em `minidaw.masterOut`.
  *  Módulo B — EQ master de 4 bandas com curva arrastável (Samplitude 1-2-3-4).
- *    Entra ENTRE masterIn e masterOut na prévia; o export recebe os mesmos
- *    4 biquads (mix-engine.js, `o.masterEq`) — prévia = arquivo. Stems
- *    isolados ficam crus (o master é do MIX, não das partes).
+ *  Módulo C — limiter no teto + loudness por destino (alvo em LUFS).
+ *
+ *  Cadeia da prévia:  masterIn → EQ(4 biquads) → limiter → masterOut
+ *  Cadeia do arquivo: a mesma, montada pelo mix-engine.js (`o.masterEq`,
+ *    `o.masterLimiter`) — prévia = arquivo. Stems isolados ficam crus.
+ *  "Otimizar e Exportar": mix + EQ renderizado → LUFS MEDIDO → ganho até o
+ *    alvo do destino → limiter → confere (compensa uma vez se o limiter comeu
+ *    volume) → rede de segurança de pico real. O número da tela é o medido.
  *
  * Números, com honestidade:
  *  - VU L/R: pico por amostra em dBFS (retenção de 1,5 s) + CLIP (≥ -0,1 dBFS).
  *  - LUFS-M: loudness MOMENTÂNEO, K-weighting (BS.1770) num bloco de ~370 ms.
- *    O integrado com os dois portões e o pico REAL (inter-amostra) só existem
- *    no ARQUIVO exportado: medirArquivo() usa static/loudness.js.
- *  - Curva do EQ: getFrequencyResponse dos próprios BiquadFilterNodes vivos —
- *    o desenho é a resposta real dos nós, não uma fórmula à parte.
+ *    O integrado com os dois portões e o pico REAL só existem no ARQUIVO.
+ *  - Curva do EQ: getFrequencyResponse dos próprios BiquadFilterNodes vivos.
+ *  - GR: `reduction` do DynamicsCompressorNode, lido ao vivo.
+ *  - Limiter: o DynamicsCompressor do navegador soma um makeup automático;
+ *    um ganho de compensação logo depois desfaz esse makeup, então quem está
+ *    ABAIXO do limiar passa em ganho 1 (MixEngine.paramsLimiterMaster).
  */
 (function (global) {
     'use strict';
@@ -61,7 +68,7 @@
         bufR = new Float32Array(anR.fftSize);
         bufSpec = new Float32Array(anSpec.frequencyBinCount);
         picosEspectro = BANDAS_HZ.map(() => ({ db: ESPECTRO_MIN, t: 0 }));
-        instalarEq();
+        instalarCadeia();
         window.addEventListener('resize', () => { desenhar(0); desenharEq(); });
         desenhar(0);
         return true;
@@ -126,6 +133,7 @@
         if (l) l.textContent = fmt(lufsM);
         const led = $('msClip');
         if (led) led.classList.toggle('on', clip);
+        desenharGr();
         desenharEspectro(ts);
     }
 
@@ -183,7 +191,9 @@
         }
     }
 
-    function medirArquivo(buffer, nome) {
+    // Medição EXATA do arquivo exportado. `info` (opcional) = o que o
+    // "Otimizar" por LUFS pediu, pra dizer se o alvo foi alcançado.
+    function medirArquivo(buffer, nome, info) {
         const el = $('msArquivo');
         if (!el) return;
         if (!global.Loudness) { el.textContent = 'Medidor do arquivo indisponível (loudness.js não carregou).'; return; }
@@ -191,7 +201,13 @@
         setTimeout(() => {
             try {
                 const m = global.Loudness.medir(buffer);
-                el.textContent = `${nome}: ${fmt(m.lufs)} LUFS integrado · pico real ${fmt(m.picoDb)} dBTP · faixa dinâmica ${fmt(m.faixaDinamica)} dB`;
+                let txt = `${nome}: ${fmt(m.lufs)} LUFS integrado · pico real ${fmt(m.picoDb)} dBTP · faixa dinâmica ${fmt(m.faixaDinamica)} dB`;
+                if (info) {
+                    const ok = Math.abs(m.lufs - info.alvoLufs) <= 1;
+                    txt += ok ? ` · alvo ${fmt(info.alvoLufs)} (${info.destino}) ✓`
+                              : ` · não alcançou o alvo de ${fmt(info.alvoLufs)} (${info.destino})`;
+                }
+                el.textContent = txt;
                 el.title = 'Medido no arquivo que saiu: BS.1770-4 com os dois portões; pico inter-amostra por Catmull-Rom 4x. Nunca o valor pedido.';
                 el.classList.add('medido');
             } catch (e) {
@@ -218,10 +234,11 @@
     function fmtHz(f) { return f >= 1000 ? (f / 1000).toFixed(f >= 10000 ? 0 : 1).replace('.', ',') + ' kHz' : Math.round(f) + ' Hz'; }
     function fmtDb(g) { return (g > 0 ? '+' : '') + g.toFixed(1).replace('.', ','); }
 
-    function instalarEq() {
+    // Monta masterIn → EQ(4) → limiter → compensação → masterOut.
+    function instalarCadeia() {
         if (!daw.masterIn || !daw.masterOut) return;
         // O construtor liga masterIn → masterOut direto (funciona sem a suíte);
-        // aqui a cadeia de 4 biquads entra no lugar. Ganho 0 dB = transparente.
+        // aqui a cadeia entra no lugar. EQ em 0 dB e limiter desligado = transparente.
         try { daw.masterIn.disconnect(daw.masterOut); } catch (e) { /* já solto */ }
         let no = daw.masterIn;
         eq.nos = eq.bandas.map(b => {
@@ -231,7 +248,12 @@
             no = f;
             return f;
         });
-        no.connect(daw.masterOut);
+        lim.comp = ctx.createDynamicsCompressor();
+        lim.compGain = ctx.createGain();
+        no.connect(lim.comp);
+        lim.comp.connect(lim.compGain);
+        lim.compGain.connect(daw.masterOut);
+
         const canvas = $('msEqCanvas');
         if (canvas) {
             canvas.addEventListener('mousedown', mousedownEq);
@@ -239,11 +261,29 @@
             canvas.addEventListener('dblclick', dblclickEq);
         }
         const bt = $('msEqBypass');
-        if (bt) bt.onclick = () => { eq.bypass = !eq.bypass; aplicarEq(); salvarEq(); };
+        if (bt) bt.onclick = () => { eq.bypass = !eq.bypass; aplicarEq(); salvar(); };
         const br = $('msEqReset');
-        if (br) br.onclick = () => { eq.bandas = EQ_PADRAO(); eq.bypass = false; aplicarEq(true); salvarEq(); };
+        if (br) br.onclick = () => { eq.bandas = EQ_PADRAO(); eq.bypass = false; aplicarEq(true); salvar(); };
+
+        const sel = $('msDestino');
+        if (sel) {
+            sel.innerHTML = '';
+            DESTINOS.forEach(d => {
+                const o = document.createElement('option');
+                o.value = d.chave;
+                o.textContent = `${d.rotulo} — alvo ${fmt(d.alvoLufs)} LUFS`;
+                sel.appendChild(o);
+            });
+            sel.onchange = () => { lim.destino = sel.value; aplicarLimiter(); salvar(); };
+        }
+        const bl = $('msLimBotao');
+        if (bl) bl.onclick = () => { lim.ligado = !lim.ligado; aplicarLimiter(); salvar(); };
+        const ck = $('msOtimizarLufs');
+        if (ck) ck.onchange = () => { lim.otimizarLufs = ck.checked; aplicarLimiter(); salvar(); };
+
         if (daw._masterPendente) { carregar(daw._masterPendente); daw._masterPendente = null; }
         aplicarEq(true);
+        aplicarLimiter();
     }
 
     // Leva os parâmetros pros nós vivos. Rampa curta (20 ms) evita "zíper"
@@ -289,7 +329,6 @@
         if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
         const c = canvas.getContext('2d');
         c.clearRect(0, 0, w, h);
-        // Grade: 100 Hz / 1 kHz / 10 kHz e 0 / ±5 / ±10 dB
         c.lineWidth = 1;
         for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
             const x = Math.round(xDe(f, w)) + .5;
@@ -310,7 +349,6 @@
         c.textAlign = 'right';
         c.fillText('+10', w - 3, yDe(10, h) - 2);
         c.fillText('-10', w - 3, yDe(-10, h) - 2);
-        // Curva: resposta REAL dos nós vivos, multiplicada banda a banda.
         const N = 160;
         const freqs = new Float32Array(N), mag = new Float32Array(N), fase = new Float32Array(N), total = new Float32Array(N).fill(1);
         for (let i = 0; i < N; i++) freqs[i] = freqDe(i / (N - 1) * w, w);
@@ -322,11 +360,9 @@
             if (i === 0) c.moveTo(0, y); else c.lineTo(i / (N - 1) * w, y);
         }
         c.strokeStyle = cor; c.lineWidth = 2; c.stroke();
-        // Área entre a curva e 0 dB (o "azul" do Samplitude)
         c.lineTo(w, yDe(0, h)); c.lineTo(0, yDe(0, h)); c.closePath();
         c.fillStyle = eq.bypass ? 'rgba(148,163,184,.10)' : 'rgba(59,130,246,.22)';
         c.fill();
-        // Pontos 1-4
         eq.bandas.forEach((b, i) => {
             const x = xDe(b.freq, w), y = yDe(b.ganho, h);
             c.beginPath(); c.arc(x, y, 9, 0, Math.PI * 2);
@@ -367,7 +403,7 @@
             document.removeEventListener('mouseup', soltar);
             eq.arrasto = null;
             desenharEq();
-            salvarEq();
+            salvar();
         };
         document.addEventListener('mousemove', mover);
         document.addEventListener('mouseup', soltar);
@@ -380,21 +416,139 @@
         ev.preventDefault();
         b.q = Math.round(clamp(b.q * (ev.deltaY < 0 ? 1.12 : 1 / 1.12), Q_MIN, Q_MAX) * 100) / 100;
         aplicarEq();
-        salvarEq();
+        salvar();
     }
     function dblclickEq(ev) {
         const i = pontoEm(ev);
         if (i < 0) return;
         ev.preventDefault();
-        const padrao = EQ_PADRAO()[i];
-        eq.bandas[i] = Object.assign({}, padrao);
+        eq.bandas[i] = Object.assign({}, EQ_PADRAO()[i]);
         aplicarEq(true);
-        salvarEq();
+        salvar();
+    }
+
+    // ── C: LIMITER + LOUDNESS POR DESTINO ─────────────────────────────────
+    // Mesmos alvos da MiniDAW React (minidaw-react/src/lib/destinos.js):
+    // por LUGAR DE ESCUTA. São ponto de partida e devem se mover no ouvido dele.
+    const DESTINOS = [
+        { chave: 'radio',    rotulo: 'Rádio FM/AM',          alvoLufs: -16, tetoDb: -1.0, dica: 'A rádio processa de novo. Entregar espremido piora o que sai no ar.' },
+        { chave: 'redes',    rotulo: 'Redes (Reels/TikTok)', alvoLufs: -14, tetoDb: -1.0, dica: 'As plataformas normalizam por volta de -14. Mandar mais alto só perde dinâmica.' },
+        { chave: 'whatsapp', rotulo: 'WhatsApp / cliente',   alvoLufs: -12, tetoDb: -1.0, dica: 'O cliente escuta no alto-falante do celular. Aqui volume ajuda de verdade.' },
+        { chave: 'pdv',      rotulo: 'PDV / carro de som',   alvoLufs: -9,  tetoDb: -0.5, dica: 'Ambiente barulhento e caixa ruim: pouca dinâmica para não sumir.' },
+    ];
+    const lim = { ligado: true, destino: 'whatsapp', otimizarLufs: true, comp: null, compGain: null };
+
+    function destinoAtual() { return DESTINOS.find(d => d.chave === lim.destino) || DESTINOS[2]; }
+    function paramsLimiter(tetoDb) {
+        // Fonte única dos números: o motor de export usa a MESMA função.
+        return global.MixEngine && global.MixEngine.paramsLimiterMaster
+            ? global.MixEngine.paramsLimiterMaster(tetoDb)
+            : { threshold: tetoDb - 0.3, knee: 0, ratio: 20, attack: 0.001, release: 0.08, compDb: 0.6 * (tetoDb - 0.3) * (1 - 1 / 20) };
+    }
+    function configurarLimiter(comp, compGain, p, ativo, t) {
+        if (ativo) {
+            comp.threshold.value = p.threshold; comp.knee.value = p.knee; comp.ratio.value = p.ratio;
+            comp.attack.value = p.attack; comp.release.value = p.release;
+        } else {
+            comp.threshold.value = 0; comp.knee.value = 0; comp.ratio.value = 1;   // ratio 1 = sem makeup, ganho 1
+        }
+        const g = ativo ? Math.pow(10, p.compDb / 20) : 1;
+        if (t != null) compGain.gain.setTargetAtTime(g, t, 0.01); else compGain.gain.value = g;
+    }
+    function aplicarLimiter() {
+        const d = destinoAtual();
+        if (lim.comp) configurarLimiter(lim.comp, lim.compGain, paramsLimiter(d.tetoDb), lim.ligado, ctx.currentTime);
+        const bl = $('msLimBotao');
+        if (bl) bl.classList.toggle('active', lim.ligado);
+        const sel = $('msDestino');
+        if (sel && sel.value !== lim.destino) sel.value = lim.destino;
+        const ck = $('msOtimizarLufs');
+        if (ck) ck.checked = lim.otimizarLufs;
+        const info = $('msLimInfo');
+        if (info) {
+            info.textContent = `Teto ${fmt(d.tetoDb)} dBTP ${lim.ligado ? '(limiter ligado na prévia e no Exportar)' : '(limiter DESLIGADO)'} · ${d.dica}`;
+        }
+    }
+    function desenharGr() {
+        const barra = $('msGrBarra'), txt = $('msGr');
+        if (!barra && !txt) return;
+        let gr = 0;
+        if (lim.comp && lim.ligado && ligado) {
+            const r = lim.comp.reduction;
+            gr = typeof r === 'number' ? r : ((r && r.value) || 0);     // spec nova: float; antiga: AudioParam
+        }
+        if (barra) barra.style.width = clamp(-gr / 12 * 100, 0, 100) + '%';
+        if (txt) txt.textContent = (gr < -0.05 ? '−' : '') + Math.abs(gr).toFixed(1).replace('.', ',');
+    }
+
+    // Pro motor de export: o limiter que ele ouve na prévia. null = desligado.
+    function limiterParaRender() { return lim.ligado ? { tetoDb: destinoAtual().tetoDb } : null; }
+    function loudnessAtivo() { return !!lim.otimizarLufs && !!global.Loudness; }
+
+    // Rede de segurança do "Exportar" comum: se o pico REAL ainda passou do
+    // teto (transiente que venceu o ataque), abaixa o arquivo inteiro o
+    // suficiente. In-place; devolve quantos dB abaixou.
+    function garantirTeto(buffer) {
+        const L = global.Loudness;
+        if (!lim.ligado || !L) return 0;
+        const teto = destinoAtual().tetoDb;
+        const pico = L.picoRealDbTodos(L.canaisDe(buffer), buffer.sampleRate);
+        if (!Number.isFinite(pico) || pico <= teto) return 0;
+        const k = Math.pow(10, (teto - pico) / 20);
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+            const d = buffer.getChannelData(ch);
+            for (let i = 0; i < d.length; i++) d[i] *= k;
+        }
+        return teto - pico;
+    }
+
+    async function renderComGanhoELimiter(buffer, ganhoDb, p) {
+        const off = new OfflineAudioContext(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+        const src = off.createBufferSource();
+        src.buffer = buffer;
+        const g = off.createGain();
+        g.gain.value = Math.pow(10, ganhoDb / 20);
+        const comp = off.createDynamicsCompressor();
+        const cg = off.createGain();
+        configurarLimiter(comp, cg, p, true, null);
+        src.connect(g); g.connect(comp); comp.connect(cg); cg.connect(off.destination);
+        src.start(0);
+        return off.startRendering();
+    }
+
+    // "Otimizar e Exportar" por LUFS: recebe o mix JÁ com EQ e SEM limiter.
+    // Devolve { buffer, info } — quem exibe é o medirArquivo (sempre o medido).
+    async function masterizarParaAlvo(bufferMix) {
+        const L = global.Loudness, d = destinoAtual();
+        const p = paramsLimiter(d.tetoDb);
+        const lufsAntes = L.lufsIntegrado(L.canaisDe(bufferMix), bufferMix.sampleRate);
+        if (!Number.isFinite(lufsAntes)) return { buffer: bufferMix, info: null };      // silêncio: nada a fazer
+        let ganhoDb = clamp(d.alvoLufs - lufsAntes, -30, 30);
+        let saida = bufferMix;
+        for (let passada = 1; passada <= 2; passada++) {
+            saida = await renderComGanhoELimiter(bufferMix, ganhoDb, p);
+            const lufsDepois = L.lufsIntegrado(L.canaisDe(saida), saida.sampleRate);
+            const falta = d.alvoLufs - lufsDepois;
+            if (!Number.isFinite(lufsDepois) || Math.abs(falta) <= 0.5 || passada === 2) break;
+            ganhoDb = clamp(ganhoDb + falta, -30, 30);      // o limiter comeu volume: compensa UMA vez
+        }
+        const pico = L.picoRealDbTodos(L.canaisDe(saida), saida.sampleRate);
+        if (Number.isFinite(pico) && pico > d.tetoDb) {
+            const k = Math.pow(10, (d.tetoDb - pico) / 20);
+            for (let ch = 0; ch < saida.numberOfChannels; ch++) {
+                const dados = saida.getChannelData(ch);
+                for (let i = 0; i < dados.length; i++) dados[i] *= k;
+            }
+        }
+        return { buffer: saida, info: { destino: d.rotulo, alvoLufs: d.alvoLufs, tetoDb: d.tetoDb, ganhoDb, lufsAntes } };
     }
 
     // ── persistência (rascunho local + projeto) ───────────────────────────
     function estadoParaSalvar() {
-        return { eq: { bypass: !!eq.bypass, bandas: eq.bandas.map(b => ({ tipo: b.tipo, freq: b.freq, ganho: b.ganho, q: b.q })) } };
+        return {
+            eq: { bypass: !!eq.bypass, bandas: eq.bandas.map(b => ({ tipo: b.tipo, freq: b.freq, ganho: b.ganho, q: b.q })) },
+            limiter: { ligado: !!lim.ligado, destino: lim.destino, otimizarLufs: !!lim.otimizarLufs }
+        };
     }
     function carregar(master) {
         const num = (v, d) => (typeof v === 'number' && isFinite(v)) ? v : d;
@@ -409,14 +563,22 @@
                 q: clamp(num(s.q, d.q), Q_MIN, Q_MAX),
             });
         });
-        if (eq.nos.length) aplicarEq(true);
+        const l = (master && master.limiter) ? master.limiter : null;
+        lim.ligado = l ? l.ligado !== false : true;
+        lim.destino = (l && DESTINOS.some(d => d.chave === l.destino)) ? l.destino : 'whatsapp';
+        lim.otimizarLufs = l ? l.otimizarLufs !== false : true;
+        if (eq.nos.length) { aplicarEq(true); aplicarLimiter(); }
     }
-    function salvarEq() { if (daw && typeof daw.saveToLocalStorage === 'function') daw.saveToLocalStorage(); }
+    function salvar() { if (daw && typeof daw.saveToLocalStorage === 'function') daw.saveToLocalStorage(); }
     // Pro motor de export: null = nada a fazer (bypass ou tudo em 0 dB).
     function eqParaRender() {
         if (eq.bypass || eq.bandas.every(b => Math.abs(b.ganho) < 0.05)) return null;
         return eq.bandas.map(b => ({ tipo: b.tipo, freq: b.freq, ganho: b.ganho, q: b.q }));
     }
 
-    global.MasterSuite = { instalar, ligar, desligar, medirArquivo, BANDAS_HZ, estadoParaSalvar, carregar, eqParaRender };
+    global.MasterSuite = {
+        instalar, ligar, desligar, medirArquivo, BANDAS_HZ, DESTINOS,
+        estadoParaSalvar, carregar, eqParaRender,
+        limiterParaRender, loudnessAtivo, masterizarParaAlvo, garantirTeto
+    };
 })(window);

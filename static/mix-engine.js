@@ -263,6 +263,20 @@
     // export sai no mesmo nível, sem clipar. Trabalha in-place no buffer.
     // NÃO é LUFS certificado (o navegador não mede LUFS de verdade) — é uma
     // normalização por RMS, honesta e consistente.
+    // Limiter do MASTER (Suíte Master, módulo C — 17/09/2026). Fonte ÚNICA dos
+    // números: a prévia (master-suite.js) e o export usam esta função.
+    // O DynamicsCompressor do navegador soma um makeup automático =
+    // (1 / ganho da curva em 0 dBFS)^0.6. `compDb` é o ganho que DESFAZ esse
+    // makeup, pra quem está abaixo do limiar passar em ganho 1 — sem isto,
+    // ligar o limiter deixava tudo ~0,7 dB mais alto e furava o teto.
+    function paramsLimiterMaster(tetoDb) {
+        const teto = (typeof tetoDb === 'number' && isFinite(tetoDb)) ? Math.min(0, tetoDb) : -1;
+        const threshold = teto - 0.3;
+        const ratio = 20;
+        const compDb = 0.6 * threshold * (1 - 1 / ratio);      // negativo: anula o makeup
+        return { threshold, knee: 0, ratio, attack: 0.001, release: 0.08, compDb };
+    }
+
     function masterizarBuffer(buffer, alvoDbfs) {
         const nch = buffer.numberOfChannels;
         // 1. mede RMS global e pico
@@ -380,6 +394,21 @@
                     f.gain.value = b.ganho;
                     no.connect(f);
                     no = f;
+                }
+                // Limiter do master (módulo C): o MESMO da prévia, depois do EQ.
+                if (o.masterLimiter && typeof o.masterLimiter.tetoDb === 'number') {
+                    const p = paramsLimiterMaster(o.masterLimiter.tetoDb);
+                    const comp = offlineContext.createDynamicsCompressor();
+                    comp.threshold.value = p.threshold;
+                    comp.knee.value = p.knee;
+                    comp.ratio.value = p.ratio;
+                    comp.attack.value = p.attack;
+                    comp.release.value = p.release;
+                    const compGain = offlineContext.createGain();
+                    compGain.gain.value = Math.pow(10, p.compDb / 20);
+                    no.connect(comp);
+                    comp.connect(compGain);
+                    no = compGain;
                 }
                 no.connect(offlineContext.destination);
             }
@@ -695,7 +724,7 @@
     }
 
     global.MixEngine = {
-        renderizarMix, masterizarBuffer, bufferToWav, bufferToMp3,
+        renderizarMix, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
         detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
         agendarAutomacaoVolume,
         DUCK_PADRAO, GATE_PADRAO

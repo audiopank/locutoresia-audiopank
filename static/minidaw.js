@@ -2771,7 +2771,10 @@ class MiniDAW {
                 release: this.duckRelease, hold: this.duckHold
             },
             // EQ master (Suíte Master B): vai no MIX; stem isolado pede semMaster.
-            masterEq: (!opcoes.semMaster && window.MasterSuite) ? MasterSuite.eqParaRender() : null
+            masterEq: (!opcoes.semMaster && window.MasterSuite) ? MasterSuite.eqParaRender() : null,
+            // Limiter do master (Suíte Master C). No Otimizar por LUFS ele vem
+            // DEPOIS do ganho (masterizarParaAlvo), por isso semLimiter.
+            masterLimiter: (!opcoes.semMaster && !opcoes.semLimiter && window.MasterSuite) ? MasterSuite.limiterParaRender() : null
         });
     }
 
@@ -2802,15 +2805,27 @@ class MiniDAW {
         this.updateMixingProgress(0, 'Preparando mixagem...');
 
         try {
-            const renderedBuffer = await this._renderizarParaExport(
-                tracksWithAudio, (p, t) => this.updateMixingProgress(p, t)
+            // "Otimizar" tem dois caminhos (Suíte Master C, 17/09/2026):
+            //  - por LUFS (caixinha ligada no painel Master): mede o mix, ganho até
+            //    o alvo do destino, limiter DEPOIS do ganho, confere e garante o teto;
+            //  - legado (caixinha desligada): RMS + tanh, o som aprovado em 24/07.
+            const otimizar = this.masterTarget != null;
+            const porLufs = otimizar && !!window.MasterSuite && MasterSuite.loudnessAtivo();
+            let renderedBuffer = await this._renderizarParaExport(
+                tracksWithAudio, (p, t) => this.updateMixingProgress(p, t),
+                { semLimiter: porLufs }
             );
-
-            // OTIMIZAR: se um alvo foi escolhido, normaliza o loudness do mix e
-            // limita os picos. É o "alto e consistente" do mastering leve.
-            if (this.masterTarget != null) {
+            let infoMaster = null;
+            if (porLufs) {
+                this.updateMixingProgress(93, 'Masterizando pro alvo (LUFS + limiter)...');
+                const r = await MasterSuite.masterizarParaAlvo(renderedBuffer);
+                renderedBuffer = r.buffer;
+                infoMaster = r.info;
+            } else if (otimizar) {
                 this.updateMixingProgress(93, 'Otimizando (loudness + limiter)...');
                 this.masterizarBuffer(renderedBuffer, this.masterTarget);
+            } else if (window.MasterSuite) {
+                MasterSuite.garantirTeto(renderedBuffer);   // Exportar comum: rede de segurança do pico real
             }
 
             this.updateMixingProgress(95, 'Convertendo formato...');
@@ -2840,7 +2855,7 @@ class MiniDAW {
             this.ultimoMixNome = filename;
             // Suíte Master: LUFS integrado + pico real do arquivo que SAIU
             // (depois do Otimizar, se houve) — medido, nunca o pedido.
-            if (window.MasterSuite) MasterSuite.medirArquivo(renderedBuffer, filename);
+            if (window.MasterSuite) MasterSuite.medirArquivo(renderedBuffer, filename, infoMaster);
             const btnEnviar = document.getElementById('btnEnviarEntrega');
             if (btnEnviar) btnEnviar.style.display = '';
 
