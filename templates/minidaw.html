@@ -408,7 +408,9 @@
         .ms-select { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; font-size: .78rem; margin: .25rem 0; }
         .ms-select:focus { background: #0f172a; color: #e2e8f0; border-color: #6366f1; box-shadow: none; }
         .ms-lim-info { font-size: .72rem; color: #94a3b8; margin-bottom: .4rem; line-height: 1.35; }
-        .ms-barra-gr { background: #111827; }
+        .ms-barra.ms-barra-gr { background: #111827; }   /* mais específica: .ms-barra vem depois no arquivo */
+        .ms-alvo-info { font-size: .72rem; color: #94a3b8; margin: .35rem 0; line-height: 1.35; }
+        .ms-alvo-info.ativa { color: #fde68a; }
         .ms-gr { position: absolute; right: 0; top: 0; bottom: 0; width: 0; background: #f59e0b; }
         .ms-check { font-size: .72rem; color: #94a3b8; display: flex; gap: .4rem; align-items: center; margin-top: .35rem; cursor: pointer; }
         .ms-espectro canvas { width: 100%; height: 118px; display: block; background: #060a16; border-radius: 6px; }
@@ -1128,10 +1130,14 @@
                     <div class="ms-lim">
                         <div class="ms-eq-cab">
                             <span class="ms-titulo">Limiter e loudness</span>
-                            <button type="button" class="ms-btn active" id="msLimBotao" title="Liga/desliga o limiter do master, na prévia e no Exportar. Aceso = ligado."><i class="fas fa-power-off"></i></button>
+                            <span>
+                                <button type="button" class="ms-btn" id="msOuvirAlvo" title="Ouvir no alvo: mede o LUFS do mix e aplica na PRÉVIA o mesmo ganho que o Otimizar aplicaria pro destino escolhido. Assim trocar de destino muda o que você ouve. Só monitoração: o Exportar comum não leva este ganho."><i class="fas fa-ear-listen"></i></button>
+                                <button type="button" class="ms-btn active" id="msLimBotao" title="Liga/desliga o limiter do master, na prévia e no Exportar. Aceso = ligado."><i class="fas fa-power-off"></i></button>
+                            </span>
                         </div>
                         <select class="form-select form-select-sm ms-select" id="msDestino" title="Destino da entrega: define o alvo de volume (LUFS) e o teto de pico real"></select>
                         <div class="ms-lim-info" id="msLimInfo"></div>
+                        <div class="ms-alvo-info" id="msAlvoInfo"></div>
                         <div class="ms-vu" title="Redução de ganho do limiter agora, em dB (cresce da direita pra esquerda)"><span>GR</span>
                             <div class="ms-barra ms-barra-gr"><div class="ms-gr" id="msGrBarra"></div></div>
                             <span class="ms-db" id="msGr">0,0</span></div>
@@ -1161,7 +1167,7 @@
     <script src="/static/mix-engine.js?v=9"></script>
     <script src="/static/clip-model.js?v=4"></script>
     <script src="/static/loudness.js?v=1"></script>
-    <script src="/static/master-suite.js?v=3"></script>
+    <script src="/static/master-suite.js?v=4"></script>
     <script src="/static/minidaw.js?v=54"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->

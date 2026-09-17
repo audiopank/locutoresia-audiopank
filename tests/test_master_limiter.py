@@ -50,7 +50,7 @@ def test_destinos_sao_os_mesmos_da_minidaw_react():
 
 def test_previa_export_e_otimizar_usam_o_limiter_certo():
     suite = _ler('static', 'master-suite.js')
-    for marca in ("lim.comp = ctx.createDynamicsCompressor();", "no.connect(lim.comp);", "lim.comp.connect(lim.compGain);",
+    for marca in ("lim.comp = ctx.createDynamicsCompressor();", "no.connect(lim.preGain);", "lim.preGain.connect(lim.comp);", "lim.comp.connect(lim.compGain);",
                   "global.MixEngine.paramsLimiterMaster(tetoDb)", "comp.ratio.value = 1;",
                   "function limiterParaRender() { return lim.ligado ? { tetoDb: destinoAtual().tetoDb } : null; }",
                   "async function masterizarParaAlvo(bufferMix) {", "for (let passada = 1; passada <= 2; passada++) {",
@@ -91,5 +91,19 @@ def cliente():
 def test_painel_do_limiter_e_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('id="msLimBotao"', 'id="msDestino"', 'id="msLimInfo"', 'id="msGrBarra"', 'id="msGr"', 'id="msOtimizarLufs"',
-              '.ms-lim {', 'mix-engine.js?v=9', 'master-suite.js?v=3', 'minidaw.js?v=54'):
+              '.ms-lim {', 'mix-engine.js?v=9', 'master-suite.js?v=4', 'minidaw.js?v=54'):
+        assert t in html, t
+
+
+def test_ouvir_no_alvo_e_barra_gr(cliente):
+    """17/09/2026: trocar o destino "não mudava nada" na prévia (só o teto mudava) e a barra GR
+    aparecia inteira colorida (a regra CSS perdia pra .ms-barra, que vem depois no arquivo)."""
+    suite = _ler('static', 'master-suite.js')
+    for marca in ("async function medirMix(forcar) {", "daw._renderizarParaExport(faixas, null, { semLimiter: true });",
+                  "ganhoDb = clamp(d.alvoLufs - lim.lufsMix, -30, 30);", "lim.preGain.gain.setTargetAtTime(",
+                  "if (lim.ouvirAlvo) medirMix(false);", "lim.ouvirAlvo = false; lim.lufsMix = null;"):
+        assert marca in suite, marca
+    assert "ouvirAlvo" not in suite[suite.index("function estadoParaSalvar()"):suite.index("function carregar(master)")]   # monitoração não vai pro projeto
+    html = cliente.get('/minidaw').get_data(as_text=True)
+    for t in ('id="msOuvirAlvo"', 'id="msAlvoInfo"', '.ms-barra.ms-barra-gr {'):
         assert t in html, t

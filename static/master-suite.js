@@ -80,6 +80,7 @@
         const led = $('msClip');
         if (led) led.classList.remove('on');
         if (!raf) raf = requestAnimationFrame(quadro);
+        if (lim.ouvirAlvo) medirMix(false);      // o mix pode ter mudado desde a última medida
     }
     function desligar() { ligado = false; }
 
@@ -248,9 +249,11 @@
             no = f;
             return f;
         });
+        lim.preGain = ctx.createGain();          // ganho do "Ouvir no alvo" (1 = desligado)
         lim.comp = ctx.createDynamicsCompressor();
         lim.compGain = ctx.createGain();
-        no.connect(lim.comp);
+        no.connect(lim.preGain);
+        lim.preGain.connect(lim.comp);
         lim.comp.connect(lim.compGain);
         lim.compGain.connect(daw.masterOut);
 
@@ -280,6 +283,13 @@
         if (bl) bl.onclick = () => { lim.ligado = !lim.ligado; aplicarLimiter(); salvar(); };
         const ck = $('msOtimizarLufs');
         if (ck) ck.onchange = () => { lim.otimizarLufs = ck.checked; aplicarLimiter(); salvar(); };
+        const bo = $('msOuvirAlvo');
+        if (bo) bo.onclick = async () => {
+            if (lim.ouvirAlvo) { lim.ouvirAlvo = false; aplicarLimiter(); return; }
+            lim.ouvirAlvo = true;
+            aplicarLimiter();
+            await medirMix(true);
+        };
 
         if (daw._masterPendente) { carregar(daw._masterPendente); daw._masterPendente = null; }
         aplicarEq(true);
@@ -436,7 +446,12 @@
         { chave: 'whatsapp', rotulo: 'WhatsApp / cliente',   alvoLufs: -12, tetoDb: -1.0, dica: 'O cliente escuta no alto-falante do celular. Aqui volume ajuda de verdade.' },
         { chave: 'pdv',      rotulo: 'PDV / carro de som',   alvoLufs: -9,  tetoDb: -0.5, dica: 'Ambiente barulhento e caixa ruim: pouca dinâmica para não sumir.' },
     ];
-    const lim = { ligado: true, destino: 'whatsapp', otimizarLufs: true, comp: null, compGain: null };
+    // ouvirAlvo/lufsMix são de MONITORAÇÃO (não vão pro projeto): com "Ouvir no alvo"
+    // ligado, a prévia recebe o MESMO ganho que o Otimizar aplicaria (alvo − LUFS
+    // medido do mix), então trocar o destino muda o que se ouve (17/09/2026: ele
+    // trocava Rádio→PDV e "nada mudava", porque o destino só mexia no teto).
+    const lim = { ligado: true, destino: 'whatsapp', otimizarLufs: true, comp: null, compGain: null,
+                  preGain: null, ouvirAlvo: false, lufsMix: null, medindo: false, medidoEm: 0 };
 
     function destinoAtual() { return DESTINOS.find(d => d.chave === lim.destino) || DESTINOS[2]; }
     function paramsLimiter(tetoDb) {
@@ -467,6 +482,43 @@
         const info = $('msLimInfo');
         if (info) {
             info.textContent = `Teto ${fmt(d.tetoDb)} dBTP ${lim.ligado ? '(limiter ligado na prévia e no Exportar)' : '(limiter DESLIGADO)'} · ${d.dica}`;
+        }
+        // "Ouvir no alvo": mesmo ganho do Otimizar, aplicado ANTES do limiter na prévia.
+        let ganhoDb = 0;
+        if (lim.ouvirAlvo && Number.isFinite(lim.lufsMix)) ganhoDb = clamp(d.alvoLufs - lim.lufsMix, -30, 30);
+        if (lim.preGain) lim.preGain.gain.setTargetAtTime(Math.pow(10, ganhoDb / 20), ctx.currentTime, 0.08);
+        const bo = $('msOuvirAlvo');
+        if (bo) bo.classList.toggle('active', lim.ouvirAlvo);
+        const ai = $('msAlvoInfo');
+        if (ai) {
+            if (!lim.ouvirAlvo) ai.textContent = 'Prévia no volume do mix: aqui o destino só muda o teto. O volume do alvo entra no "Otimizar e Exportar". Ligue a orelha pra OUVIR no alvo.';
+            else if (lim.medindo && !Number.isFinite(lim.lufsMix)) ai.textContent = 'Medindo o LUFS do mix...';
+            else if (!Number.isFinite(lim.lufsMix)) ai.textContent = 'Não consegui medir o mix (sem áudio?).';
+            else ai.textContent = `Ouvindo no alvo: mix ${fmt(lim.lufsMix)} LUFS → ${ganhoDb >= 0 ? '+' : '−'}${Math.abs(ganhoDb).toFixed(1).replace('.', ',')} dB pra ${fmt(d.alvoLufs)} LUFS${lim.medindo ? ' (remedindo...)' : ''}. É o que o Otimizar entrega; o "Exportar" comum NÃO aplica este ganho.`;
+            ai.classList.toggle('ativa', lim.ouvirAlvo);
+        }
+    }
+
+    // LUFS integrado do mix ATUAL (com o EQ master, sem limiter): é sobre ele que
+    // o Otimizar calcula o ganho. Renderiza offline pelo mesmo caminho do export.
+    async function medirMix(forcar) {
+        if (!daw || !global.Loudness || lim.medindo) return;
+        if (!forcar && Date.now() - lim.medidoEm < 4000) return;
+        const faixas = (daw.tracks || []).filter(t => t.audioBuffer);
+        if (!faixas.length) { lim.lufsMix = null; aplicarLimiter(); return; }
+        lim.medindo = true;
+        aplicarLimiter();
+        try {
+            const buf = await daw._renderizarParaExport(faixas, null, { semLimiter: true });
+            const L = global.Loudness;
+            lim.lufsMix = L.lufsIntegrado(L.canaisDe(buf), buf.sampleRate);
+            lim.medidoEm = Date.now();
+        } catch (e) {
+            console.warn('[master] não consegui medir o mix:', e);
+            lim.lufsMix = null;
+        } finally {
+            lim.medindo = false;
+            aplicarLimiter();
         }
     }
     function desenharGr() {
@@ -567,9 +619,13 @@
         lim.ligado = l ? l.ligado !== false : true;
         lim.destino = (l && DESTINOS.some(d => d.chave === l.destino)) ? l.destino : 'whatsapp';
         lim.otimizarLufs = l ? l.otimizarLufs !== false : true;
+        lim.ouvirAlvo = false; lim.lufsMix = null; lim.medidoEm = 0;     // monitoração não é do projeto
         if (eq.nos.length) { aplicarEq(true); aplicarLimiter(); }
     }
-    function salvar() { if (daw && typeof daw.saveToLocalStorage === 'function') daw.saveToLocalStorage(); }
+    function salvar() {
+        lim.medidoEm = 0;                        // EQ/limiter mudou: a próxima reprodução remede o mix
+        if (daw && typeof daw.saveToLocalStorage === 'function') daw.saveToLocalStorage();
+    }
     // Pro motor de export: null = nada a fazer (bypass ou tudo em 0 dB).
     function eqParaRender() {
         if (eq.bypass || eq.bandas.every(b => Math.abs(b.ganho) < 0.05)) return null;
@@ -579,6 +635,6 @@
     global.MasterSuite = {
         instalar, ligar, desligar, medirArquivo, BANDAS_HZ, DESTINOS,
         estadoParaSalvar, carregar, eqParaRender,
-        limiterParaRender, loudnessAtivo, masterizarParaAlvo, garantirTeto
+        limiterParaRender, loudnessAtivo, masterizarParaAlvo, garantirTeto, medirMix
     };
 })(window);
