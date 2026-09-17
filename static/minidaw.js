@@ -4626,7 +4626,7 @@ class MiniDAW {
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;
                             background:#0e1424;border:1px solid #2a3350;border-radius:8px;padding:.6rem .8rem;margin-bottom:.5rem;">
                     <div style="min-width:0;">
-                        <div style="color:#e6e8f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.name)}</div>
+                        <div title="${esc(p.name)}" style="color:#e6e8f0;font-weight:600;white-space:normal;overflow-wrap:anywhere;line-height:1.3;">${esc(p.name)}</div>
                         <div style="color:#8b93a7;font-size:.75rem;">${p.tracks_count || 0} faixa(s) · ${this._dataHoraBrasil(p.updated_at)}</div>
                     </div>
                     <div style="display:flex;gap:.4rem;flex-shrink:0;">
@@ -4636,9 +4636,9 @@ class MiniDAW {
                 </div>`).join('') : '<div style="color:#8b93a7;text-align:center;padding:1.5rem;">Nenhum projeto salvo ainda.</div>';
 
             modal.innerHTML = `
-                <div style="background:#141a2e;border:1px solid #2a3350;border-radius:14px;max-width:520px;width:100%;padding:1.25rem;max-height:85vh;overflow:auto;">
+                <div style="background:#141a2e;border:1px solid #2a3350;border-radius:14px;max-width:min(980px,94vw);width:100%;padding:1.25rem;max-height:88vh;overflow:auto;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;">
-                        <h5 style="margin:0;color:#e6e8f0;">📂 Meus Projetos</h5>
+                        <h5 style="margin:0;color:#e6e8f0;">📂 Meus Projetos <span style="color:#8b93a7;font-size:.8rem;font-weight:400;">(${projetos.length})</span></h5>
                         <button id="proj-fechar" style="background:#2a3350;color:#e6e8f0;border:none;border-radius:6px;padding:.35rem .7rem;cursor:pointer;">Fechar</button>
                     </div>
                     <div>${linhas}</div>

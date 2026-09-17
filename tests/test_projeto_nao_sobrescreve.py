@@ -75,4 +75,12 @@ def test_lista_mostra_hora_de_brasilia():
 
 
 def test_versao(cliente):
-    assert 'minidaw.js?v=58' in cliente.get('/minidaw').get_data(as_text=True)
+    assert 'minidaw.js?v=59' in cliente.get('/minidaw').get_data(as_text=True)
+
+
+def test_lista_de_projetos_mostra_o_titulo_inteiro():
+    """17/09/2026: o painel tinha 520px e cortava o nome dos jobs com reticências."""
+    js = _ler('static', 'minidaw.js')
+    assert "max-width:min(980px,94vw)" in js and "max-width:520px" not in js
+    assert "white-space:normal;overflow-wrap:anywhere" in js
+    assert "text-overflow:ellipsis;\">${esc(p.name)}" not in js
