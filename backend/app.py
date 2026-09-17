@@ -9617,6 +9617,19 @@ def save_vip_project():
         now = datetime.now(timezone.utc).isoformat()
         pid = data.get('id') or str(uuid.uuid4())
         is_new_project = not data.get('id')
+        # TRAVA NO SERVIDOR (17/09/2026): um projeto só é regravado se o NOME bater com
+        # o que já está guardado. O bug da tela mandava o id do projeto anterior com o
+        # nome (e o spot) de outro trabalho, e a linha era sobrescrita — perda de
+        # trabalho de cliente. Nome diferente = nasce projeto novo; vale até pra aba
+        # antiga com o script velho em cache.
+        preservado = None
+        if not is_new_project:
+            atual = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
+                .select('name').eq('id', pid).limit(1).execute()
+            if atual.data and (atual.data[0].get('name') or '').strip() != name:
+                preservado = atual.data[0].get('name')
+                pid = str(uuid.uuid4())
+                is_new_project = True
 
         # `tracks` já vem do navegador com os ajustes/efeitos + o audio_path de
         # cada faixa (o áudio subiu antes, direto pro Storage via signed URL).
@@ -9657,7 +9670,7 @@ def save_vip_project():
         if is_new_project:
             supabase_manager.log_usage_event('project_saved')
 
-        return jsonify({'success': True, 'project': row,
+        return jsonify({'success': True, 'project': row, 'preservado': preservado,
                         'marcadores_salvos': salvos['marcadores'], 'master_salvo': salvos['master']})
     except Exception as e:
         print(f'[VIP] ERRO ao salvar: {e}')

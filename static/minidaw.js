@@ -2575,6 +2575,10 @@ class MiniDAW {
         // Clear array
         this.tracks = [];
         this.marcadores = [];
+        // Bancada limpa = trabalho novo: o próximo "Salvar" NÃO pode cair em cima
+        // do projeto anterior (abrir projeto passa por aqui ANTES de setar o id).
+        this.projetoId = null;
+        this.projetoNome = null;
 
         // Show empty state
         const emptyState = document.getElementById('emptyState');
@@ -4496,6 +4500,18 @@ class MiniDAW {
         return u.path;
     }
 
+    // O banco guarda UTC; a lista mostrava o UTC cru (3 h adiantado). Hora de
+    // Brasília/Fortaleza, no formato que ele lê: 17/09/2026 10:56.
+    _dataHoraBrasil(iso) {
+        if (!iso) return '';
+        let txt = String(iso);
+        if (!/(Z|[+-]\d\d:?\d\d)$/.test(txt)) txt += 'Z';      // sem fuso = UTC (é o que o backend grava)
+        const d = new Date(txt);
+        if (isNaN(d.getTime())) return String(iso).slice(0, 16).replace('T', ' ');
+        return d.toLocaleString('pt-BR', { timeZone: 'America/Fortaleza', day: '2-digit', month: '2-digit',
+                                           year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
     async salvarProjetoSupabase() {
         const comAudio = this.tracks.filter(t => t.audioBuffer);
         if (comAudio.length === 0) {
@@ -4504,6 +4520,13 @@ class MiniDAW {
         }
         const nome = prompt('Nome do projeto:', this.projetoNome || 'Meu projeto');
         if (!nome) return;
+        // ⚠️ BUG de 17/09/2026 (perdeu o projeto de um cliente real): o id do último
+        // projeto salvo/aberto ficava grudado na sessão e TODO salvamento seguinte
+        // caía em cima dele — outro spot, outro nome, mesma linha no banco.
+        // Regra: só ATUALIZA quando o nome é o MESMO do projeto aberto. Nome
+        // diferente = projeto NOVO; o anterior fica intacto em "Meus Projetos".
+        const projetoAnterior = this.projetoNome;
+        const atualizar = !!this.projetoId && nome.trim() === String(this.projetoNome || '').trim();
         let passo = 'início';
         try {
             this.showNotification('Salvando projeto (enviando áudios)...', 'info');
@@ -4559,7 +4582,7 @@ class MiniDAW {
             console.log('[projeto] ' + passo);
             const body = { name: nome, tracks, marcadores: this.marcadores,
                            master: window.MasterSuite ? MasterSuite.estadoParaSalvar() : undefined };
-            if (this.projetoId) body.id = this.projetoId;   // atualiza em vez de duplicar
+            if (atualizar) body.id = this.projetoId;   // MESMO nome = atualiza; nome novo = projeto novo
             const r = await fetch('/api/projects', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -4576,7 +4599,9 @@ class MiniDAW {
                 // A tabela ainda não tem a coluna: o projeto salvou, os marcadores não.
                 this.showNotification('Projeto salvo, mas os MARCADORES não: a tabela ainda não tem a coluna. Rode MINIDAW_MARCADORES.sql no Supabase (uma linha) e salve de novo.', 'warning');
             }
-            this.showNotification(`Projeto "${nome}" salvo! Reabra por "Meus Projetos".`, 'success');
+            this.showNotification((!atualizar && projetoAnterior)
+                ? `Salvo como projeto NOVO: "${nome}". O "${projetoAnterior}" continua guardado em Meus Projetos.`
+                : `Projeto "${nome}" salvo! Reabra por "Meus Projetos".`, 'success');
         } catch (e) {
             console.error('[projeto] FALHOU em:', passo, e);
             // alert (não some) pra o erro não passar despercebido como antes.
@@ -4602,7 +4627,7 @@ class MiniDAW {
                             background:#0e1424;border:1px solid #2a3350;border-radius:8px;padding:.6rem .8rem;margin-bottom:.5rem;">
                     <div style="min-width:0;">
                         <div style="color:#e6e8f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.name)}</div>
-                        <div style="color:#8b93a7;font-size:.75rem;">${p.tracks_count || 0} faixa(s) · ${(p.updated_at || '').slice(0,16).replace('T',' ')}</div>
+                        <div style="color:#8b93a7;font-size:.75rem;">${p.tracks_count || 0} faixa(s) · ${this._dataHoraBrasil(p.updated_at)}</div>
                     </div>
                     <div style="display:flex;gap:.4rem;flex-shrink:0;">
                         <button data-abrir="${esc(p.id)}" style="background:#22c55e;color:#052e16;border:none;border-radius:6px;padding:.4rem .7rem;font-weight:600;cursor:pointer;">Abrir</button>
