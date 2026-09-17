@@ -39,6 +39,11 @@ class MiniDAW {
         this.trackTesoura = null;   // qual faixa está com a tesoura armada
         this.trackAutomacao = null; // qual faixa está com a automação de volume armada
         this.selecoes = {};         // trackId -> {ini, fim} em segundos
+        // Seleção MÚLTIPLA da Tesoura (17/09/2026: silenciar várias respirações num
+        // clique). trackId -> [{ini, fim}] = trechos GUARDADOS; o trecho "atual"
+        // continua em this.selecoes. Guarda-se com Shift+arrastar ou com "Vários" ligado.
+        this.selecoesExtras = {};
+        this.variosTrechos = false;
         this.playbackBase = null;   // t=0 do projeto no relógio do AudioContext (null = parado)
         // ── TIMELINE ─────────────────────────────────────────────────────
         // Escala ÚNICA de tempo (px por segundo) compartilhada por régua e
@@ -400,9 +405,13 @@ class MiniDAW {
                     <button class="btn btn-sm btn-danger" onclick="minidaw.aplicarCorte('${track.id}', 'remover')">
                         <i class="fas fa-eraser me-1"></i>Remover trecho
                     </button>
-                    ${track.type === 'voice' ? `<button class="btn btn-sm btn-warning" onclick="minidaw.aplicarCorte('${track.id}', 'silenciar')"
-                            title="Silencia o trecho marcado SEM encurtar o off: tira a respiração e o tempo da locução fica igual. Tecla Q. Ctrl+Z desfaz.">
-                        <i class="fas fa-volume-xmark me-1"></i>Silenciar trecho
+                    ${track.type === 'voice' ? `<button class="btn btn-sm btn-warning" id="btnsilenciar_${track.id}" onclick="minidaw.aplicarCorte('${track.id}', 'silenciar')"
+                            title="Silencia o(s) trecho(s) marcado(s) SEM encurtar o off: tira a respiração e o tempo da locução fica igual. Tecla Q. Ctrl+Z desfaz tudo de uma vez.">
+                        <i class="fas fa-volume-xmark me-1"></i><span>Silenciar trecho</span>
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" id="btnvarios_${track.id}" onclick="minidaw.alternarVariosTrechos('${track.id}')"
+                            title="Vários trechos: ligado, cada novo arrasto GUARDA o trecho anterior (fica âmbar) em vez de descartar; no fim, um clique em Silenciar aplica em todos. Segurar Shift ao arrastar faz o mesmo sem ligar nada.">
+                        <i class="fas fa-layer-group me-1"></i>Vários
                     </button>` : ''}
                     <button class="btn btn-sm btn-primary" onclick="minidaw.aplicarCorte('${track.id}', 'manter')">
                         <i class="fas fa-crop me-1"></i>Manter só isto
@@ -1868,6 +1877,7 @@ class MiniDAW {
         for (const t of this.tracks) this.renderizarClips(t);
         this._desenharMarcadoresNasLanes();
         this._alinharRegua();
+        if (this.trackTesoura) this.desenharSelecao(this.trackTesoura);   // marcação da Tesoura acompanha o zoom
     }
 
     // Coalescência: várias chamadas no mesmo tick (import, updateTrackUI,
@@ -3851,6 +3861,18 @@ class MiniDAW {
 
         const t0 = this._tempoNoPonto(ev, track);
         this.selecoes = this.selecoes || {};
+        // Vários trechos: com Shift ou com o "Vários" ligado (só em VOZ), o trecho
+        // que já estava marcado é GUARDADO em vez de descartado. Sem isso, arrastar
+        // de novo recomeça do zero, como sempre foi.
+        this.selecoesExtras = this.selecoesExtras || {};
+        const anterior = this.selecoes[trackId];
+        if ((ev.shiftKey || this.variosTrechos) && track.type === 'voice') {
+            if (anterior && anterior.fim - anterior.ini >= 0.01) {
+                (this.selecoesExtras[trackId] = this.selecoesExtras[trackId] || []).push({ ini: anterior.ini, fim: anterior.fim });
+            }
+        } else {
+            delete this.selecoesExtras[trackId];
+        }
         this.selecoes[trackId] = { ini: t0, fim: t0 };
 
         const mover = (e) => {
@@ -3884,6 +3906,22 @@ class MiniDAW {
         const info = document.getElementById(`corteinfo_${trackId}`);
         if (!track || !reg || !hIni || !hFim || !barra) return;
 
+        // Trechos guardados (seleção múltipla): um bloco âmbar por trecho, recriado
+        // a cada desenho (acompanha zoom e cancelamento).
+        const extras = (this.selecoesExtras || {})[trackId] || [];
+        const pai = reg.parentElement;
+        pai.querySelectorAll('.sel-extra').forEach(el => el.remove());
+        for (const x of extras) {
+            const d = document.createElement('div');
+            d.className = 'sel-regiao sel-extra';
+            d.style.display = 'block';
+            d.style.left = (x.ini * this.pxPorSegundo) + 'px';
+            d.style.width = ((x.fim - x.ini) * this.pxPorSegundo) + 'px';
+            pai.appendChild(d);
+        }
+        const bv = document.getElementById(`btnvarios_${trackId}`);
+        if (bv) bv.classList.toggle('active', !!this.variosTrechos);
+
         if (!s || !track.audioBuffer) {
             reg.style.display = hIni.style.display = hFim.style.display = 'none';
             barra.classList.remove('ativa');
@@ -3909,10 +3947,27 @@ class MiniDAW {
         info.textContent = (s.fim > s.ini)
             ? `trecho ${fmt(s.ini)} → ${fmt(s.fim)}  (${(s.fim - s.ini).toFixed(2)}s)`
             : `ponto ${fmt(s.ini)}`;
+        const nTrechos = extras.length + ((s.fim - s.ini >= 0.01) ? 1 : 0);
+        if (extras.length) {
+            const total = extras.reduce((t, x) => t + (x.fim - x.ini), 0) + Math.max(0, s.fim - s.ini);
+            info.textContent = `${nTrechos} trechos marcados (${total.toFixed(2)}s no total) · ` + info.textContent;
+        }
+        const bs = document.getElementById(`btnsilenciar_${trackId}`);
+        const rot = bs ? bs.querySelector('span') : null;
+        if (rot) rot.textContent = nTrechos > 1 ? `Silenciar ${nTrechos} trechos` : 'Silenciar trecho';
+    }
+
+    alternarVariosTrechos(trackId) {
+        this.variosTrechos = !this.variosTrechos;
+        this.desenharSelecao(trackId);
+        this.showNotification(this.variosTrechos
+            ? 'Vários trechos LIGADO: cada novo arrasto guarda o anterior. No fim, Silenciar (ou Q) aplica em todos.'
+            : 'Vários trechos desligado: arrastar de novo recomeça a marcação.', 'info');
     }
 
     cancelarSelecao(trackId) {
         if (this.selecoes) delete this.selecoes[trackId];
+        if (this.selecoesExtras) delete this.selecoesExtras[trackId];
         this.desenharSelecao(trackId);
     }
 
@@ -3925,6 +3980,12 @@ class MiniDAW {
         const track = this.tracks.find(t => t.id === trackId);
         const s = (this.selecoes || {})[trackId];
         if (!track || !track.audioBuffer || !s) return;
+        const extras = ((this.selecoesExtras || {})[trackId] || []);
+        if (extras.length && modo !== 'silenciar') {
+            this.showNotification('Com vários trechos marcados só dá pra Silenciar. Use Cancelar pra recomeçar.', 'warning');
+            return;
+        }
+        let nSilenciados = 0;
 
         const clips = this._clipsDaFaixa(track);
         const snapshotPreCorte = this._snapshotClips();
@@ -3941,11 +4002,14 @@ class MiniDAW {
                 this.showNotification('Silenciar trecho é só pra faixa de VOZ', 'warning');
                 return;
             }
-            if (s.fim - s.ini < 0.01) {
+            const trechos = extras.concat((s.fim - s.ini >= 0.01) ? [{ ini: s.ini, fim: s.fim }] : []);
+            if (!trechos.length) {
                 this.showNotification('Arraste sobre a onda pra marcar o trecho primeiro', 'warning');
                 return;
             }
-            const novos = ClipModel.silenciarTrecho(clips, s.ini, s.fim);
+            let novos = clips;
+            for (const r of trechos) novos = ClipModel.silenciarTrecho(novos, r.ini, r.fim);
+            nSilenciados = trechos.length;
             if (!novos.length) {
                 this.showNotification('Isso silenciaria a faixa inteira', 'warning');
                 return;
@@ -3995,7 +4059,9 @@ class MiniDAW {
         this.cancelarSelecao(trackId);
         this.aposMudancaDeClips([track]);
         if (modo === 'silenciar') {
-            this.showNotification('Trecho silenciado — o off manteve o tempo. Ctrl+Z desfaz.', 'success');
+            this.showNotification(nSilenciados > 1
+                ? `${nSilenciados} trechos silenciados — o off manteve o tempo. Ctrl+Z desfaz todos de uma vez.`
+                : 'Trecho silenciado — o off manteve o tempo. Ctrl+Z desfaz.', 'success');
             return;
         }
         const nomes = { dividir: 'Clip dividido em dois', remover: 'Trecho removido', manter: 'Ficou só o trecho marcado' };

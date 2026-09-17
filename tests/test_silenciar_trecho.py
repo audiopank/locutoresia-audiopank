@@ -50,9 +50,9 @@ def test_silenciar_nao_move_nada_e_poe_micro_fade():
 
 def test_botao_so_em_voz_tecla_q_e_desfazer():
     js = _ler('static', 'minidaw.js')
-    assert "${track.type === 'voice' ? `<button class=\"btn btn-sm btn-warning\" onclick=\"minidaw.aplicarCorte('${track.id}', 'silenciar')\"" in js
+    assert "${track.type === 'voice' ? `<button class=\"btn btn-sm btn-warning\" id=\"btnsilenciar_${track.id}\" onclick=\"minidaw.aplicarCorte('${track.id}', 'silenciar')\"" in js
     assert "if (modo === 'silenciar') {" in js and "if (track.type !== 'voice') {" in js
-    assert "const novos = ClipModel.silenciarTrecho(clips, s.ini, s.fim);" in js
+    assert "for (const r of trechos) novos = ClipModel.silenciarTrecho(novos, r.ini, r.fim);" in js
     trecho = js[js.index("if (modo === 'silenciar') {"):js.index("} else if (modo === 'dividir') {")]
     assert "this._guardarUndo(snapshotPreCorte);" in trecho                  # entra no Ctrl+Z
     assert "if (k === 'q' && this.trackTesoura && (this.selecoes || {})[this.trackTesoura]) {" in js
@@ -72,4 +72,21 @@ def cliente():
 
 def test_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    assert 'clip-model.js?v=5' in html and 'minidaw.js?v=55' in html
+    assert 'clip-model.js?v=5' in html and 'minidaw.js?v=56' in html
+
+
+def test_varios_trechos_num_clique():
+    """17/09/2026: ele silenciava uma respiração por vez; pediu marcar várias e aplicar num clique."""
+    js = _ler('static', 'minidaw.js')
+    for marca in ("this.selecoesExtras = {};", "this.variosTrechos = false;",
+                  "if ((ev.shiftKey || this.variosTrechos) && track.type === 'voice') {",          # Shift+arrastar ou "Vários"
+                  "d.className = 'sel-regiao sel-extra';",                                          # trecho guardado fica âmbar
+                  "if (this.selecoesExtras) delete this.selecoesExtras[trackId];",                  # Cancelar limpa tudo
+                  "if (extras.length && modo !== 'silenciar') {",                                   # remover/manter/dividir não aceitam vários
+                  "const trechos = extras.concat((s.fim - s.ini >= 0.01) ? [{ ini: s.ini, fim: s.fim }] : []);",
+                  "alternarVariosTrechos(trackId) {", 'id="btnvarios_${track.id}"',
+                  "if (this.trackTesoura) this.desenharSelecao(this.trackTesoura);"):              # marcação acompanha o zoom
+        assert marca in js, marca
+    trecho = js[js.index("if (modo === 'silenciar') {"):js.index("} else if (modo === 'dividir') {")]
+    assert trecho.count("this._guardarUndo(snapshotPreCorte);") == 1                                # UM desfazer pra todos
+    assert '.sel-regiao.sel-extra {' in _ler('templates', 'minidaw.html')
