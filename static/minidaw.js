@@ -337,6 +337,16 @@ class MiniDAW {
                            onchange="minidaw.updateTrackName('${track.id}', this.value)" style="max-width: 200px;">
                 </div>
                 <div class="d-flex gap-2">
+                    <!-- Mover a faixa pra cima/baixo (17/09/2026): só organização
+                         visual — o motor mixa igual em qualquer ordem. -->
+                    <button class="btn btn-sm btn-outline-light" onclick="minidaw.moverFaixa('${track.id}', -1)"
+                            title="Subir esta faixa (troca de lugar com a de cima)">
+                        <i class="fas fa-arrow-up"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-light" onclick="minidaw.moverFaixa('${track.id}', 1)"
+                            title="Descer esta faixa (troca de lugar com a de baixo)">
+                        <i class="fas fa-arrow-down"></i>
+                    </button>
                     <!-- Zoom VERTICAL da pista. Ficavam num .track-zoom-controls
                          position:absolute sem ancestral posicionado: voavam pro
                          canto da PÁGINA e o produtor nunca os viu. Agora moram
@@ -3297,6 +3307,37 @@ class MiniDAW {
     // 2) O card voltava com os botões certos, mas a CADEIA DE ÁUDIO ficava
     //    com o estado antigo: sem applyEffectStates, o que se vê aceso na
     //    tela não é o que está ligado no som.
+    // Move a faixa uma posição pra cima (-1) ou pra baixo (+1). O card é MOVIDO
+    // no DOM, nunca recriado: recriar passaria pelo updateTrackUI, que refaz o
+    // card e mexe na cadeia de efeitos. A ordem vai pro rascunho local e pro
+    // projeto salvo (os dois seguem this.tracks).
+    moverFaixa(trackId, delta) {
+        const i = this.tracks.findIndex(t => t.id === trackId);
+        if (i < 0) return;
+        const j = i + (delta < 0 ? -1 : 1);
+        if (j < 0 || j >= this.tracks.length) {
+            this.showNotification(delta < 0 ? 'Esta faixa já é a primeira' : 'Esta faixa já é a última', 'info');
+            return;
+        }
+        const [faixa] = this.tracks.splice(i, 1);
+        this.tracks.splice(j, 0, faixa);
+
+        const container = document.getElementById('tracksContainer');
+        const card = document.getElementById(`track_${trackId}`);
+        // Depois do splice, a antiga vizinha está logo depois (subindo) ou logo antes (descendo).
+        const vizinha = document.getElementById(`track_${this.tracks[delta < 0 ? j + 1 : j - 1].id}`);
+        if (container && card && vizinha) {
+            if (delta < 0) container.insertBefore(card, vizinha);
+            else container.insertBefore(card, vizinha.nextSibling);
+            // O navegador ZERA o scroll horizontal de quem muda de lugar no DOM:
+            // sem isto a lane movida ficava desalinhada das outras e da régua.
+            const ref = Array.from(document.querySelectorAll('.clips-lane')).find(l => !card.contains(l));
+            if (ref) card.querySelectorAll('.clips-lane').forEach(l => { l.scrollLeft = ref.scrollLeft; });
+        }
+        this.saveToLocalStorage();
+        this._alinharRegua();
+    }
+
     updateTrackUI(track) {
         const cardAntigo = document.getElementById(`track_${track.id}`);
         if (!cardAntigo) return;

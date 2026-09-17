@@ -72,7 +72,7 @@ def cliente():
 
 def test_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    assert 'clip-model.js?v=5' in html and 'minidaw.js?v=56' in html
+    assert 'clip-model.js?v=5' in html and 'minidaw.js?v=57' in html
 
 
 def test_varios_trechos_num_clique():
@@ -90,3 +90,15 @@ def test_varios_trechos_num_clique():
     trecho = js[js.index("if (modo === 'silenciar') {"):js.index("} else if (modo === 'dividir') {")]
     assert trecho.count("this._guardarUndo(snapshotPreCorte);") == 1                                # UM desfazer pra todos
     assert '.sel-regiao.sel-extra {' in _ler('templates', 'minidaw.html')
+
+
+def test_mover_faixa_pra_cima_e_pra_baixo():
+    """17/09/2026: a voz ficou embaixo da assinatura do jingle e ele precisava subir a faixa."""
+    js = _ler('static', 'minidaw.js')
+    for marca in ("onclick=\"minidaw.moverFaixa('${track.id}', -1)\"", "onclick=\"minidaw.moverFaixa('${track.id}', 1)\"",
+                  "moverFaixa(trackId, delta) {", "const [faixa] = this.tracks.splice(i, 1);", "this.tracks.splice(j, 0, faixa);",
+                  "if (delta < 0) container.insertBefore(card, vizinha);", "else container.insertBefore(card, vizinha.nextSibling);",
+                  "l.scrollLeft = ref.scrollLeft;"):                       # a lane movida volta a rolar junto com as outras
+        assert marca in js, marca
+    corpo = js[js.index("moverFaixa(trackId, delta) {"):js.index("updateTrackUI(track) {")]
+    assert "updateTrackUI" not in corpo.replace("passaria pelo updateTrackUI", "") and "createTrackUI" not in corpo   # move, não recria
