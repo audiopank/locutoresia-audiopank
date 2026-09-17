@@ -228,6 +228,12 @@ class MiniDAW {
                 e.preventDefault();
                 this.deletarClipNoPonto(this.cursorLane, this.cursorTempo);
             }
+            // Q ("quieto") = silenciar o trecho marcado com a Tesoura, sem encurtar
+            // o off. Marca, Q, marca, Q: limpar respirações em sequência.
+            if (k === 'q' && this.trackTesoura && (this.selecoes || {})[this.trackTesoura]) {
+                e.preventDefault();
+                this.aplicarCorte(this.trackTesoura, 'silenciar');
+            }
         });
 
         // Último ponto do mouse — o Ctrl+V lê daqui pra saber em que faixa
@@ -394,6 +400,10 @@ class MiniDAW {
                     <button class="btn btn-sm btn-danger" onclick="minidaw.aplicarCorte('${track.id}', 'remover')">
                         <i class="fas fa-eraser me-1"></i>Remover trecho
                     </button>
+                    ${track.type === 'voice' ? `<button class="btn btn-sm btn-warning" onclick="minidaw.aplicarCorte('${track.id}', 'silenciar')"
+                            title="Silencia o trecho marcado SEM encurtar o off: tira a respiração e o tempo da locução fica igual. Tecla Q. Ctrl+Z desfaz.">
+                        <i class="fas fa-volume-xmark me-1"></i>Silenciar trecho
+                    </button>` : ''}
                     <button class="btn btn-sm btn-primary" onclick="minidaw.aplicarCorte('${track.id}', 'manter')">
                         <i class="fas fa-crop me-1"></i>Manter só isto
                     </button>
@@ -3919,12 +3929,34 @@ class MiniDAW {
         const clips = this._clipsDaFaixa(track);
         const snapshotPreCorte = this._snapshotClips();
         const clip = ClipModel.clipNoPonto(clips, s.ini);
-        if (!clip) {
+        if (!clip && modo !== 'silenciar') {     // o silenciar vale pro TRECHO, mesmo começando num buraco
             this.showNotification('Marque em cima de um clip (a marcação caiu num buraco)', 'warning');
             return;
         }
 
-        if (modo === 'dividir') {
+        if (modo === 'silenciar') {
+            // Mute de trecho (17/09/2026): tira a respiração SEM encurtar o off.
+            // Só em VOZ; o clip vira dois pedaços que ficam onde estavam.
+            if (track.type !== 'voice') {
+                this.showNotification('Silenciar trecho é só pra faixa de VOZ', 'warning');
+                return;
+            }
+            if (s.fim - s.ini < 0.01) {
+                this.showNotification('Arraste sobre a onda pra marcar o trecho primeiro', 'warning');
+                return;
+            }
+            const novos = ClipModel.silenciarTrecho(clips, s.ini, s.fim);
+            if (!novos.length) {
+                this.showNotification('Isso silenciaria a faixa inteira', 'warning');
+                return;
+            }
+            if (novos.length === clips.length && novos.every((c, i) => c === clips[i])) {
+                this.showNotification('Não tem áudio nesse trecho pra silenciar', 'info');
+                return;
+            }
+            this._guardarUndo(snapshotPreCorte);
+            track.clips = novos;
+        } else if (modo === 'dividir') {
             const partes = ClipModel.dividirClip(clip, s.ini);
             if (!partes) {
                 this.showNotification('Muito perto da borda pra dividir', 'warning');
@@ -3962,6 +3994,10 @@ class MiniDAW {
         this._sincronizarDerivados(track);
         this.cancelarSelecao(trackId);
         this.aposMudancaDeClips([track]);
+        if (modo === 'silenciar') {
+            this.showNotification('Trecho silenciado — o off manteve o tempo. Ctrl+Z desfaz.', 'success');
+            return;
+        }
         const nomes = { dividir: 'Clip dividido em dois', remover: 'Trecho removido', manter: 'Ficou só o trecho marcado' };
         this.showNotification(`${nomes[modo]} — arraste os clips como quiser`, 'success');
     }

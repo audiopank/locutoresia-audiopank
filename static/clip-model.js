@@ -120,6 +120,40 @@
     }
 
     // Fica só o trecho [ini, fim] do clip (tempo do projeto), no lugar onde está.
+    // SILENCIA [ini, fim) sem fechar o buraco (17/09/2026: tirar a respiração do
+    // locutor SEM encurtar o off). Todo clip que encosta no trecho vira até dois
+    // pedaços, cada um NO LUGAR onde já estava — ao contrário do removerTrecho,
+    // que puxa o resto pra esquerda. Micro-fade (8 ms) nas bordas novas evita o
+    // estalo de cortar a onda fora do zero; bordas originais guardam seus fades.
+    function silenciarTrecho(clips, ini, fim, microFade) {
+        if (!(fim - ini >= 0.001)) return clips;
+        const mf = (typeof microFade === 'number') ? microFade : 0.008;
+        const saida = [];
+        for (const clip of (clips || [])) {
+            const a = Math.max(clip.inicio, ini), b = Math.min(fimDoClip(clip), fim);
+            if (b - a < 0.001) { saida.push(clip); continue; }      // não encosta no trecho
+            const antes = a - clip.inicio, depois = fimDoClip(clip) - b;
+            const temAntes = antes >= DURACAO_MIN, temDepois = depois >= DURACAO_MIN;
+            if (temAntes) {
+                saida.push({
+                    id: novoId(), buffer: clip.buffer,
+                    inicio: clip.inicio, offset: clip.offset, duracao: antes,
+                    fadeIn: clip.fadeIn || 0, fadeOut: Math.min(mf, antes / 2)
+                });
+            }
+            if (temDepois) {
+                saida.push({
+                    id: novoId(), buffer: clip.buffer,
+                    inicio: b,                                      // FICA onde estava
+                    offset: clip.offset + (b - clip.inicio),
+                    duracao: depois,
+                    fadeIn: Math.min(mf, depois / 2), fadeOut: clip.fadeOut || 0
+                });
+            }
+        }
+        return ordenarClips(saida);
+    }
+
     function manterTrecho(clip, ini, fim) {
         ini = Math.max(clip.inicio, ini);
         fim = Math.min(fimDoClip(clip), fim);
@@ -224,7 +258,7 @@
     const ClipModel = {
         DURACAO_MIN, novoId, clipInteiro, fimDoClip, fimDaFaixa,
         duracaoDoProjeto, ordenarClips, clipNoPonto, dividirClip,
-        removerTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip,
+        removerTrecho, silenciarTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip,
         temSobreposicao, clonarClip, ehArquivoInteiroNoZero
     };
 
