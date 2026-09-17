@@ -49,3 +49,8 @@ pico real por Catmull-Rom, aprovada de ouvido em 10/08/2026).
   (EQ/limiter no render), projeto com `master` salva com e sem a coluna, versões dos scripts.
 - Ouvido dele: EQ na prévia = EQ no arquivo; "Otimizar" chega no alvo (±1 LUFS) sem passar
   do teto (pico real medido).
+
+## Status
+- A no ar em 16/09/2026 (0849c46). Visto funcionando por ele.
+- B no ar em 16/09/2026 (5131a3e). Aprovado de ouvido ("som real = perfeito").
+- C no ar em 17/09/2026. Decisões de implementação: makeup automático do DynamicsCompressor anulado por ganho de compensação (`MixEngine.paramsLimiterMaster`); Otimizar por LUFS com até 2 passadas e rede de segurança de pico real; Otimizar antigo preservado atrás de uma caixinha.
