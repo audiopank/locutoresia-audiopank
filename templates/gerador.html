@@ -49,6 +49,10 @@
         #textoComercial { min-height: 340px; resize: vertical; line-height: 1.6; }
 
         .hint { font-size: .78rem; color: var(--text-secondary); }
+        .resposta-item { border: 1px solid var(--border-color); border-radius: 8px; padding: .5rem .7rem; margin-bottom: .5rem; background: rgba(15, 23, 42, .5); }
+        .resposta-cab { font-size: .82rem; color: var(--text-primary); margin-bottom: .35rem; }
+        .resposta-item audio { height: 34px; max-width: 100%; vertical-align: middle; }
+        .resposta-texto { font-size: .85rem; color: #cbd5e1; margin-top: .4rem; white-space: pre-wrap; }
 
         /* Progresso do pipeline */
         #progresso {
@@ -177,6 +181,16 @@
                             <button id="btnMontarRoteiro" class="btn btn-outline-light w-100">
                                 <i class="fas fa-list-ol me-1"></i>Montar roteiro do episódio
                             </button>
+                        </div>
+                        <!-- Respostas dos ouvintes: o fecho do post pede "manda um áudio";
+                             aqui é onde o estúdio fica sabendo que chegou (17/09/2026). -->
+                        <div class="col-12">
+                            <button id="btnRespostas" type="button" class="btn btn-outline-info btn-sm"
+                                    title="Respostas em áudio e texto que os ouvintes deixaram nos episódios, direto do feed da NewPost-IA">
+                                <i class="fas fa-headphones-simple me-1"></i>Respostas dos ouvintes
+                                <span id="badgeRespostas" class="badge bg-secondary ms-1" style="display:none;"></span>
+                            </button>
+                            <div id="listaRespostas" class="mt-2" style="display:none;"></div>
                         </div>
                     </div>
                 </div>
@@ -407,7 +421,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=9"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=24"></script>
+    <script src="/static/gerador.js?v=25"></script>
     <!-- VoxCraft: acima da barra fixa do resultado (#barraResultado). -->
     <style>.voxcraft-widget { bottom: 150px; }</style>
     {% include '_voxcraft_widget.html' %}

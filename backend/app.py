@@ -1431,6 +1431,73 @@ def gerador_programa_proximo_episodio(pid):
                     "aviso": "Não consegui ler a série no feed — informe o número do episódio."})
 
 
+@app.route('/api/gerador/programa/<pid>/respostas', methods=['GET'])
+def gerador_programa_respostas(pid):
+    """Respostas (áudio/texto) que os ouvintes deixaram nos episódios do programa, direto do feed."""
+    p = _programas.programa(pid)
+    if not p:
+        return jsonify({"success": False, "error": "Programa desconhecido."}), 404
+    try:
+        from core import newpost_feed
+        lista = newpost_feed.respostas_dos_episodios(p['conta_feed'])
+    except Exception as e:
+        print(f'[programa/respostas] {e}', flush=True)
+        return jsonify({"success": False, "error": "Não consegui ler as respostas no feed agora."}), 502
+    for r in lista:
+        try:    # hora de Brasília/Fortaleza (UTC-3 fixo, sem horário de verão)
+            dt = datetime.fromisoformat(str(r.get('quando') or '').replace('Z', '+00:00'))
+            r['quando_br'] = (dt.astimezone(timezone.utc) - timedelta(hours=3)).strftime('%d/%m/%Y %H:%M')
+        except Exception:
+            r['quando_br'] = ''
+    return jsonify({"success": True, "respostas": lista})
+
+
+@app.route('/api/gerador/programa/resposta/transcrever', methods=['POST'])
+def gerador_programa_transcrever_resposta():
+    """Transcreve UMA resposta em áudio, sob demanda (1 chamada de texto do Gemini por clique).
+
+    Só aceita áudio do Storage público do PRÓPRIO feed (nada de baixar URL arbitrária).
+    O Gemini lê o .webm do navegador direto — testado em 17/09/2026, sem ffmpeg.
+    """
+    data = request.get_json(silent=True) or {}
+    audio_url = str(data.get('audio_url') or '').strip()
+    base = (os.environ.get('NEWPOST_FEED_URL') or '').strip().rstrip('/')
+    if not base or not audio_url.startswith(f'{base}/storage/v1/object/public/post-audio/'):
+        return jsonify({"success": False, "error": "Áudio fora do feed da NewPost-IA."}), 400
+    api_key = (os.environ.get('GEMINI_API_KEY') or '').strip()
+    if not api_key:
+        return jsonify({"success": False, "error": "GEMINI_API_KEY não configurada."}), 500
+    try:
+        import requests as _rq
+        resp = _rq.get(audio_url, timeout=30)
+        resp.raise_for_status()
+        dados = resp.content
+        if len(dados) > 12 * 1024 * 1024:
+            return jsonify({"success": False, "error": "Áudio grande demais pra transcrever aqui (12 MB)."}), 400
+        ext = audio_url.rsplit('.', 1)[-1].lower().split('?')[0]
+        mime = {'webm': 'audio/webm', 'mp3': 'audio/mp3', 'ogg': 'audio/ogg', 'wav': 'audio/wav',
+                'm4a': 'audio/aac', 'aac': 'audio/aac'}.get(ext, 'audio/webm')
+        from google import genai
+        from google.genai import types as genai_types
+        client = genai.Client(api_key=api_key)
+        gem = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[genai_types.Content(role='user', parts=[
+                genai_types.Part.from_bytes(data=dados, mime_type=mime),
+                genai_types.Part.from_text(text='Transcreva FIELMENTE este áudio em português do Brasil, sem resumir nem '
+                                                'corrigir. Responda só com a transcrição. Se não houver fala inteligível, '
+                                                'responda exatamente: (sem fala inteligível)')])],
+            config=genai_types.GenerateContentConfig(
+                temperature=0, thinking_config=genai_types.ThinkingConfig(thinking_budget=0)))
+        return jsonify({"success": True, "texto": (gem.text or '').strip() or '(sem fala inteligível)'})
+    except Exception as e:
+        msg = str(e)
+        print(f'[programa/transcrever] {type(e).__name__}: {msg[:300]}', flush=True)
+        if '429' in msg or 'RESOURCE_EXHAUSTED' in msg:
+            return jsonify({"success": False, "error": "Cota do Gemini esgotada agora. O áudio continua aí pra ouvir."}), 429
+        return jsonify({"success": False, "error": "Não consegui transcrever agora. O áudio continua aí pra ouvir."}), 502
+
+
 def _escrever_miolo_com_ia(pid, tema, patrocinador=''):
     """Miolo do episódio pela IA: devolve (miolo, resumo) ou levanta exceção.
 
@@ -3665,9 +3732,25 @@ def checar_qualidade():
 
         avisos = []
 
+        # Episódio de PROGRAMA (ex.: Vida Saudável) é CONTEÚDO EDITORIAL, não anúncio.
+        # As frases legais de setor ("SE PERSISTIREM OS SINTOMAS...", "ESTE PRODUTO NÃO É
+        # UM MEDICAMENTO") valem pra quem ANUNCIA remédio/suplemento; um episódio que FALA
+        # de remédios disparava dois vermelhos falsos (ep.8, 17/09/2026) — e alarme falso
+        # ensina o olho a ignorar o vermelho. Aqui a conferência é a do PROGRAMA: o aviso
+        # fixo dele e o tamanho de "um minuto e meio".
+        programa_id = str(data.get('programa') or '').strip()
+        prog = _programas.programa(programa_id) if programa_id else None
+
         # ── 1. DURAÇÃO ────────────────────────────────────────────────────
         faixa = DURACAO_POR_PLANO.get(plano)
-        if duracao <= 0:
+        if prog and duracao > 0:
+            if duracao > 95:
+                avisos.append({'nivel': 'erro', 'titulo': f'Longo demais pro programa: {duracao:.1f}s',
+                               'detalhe': f'"{prog["nome"]}" é de um minuto e meio (até uns 95s). Enxugue o miolo.'})
+            else:
+                avisos.append({'nivel': 'ok', 'titulo': f'Duração OK pro programa: {duracao:.1f}s',
+                               'detalhe': 'Dentro do minuto e meio.'})
+        elif duracao <= 0:
             avisos.append({'nivel': 'atencao', 'titulo': 'Duração não medida',
                            'detalhe': 'Não consegui ler a duração do arquivo.'})
         elif not faixa:
@@ -3696,6 +3779,13 @@ def checar_qualidade():
         if not texto.strip():
             avisos.append({'nivel': 'atencao', 'titulo': 'Roteiro vazio',
                            'detalhe': 'Sem o texto não dá pra conferir frase legal.'})
+        elif prog:
+            if 'nao substitui' in texto:
+                avisos.append({'nivel': 'ok', 'titulo': 'Aviso do programa presente',
+                               'detalhe': 'Conteúdo editorial: as frases legais de ANÚNCIO (farmácia, suplemento...) não se aplicam a episódio.'})
+            else:
+                avisos.append({'nivel': 'erro', 'titulo': 'Falta o aviso do programa',
+                               'detalhe': f'Todo episódio leva: "{prog["aviso"]}"'})
         else:
             achou_setor = False
             for regra in REGRAS_DISCLAIMER:

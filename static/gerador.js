@@ -295,7 +295,10 @@
                     // Mesma fonte do roteiro: confere contra a MESMA grade que
                     // a IA recebeu como alvo.
                     plano: document.getElementById('selectPlano').value,
-                    duracao_segundos: duracaoSegundos
+                    duracao_segundos: duracaoSegundos,
+                    // Episódio de programa é conteúdo EDITORIAL: a checagem troca as
+                    // frases legais de anúncio pelo aviso fixo do programa.
+                    programa: (document.getElementById('selectPrograma') || {}).value || ''
                 })
             });
             const dQ = await rQ.json();
@@ -763,11 +766,114 @@
     // Escolher o programa trava os ajustes do produtor (decisão de 04/09/2026:
     // Charon Informative, Modo Padrão, direção de rádio da manhã, gate ligado)
     // e lê no feed qual é o próximo episódio da série.
+    // ── Respostas dos ouvintes (17/09/2026) ─────────────────────────────
+    // O fecho dos posts pede "manda um áudio" e nada aqui mostrava quando chegava:
+    // um pedido de tema (Setembro Amarelo, no ep.7) passou batido. Lê do feed as
+    // respostas aos episódios do programa; "nova" = mais recente que a última vez
+    // que ele abriu a lista (guardado neste navegador).
+    const respostasOuvintes = { lista: [], pid: '' };
+    function chaveRespostasVistas(pid) { return 'respostas_vistas_' + pid; }
+    function respostasVistasAte(pid) {
+        try { return localStorage.getItem(chaveRespostasVistas(pid)) || ''; } catch (e) { return ''; }
+    }
+    function pintarBadgeRespostas() {
+        const badge = document.getElementById('badgeRespostas');
+        if (!badge) return;
+        const lista = respostasOuvintes.lista;
+        const vistas = respostasVistasAte(respostasOuvintes.pid);
+        const novas = lista.filter(r => !r.proprio && String(r.quando || '') > vistas).length;
+        badge.style.display = lista.length ? '' : 'none';
+        badge.textContent = novas ? `${novas} nova${novas > 1 ? 's' : ''}` : String(lista.length);
+        badge.className = 'badge ms-1 ' + (novas ? 'bg-warning text-dark' : 'bg-secondary');
+    }
+    async function carregarRespostas() {
+        const sel = document.getElementById('selectPrograma');
+        const pid = sel ? sel.value : '';
+        if (!pid || !document.getElementById('btnRespostas')) return;
+        try {
+            const d = await (await fetch(`/api/gerador/programa/${encodeURIComponent(pid)}/respostas`)).json();
+            respostasOuvintes.lista = d.success ? (d.respostas || []) : [];
+            respostasOuvintes.pid = pid;
+            pintarBadgeRespostas();
+            if (document.getElementById('listaRespostas').style.display !== 'none') desenharRespostas();
+        } catch (e) { /* feed fora do ar: o botão fica sem número, nada quebra */ }
+    }
+    function desenharRespostas() {
+        const box = document.getElementById('listaRespostas');
+        box.innerHTML = '';
+        if (!respostasOuvintes.lista.length) {
+            box.textContent = 'Nenhuma resposta nos episódios ainda.';
+            return;
+        }
+        const vistas = respostasVistasAte(respostasOuvintes.pid);
+        for (const r of respostasOuvintes.lista) {
+            const item = document.createElement('div');
+            item.className = 'resposta-item';
+            const cab = document.createElement('div');
+            cab.className = 'resposta-cab';
+            // textContent SEMPRE: nome de perfil e texto são dados de terceiros.
+            cab.textContent = `Ep. ${r.episodio != null ? r.episodio : '?'} · ${r.autor || 'Ouvinte'} · ${r.quando_br || ''}`;
+            if (!r.proprio && String(r.quando || '') > vistas) {
+                const nova = document.createElement('span');
+                nova.className = 'badge bg-warning text-dark ms-2';
+                nova.textContent = 'nova';
+                cab.appendChild(nova);
+            }
+            item.appendChild(cab);
+            if (r.audio_url) {
+                const au = document.createElement('audio');
+                au.controls = true; au.preload = 'none'; au.src = r.audio_url;
+                item.appendChild(au);
+                const bt = document.createElement('button');
+                bt.type = 'button';
+                bt.className = 'btn btn-outline-light btn-sm ms-2';
+                bt.textContent = 'Transcrever';
+                bt.title = 'Transcreve este áudio com a IA (gasta 1 chamada de texto do Gemini)';
+                const saida = document.createElement('div');
+                saida.className = 'resposta-texto';
+                bt.onclick = async () => {
+                    bt.disabled = true; bt.textContent = 'Transcrevendo...';
+                    try {
+                        const d = await (await fetch('/api/gerador/programa/resposta/transcrever', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ audio_url: r.audio_url })
+                        })).json();
+                        saida.textContent = d.success ? d.texto : ('⚠️ ' + (d.error || 'não consegui transcrever'));
+                        bt.textContent = d.success ? 'Transcrito' : 'Transcrever';
+                        bt.disabled = !!d.success;
+                    } catch (e) {
+                        saida.textContent = '⚠️ ' + e.message;
+                        bt.disabled = false; bt.textContent = 'Transcrever';
+                    }
+                };
+                item.appendChild(bt);
+                item.appendChild(saida);
+            } else if (r.texto) {
+                const t = document.createElement('div');
+                t.className = 'resposta-texto';
+                t.textContent = r.texto;
+                item.appendChild(t);
+            }
+            box.appendChild(item);
+        }
+    }
+    function alternarRespostas() {
+        const box = document.getElementById('listaRespostas');
+        const abrir = box.style.display === 'none';
+        box.style.display = abrir ? '' : 'none';
+        if (!abrir) return;
+        desenharRespostas();      // desenha ANTES de marcar como vistas: o selo "nova" aparece nesta abertura
+        const maisNova = respostasOuvintes.lista.reduce((m, r) => String(r.quando || '') > m ? String(r.quando) : m, '');
+        try { if (maisNova) localStorage.setItem(chaveRespostasVistas(respostasOuvintes.pid), maisNova); } catch (e) { /* segue */ }
+        pintarBadgeRespostas();
+    }
+
     async function aplicarPrograma() {
         const p = programaAtual();
         document.getElementById('camposPrograma').style.display = p ? '' : 'none';
         estado.roteiroMontado = false;
         if (!p) return;
+        carregarRespostas();      // em segundo plano: só pinta o número no botão
         const a = p.ajustes || {};
         const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
         set('selectFormato', a.formato);
@@ -1200,6 +1306,8 @@
             document.getElementById('selectPrograma').addEventListener('change', aplicarPrograma);
             document.getElementById('textoMiolo').addEventListener('input', atualizarContadorMiolo);
             document.getElementById('btnMontarRoteiro').onclick = montarRoteiro;
+            const btnResp = document.getElementById('btnRespostas');
+            if (btnResp) btnResp.onclick = alternarRespostas;
             // Patrocinador ou número do episódio mudou DEPOIS de montar: remonta
             // na hora. O miolo já está no campo, então não gasta IA — só troca
             // o fecho / a vinheta. (Achado no teste do ep.4: ele digitou o

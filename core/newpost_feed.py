@@ -185,6 +185,47 @@ def proximo_episodio(conta):
     return None
 
 
+def respostas_dos_episodios(conta, limite=40):
+    """Respostas que os ouvintes deixaram nos EPISÓDIOS da conta (17/09/2026).
+
+    No feed, "Responder em áudio" grava um post comum com `parent_post_id` = id do
+    episódio e `audio_url` público (.webm). O fecho dos posts pede "manda um áudio" e
+    nada no estúdio mostrava quando chegava — um pedido de tema (Setembro Amarelo, ep.7)
+    passou batido. Devolve, da mais nova pra mais antiga:
+    [{id, episodio, autor, autor_id, quando (ISO UTC), audio_url, texto, proprio}].
+    Levanta exceção se o feed não responder (a rota traduz).
+    """
+    s = sessao(conta)
+    url, anon = _cfg()
+    H = {'apikey': anon, 'Authorization': f"Bearer {s['access_token']}"}
+    r = requests.get(f'{url}/rest/v1/posts', headers=H, timeout=20,
+                     params={'select': 'id,episode_number', 'author_id': f"eq.{s['user_id']}",
+                             'episode_number': 'not.is.null', 'order': 'episode_number.desc', 'limit': '80'})
+    r.raise_for_status()
+    eps = {e['id']: e['episode_number'] for e in (r.json() or [])}
+    if not eps:
+        return []
+    r = requests.get(f'{url}/rest/v1/posts', headers=H, timeout=20,
+                     params={'select': 'id,author_id,content,audio_url,created_at,parent_post_id',
+                             'parent_post_id': f"in.({','.join(eps)})", 'order': 'created_at.desc',
+                             'limit': str(max(1, min(int(limite or 40), 100)))})
+    r.raise_for_status()
+    linhas = r.json() or []
+    nomes = {}
+    autores = sorted({l['author_id'] for l in linhas if l.get('author_id')})
+    if autores:
+        rp = requests.get(f'{url}/rest/v1/profiles', headers=H, timeout=20,
+                          params={'select': 'id,display_name', 'id': f"in.({','.join(autores)})"})
+        if rp.ok:
+            nomes = {x['id']: (x.get('display_name') or '').strip() for x in (rp.json() or [])}
+    return [{
+        'id': l['id'], 'episodio': eps.get(l.get('parent_post_id')),
+        'autor': nomes.get(l.get('author_id')) or 'Ouvinte', 'autor_id': l.get('author_id'),
+        'quando': l.get('created_at'), 'audio_url': l.get('audio_url') or '',
+        'texto': (l.get('content') or '').strip(), 'proprio': l.get('author_id') == s['user_id'],
+    } for l in linhas]
+
+
 # Cache de sessão por e-mail (vive enquanto a instância viver — na Vercel, por
 # instância quente; o pior caso é relogar, que custa uma chamada).
 _sessoes = {}
