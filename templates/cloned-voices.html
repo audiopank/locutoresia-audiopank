@@ -388,7 +388,8 @@
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.error || 'Erro ao gerar áudio');
                 
-                const audioUrl = result.download_url + '?t=' + Date.now();
+                // URL assinada do Storage já traz "?token=": colar "?t=" quebrava a assinatura (18/09/2026).
+                const audioUrl = result.download_url.includes('?') ? result.download_url : result.download_url + '?t=' + Date.now();
                 
                 // Create audio element and play
                 audioElement = new Audio(audioUrl);

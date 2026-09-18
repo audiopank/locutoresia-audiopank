@@ -370,18 +370,24 @@ async function generateAudio() {
         // a MiniDAW pelo menu lateral chegava lá sem roteiro nenhum.
         try { localStorage.setItem('minidaw_pending_roteiro', text.slice(0, 900)); } catch (_) {}
 
-        const audioUrl = result.download_url + '?t=' + Date.now();
+        // ⚠️ 18/09/2026: download_url é URL ASSINADA do Storage desde 11/09 (já traz
+        // "?token=..."). Colar "?t=" nela quebrava a assinatura (400 InvalidJWT) e a
+        // tela tocava o JSON do erro como "áudio vazio" (player 0:00). Anti-cache só
+        // com o separador certo — e a URL assinada já é única por geração.
+        const audioUrl = result.download_url.includes('?')
+            ? result.download_url
+            : result.download_url + '?t=' + Date.now();
         const audioPlayer = document.getElementById('generatedAudio');
-        
-        // Fetch do áudio e salvar como blob
-        try {
-            const audioResponse = await fetch(audioUrl);
-            lastGeneratedAudioBlob = await audioResponse.blob();
-            audioPlayer.src = URL.createObjectURL(lastGeneratedAudioBlob);
-        } catch (blobError) {
-            console.error('Erro ao criar blob:', blobError);
-            audioPlayer.src = audioUrl;
-        }
+
+        // Busca o áudio conferindo que veio SOM, não uma página de erro: sem isto
+        // qualquer falha do download virava player vazio em silêncio.
+        const audioResponse = await fetch(audioUrl);
+        if (!audioResponse.ok) throw new Error(`Falha ao buscar o áudio gerado (HTTP ${audioResponse.status})`);
+        const tipoAudio = (audioResponse.headers.get('Content-Type') || '').toLowerCase();
+        if (tipoAudio.includes('json') || tipoAudio.includes('text/html')) throw new Error('O endereço do áudio devolveu erro em vez de som.');
+        lastGeneratedAudioBlob = await audioResponse.blob();
+        if (!lastGeneratedAudioBlob.size) throw new Error('O áudio veio vazio.');
+        audioPlayer.src = URL.createObjectURL(lastGeneratedAudioBlob);
         
         audioPlayer.load();
         document.getElementById('loadingSpinner').style.display = 'none';
