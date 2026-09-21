@@ -402,6 +402,7 @@ class MiniDAW {
                     </button>
                 </div>
             ` : `
+                <div class="timeline-regua regua-faixa" id="reguafx_${track.id}" title="Régua da faixa: clique = cursor aqui · duplo clique = marcador"></div>
                 <div class="clips-lane" id="lane_${track.id}">
                     <div class="lane-conteudo">
                         <!-- Guia do corte da Tesoura (agora dentro da lane) -->
@@ -920,9 +921,29 @@ class MiniDAW {
         return Math.max(60, (this.duration + 10) * this.pxPorSegundo);
     }
 
+    // Régua de cima + régua de CADA faixa (21/09/2026: "a linha de cima não
+    // pode existir entre todos os tracks?") — mesmo desenho, mesma escala,
+    // mesmos cliques; a da faixa mora no card, logo acima da lane, e rola
+    // junto com ela.
     desenharRegua() {
         const regua = document.getElementById('timelineRegua');
-        if (!regua) return;
+        if (regua) {
+            regua.innerHTML = this._htmlDaRegua();
+            this._instalarCliquesDaRegua(regua);
+        }
+        document.querySelectorAll('.regua-faixa').forEach(r => this._desenharReguaDaFaixa(r));
+        this._desenharPlayhead();
+    }
+
+    _desenharReguaDaFaixa(r) {
+        if (!r) return;
+        r.innerHTML = this._htmlDaRegua();
+        this._instalarCliquesDaRegua(r);
+        const lane = r.nextElementSibling;
+        if (lane && lane.classList.contains('clips-lane')) r.scrollLeft = lane.scrollLeft;
+    }
+
+    _htmlDaRegua() {
         const largura = this._larguraDaTimeline();
         // Marca a cada 5s (a cada 1s com zoom alto).
         const passo = this.pxPorSegundo >= 60 ? 1 : 5;
@@ -941,7 +962,10 @@ class MiniDAW {
         // O marcador do playhead vai no innerHTML porque ele é reescrito a
         // cada redesenho — elemento criado por fora seria apagado aqui.
         html += '<div class="playhead-regua"></div>';
-        regua.innerHTML = html;
+        return html;
+    }
+
+    _instalarCliquesDaRegua(regua) {
         // Clicar na régua leva o cursor de reprodução pro ponto (padrão de DAW).
         // Listener no elemento, não nas marcas: sobrevive ao innerHTML.
         if (!regua._clique) {
@@ -972,7 +996,6 @@ class MiniDAW {
                 this.removerMarcador(flag.dataset.id);
             });
         }
-        this._desenharPlayhead();
     }
 
     // A régua é irmã do #tracksContainer, mas as lanes moram DENTRO do card
@@ -992,6 +1015,7 @@ class MiniDAW {
         if (esq > 0 && esq < 400) regua.style.marginLeft = esq + 'px';
         if (dir > 0 && dir < 400) regua.style.marginRight = dir + 'px';
         regua.scrollLeft = lane.scrollLeft;
+        document.querySelectorAll('.regua-faixa').forEach(r => { r.scrollLeft = lane.scrollLeft; });
     }
 
     // ── MARCADORES ───────────────────────────────────────────────────────
@@ -1053,8 +1077,7 @@ class MiniDAW {
     _desenharPlayhead() {
         const px = ((this.currentTime || 0) * this.pxPorSegundo) + 'px';
         document.querySelectorAll('.clips-lane .playhead').forEach(el => { el.style.left = px; });
-        const marca = document.querySelector('.timeline-regua .playhead-regua');
-        if (marca) marca.style.left = px;
+        document.querySelectorAll('.playhead-regua').forEach(el => { el.style.left = px; });
     }
 
     // Leva o cursor de reprodução pro tempo pedido. Tocando, pula pro ponto
@@ -1101,9 +1124,14 @@ class MiniDAW {
                 document.querySelectorAll('.clips-lane').forEach(l => { if (l !== lane) l.scrollLeft = x; });
                 const regua = document.getElementById('timelineRegua');
                 if (regua) regua.scrollLeft = x;
+                document.querySelectorAll('.regua-faixa').forEach(r => { r.scrollLeft = x; });
                 this._syncandoScroll = false;
             });
         }
+        // Régua da faixa: nasce com o card (vazia) e ganha o desenho aqui —
+        // updateTrackUI recria o card depois do desenharRegua geral.
+        const reguaFx = document.getElementById(`reguafx_${track.id}`);
+        if (reguaFx && !reguaFx.childElementCount) this._desenharReguaDaFaixa(reguaFx);
         // Linha de corte: uma por lane, seguindo o mouse em TODAS as lanes ao
         // mesmo tempo — o produtor enxerga o ponto exato antes do D/T dividir.
         if (!lane._linhaCorte) {
@@ -3494,7 +3522,7 @@ class MiniDAW {
             // O navegador ZERA o scroll horizontal de quem muda de lugar no DOM:
             // sem isto a lane movida ficava desalinhada das outras e da régua.
             const ref = Array.from(document.querySelectorAll('.clips-lane')).find(l => !card.contains(l));
-            if (ref) card.querySelectorAll('.clips-lane').forEach(l => { l.scrollLeft = ref.scrollLeft; });
+            if (ref) card.querySelectorAll('.clips-lane, .regua-faixa').forEach(l => { l.scrollLeft = ref.scrollLeft; });
         }
         this.saveToLocalStorage();
         this._alinharRegua();
@@ -4304,7 +4332,7 @@ class MiniDAW {
         if (anchorT != null) {
             const scroll = Math.max(0, anchorT * this.pxPorSegundo - anchorX);
             this._syncandoScroll = true;
-            document.querySelectorAll('.clips-lane').forEach(l => { l.scrollLeft = scroll; });
+            document.querySelectorAll('.clips-lane, .regua-faixa').forEach(l => { l.scrollLeft = scroll; });
             const regua = document.getElementById('timelineRegua');
             if (regua) regua.scrollLeft = scroll;
             this._syncandoScroll = false;

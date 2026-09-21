@@ -75,7 +75,7 @@ def cliente():
 def test_tela_carrega_o_motor_antes_da_minidaw(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('.clip-alca-stretch {', '.clip-stretch-rotulo {', '.clip-stretch-rotulo.forcado {',
-              'time-stretch.js?v=2', 'minidaw.js?v=61'):
+              'time-stretch.js?v=2', 'minidaw.js?v=62'):
         assert t in html, t
-    assert html.index('clip-model.js?v=5') < html.index('time-stretch.js?v=2') < html.index('minidaw.js?v=61')
+    assert html.index('clip-model.js?v=5') < html.index('time-stretch.js?v=2') < html.index('minidaw.js?v=62')
     assert cliente.get('/static/time-stretch.js').status_code == 200

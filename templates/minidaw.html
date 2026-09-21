@@ -746,6 +746,16 @@
             pointer-events: auto; user-select: none;
         }
         .timeline-regua .marcador:hover { background: #fbbf24; }
+        /* Régua de CADA faixa (21/09/2026): mesma régua, colada em cima da lane
+           dela e rolando junto — o produtor enxerga tempo e cursor em todo track. */
+        .regua-faixa {
+            height: 20px; margin-bottom: 0;
+            border-radius: 6px 6px 0 0; border-bottom: 0;
+            background: #0b1020;
+        }
+        .regua-faixa .marca { font-size: .58rem; padding-left: 2px; }
+        .regua-faixa .marcador { top: 1px; height: 15px; line-height: 15px; min-width: 14px; font-size: .6rem; }
+        .regua-faixa + .clips-lane { border-radius: 0 0 6px 6px; }
         .clips-lane .marcador-linha {
             position: absolute; top: 0; bottom: 0; width: 0;
             border-left: 1px dashed rgba(245,158,11,.75);
@@ -1195,7 +1205,7 @@
     <script src="/static/loudness.js?v=1"></script>
     <script src="/static/master-suite.js?v=4"></script>
     <script src="/static/time-stretch.js?v=2"></script>
-    <script src="/static/minidaw.js?v=61"></script>
+    <script src="/static/minidaw.js?v=62"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
