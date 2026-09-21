@@ -1183,6 +1183,29 @@ class MiniDAW {
             nome.className = 'clip-nome';
             nome.textContent = track.name;   // textContent: nome é DADO, não HTML (XSS recorrente da casa)
             el.appendChild(nome);
+            if (track.type === 'voice' && window.TimeStretch) {
+                // Time Stretch (21/09/2026): alça no canto INFERIOR direito, como o
+                // objeto do Samplitude — puxar pra esquerda acelera a fala SEM
+                // mudar o tom (WSOLA). Só em VOZ: o algoritmo é feito pra fala;
+                // em música e efeito ele borra o ritmo.
+                const alca = document.createElement('div');
+                alca.className = 'clip-alca-stretch';
+                alca.dataset.stretch = '1';
+                alca.title = 'Time Stretch: arraste pra acelerar/desacelerar a fala sem mudar o tom. Duplo clique = digitar a duração exata.';
+                alca.textContent = '⏩';
+                alca.addEventListener('dblclick', (ev) => {
+                    ev.preventDefault(); ev.stopPropagation();   // a lane cria marcador no duplo clique
+                    this.stretchExato(track.id, clip.id);
+                });
+                el.appendChild(alca);
+                if (clip.stretch > 0 && Math.abs(clip.stretch - 1) > 1e-3) {
+                    const selo = document.createElement('span');
+                    selo.className = 'clip-stretch-info';
+                    selo.textContent = clip.stretch.toFixed(2).replace('.', ',') + '×';
+                    selo.title = 'Objeto com Time Stretch (fator sobre o áudio original)';
+                    el.appendChild(selo);
+                }
+            }
             // Realce sobrevive ao redesenho (renderizarClips recria os blocos).
             if (this.clipSelecionado && this.clipSelecionado.clipId === clip.id) {
                 el.classList.add('selecionado');
@@ -1402,6 +1425,7 @@ class MiniDAW {
         const clip = this._clipsDaFaixa(track).find(c => c.id === clipId);
         if (!clip) return;
 
+        if (ev.target.dataset && ev.target.dataset.stretch) return this.iniciarStretch(ev, track, clip);
         const borda = ev.target.dataset && ev.target.dataset.borda;
         if (borda) {
             // Alça de trim — Task 9 implementa; até lá, ignora o clique.
@@ -1553,6 +1577,126 @@ class MiniDAW {
         };
         document.addEventListener('mousemove', mover);
         document.addEventListener('mouseup', soltar);
+    }
+
+    // ── TIME STRETCH (alça do canto inferior direito) ────────────────────
+    // O off saiu com 37 s e o spot é de 30 s: puxa o canto pra esquerda e a
+    // fala acelera com o MESMO tom (Samplitude, 21/09/2026). Durante o arrasto
+    // só o bloco encolhe (o canvas escala junto) com o rótulo "0,83× · 30,0 s";
+    // o áudio é recalculado UMA vez, ao soltar (WSOLA em static/time-stretch.js).
+    // Só faixa de VOZ. Entra no Ctrl+Z como qualquer edição de clip.
+    iniciarStretch(ev, track, clip) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (this.clipDrag || this.clipTrim || this._stretchOcupado) return;
+        if (track.type !== 'voice' || !window.TimeStretch) return;
+        const el = document.getElementById(`clip_el_${clip.id}`);
+        if (!el) return;
+        this.selecionarClip(track.id, clip.id);
+        this.clipTrim = true;                 // bloqueia arrasto/trim concorrente
+        const x0 = ev.clientX;
+        const durOriginal = clip.duracao;
+        const base = TimeStretch.baseDoStretch(clip);
+        let novaDur = durOriginal, moveu = false;
+        const rotulo = document.createElement('div');
+        rotulo.className = 'clip-stretch-rotulo';
+        el.appendChild(rotulo);
+
+        const mover = (e) => {
+            if (!(e.buttons & 1)) return soltar();   // mouseup fora da janela
+            const dx = e.clientX - x0;
+            if (!moveu && Math.abs(dx) < 2) return;
+            // Imã do FIM do objeto: 0, cursor, bordas dos outros clips, marcadores.
+            const alvos = [0, this.currentTime || 0];
+            for (const tr of this.tracks) {
+                for (const c of this._clipsDaFaixa(tr)) {
+                    if (c.id === clip.id) continue;
+                    alvos.push(c.inicio, ClipModel.fimDoClip(c));
+                }
+            }
+            for (const mt of this._temposDosMarcadores()) alvos.push(mt);
+            const fimPedido = clip.inicio + durOriginal + dx / this.pxPorSegundo;
+            const fim = ClipModel.calcularSnap(fimPedido, alvos, 8 / this.pxPorSegundo);
+            let dur = fim - clip.inicio;
+            dur = Math.max(base.duracao * TimeStretch.FATOR_MIN, Math.min(base.duracao * TimeStretch.FATOR_MAX, dur));
+            // Esticar não pode invadir o clip vizinho.
+            if (ClipModel.temSobreposicao(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: dur })) return;
+            moveu = true;
+            novaDur = dur;
+            el.style.width = Math.max(8, dur * this.pxPorSegundo) + 'px';
+            const fator = dur / base.duracao;
+            rotulo.textContent = `${fator.toFixed(2).replace('.', ',')}× · ${dur.toFixed(1).replace('.', ',')} s (era ${base.duracao.toFixed(1).replace('.', ',')} s)`;
+            rotulo.classList.toggle('forcado', !TimeStretch.soaNatural(fator));
+        };
+        const soltar = () => {
+            this.clipTrim = false;
+            document.removeEventListener('mousemove', mover);
+            document.removeEventListener('mouseup', soltar);
+            rotulo.remove();
+            if (!moveu || Math.abs(novaDur - durOriginal) < 0.005) {
+                el.style.width = Math.max(8, clip.duracao * this.pxPorSegundo) + 'px';   // clique seco: nada mudou
+                return;
+            }
+            this._aplicarStretch(track, clip, novaDur);
+        };
+        document.addEventListener('mousemove', mover);
+        document.addEventListener('mouseup', soltar);
+    }
+
+    // Duplo clique na alça: digitar a duração exata ("30").
+    stretchExato(trackId, clipId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const clip = this._clipsDaFaixa(track).find(c => c.id === clipId);
+        if (!clip || !window.TimeStretch || this._stretchOcupado) return;
+        const base = TimeStretch.baseDoStretch(clip);
+        const resposta = prompt(
+            `Time Stretch — nova duração da voz, em segundos\n(agora ${clip.duracao.toFixed(2).replace('.', ',')} s · original ${base.duracao.toFixed(2).replace('.', ',')} s · limite ${(base.duracao * TimeStretch.FATOR_MIN).toFixed(1).replace('.', ',')} a ${(base.duracao * TimeStretch.FATOR_MAX).toFixed(1).replace('.', ',')} s)`,
+            clip.duracao.toFixed(2).replace('.', ','));
+        if (resposta == null) return;
+        const dur = parseFloat(String(resposta).replace(',', '.'));
+        if (!(dur > 0)) { this.showNotification('Duração inválida.', 'error'); return; }
+        const fator = TimeStretch.limitarFator(dur / base.duracao);
+        const novaDur = base.duracao * fator;
+        if (ClipModel.temSobreposicao(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: novaDur })) {
+            this.showNotification('Não cabe: o objeto invadiria o clip vizinho. Afaste o vizinho antes.', 'error');
+            return;
+        }
+        if (Math.abs(fator - dur / base.duracao) > 1e-6) {
+            this.showNotification(`Limite do Time Stretch: ${TimeStretch.FATOR_MIN}× a ${TimeStretch.FATOR_MAX}× — vai ficar em ${novaDur.toFixed(1).replace('.', ',')} s.`, 'warning');
+        }
+        this._aplicarStretch(track, clip, novaDur);
+    }
+
+    // Recalcula o áudio do clip pra `novaDur` (a partir da ORIGEM, fator
+    // composto) e troca o buffer do clip. Fator ~1 devolve o original.
+    async _aplicarStretch(track, clip, novaDur) {
+        const base = TimeStretch.baseDoStretch(clip);
+        const fator = TimeStretch.fatorPara(clip, novaDur);
+        const snapshot = this._snapshotClips();
+        this._stretchOcupado = true;
+        this.showNotification(`Time Stretch ${fator.toFixed(2).replace('.', ',')}× — processando a voz...`, 'info');
+        await new Promise(r => setTimeout(r, 40));     // deixa a tela pintar antes do cálculo
+        try {
+            const novoBuffer = (Math.abs(fator - 1) < 1e-3) ? null
+                : TimeStretch.esticarBuffer(this.audioContext, base.buffer, base.offset, base.duracao, fator);
+            Object.assign(clip, TimeStretch.camposEsticados(clip, base, novoBuffer, fator));
+        } catch (e) {
+            this._stretchOcupado = false;
+            this.showNotification('Time Stretch falhou: ' + e.message, 'error');
+            this.renderizarTimeline();                   // desfaz a largura provisória do bloco
+            return;
+        }
+        this._stretchOcupado = false;
+        this._guardarUndo(snapshot);
+        this._sincronizarDerivados(track);
+        this.aposMudancaDeClips([track]);
+        if (Math.abs(fator - 1) < 1e-3) {
+            this.showNotification('Voz de volta à velocidade original.', 'success');
+        } else {
+            const aviso = TimeStretch.soaNatural(fator) ? '' : ' Além de ±25% a fala começa a soar processada — ouça antes de entregar.';
+            this.showNotification(`Voz em ${clip.duracao.toFixed(1).replace('.', ',')} s (${fator.toFixed(2).replace('.', ',')}×), mesmo tom. Ctrl+Z desfaz.${aviso}`, aviso ? 'warning' : 'success');
+        }
     }
 
     // Move o clip pra outra faixa. O clip HERDA o canal de destino: efeitos,
@@ -4553,7 +4697,7 @@ class MiniDAW {
                         indicePorBuffer.set(c.buffer, idx);
                         const urlEstavel = t.audioUrl && /^https?:/i.test(t.audioUrl)
                             && !/\/object\/sign\/|token=/i.test(t.audioUrl);   // signed URL de 1h NÃO é referência estável
-                        if (c.buffer === t.audioBuffer && urlEstavel) {
+                        if (c.buffer === t.audioBuffer && urlEstavel && !c.buffer._esticado && !(c.stretch > 0 && c.stretch !== 1)) {
                             // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
                             // /object/public/...). NÃO reenvia — evita reupload de arquivo
                             // grande (era o gargalo) e aponta direto pra URL pública.
@@ -4573,7 +4717,8 @@ class MiniDAW {
                     td.clips.push({
                         buffer: indicePorBuffer.get(c.buffer),
                         inicio: c.inicio, offset: c.offset, duracao: c.duracao,
-                        fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0
+                        fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
+                        stretch: (c.stretch > 0) ? c.stretch : 1        // Time Stretch aplicado (só informativo: o áudio salvo JÁ está esticado)
                     });
                 }
                 tracks.push(td);
@@ -4722,7 +4867,8 @@ class MiniDAW {
                         .map(c => ({
                             id: ClipModel.novoId(), buffer: buffers[c.buffer],
                             inicio: c.inicio, offset: c.offset, duracao: c.duracao,
-                            fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0
+                            fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
+                            stretch: (c.stretch > 0 && Math.abs(c.stretch - 1) > 1e-3) ? c.stretch : undefined
                         }));
                     this._sincronizarDerivados(track);
                 } else if (td.audio_url) {
