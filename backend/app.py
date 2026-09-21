@@ -259,7 +259,7 @@ except Exception as e:
 app.secret_key = os.getenv('FLASK_SECRET_KEY') or os.getenv('ADMIN_SENHA') or 'locutores-ia-dev'
 
 ROTAS_PUBLICAS = {
-    'vitrine', 'solicitar_page', 'contato',
+    'vitrine', 'solicitar_page', 'contato', 'calculadora_tempo_texto',
     'client_delivery_approval_page',      # /aprovacao/<id>
     'login_page', 'fazer_login', 'logout',
     'kiwify_webhook', 'api_cron_publish_news',
@@ -3365,6 +3365,14 @@ def _admin_ok():
         return False
     enviada = request.headers.get('X-Admin-Password', '')
     return bool(enviada) and enviada == esperado
+
+@app.route('/quanto-tempo')
+def calculadora_tempo_texto():
+    """Ferramenta pública de prospecção (21/09/2026): calcula ao vivo, no
+    navegador, quanto tempo um texto colado dura falado — mesma matemática do
+    Gerador (faixa 2,15-2,55 pal/s), sem IA e sem enviar o texto pro servidor.
+    Termina apontando pro /solicitar. Sem cadastro, sem menu interno."""
+    return render_template('quanto_tempo.html')
 
 @app.route('/solicitar')
 def solicitar_page():

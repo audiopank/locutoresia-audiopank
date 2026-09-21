@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="Cole seu roteiro e veja em segundos quanto tempo ele dura na locução — faixa real, calculada a partir de gravações reais de IA, não um número chutado. Sem cadastro, sem enviar o texto pra lugar nenhum.">
+    <title>Quanto tempo tem meu texto? — Calculadora de locução | Locutores IA</title>
+
+    <!-- FERRAMENTA PÚBLICA DE PROSPECÇÃO (21/09/2026): a mesma matemática que já
+         existe (e é mais honesta) dentro do Gerador de Anúncios interno, agora
+         solta numa página que qualquer visitante usa sem cadastro. Objetivo é
+         atrair quem já tem um texto escrito e não sabe se cabe no plano de 30/45s
+         — e terminar apontando pro /solicitar. Fica FORA de '/' e '/vitrine' de
+         propósito: URL própria, não desloca rota existente.
+         Rodam os MESMOS números do backend (app.py: PALAVRAS_POR_SEGUNDO /
+         PALAVRAS_POR_SEGUNDO_LENTO) e do Gerador (gerador.js: RITMO_RAPIDO) —
+         mudou lá, muda aqui. Cálculo 100% no navegador: nada do texto é enviado. -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #6366f1; --secondary: #8b5cf6; --accent: #ec4899;
+            --bg: #0f172a; --card: #1e293b; --txt: #f1f5f9; --txt2: #94a3b8;
+            --border: #334155;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg); color: var(--txt); line-height: 1.6;
+        }
+        a { text-decoration: none; }
+        .topo {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 40px; border-bottom: 1px solid var(--border);
+        }
+        .marca { display: flex; align-items: center; gap: 12px; color: var(--txt); font-weight: 700; font-size: 1.15rem; }
+        .marca i {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .marca small { display: block; font-size: .68rem; font-weight: 500; color: var(--txt2); letter-spacing: .5px; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 10px;
+            padding: 13px 28px; border-radius: 999px; font-weight: 700;
+            border: none; cursor: pointer; transition: transform .2s, box-shadow .2s; font-size: 1rem;
+        }
+        .btn-principal {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: #fff; box-shadow: 0 8px 24px rgba(139, 92, 246, .35);
+        }
+        .btn-principal:hover { transform: translateY(-2px); color: #fff; box-shadow: 0 12px 30px rgba(139, 92, 246, .5); }
+        .btn-principal:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        main { max-width: 760px; margin: 0 auto; padding: 46px 24px 70px; }
+        h1 { font-size: 1.9rem; font-weight: 800; text-align: center; margin-bottom: 10px; }
+        .sub { text-align: center; color: var(--txt2); max-width: 560px; margin: 0 auto 34px; font-size: .96rem; }
+
+        .caixa {
+            background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 22px;
+        }
+        textarea {
+            width: 100%; min-height: 200px; resize: vertical;
+            background: #0f1730; border: 1px solid var(--border); border-radius: 10px;
+            color: var(--txt); font-size: 1rem; padding: 14px; font-family: inherit;
+        }
+        textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
+        .linha-info {
+            display: flex; justify-content: space-between; font-size: .8rem; color: var(--txt2); margin-top: 8px;
+        }
+
+        .resultado {
+            margin-top: 24px; text-align: center; padding: 22px; border-radius: 12px;
+            background: linear-gradient(135deg, rgba(99,102,241,.12), rgba(236,72,153,.10));
+            border: 1px solid var(--border);
+        }
+        .resultado .numero {
+            font-size: 2.1rem; font-weight: 800;
+            background: linear-gradient(135deg, #fff, #a78bfa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .resultado .legenda { color: var(--txt2); font-size: .85rem; margin-top: 6px; }
+        .resultado .obs { color: var(--txt2); font-size: .78rem; margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+
+        .cta { text-align: center; margin-top: 30px; }
+        .cta p { color: var(--txt2); font-size: .9rem; margin-bottom: 14px; }
+
+        .metodo {
+            margin-top: 46px; padding-top: 30px; border-top: 1px solid var(--border);
+            color: var(--txt2); font-size: .85rem;
+        }
+        .metodo h2 { color: var(--txt); font-size: 1.05rem; margin-bottom: 10px; }
+        .metodo p { margin-bottom: 10px; }
+        .metodo i { color: var(--primary); width: 18px; }
+
+        @media (max-width: 560px) {
+            .topo { padding: 14px 18px; }
+            main { padding: 30px 16px 50px; }
+            h1 { font-size: 1.55rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="topo">
+        <a href="/vitrine" class="marca">
+            <i class="fas fa-microphone-lines"></i>
+            <span>Locutores IA<small>ÁUDIO PANK PRODUTORA</small></span>
+        </a>
+    </header>
+
+    <main>
+        <h1>Quanto tempo tem o meu texto?</h1>
+        <p class="sub">
+            Cole o roteiro abaixo e veja quanto tempo ele dura falado — sem cadastro,
+            sem enviar seu texto pra lugar nenhum (a conta é feita aqui no seu navegador).
+        </p>
+
+        <div class="caixa">
+            <textarea id="texto" maxlength="6000" placeholder="Cole ou digite seu texto aqui..."></textarea>
+            <div class="linha-info">
+                <span id="contadorPalavras">0 palavras</span>
+                <span id="contadorChars">6000 caracteres restantes</span>
+            </div>
+
+            <div class="resultado" id="resultado" style="display:none">
+                <div class="numero" id="numero">—</div>
+                <div class="legenda">de locução (faixa real, não um número chutado)</div>
+                <div class="obs">
+                    Isso é só a fala. Virando um comercial com trilha, fade e vinheta,
+                    o arquivo final costuma somar mais uns 3 segundos no fim.
+                </div>
+            </div>
+        </div>
+
+        <div class="cta">
+            <p>Quer esse texto virar áudio pronto pra usar hoje?</p>
+            <a href="/solicitar" class="btn btn-principal">
+                <i class="fas fa-microphone-lines"></i> Peça o orçamento desse texto
+            </a>
+        </div>
+
+        <div class="metodo">
+            <h2>Como calculamos</h2>
+            <p><i class="fas fa-chart-line"></i> Em vez de um único número (que costuma
+                estar errado na prática), usamos a FAIXA medida em locuções reais
+                geradas por IA: entre 2,15 e 2,55 palavras por segundo, dependendo do
+                ritmo que a voz escolhe naquela leitura. É a mesma conta que usamos por
+                dentro na nossa própria produção.</p>
+            <p><i class="fas fa-lock"></i> Nada do que você digita sai do seu navegador —
+                não existe envio, log ou cadastro nesta página.</p>
+        </div>
+    </main>
+
+    <script>
+        // Espelho de backend/app.py (PALAVRAS_POR_SEGUNDO / PALAVRAS_POR_SEGUNDO_LENTO)
+        // e static/gerador.js (RITMO_RAPIDO) — mudou lá, muda aqui.
+        const RITMO_RAPIDO = 2.55;
+        const RITMO_LENTO = 2.15;
+
+        function formatarTempo(segundos) {
+            const s = Math.round(segundos);
+            if (s < 60) return `${s}s`;
+            const min = Math.floor(s / 60), resto = s % 60;
+            return resto ? `${min}min ${resto}s` : `${min}min`;
+        }
+
+        function atualizar() {
+            const ta = document.getElementById('texto');
+            const texto = ta.value;
+            document.getElementById('contadorChars').textContent =
+                (6000 - texto.length) + ' caracteres restantes';
+
+            const palavras = texto.trim().split(/\s+/).filter(Boolean).length;
+            document.getElementById('contadorPalavras').textContent =
+                palavras + (palavras === 1 ? ' palavra' : ' palavras');
+
+            const resultado = document.getElementById('resultado');
+            if (!palavras) { resultado.style.display = 'none'; return; }
+            resultado.style.display = 'block';
+
+            const rapido = palavras / RITMO_RAPIDO;
+            const lento = palavras / RITMO_LENTO;
+            const numero = document.getElementById('numero');
+            numero.textContent = (formatarTempo(rapido) === formatarTempo(lento))
+                ? `≈ ${formatarTempo(rapido)}`
+                : `${formatarTempo(rapido)} a ${formatarTempo(lento)}`;
+        }
+
+        document.getElementById('texto').addEventListener('input', atualizar);
+        atualizar();
+    </script>
+</body>
+</html>
