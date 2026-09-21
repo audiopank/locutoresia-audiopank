@@ -114,6 +114,10 @@
             background: rgba(99, 102, 241, .15); color: #c4b5fd; border: 1px solid var(--primary);
         }
         .btn-preco:hover { background: var(--primary); color: #fff; }
+        /* "Ouvir vozes" em cada cartão de preço (21/09/2026): leva pra seção de
+           amostras que já existe. Some junto com ela quando não há demo publicada. */
+        .link-vozes { display: block; margin-top: 10px; font-size: .8rem; color: var(--txt2); }
+        .link-vozes:hover { color: #c4b5fd; }
         .rodape-precos { text-align: center; color: var(--txt2); font-size: .85rem; margin-top: 28px; }
 
         .fechamento { text-align: center; background: linear-gradient(135deg, #1e1b4b, var(--bg)); }
@@ -306,6 +310,7 @@
                 <div class="preco-valor"><small>R$</small> 25</div>
                 <p class="preco-obs">Aquela chamada curta pro story, pro status ou pra abrir um vídeo.</p>
                 <a href="#pedido" class="btn-preco">Pedir teaser</a>
+                <a href="#amostras" class="link-vozes"><i class="fas fa-headphones"></i> Ouvir vozes</a>
             </div>
             <div class="preco destaque">
                 <div class="preco-tag">Mais pedido</div>
@@ -314,6 +319,7 @@
                 <div class="preco-valor"><small>R$</small> 127</div>
                 <p class="preco-obs">O tamanho clássico de anúncio de loja, farmácia, supermercado e rádio.</p>
                 <a href="#pedido" class="btn-preco">Pedir spot</a>
+                <a href="#amostras" class="link-vozes"><i class="fas fa-headphones"></i> Ouvir vozes</a>
             </div>
             <div class="preco">
                 <div class="preco-tag">&nbsp;</div>
@@ -322,6 +328,7 @@
                 <div class="preco-valor"><small>R$</small> 157</div>
                 <p class="preco-obs">Quando tem mais o que contar: institucional, lançamento, lista de ofertas.</p>
                 <a href="#pedido" class="btn-preco">Pedir spot longo</a>
+                <a href="#amostras" class="link-vozes"><i class="fas fa-headphones"></i> Ouvir vozes</a>
             </div>
             <div class="preco">
                 <div class="preco-tag">Sob medida</div>
@@ -330,6 +337,7 @@
                 <div class="preco-valor"><small>R$</small> 1.507</div>
                 <p class="preco-obs">Melodia própria, com a marca cantada. Prazo combinado no briefing — jingle não sai no mesmo dia.</p>
                 <a href="#pedido" class="btn-preco">Falar sobre jingle</a>
+                <a href="#amostras" class="link-vozes"><i class="fas fa-headphones"></i> Ouvir vozes</a>
             </div>
         </div>
         <p class="rodape-precos">
@@ -399,6 +407,7 @@
                 if (!cats.length) {
                     // Sem amostras publicadas: não trava ninguém, some a seção.
                     document.getElementById('amostras').style.display = 'none';
+                    document.querySelectorAll('.link-vozes').forEach(l => { l.style.display = 'none'; });
                     return;
                 }
                 alvo.innerHTML = cats.map(c => `
@@ -435,6 +444,7 @@
                 }));
             } catch (e) {
                 document.getElementById('amostras').style.display = 'none';
+                document.querySelectorAll('.link-vozes').forEach(l => { l.style.display = 'none'; });
             }
         })();
     </script>
