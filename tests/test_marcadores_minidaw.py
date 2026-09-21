@@ -66,7 +66,7 @@ def cliente():
 
 def test_pagina_tem_botao_css_e_versao(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    for t in ('onclick="adicionarMarcador()"', '.timeline-regua .marcador {', '.clips-lane .marcador-linha {', 'minidaw.js?v=60'):
+    for t in ('onclick="adicionarMarcador()"', '.timeline-regua .marcador {', '.clips-lane .marcador-linha {', 'minidaw.js?v=61'):
         assert t in html, t
 
 

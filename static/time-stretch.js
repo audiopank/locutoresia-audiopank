@@ -21,12 +21,23 @@
 
     const FATOR_MIN = 0.5;      // metade do tempo (2× mais rápido)
     const FATOR_MAX = 2.0;      // o dobro do tempo (2× mais lento)
-    const JANELA_S = 0.020;     // frame de 20 ms
-    const BUSCA_S = 0.006;      // procura a emenda em ±6 ms
 
-    // Fora de 0,75×–1,33× a fala começa a soar processada; a tela avisa.
-    const FATOR_NATURAL_MIN = 0.75;
-    const FATOR_NATURAL_MAX = 1.33;
+    // Perfis (21/09/2026, "às vezes o produtor precisa dar uma apressadinha
+    // na trilha pra dar mais ritmo"):
+    // - voz: frame curto (20 ms) e busca curta — consoante fica nítida.
+    // - musica: frame longo (50 ms) e busca de ±15 ms (um período de 65 Hz)
+    //   pra grave e acorde não "baterem"; paga com transiente um pouco mais
+    //   borrado. Por isso em trilha o ajuste PEQUENO soa limpo e 30% já não —
+    //   a faixa "natural" é mais estreita e a tela avisa fora dela.
+    const PERFIS = {
+        voz:    { janelaS: 0.020, buscaS: 0.006, passoGrosso: 2, naturalMin: 0.75, naturalMax: 1.33 },
+        musica: { janelaS: 0.050, buscaS: 0.015, passoGrosso: 4, naturalMin: 0.85, naturalMax: 1.18 }
+    };
+    function perfilDe(nome) { return PERFIS[nome] || PERFIS.voz; }
+
+    // Compatibilidade: limites "naturais" da voz (perfil padrão).
+    const FATOR_NATURAL_MIN = PERFIS.voz.naturalMin;
+    const FATOR_NATURAL_MAX = PERFIS.voz.naturalMax;
 
     function limitarFator(f) {
         if (!(f > 0) || !isFinite(f)) return 1;
@@ -53,11 +64,14 @@
     }
 
     // `canais` = [Float32Array, ...] (mesmo comprimento); `fator` = duração
-    // nova / duração original (0,83 = mais rápido; 1,2 = mais lento).
+    // nova / duração original (0,83 = mais rápido; 1,2 = mais lento);
+    // `perfil` = 'voz' (padrão) ou 'musica'.
     // Devolve {sampleRate, numberOfChannels, length, canais} — canais NOVOS,
     // nunca muta a entrada.
-    function esticarCanais(canais, sampleRate, fator) {
+    function esticarCanais(canais, sampleRate, fator, perfil) {
         fator = limitarFator(fator);
+        const p = perfilDe(perfil);
+        const JANELA_S = p.janelaS, BUSCA_S = p.buscaS, PASSO = p.passoGrosso;
         const nCh = canais.length;
         const nIn = nCh ? canais[0].length : 0;
         if (!nIn) return { sampleRate, numberOfChannels: nCh, length: 0, canais: canais.map(() => new Float32Array(0)) };
@@ -97,13 +111,13 @@
                 const lo = Math.max(0, pos - busca);
                 const hi = Math.min(nIn - Hs, pos + busca);
                 if (alvo + Hs <= nIn && hi >= lo) {
-                    // Busca grossa (passo 2) e depois fina (±1) em volta do melhor.
+                    // Busca grossa (passo do perfil) e depois fina (±passo-1) em volta do melhor.
                     let melhor = pos, melhorNota = -Infinity;
-                    for (let c = lo; c <= hi; c += 2) {
+                    for (let c = lo; c <= hi; c += PASSO) {
                         const nota = semelhanca(ref, c, alvo, Hs);
                         if (nota > melhorNota) { melhorNota = nota; melhor = c; }
                     }
-                    for (let c = Math.max(lo, melhor - 1); c <= Math.min(hi, melhor + 1); c++) {
+                    for (let c = Math.max(lo, melhor - PASSO + 1); c <= Math.min(hi, melhor + PASSO - 1); c++) {
                         const nota = semelhanca(ref, c, alvo, Hs);
                         if (nota > melhorNota) { melhorNota = nota; melhor = c; }
                     }
@@ -167,8 +181,9 @@
         };
     }
 
-    function soaNatural(fator) {
-        return fator >= FATOR_NATURAL_MIN && fator <= FATOR_NATURAL_MAX;
+    function soaNatural(fator, perfil) {
+        const p = perfilDe(perfil);
+        return fator >= p.naturalMin && fator <= p.naturalMax;
     }
 
     // ── Web Audio (só aqui) ──────────────────────────────────────────────
@@ -176,13 +191,13 @@
     // AudioBuffer novo. Marca `_esticado`: ao salvar o projeto esse buffer
     // NUNCA pode ser "referenciado" pela URL do arquivo original — tem que
     // subir como WAV, senão reabrir traz a voz na velocidade antiga.
-    function esticarBuffer(ctx, buffer, offset, duracao, fator) {
+    function esticarBuffer(ctx, buffer, offset, duracao, fator, perfil) {
         const sr = buffer.sampleRate;
         const a0 = Math.max(0, Math.floor((offset || 0) * sr));
         const a1 = Math.max(a0 + 1, Math.min(buffer.length, Math.round(((offset || 0) + duracao) * sr)));
         const canais = [];
         for (let ch = 0; ch < buffer.numberOfChannels; ch++) canais.push(buffer.getChannelData(ch).subarray(a0, a1));
-        const r = esticarCanais(canais, sr, fator);
+        const r = esticarCanais(canais, sr, fator, perfil);
         const novo = ctx.createBuffer(r.numberOfChannels, Math.max(1, r.length), sr);
         for (let ch = 0; ch < r.numberOfChannels; ch++) novo.copyToChannel(r.canais[ch], ch);
         try { novo._esticado = true; } catch (e) { /* buffer não extensível: o guarda do save também olha clip.stretch */ }
@@ -190,7 +205,7 @@
     }
 
     const TimeStretch = {
-        FATOR_MIN, FATOR_MAX, FATOR_NATURAL_MIN, FATOR_NATURAL_MAX,
+        FATOR_MIN, FATOR_MAX, FATOR_NATURAL_MIN, FATOR_NATURAL_MAX, PERFIS, perfilDe,
         limitarFator, esticarCanais, baseDoStretch, fatorPara, camposEsticados, soaNatural, esticarBuffer
     };
 

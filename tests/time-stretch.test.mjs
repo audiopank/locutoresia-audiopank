@@ -25,6 +25,14 @@ function frequencia(x, sr = SR) {
     return subidas / ((fim - ini) / sr);
 }
 
+// Amplitude de um seno estacionário em `hz` dentro de x (Goertzel).
+function goertzel(x, hz, sr = SR) {
+    const k = 2 * Math.PI * hz / sr, c = 2 * Math.cos(k);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < x.length; i++) { const s0 = x[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+    return 2 * Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - c * s1 * s2)) / x.length;
+}
+
 function rms(x) {
     let s = 0;
     for (let i = 0; i < x.length; i++) s += x[i] * x[i];
@@ -68,6 +76,37 @@ test('estereo usa a mesma emenda nos dois canais', () => {
     for (let i = 1000; i < r.length - 1000; i += 97) {
         assert.ok(Math.abs(r.canais[1][i] - r.canais[0][i] / 2) < 1e-4, `amostra ${i}`);
     }
+});
+
+test('perfil musica: janela maior, apressadinha de 8% na trilha sem mudar o tom (grave + acorde)', () => {
+    assert.ok(TS.PERFIS.musica.janelaS > TS.PERFIS.voz.janelaS && TS.PERFIS.musica.buscaS > TS.PERFIS.voz.buscaS);
+    // Grave de 65 Hz (o que faz o perfil de fala "bater") + um acorde por cima.
+    const n = Math.round(3.0 * SR);
+    const l = new Float32Array(n), r = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+        const t = i / SR;
+        l[i] = 0.3 * Math.sin(2 * Math.PI * 65 * t) + 0.15 * Math.sin(2 * Math.PI * 262 * t) + 0.1 * Math.sin(2 * Math.PI * 330 * t);
+        r[i] = l[i] * 0.8;
+    }
+    const out = TS.esticarCanais([l, r], SR, 0.92, 'musica');
+    assert.equal(out.length, Math.round(n * 0.92));
+    assert.ok(out.canais[0].every(Number.isFinite));
+    // Num acorde os cruzamentos por zero não medem tom; mede-se a energia de
+    // cada nota (Goertzel) no miolo do resultado: as três notas continuam onde
+    // estavam, e NÃO aparecem nas frequências pra onde o playbackRate as levaria.
+    const meio = out.canais[0].subarray(Math.floor(out.length * 0.25), Math.floor(out.length * 0.75));
+    for (const [hz, amp] of [[65, 0.3], [262, 0.15], [330, 0.1]]) {
+        const a = goertzel(meio, hz), aSubido = goertzel(meio, hz / 0.92);
+        assert.ok(Math.abs(a - amp) / amp < 0.2, `${hz} Hz: amplitude ${a.toFixed(3)} (era ${amp})`);
+        assert.ok(aSubido < amp * 0.25, `${hz} Hz vazou pra ${(hz / 0.92).toFixed(1)} Hz: ${aSubido.toFixed(3)}`);
+    }
+    assert.ok(Math.abs(rms(out.canais[0]) - rms(l)) / rms(l) < 0.12, 'volume mudou');
+    for (let i = 2000; i < out.length - 2000; i += 331) {
+        assert.ok(Math.abs(out.canais[1][i] - out.canais[0][i] * 0.8) < 1e-4, `estéreo desalinhado na amostra ${i}`);
+    }
+    // Faixa "natural" da trilha é mais estreita que a da voz.
+    assert.ok(TS.soaNatural(0.9, 'musica') && !TS.soaNatural(0.8, 'musica') && TS.soaNatural(0.8, 'voz'));
+    assert.equal(TS.perfilDe('qualquer-coisa'), TS.PERFIS.voz);          // perfil desconhecido = fala
 });
 
 test('fator e limitado a 0,5x-2x e lixo vira 1', () => {

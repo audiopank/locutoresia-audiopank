@@ -1183,15 +1183,18 @@ class MiniDAW {
             nome.className = 'clip-nome';
             nome.textContent = track.name;   // textContent: nome é DADO, não HTML (XSS recorrente da casa)
             el.appendChild(nome);
-            if (track.type === 'voice' && window.TimeStretch) {
+            if (window.TimeStretch) {
                 // Time Stretch (21/09/2026): alça no canto INFERIOR direito, como o
-                // objeto do Samplitude — puxar pra esquerda acelera a fala SEM
-                // mudar o tom (WSOLA). Só em VOZ: o algoritmo é feito pra fala;
-                // em música e efeito ele borra o ritmo.
+                // objeto do Samplitude — puxar pra esquerda acelera SEM mudar o
+                // tom (WSOLA). Voz usa o perfil de fala (frame de 20 ms); trilha e
+                // efeito usam o perfil de música (50 ms) — a "apressadinha na
+                // trilha pra dar ritmo" que ele pediu; ajuste pequeno soa limpo.
                 const alca = document.createElement('div');
                 alca.className = 'clip-alca-stretch';
                 alca.dataset.stretch = '1';
-                alca.title = 'Time Stretch: arraste pra acelerar/desacelerar a fala sem mudar o tom. Duplo clique = digitar a duração exata.';
+                alca.title = (track.type === 'voice')
+                    ? 'Time Stretch: arraste pra acelerar/desacelerar a fala sem mudar o tom. Duplo clique = digitar a duração exata.'
+                    : 'Time Stretch: arraste pra apressar/desacelerar a trilha sem mudar o tom (ajuste pequeno soa melhor). Duplo clique = digitar a duração exata.';
                 alca.textContent = '⏩';
                 alca.addEventListener('dblclick', (ev) => {
                     ev.preventDefault(); ev.stopPropagation();   // a lane cria marcador no duplo clique
@@ -1584,12 +1587,18 @@ class MiniDAW {
     // fala acelera com o MESMO tom (Samplitude, 21/09/2026). Durante o arrasto
     // só o bloco encolhe (o canvas escala junto) com o rótulo "0,83× · 30,0 s";
     // o áudio é recalculado UMA vez, ao soltar (WSOLA em static/time-stretch.js).
-    // Só faixa de VOZ. Entra no Ctrl+Z como qualquer edição de clip.
+    // Voz = perfil 'voz'; trilha/efeito = perfil 'musica' (janela maior).
+    // Entra no Ctrl+Z como qualquer edição de clip.
+    _perfilStretch(track) {
+        return track.type === 'voice' ? 'voz' : 'musica';
+    }
+
     iniciarStretch(ev, track, clip) {
         ev.preventDefault();
         ev.stopPropagation();
         if (this.clipDrag || this.clipTrim || this._stretchOcupado) return;
-        if (track.type !== 'voice' || !window.TimeStretch) return;
+        if (!window.TimeStretch) return;
+        const perfil = this._perfilStretch(track);
         const el = document.getElementById(`clip_el_${clip.id}`);
         if (!el) return;
         this.selecionarClip(track.id, clip.id);
@@ -1626,7 +1635,7 @@ class MiniDAW {
             el.style.width = Math.max(8, dur * this.pxPorSegundo) + 'px';
             const fator = dur / base.duracao;
             rotulo.textContent = `${fator.toFixed(2).replace('.', ',')}× · ${dur.toFixed(1).replace('.', ',')} s (era ${base.duracao.toFixed(1).replace('.', ',')} s)`;
-            rotulo.classList.toggle('forcado', !TimeStretch.soaNatural(fator));
+            rotulo.classList.toggle('forcado', !TimeStretch.soaNatural(fator, perfil));
         };
         const soltar = () => {
             this.clipTrim = false;
@@ -1651,7 +1660,7 @@ class MiniDAW {
         if (!clip || !window.TimeStretch || this._stretchOcupado) return;
         const base = TimeStretch.baseDoStretch(clip);
         const resposta = prompt(
-            `Time Stretch — nova duração da voz, em segundos\n(agora ${clip.duracao.toFixed(2).replace('.', ',')} s · original ${base.duracao.toFixed(2).replace('.', ',')} s · limite ${(base.duracao * TimeStretch.FATOR_MIN).toFixed(1).replace('.', ',')} a ${(base.duracao * TimeStretch.FATOR_MAX).toFixed(1).replace('.', ',')} s)`,
+            `Time Stretch — nova duração do objeto, em segundos\n(agora ${clip.duracao.toFixed(2).replace('.', ',')} s · original ${base.duracao.toFixed(2).replace('.', ',')} s · limite ${(base.duracao * TimeStretch.FATOR_MIN).toFixed(1).replace('.', ',')} a ${(base.duracao * TimeStretch.FATOR_MAX).toFixed(1).replace('.', ',')} s)`,
             clip.duracao.toFixed(2).replace('.', ','));
         if (resposta == null) return;
         const dur = parseFloat(String(resposta).replace(',', '.'));
@@ -1673,13 +1682,15 @@ class MiniDAW {
     async _aplicarStretch(track, clip, novaDur) {
         const base = TimeStretch.baseDoStretch(clip);
         const fator = TimeStretch.fatorPara(clip, novaDur);
+        const perfil = this._perfilStretch(track);
+        const oQue = track.type === 'voice' ? 'Voz' : (track.sfx ? 'Efeito' : 'Trilha');
         const snapshot = this._snapshotClips();
         this._stretchOcupado = true;
-        this.showNotification(`Time Stretch ${fator.toFixed(2).replace('.', ',')}× — processando a voz...`, 'info');
+        this.showNotification(`Time Stretch ${fator.toFixed(2).replace('.', ',')}× — processando ${oQue.toLowerCase()}...`, 'info');
         await new Promise(r => setTimeout(r, 40));     // deixa a tela pintar antes do cálculo
         try {
             const novoBuffer = (Math.abs(fator - 1) < 1e-3) ? null
-                : TimeStretch.esticarBuffer(this.audioContext, base.buffer, base.offset, base.duracao, fator);
+                : TimeStretch.esticarBuffer(this.audioContext, base.buffer, base.offset, base.duracao, fator, perfil);
             Object.assign(clip, TimeStretch.camposEsticados(clip, base, novoBuffer, fator));
         } catch (e) {
             this._stretchOcupado = false;
@@ -1692,10 +1703,13 @@ class MiniDAW {
         this._sincronizarDerivados(track);
         this.aposMudancaDeClips([track]);
         if (Math.abs(fator - 1) < 1e-3) {
-            this.showNotification('Voz de volta à velocidade original.', 'success');
+            this.showNotification(`${oQue} de volta à velocidade original.`, 'success');
         } else {
-            const aviso = TimeStretch.soaNatural(fator) ? '' : ' Além de ±25% a fala começa a soar processada — ouça antes de entregar.';
-            this.showNotification(`Voz em ${clip.duracao.toFixed(1).replace('.', ',')} s (${fator.toFixed(2).replace('.', ',')}×), mesmo tom. Ctrl+Z desfaz.${aviso}`, aviso ? 'warning' : 'success');
+            const aviso = TimeStretch.soaNatural(fator, perfil) ? ''
+                : (perfil === 'voz'
+                    ? ' Além de ±25% a fala começa a soar processada — ouça antes de entregar.'
+                    : ' Em trilha, acima de ~15% o ritmo começa a borrar — ouça antes de entregar.');
+            this.showNotification(`${oQue} em ${clip.duracao.toFixed(1).replace('.', ',')} s (${fator.toFixed(2).replace('.', ',')}×), mesmo tom. Ctrl+Z desfaz.${aviso}`, aviso ? 'warning' : 'success');
         }
     }
 
