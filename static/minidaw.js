@@ -2998,12 +2998,34 @@ class MiniDAW {
         });
     }
 
+    // Faixas que entram no arquivo: com áudio e não silenciadas por Mudo/Solo
+    // (mesma regra do play — prévia = arquivo). Devolve também as que ficaram
+    // de fora, pra tela dizer o porquê em vez de sumir com elas em silêncio.
+    _faixasParaExportar() {
+        const comAudio = this.tracks.filter(t => t.audioBuffer);
+        const audiveis = MixEngine.faixasAudiveis(comAudio);
+        const foraIds = new Set(audiveis.map(t => t.id));
+        return { comAudio, audiveis, fora: comAudio.filter(t => !foraIds.has(t.id)) };
+    }
+
+    _avisarFaixasFora(fora) {
+        if (!fora.length) return;
+        const haSolo = this.tracks.some(t => t.solo);
+        const nomes = fora.map(t => `"${t.name}"`).join(', ');
+        this.showNotification(`Fora do arquivo (${haSolo ? 'sem solo' : 'Mudo'}): ${nomes}`, 'info');
+    }
+
     async exportMix() {
-        const tracksWithAudio = this.tracks.filter(t => t.audioBuffer);
-        if (tracksWithAudio.length === 0) {
+        const { comAudio, audiveis: tracksWithAudio, fora } = this._faixasParaExportar();
+        if (comAudio.length === 0) {
             this.showNotification('Adicione arquivos de áudio primeiro', 'warning');
             return;
         }
+        if (tracksWithAudio.length === 0) {
+            this.showNotification('Todas as faixas com áudio estão mudas (ou fora do solo). Destrave o Mudo antes de exportar.', 'warning');
+            return;
+        }
+        this._avisarFaixasFora(fora);
 
         // Trilha sem nenhuma faixa de Voz: o motor não aplica ducking nem o
         // fade final, e a duração do mix vira a da trilha inteira. Isso sai
@@ -3219,11 +3241,16 @@ class MiniDAW {
     }
 
     async pacoteDeStems() {
-        const comAudio = this.tracks.filter(t => t.audioBuffer);
-        if (comAudio.length === 0) {
+        const { comAudio: todasComAudio, audiveis: comAudio, fora } = this._faixasParaExportar();
+        if (todasComAudio.length === 0) {
             this.showNotification('Adicione voz/trilha antes de gerar o pacote', 'warning');
             return;
         }
+        if (comAudio.length === 0) {
+            this.showNotification('Todas as faixas com áudio estão mudas (ou fora do solo). Destrave o Mudo antes de gerar o pacote.', 'warning');
+            return;
+        }
+        this._avisarFaixasFora(fora);
 
         this.showMixingStatus(true);
         this.updateMixingProgress(0, 'Preparando o pacote...');
@@ -3251,6 +3278,8 @@ class MiniDAW {
 
             // 2. MIX completo renderizado UMA vez e masterizado em dois alvos.
             //    Cada alvo numa CÓPIA: masterizarBuffer trabalha in-place.
+            for (const t of fora) linhas.push(`(fora do pacote: "${t.name}" estava em Mudo/fora do solo na hora de gerar)`);
+
             this.updateMixingProgress(55, 'Renderizando o mix final...');
             const mix = await this._renderizarParaExport(comAudio);
 

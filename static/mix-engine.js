@@ -327,9 +327,24 @@
     // @param {Object}   [o.duck]         {gain, attack, release, hold}
     // @returns {Promise<AudioBuffer>}
     // ═══════════════════════════════════════════════════════════════════
+    // Mudo e Solo valem no ARQUIVO como valem no play (22/09/2026: o cliente
+    // pediu o mix sem a vinheta cantada, o produtor deu Mudo na faixa e ela
+    // saiu no arquivo mesmo assim — o play respeitava, o export não). Regra
+    // igual à do agendarVolumeDaFaixa: muda, ou fora do solo quando há solo,
+    // não entra — nem no som, nem na duração, nem no ducking. Faixa sem os
+    // campos (Gerador) é audível.
+    function faixasAudiveis(tracks) {
+        const lista = tracks || [];
+        const haSolo = lista.some(t => t && t.solo);
+        return lista.filter(t => t && !t.muted && (!haSolo || t.solo));
+    }
+
     async function renderizarMix(o) {
-        const tracksParaRenderizar = o.tracks || [];
-        const todasAsTracks = o.todasAsTracks || tracksParaRenderizar;
+        const projeto = o.todasAsTracks || o.tracks || [];
+        const haSolo = projeto.some(t => t && t.solo);
+        const audivel = (t) => t && !t.muted && (!haSolo || t.solo);
+        const tracksParaRenderizar = (o.tracks || []).filter(audivel);
+        const todasAsTracks = projeto.filter(audivel);
         const sampleRate = o.sampleRate;
         const aoProgredir = o.aoProgredir;
         const duck = o.duck || DUCK_PADRAO;
@@ -724,7 +739,7 @@
     }
 
     global.MixEngine = {
-        renderizarMix, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
+        renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
         detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
         agendarAutomacaoVolume,
         DUCK_PADRAO, GATE_PADRAO

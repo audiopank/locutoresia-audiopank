@@ -59,7 +59,7 @@ def test_previa_export_e_otimizar_usam_o_limiter_certo():
         assert marca in suite, marca
     engine = _ler('static', 'mix-engine.js')
     assert "if (o.masterLimiter && typeof o.masterLimiter.tetoDb === 'number') {" in engine
-    assert "renderizarMix, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3," in engine
+    assert "renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3," in engine
     js = _ler('static', 'minidaw.js')
     assert "masterLimiter: (!opcoes.semMaster && !opcoes.semLimiter && window.MasterSuite) ? MasterSuite.limiterParaRender() : null" in js
     assert "const porLufs = otimizar && !!window.MasterSuite && MasterSuite.loudnessAtivo();" in js
@@ -91,7 +91,7 @@ def cliente():
 def test_painel_do_limiter_e_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('id="msLimBotao"', 'id="msDestino"', 'id="msLimInfo"', 'id="msGrBarra"', 'id="msGr"', 'id="msOtimizarLufs"',
-              '.ms-lim {', 'mix-engine.js?v=9', 'master-suite.js?v=4', 'minidaw.js?v=62'):
+              '.ms-lim {', 'mix-engine.js?v=10', 'master-suite.js?v=4', 'minidaw.js?v=63'):
         assert t in html, t
 
 

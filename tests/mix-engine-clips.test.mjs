@@ -67,3 +67,17 @@ test('clip de faixa só com ruído de fundo não gera trecho (piso absoluto)', (
         [{ buffer: buf, inicio: 0, offset: 0, duracao: 2 }], 0.7, 0.08);
     assert.equal(trechos.length, 0);
 });
+
+test('faixasAudiveis: Mudo sai do arquivo; Solo deixa só as em solo; sem os campos (Gerador) entra tudo', () => {
+    const voz = { id: 'v', name: 'Voz', muted: false, solo: false };
+    const vinheta = { id: 'a', name: 'Assinatura', muted: true, solo: false };
+    const trilha = { id: 't', name: 'Trilha', muted: false, solo: false };
+    assert.deepEqual(MixEngine.faixasAudiveis([voz, vinheta, trilha]).map(t => t.id), ['v', 't']);   // o bug de 22/09
+    // Solo na voz: só a voz, mesmo a trilha não estando muda.
+    assert.deepEqual(MixEngine.faixasAudiveis([{ ...voz, solo: true }, vinheta, trilha]).map(t => t.id), ['v']);
+    // Muda E em solo: mudo ganha (igual ao play).
+    assert.deepEqual(MixEngine.faixasAudiveis([voz, { ...vinheta, solo: true }, trilha]).map(t => t.id), []);
+    // Faixas do Gerador não têm muted/solo: entram todas.
+    assert.equal(MixEngine.faixasAudiveis([{ id: 1 }, { id: 2 }]).length, 2);
+    assert.deepEqual(MixEngine.faixasAudiveis(undefined), []);
+});
