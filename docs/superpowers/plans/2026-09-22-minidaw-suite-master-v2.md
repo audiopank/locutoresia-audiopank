@@ -55,5 +55,6 @@ está aprovado (Suíte v1, Time Stretch, régua por faixa, mute no export).
 Vocoder, Cassetten NR-B, Karaokê, segundo compressor de master (o MultiMax já é ele).
 
 ## Status
-- D1: em implementação (22/09/2026).
-- D2, D3: gaveta até D1 aprovado de ouvido.
+- D1: ✅ no ar e aprovado de ouvido no Charon (22/09/2026; v1.1 com faixa do corte e redução ao vivo).
+- D2: implementado 22/09/2026 (engine v13, master-suite v5), aguardando ouvido dele.
+- D3: gaveta até D2 aprovado.

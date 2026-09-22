@@ -9673,6 +9673,10 @@ def _sanear_marcadores(lista):
     return saida
 
 
+# Espelho de static/mix-engine.js (PRESETS_MULTIMAX): mudou lá, muda aqui.
+MULTIMAX_PRESETS = ('loud1', 'loud2', 'loud3', 'radio', 'presenca', 'graves', 'sib')
+
+
 def _sanear_master(d):
     """Suíte Master da MiniDAW: {eq: {bypass, bandas:[{tipo, freq, ganho, q}]}}. None = não mandou."""
     if not isinstance(d, dict):
@@ -9696,6 +9700,17 @@ def _sanear_master(d):
         destino = lim.get('destino') if lim.get('destino') in ('radio', 'redes', 'whatsapp', 'pdv') else 'whatsapp'
         saida['limiter'] = {'ligado': lim.get('ligado') is not False, 'destino': destino,
                             'otimizarLufs': lim.get('otimizarLufs') is not False}
+    mm = d.get('multimax')
+    if isinstance(mm, dict):       # módulo D2 (22/09/2026): MultiMax de 3 bandas — chaves espelham PRESETS_MULTIMAX
+        preset = mm.get('preset') if mm.get('preset') in MULTIMAX_PRESETS else 'loud2'
+        ganhos = []
+        for i in range(3):
+            try:
+                g = float((mm.get('ganhos') or [0, 0, 0])[i])
+            except (TypeError, ValueError, IndexError):
+                g = 0.0
+            ganhos.append(round(max(-6.0, min(6.0, g if g == g else 0.0)), 2))
+        saida['multimax'] = {'ligado': bool(mm.get('ligado')), 'preset': preset, 'ganhos': ganhos}
     return saida
 
 

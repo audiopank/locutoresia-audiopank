@@ -3102,6 +3102,8 @@ class MiniDAW {
             },
             // EQ master (Suíte Master B): vai no MIX; stem isolado pede semMaster.
             masterEq: (!opcoes.semMaster && window.MasterSuite) ? MasterSuite.eqParaRender() : null,
+            // MultiMax (Suíte v2 D2): entre o EQ e o limiter no MIX; stem isolado pede semMaster.
+            masterMultiband: (!opcoes.semMaster && window.MasterSuite && MasterSuite.multimaxParaRender) ? MasterSuite.multimaxParaRender() : null,
             // Limiter do master (Suíte Master C). No Otimizar por LUFS ele vem
             // DEPOIS do ganho (masterizarParaAlvo), por isso semLimiter.
             masterLimiter: (!opcoes.semMaster && !opcoes.semLimiter && window.MasterSuite) ? MasterSuite.limiterParaRender() : null

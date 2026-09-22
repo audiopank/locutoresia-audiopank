@@ -410,6 +410,14 @@
                     no.connect(f);
                     no = f;
                 }
+                // MultiMax (Suíte v2, módulo D2): 3 bandas entre o EQ e o limiter —
+                // o MESMO nó da prévia. Sem o.masterMultiband (Gerador, stems), nada muda.
+                if (o.masterMultiband && o.masterMultiband.ativo) {
+                    const mb = criarMultiband(offlineContext, o.masterMultiband.cortes);
+                    mb.aplicar(o.masterMultiband);
+                    no.connect(mb.input);
+                    no = mb.output;
+                }
                 // Limiter do master (módulo C): o MESMO da prévia, depois do EQ.
                 if (o.masterLimiter && typeof o.masterLimiter.tetoDb === 'number') {
                     const p = paramsLimiterMaster(o.masterLimiter.tetoDb);
@@ -813,6 +821,103 @@
         return de;
     }
 
+    // ── MULTIMAX (Suíte v2, D2 — 22/09/2026) ─────────────────────────────
+    // Compressor/maximizer de 3 bandas no MASTER, como o MultiMax do Samplitude:
+    // cortes em 100 Hz e 5 kHz (LR4 — as três bandas somam plano), um
+    // DynamicsCompressor + ganho por banda, makeup automático anulado (compDb)
+    // e o "ganho" do preset por cima — é o que cola voz e trilha e enche o som
+    // sem bombear. Desligado = caminho seco (bit-idêntico ao aprovado).
+    // MESMO construtor na prévia (master-suite) e no export (renderizarMix).
+    const MULTIMAX_CORTES = [100, 5000];
+    const MULTIMAX_ENV = [                       // ataque/soltura por banda: grave lento, agudo rápido
+        { attack: 0.010, release: 0.20 },
+        { attack: 0.005, release: 0.12 },
+        { attack: 0.002, release: 0.06 },
+    ];
+    // Presets: [threshold dB, ratio, ganho dB] por banda [grave, médio, agudo].
+    // Ganhos conservadores de propósito: o limiter do master vem DEPOIS.
+    const PRESETS_MULTIMAX = [
+        { chave: 'loud1',    rotulo: 'Loudness fraco',  dica: 'Cola leve, quase transparente.',                     bandas: [[-24, 2, 1],   [-24, 2, 1],     [-24, 2, 1]] },
+        { chave: 'loud2',    rotulo: 'Loudness médio',  dica: 'O "muito mais som" do spot de rádio.',                bandas: [[-28, 3, 2],   [-28, 3, 1.5],   [-28, 3, 1.5]] },
+        { chave: 'loud3',    rotulo: 'Loudness forte',  dica: 'Denso. Em voz sozinha pode bombear: ouça.',           bandas: [[-32, 4, 3],   [-32, 4, 2],     [-32, 4, 2]] },
+        { chave: 'radio',    rotulo: 'Rádio',           dica: 'Grave controlado, médio presente, agudo suave.',      bandas: [[-30, 3, 1.5], [-26, 2.5, 1],   [-28, 3, 0.5]] },
+        { chave: 'presenca', rotulo: 'Mais presença',   dica: 'Médios pra frente: a voz atravessa a trilha.',        bandas: [[-24, 2, 0],   [-27, 2.5, 2.5], [-26, 2, 1]] },
+        { chave: 'graves',   rotulo: 'Mais graves',     dica: 'Peito na voz e corpo na trilha, sem embolar.',        bandas: [[-26, 2.5, 3], [-24, 2, 0],     [-24, 2, 0]] },
+        { chave: 'sib',      rotulo: 'Voz sibilante',   dica: 'Agudo comprimido forte: de-esser de master.',         bandas: [[-24, 2, 0],   [-24, 2, 0],     [-34, 6, 0]] },
+    ];
+    const MULTIMAX_PRESET_PADRAO = 'loud2';
+    function presetMultimax(chave) {
+        return PRESETS_MULTIMAX.find(p => p.chave === chave) || PRESETS_MULTIMAX.find(p => p.chave === MULTIMAX_PRESET_PADRAO);
+    }
+
+    // Parâmetros prontos pros nós: preset + ajuste de ganho por banda (dB, ±6) do produtor.
+    function paramsMultimax(chave, ganhos) {
+        const p = presetMultimax(chave);
+        const g = Array.isArray(ganhos) ? ganhos : [0, 0, 0];
+        return {
+            ativo: true, preset: p.chave, cortes: MULTIMAX_CORTES.slice(),
+            bandas: p.bandas.map(([threshold, ratio, ganhoDb], i) => {
+                const extra = Math.max(-6, Math.min(6, Number(g[i]) || 0));
+                return {
+                    threshold, ratio, knee: 0, attack: MULTIMAX_ENV[i].attack, release: MULTIMAX_ENV[i].release,
+                    compDb: 0.6 * threshold * (1 - 1 / ratio),      // anula o makeup automático
+                    ganhoDb: ganhoDb + extra                          // o "maximizer" do preset + o knob do produtor
+                };
+            })
+        };
+    }
+
+    function criarMultiband(ctx, cortes) {
+        const c = (Array.isArray(cortes) && cortes.length === 2) ? cortes : MULTIMAX_CORTES;
+        const Q = Math.SQRT1_2;
+        const bq = (tipo, f) => { const n = ctx.createBiquadFilter(); n.type = tipo; n.frequency.value = f; n.Q.value = Q; return n; };
+        const entrada = ctx.createGain(), saida = ctx.createGain(), dry = ctx.createGain(), wet = ctx.createGain();
+        entrada.gain.value = 1; saida.gain.value = 1; dry.gain.value = 1; wet.gain.value = 0;
+        entrada.connect(dry); dry.connect(saida);
+        // Grave = LP4(c0). Resto = HP4(c0), que se divide em médio = LP4(c1) e agudo = HP4(c1).
+        const lowA = bq('lowpass', c[0]),  lowB = bq('lowpass', c[0]);
+        const restA = bq('highpass', c[0]), restB = bq('highpass', c[0]);
+        const midA = bq('lowpass', c[1]),  midB = bq('lowpass', c[1]);
+        const hiA = bq('highpass', c[1]),  hiB = bq('highpass', c[1]);
+        entrada.connect(lowA); lowA.connect(lowB);
+        entrada.connect(restA); restA.connect(restB);
+        restB.connect(midA); midA.connect(midB);
+        restB.connect(hiA);  hiA.connect(hiB);
+        const bandas = [lowB, midB, hiB].map(fim => {
+            const comp = ctx.createDynamicsCompressor();
+            const gain = ctx.createGain(); gain.gain.value = 1;
+            fim.connect(comp); comp.connect(gain); gain.connect(wet);
+            return { comp, gain };
+        });
+        wet.connect(saida);
+        const mb = {
+            input: entrada, output: saida, dry, wet, bandas, cortes: c.slice(),
+            filtros: { low: [lowA, lowB], rest: [restA, restB], mid: [midA, midB], hi: [hiA, hiB] },
+            aplicar(p) {
+                const ativo = !!(p && p.ativo && Array.isArray(p.bandas));
+                bandas.forEach((b, i) => {
+                    const q = ativo ? p.bandas[i] : null;
+                    if (q) {
+                        b.comp.threshold.value = q.threshold; b.comp.ratio.value = q.ratio; b.comp.knee.value = q.knee;
+                        b.comp.attack.value = q.attack;       b.comp.release.value = q.release;
+                        b.gain.gain.value = Math.pow(10, (q.compDb + q.ganhoDb) / 20);
+                    } else {
+                        b.comp.threshold.value = 0; b.comp.ratio.value = 1; b.comp.knee.value = 0;
+                        b.gain.gain.value = 1;
+                    }
+                });
+                dry.gain.value = ativo ? 0 : 1;
+                wet.gain.value = ativo ? 1 : 0;
+                return ativo;
+            },
+            reducoes() {
+                return bandas.map(b => { const r = b.comp.reduction; return typeof r === 'number' ? r : ((r && r.value) || 0); });
+            }
+        };
+        mb.aplicar(null);
+        return mb;
+    }
+
     // Força efetiva de uma faixa (5 se o projeto/rascunho antigo não tem o campo).
     function forcaDeesserDaFaixa(track) {
         const s = track && track.deesserSettings;
@@ -827,6 +932,7 @@
     global.MixEngine = {
         renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
         paramsDeesser, criarDeesser, forcaDeesserDaFaixa, freqDeesserDaFaixa, DEESSER_FREQ_HZ, DEESSER_FREQS,
+        paramsMultimax, criarMultiband, presetMultimax, PRESETS_MULTIMAX, MULTIMAX_CORTES, MULTIMAX_PRESET_PADRAO,
         detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
         agendarAutomacaoVolume,
         DUCK_PADRAO, GATE_PADRAO

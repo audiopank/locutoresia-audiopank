@@ -249,6 +249,9 @@
             no = f;
             return f;
         });
+        // MultiMax (módulo D, v2) entre o EQ e o limiter. Desligado = seco.
+        mb.no = (global.MixEngine && global.MixEngine.criarMultiband) ? global.MixEngine.criarMultiband(ctx) : null;
+        if (mb.no) { no.connect(mb.no.input); no = mb.no.output; }
         lim.preGain = ctx.createGain();          // ganho do "Ouvir no alvo" (1 = desligado)
         lim.comp = ctx.createDynamicsCompressor();
         lim.compGain = ctx.createGain();
@@ -291,8 +294,32 @@
             await medirMix(true);
         };
 
+        const selMb = $('msMbPreset');
+        if (selMb && global.MixEngine && global.MixEngine.PRESETS_MULTIMAX) {
+            selMb.innerHTML = '';
+            global.MixEngine.PRESETS_MULTIMAX.forEach(p => {
+                const o = document.createElement('option');
+                o.value = p.chave; o.textContent = p.rotulo;
+                selMb.appendChild(o);
+            });
+            selMb.onchange = () => { mb.preset = selMb.value; aplicarMultimax(); salvar(); };
+        }
+        const bmb = $('msMbBotao');
+        if (bmb) bmb.onclick = () => { mb.ligado = !mb.ligado; aplicarMultimax(); salvar(); };
+        const rmb = $('msMbReset');
+        if (rmb) rmb.onclick = () => { mb.ganhos = [0, 0, 0]; mb.preset = 'loud2'; aplicarMultimax(); salvar(); };
+        [0, 1, 2].forEach(i => {
+            const s = $('msMbGanho' + i);
+            if (s) s.oninput = () => {
+                mb.ganhos[i] = clamp(parseFloat(s.value) || 0, -6, 6);
+                aplicarMultimax();
+                clearTimeout(mb.timer); mb.timer = setTimeout(salvar, 300);
+            };
+        });
+
         if (daw._masterPendente) { carregar(daw._masterPendente); daw._masterPendente = null; }
         aplicarEq(true);
+        aplicarMultimax();
         aplicarLimiter();
     }
 
@@ -454,6 +481,35 @@
                   preGain: null, ouvirAlvo: false, lufsMix: null, medindo: false, medidoEm: 0 };
 
     function destinoAtual() { return DESTINOS.find(d => d.chave === lim.destino) || DESTINOS[2]; }
+
+    // ── D. MULTIMAX (Suíte v2, 22/09/2026) ───────────────────────────────
+    // Compressor de 3 bandas entre o EQ e o limiter. Nasce DESLIGADO: projeto
+    // aprovado continua soando igual até o produtor ligar. Preset = limiar/ratio/
+    // ganho por banda (fonte única em MixEngine.PRESETS_MULTIMAX); os três
+    // controles ajustam o ganho de cada banda em ±6 dB por cima do preset.
+    const mb = { ligado: false, preset: 'loud2', ganhos: [0, 0, 0], no: null, timer: null };
+    function paramsMultimaxAtual() {
+        return (mb.ligado && global.MixEngine && global.MixEngine.paramsMultimax)
+            ? global.MixEngine.paramsMultimax(mb.preset, mb.ganhos) : null;
+    }
+    function aplicarMultimax() {
+        if (mb.no) mb.no.aplicar(paramsMultimaxAtual());
+        const b = $('msMbBotao'); if (b) b.classList.toggle('active', mb.ligado);
+        const sel = $('msMbPreset'); if (sel && sel.value !== mb.preset) sel.value = mb.preset;
+        [0, 1, 2].forEach(i => {
+            const s = $('msMbGanho' + i); if (s && parseFloat(s.value) !== mb.ganhos[i]) s.value = mb.ganhos[i];
+            const v = $('msMbGanhoVal' + i); if (v) v.textContent = fmtDb(mb.ganhos[i]) + ' dB';
+        });
+        const info = $('msMbInfo');
+        if (info) {
+            const p = (global.MixEngine && global.MixEngine.presetMultimax) ? global.MixEngine.presetMultimax(mb.preset) : null;
+            info.textContent = mb.ligado
+                ? `${p ? p.rotulo + ' — ' + p.dica : ''} Cortes em 100 Hz e 5 kHz. Vale na prévia e no arquivo (Exportar, Otimizar, Ouvir no alvo); stems saem crus.`
+                : 'Desligado: o mix passa seco, igual ao aprovado. Ligue pra colar voz e trilha e encher o som.';
+        }
+        const wrap = $('msMb'); if (wrap) wrap.classList.toggle('ligado', mb.ligado);
+    }
+    function multimaxParaRender() { return paramsMultimaxAtual(); }
     function paramsLimiter(tetoDb) {
         // Fonte única dos números: o motor de export usa a MESMA função.
         return global.MixEngine && global.MixEngine.paramsLimiterMaster
@@ -531,6 +587,13 @@
         }
         if (barra) barra.style.width = clamp(-gr / 12 * 100, 0, 100) + '%';
         if (txt) txt.textContent = (gr < -0.05 ? '−' : '') + Math.abs(gr).toFixed(1).replace('.', ',');
+        // MultiMax: redução por banda (grave, médio, agudo).
+        const reds = (mb.no && mb.ligado && ligado) ? mb.no.reducoes() : [0, 0, 0];
+        reds.forEach((r, i) => {
+            const b = $('msMbGr' + i), t = $('msMbGrTxt' + i);
+            if (b) b.style.width = clamp(-r / 12 * 100, 0, 100) + '%';
+            if (t) t.textContent = (r < -0.05 ? '−' : '') + Math.abs(r).toFixed(1).replace('.', ',');
+        });
     }
 
     // Pro motor de export: o limiter que ele ouve na prévia. null = desligado.
@@ -599,7 +662,8 @@
     function estadoParaSalvar() {
         return {
             eq: { bypass: !!eq.bypass, bandas: eq.bandas.map(b => ({ tipo: b.tipo, freq: b.freq, ganho: b.ganho, q: b.q })) },
-            limiter: { ligado: !!lim.ligado, destino: lim.destino, otimizarLufs: !!lim.otimizarLufs }
+            limiter: { ligado: !!lim.ligado, destino: lim.destino, otimizarLufs: !!lim.otimizarLufs },
+            multimax: { ligado: !!mb.ligado, preset: mb.preset, ganhos: mb.ganhos.slice() }
         };
     }
     function carregar(master) {
@@ -620,7 +684,12 @@
         lim.destino = (l && DESTINOS.some(d => d.chave === l.destino)) ? l.destino : 'whatsapp';
         lim.otimizarLufs = l ? l.otimizarLufs !== false : true;
         lim.ouvirAlvo = false; lim.lufsMix = null; lim.medidoEm = 0;     // monitoração não é do projeto
-        if (eq.nos.length) { aplicarEq(true); aplicarLimiter(); }
+        const m = (master && master.multimax) ? master.multimax : null;
+        const presets = (global.MixEngine && global.MixEngine.PRESETS_MULTIMAX) || [];
+        mb.ligado = !!(m && m.ligado);                                   // projeto antigo = desligado
+        mb.preset = (m && presets.some(p => p.chave === m.preset)) ? m.preset : 'loud2';
+        mb.ganhos = [0, 1, 2].map(i => clamp(num(m && Array.isArray(m.ganhos) ? m.ganhos[i] : 0, 0), -6, 6));
+        if (eq.nos.length) { aplicarEq(true); aplicarMultimax(); aplicarLimiter(); }
     }
     function salvar() {
         lim.medidoEm = 0;                        // EQ/limiter mudou: a próxima reprodução remede o mix
@@ -635,6 +704,7 @@
     global.MasterSuite = {
         instalar, ligar, desligar, medirArquivo, BANDAS_HZ, DESTINOS,
         estadoParaSalvar, carregar, eqParaRender,
-        limiterParaRender, loudnessAtivo, masterizarParaAlvo, garantirTeto, medirMix
+        limiterParaRender, loudnessAtivo, masterizarParaAlvo, garantirTeto, medirMix,
+        multimaxParaRender
     };
 })(window);
