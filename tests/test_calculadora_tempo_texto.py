@@ -66,6 +66,16 @@ def test_cta_leva_pro_formulario_publico():
     assert 'Peça o orçamento desse texto' in html
 
 
+def test_pagina_tem_entrada_no_menu_do_estudio_e_na_vitrine(cliente):
+    """22/09/2026: ele não achava a 'aba'. Menu Ferramentas (estúdio) + preços e rodapé da vitrine."""
+    menu = _ler('templates', 'index.html')
+    assert '<a href="/quanto-tempo" target="_blank" class="menu-item badge-new"' in menu
+    assert '<span>Quanto tempo tem meu texto</span>' in menu
+    vitrine = cliente.get('/vitrine').get_data(as_text=True)
+    assert vitrine.count('href="/quanto-tempo"') == 2                      # embaixo dos preços + rodapé
+    assert 'Veja quanto tempo ele dura falado' in vitrine
+
+
 def test_conta_range_de_verdade(cliente):
     """37 palavras: 37/2.55=14.5s a 37/2.15=17.2s -> a tela mostra os dois extremos."""
     html = _ler('templates', 'quanto_tempo.html')
