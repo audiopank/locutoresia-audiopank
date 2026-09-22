@@ -566,9 +566,21 @@ class MiniDAW {
                            value="${track.deesserSettings?.forca ?? 5}"
                            oninput="minidaw.updateDeesserForca('${track.id}', this.value)"
                            title="Sobe = tira mais 'sss'. Passou do ponto, a voz fica com língua presa.">
+                    <div class="d-flex align-items-center gap-2 mt-1 flex-wrap" style="font-size:.78rem">
+                        <label class="mb-0" for="deesserfreq_${track.id}">Faixa do sss:</label>
+                        <select id="deesserfreq_${track.id}" class="form-select form-select-sm" style="width:auto"
+                                onchange="minidaw.updateDeesserFreq('${track.id}', this.value)"
+                                title="Onde o chiado mora: voz grave mais embaixo, voz aguda mais em cima. Se mudou pouco, desça.">
+                            <option value="3500" ${track.deesserSettings?.freq == 3500 ? 'selected' : ''}>3,5 kHz — voz grave</option>
+                            <option value="5000" ${(!track.deesserSettings?.freq || track.deesserSettings?.freq == 5000) ? 'selected' : ''}>5 kHz — padrão</option>
+                            <option value="6500" ${track.deesserSettings?.freq == 6500 ? 'selected' : ''}>6,5 kHz — voz aguda</option>
+                        </select>
+                        <span class="ms-auto" title="Quanto o de-esser está abaixando o sss NESTE instante (retém o pico por 0,6 s)">redução agora: <strong id="deessergr_${track.id}">—</strong></span>
+                    </div>
                     <small>
                         Dê play numa frase cheia de S e vá subindo até o chiado abaixar.
-                        Se a voz ficar com língua presa, volte um ponto.
+                        Se a voz ficar com língua presa, volte um ponto. Se o número da
+                        redução ficar perto de zero, o sss está fora da faixa: desça pra 3,5 kHz.
                     </small>
                 </div>` : ''}
                 <div class="effects-panel ${track.effects.eq ? 'active' : ''}" id="effects_${track.id}">
@@ -780,7 +792,7 @@ class MiniDAW {
         eqHighNode.connect(eqAirNode);
         eqAirNode.connect(presenceNode);
         // De-esser (Suíte v2 D1): MESMO construtor do export (mix-engine).
-        const deesser = MixEngine.criarDeesser(this.audioContext);
+        const deesser = MixEngine.criarDeesser(this.audioContext, MixEngine.freqDeesserDaFaixa(track));
         presenceNode.connect(deesser.input);
         deesser.output.connect(compressorNode);
         compressorNode.connect(limiterNode);
@@ -875,6 +887,7 @@ class MiniDAW {
 
         // De-esser (só banda alta; desligado = caminho seco)
         if (nodes.deesser) {
+            nodes.deesser.setFreq(MixEngine.freqDeesserDaFaixa(track));
             nodes.deesser.aplicar(track.effects.deesser ? MixEngine.paramsDeesser(MixEngine.forcaDeesserDaFaixa(track)) : null);
         }
 
@@ -2325,6 +2338,52 @@ class MiniDAW {
         this._deesserSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
+    updateDeesserFreq(trackId, hz) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        track.deesserSettings = track.deesserSettings || {};
+        track.deesserSettings.freq = Number(hz);
+        this.applyEffectStates(track);           // setFreq nos 4 biquads, ao vivo
+        this.saveToLocalStorage();
+    }
+
+    // Medidor de redução do de-esser (dB) ao vivo, com retenção de pico de
+    // 600 ms — o "sss" dura 50-150 ms e o relógio de 100 ms do transporte
+    // perderia. Roda em requestAnimationFrame só enquanto toca; sem play
+    // mostra "—". É o número que prova que o efeito está mordendo (22/09:
+    // "muda muito pouco" — se aqui dá -20 dB e ele não ouve, o sss está
+    // fora da faixa, não é o compressor).
+    _garantirMedidorDeesser() {
+        if (this._medindoDeesser || !this.isPlaying) return;
+        this._medindoDeesser = true;
+        this._picoDeesser = {};
+        const passo = () => {
+            if (!this.isPlaying) {
+                this._medindoDeesser = false;
+                document.querySelectorAll('[id^="deessergr_"]').forEach(el => { el.textContent = '—'; });
+                return;
+            }
+            const agora = performance.now();
+            for (const t of this.tracks) {
+                if (t.type !== 'voice') continue;
+                const el = document.getElementById(`deessergr_${t.id}`);
+                if (!el) continue;
+                const nodes = this.trackNodes.get(t.id);
+                let red = 0;
+                if (t.effects.deesser && nodes && nodes.deesser) {
+                    const r = nodes.deesser.comp.reduction;      // float (dB ≤ 0); navegador antigo: AudioParam
+                    red = (typeof r === 'number') ? r : ((r && r.value) || 0);
+                }
+                const pico = this._picoDeesser[t.id] || { v: 0, em: 0 };
+                if (red <= pico.v || agora - pico.em > 600) { pico.v = red; pico.em = agora; }
+                this._picoDeesser[t.id] = pico;
+                el.textContent = t.effects.deesser ? `${pico.v.toFixed(1).replace('.', ',')} dB` : '—';
+            }
+            requestAnimationFrame(passo);
+        };
+        requestAnimationFrame(passo);
+    }
+
     updateEQ(trackId, band, value) {
         const track = this.tracks.find(t => t.id === trackId);
         if (!track) return;
@@ -2719,6 +2778,7 @@ class MiniDAW {
         }
         this._mostrarTempo();
         this._desenharPlayhead();   // o playhead anda junto com o relógio
+        this._garantirMedidorDeesser();
     }
 
     // Só os dois relógios do transporte (topo e o de baixo das faixas).

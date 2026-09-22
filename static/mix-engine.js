@@ -501,7 +501,7 @@
                 presenceNode.gain.value = track.effects.presence ? 4 : 0;
 
                 // 3b. De-esser (Suíte v2 D1) — MESMO construtor do playback.
-                const deesser = criarDeesser(offlineContext);
+                const deesser = criarDeesser(offlineContext, freqDeesserDaFaixa(track));
                 deesser.aplicar(track.effects.deesser ? paramsDeesser(forcaDeesserDaFaixa(track)) : null);
 
                 // 4. Compressor
@@ -754,14 +754,18 @@
     // fechar). DESLIGADO = caminho seco (dry 1 / wet 0): bit-idêntico ao som
     // de antes, sem reconectar nó nenhum. Mesmo construtor no play e no export.
     const DEESSER_FREQ_HZ = 5000;
+    // Onde o "sss" mora depende da voz: grave ~4 kHz, aguda ~6-8 kHz. Na v1 o
+    // corte fixo em 5 kHz deixava metade do chiado do Charon na banda de baixo,
+    // intocada — "muda muito pouco" (ele, 22/09). O produtor escolhe.
+    const DEESSER_FREQS = [3500, 5000, 6500];
 
     function paramsDeesser(forca) {
         // forca 1..10 (padrão 5). null/0/lixo = bypass.
         const f = Number(forca);
         if (!(f > 0)) return { ativo: false, threshold: 0, ratio: 1, knee: 0, attack: 0.001, release: 0.05, compDb: 0 };
         const k = Math.max(1, Math.min(10, f));
-        const threshold = -18 - k * 2.4;                     // 1 → -20,4 dB · 5 → -30 · 10 → -42
-        const ratio = 2 + k * 0.8;                           // 1 → 2,8 · 5 → 6 · 10 → 10
+        const threshold = -18 - k * 3;                       // 1 → -21 dB · 5 → -33 · 10 → -48
+        const ratio = 2 + k;                                 // 1 → 3 · 5 → 7 · 10 → 12
         const compDb = 0.6 * threshold * (1 - 1 / ratio);    // anula o makeup automático
         return { ativo: true, threshold, ratio, knee: 0, attack: 0.001, release: 0.05, compDb };
     }
@@ -787,6 +791,14 @@
         wet.connect(saida);
         const de = {
             input: entrada, output: saida, comp, compGain, dry, wet, lp: [lp1, lp2], hp: [hp1, hp2], freqHz: fc,
+            // Muda o corte ao vivo (4 biquads); fora da lista, fica como está.
+            setFreq(hz) {
+                const f = Number(hz);
+                if (!DEESSER_FREQS.includes(f)) return de.freqHz;
+                for (const n of [lp1, lp2, hp1, hp2]) n.frequency.value = f;
+                de.freqHz = f;
+                return f;
+            },
             aplicar(p) {
                 const q = p || paramsDeesser(null);
                 comp.threshold.value = q.threshold; comp.ratio.value = q.ratio; comp.knee.value = q.knee;
@@ -806,10 +818,15 @@
         const s = track && track.deesserSettings;
         return (s && s.forca > 0) ? s.forca : 5;
     }
+    function freqDeesserDaFaixa(track) {
+        const s = track && track.deesserSettings;
+        const f = s ? Number(s.freq) : NaN;
+        return DEESSER_FREQS.includes(f) ? f : DEESSER_FREQ_HZ;
+    }
 
     global.MixEngine = {
         renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
-        paramsDeesser, criarDeesser, forcaDeesserDaFaixa, DEESSER_FREQ_HZ,
+        paramsDeesser, criarDeesser, forcaDeesserDaFaixa, freqDeesserDaFaixa, DEESSER_FREQ_HZ, DEESSER_FREQS,
         detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
         agendarAutomacaoVolume,
         DUCK_PADRAO, GATE_PADRAO
