@@ -500,6 +500,10 @@
                 presenceNode.frequency.value = 4000;
                 presenceNode.gain.value = track.effects.presence ? 4 : 0;
 
+                // 3b. De-esser (Suíte v2 D1) — MESMO construtor do playback.
+                const deesser = criarDeesser(offlineContext);
+                deesser.aplicar(track.effects.deesser ? paramsDeesser(forcaDeesserDaFaixa(track)) : null);
+
                 // 4. Compressor
                 const compressorNode = offlineContext.createDynamicsCompressor();
                 compressorNode.threshold.value = track.effects.compressor ? -24 : 0;
@@ -605,7 +609,8 @@
                 eqNode.connect(eqHighNode);
                 eqHighNode.connect(eqAirNode);
                 eqAirNode.connect(presenceNode);
-                presenceNode.connect(compressorNode);
+                presenceNode.connect(deesser.input);
+                deesser.output.connect(compressorNode);
                 compressorNode.connect(limiterNode);
                 limiterNode.connect(gateGain);
                 gateGain.connect(trackGain);
@@ -738,8 +743,73 @@
         }
     }
 
+    // ── DE-ESSER (Suíte v2, D1 — 22/09/2026) ────────────────────────────
+    // Split-band, como o preset "Deesser" do MultiMax do Samplitude: divide a
+    // voz em duas bandas num crossover Linkwitz-Riley de 4ª ordem (dois
+    // biquads Butterworth em cascata por banda, Q = 1/√2 — as bandas somam
+    // plano), comprime SÓ a banda alta (onde mora o "sss", acima de ~5 kHz)
+    // com ataque instantâneo e soltura curta, e soma de volta com a banda
+    // baixa intacta. O DynamicsCompressorNode aplica makeup automático; o
+    // `compDb` anula (mesmo truque do paramsLimiterMaster, joelho 0 pra conta
+    // fechar). DESLIGADO = caminho seco (dry 1 / wet 0): bit-idêntico ao som
+    // de antes, sem reconectar nó nenhum. Mesmo construtor no play e no export.
+    const DEESSER_FREQ_HZ = 5000;
+
+    function paramsDeesser(forca) {
+        // forca 1..10 (padrão 5). null/0/lixo = bypass.
+        const f = Number(forca);
+        if (!(f > 0)) return { ativo: false, threshold: 0, ratio: 1, knee: 0, attack: 0.001, release: 0.05, compDb: 0 };
+        const k = Math.max(1, Math.min(10, f));
+        const threshold = -18 - k * 2.4;                     // 1 → -20,4 dB · 5 → -30 · 10 → -42
+        const ratio = 2 + k * 0.8;                           // 1 → 2,8 · 5 → 6 · 10 → 10
+        const compDb = 0.6 * threshold * (1 - 1 / ratio);    // anula o makeup automático
+        return { ativo: true, threshold, ratio, knee: 0, attack: 0.001, release: 0.05, compDb };
+    }
+
+    function criarDeesser(ctx, freqHz) {
+        const fc = freqHz || DEESSER_FREQ_HZ;
+        const Q = Math.SQRT1_2;
+        const entrada = ctx.createGain(); entrada.gain.value = 1;
+        const saida = ctx.createGain();   saida.gain.value = 1;
+        const dry = ctx.createGain();     dry.gain.value = 1;
+        const wet = ctx.createGain();     wet.gain.value = 0;
+        const lp1 = ctx.createBiquadFilter(), lp2 = ctx.createBiquadFilter();
+        const hp1 = ctx.createBiquadFilter(), hp2 = ctx.createBiquadFilter();
+        for (const n of [lp1, lp2]) { n.type = 'lowpass';  n.frequency.value = fc; n.Q.value = Q; }
+        for (const n of [hp1, hp2]) { n.type = 'highpass'; n.frequency.value = fc; n.Q.value = Q; }
+        const comp = ctx.createDynamicsCompressor();
+        const compGain = ctx.createGain(); compGain.gain.value = 1;
+        // Seco (desligado)
+        entrada.connect(dry); dry.connect(saida);
+        // Molhado: baixa intacta + alta comprimida
+        entrada.connect(lp1); lp1.connect(lp2); lp2.connect(wet);
+        entrada.connect(hp1); hp1.connect(hp2); hp2.connect(comp); comp.connect(compGain); compGain.connect(wet);
+        wet.connect(saida);
+        const de = {
+            input: entrada, output: saida, comp, compGain, dry, wet, lp: [lp1, lp2], hp: [hp1, hp2], freqHz: fc,
+            aplicar(p) {
+                const q = p || paramsDeesser(null);
+                comp.threshold.value = q.threshold; comp.ratio.value = q.ratio; comp.knee.value = q.knee;
+                comp.attack.value = q.attack;       comp.release.value = q.release;
+                compGain.gain.value = Math.pow(10, q.compDb / 20);
+                dry.gain.value = q.ativo ? 0 : 1;
+                wet.gain.value = q.ativo ? 1 : 0;
+                return q;
+            }
+        };
+        de.aplicar(null);
+        return de;
+    }
+
+    // Força efetiva de uma faixa (5 se o projeto/rascunho antigo não tem o campo).
+    function forcaDeesserDaFaixa(track) {
+        const s = track && track.deesserSettings;
+        return (s && s.forca > 0) ? s.forca : 5;
+    }
+
     global.MixEngine = {
         renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
+        paramsDeesser, criarDeesser, forcaDeesserDaFaixa, DEESSER_FREQ_HZ,
         detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
         agendarAutomacaoVolume,
         DUCK_PADRAO, GATE_PADRAO

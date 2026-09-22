@@ -75,7 +75,7 @@ def test_lista_mostra_hora_de_brasilia():
 
 
 def test_versao(cliente):
-    assert 'minidaw.js?v=63' in cliente.get('/minidaw').get_data(as_text=True)
+    assert 'minidaw.js?v=64' in cliente.get('/minidaw').get_data(as_text=True)
 
 
 def test_lista_de_projetos_mostra_o_titulo_inteiro():

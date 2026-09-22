@@ -282,12 +282,16 @@ class MiniDAW {
                 hpf: true,
                 presence: false,
                 limiter: true,
-                gate: false
+                gate: false,
+                deesser: false
             },
             // Sensibilidade do gate em % do pico: quanto MAIOR, mais coisa
             // vira pausa e mais respiração some — mas passar do ponto começa
             // a comer o comecinho das palavras. Acha-se de ouvido.
             gateSettings: { sensibilidade: 12 },
+            // De-esser (Suíte v2 D1): força 1-10 — sobe = tira mais "sss";
+            // passou do ponto, a voz fica com língua presa. Acha-se de ouvido.
+            deesserSettings: { forca: 5 },
             // Pontos de automação de volume manual: [{id, tempo, volume}].
             // Enquanto tiver pelo menos 1 ponto, SUBSTITUI o Ducking nesta
             // trilha (ver agendarVolumeDaFaixa). Vazio = comportamento de
@@ -519,6 +523,11 @@ class MiniDAW {
                                         title="Gate: abaixa a faixa entre as falas — é onde mora a respiração da voz de IA">
                                     <i class="fas fa-door-closed"></i> Gate
                                 </button>
+                                <button class="effect-btn ${track.effects.deesser ? 'active' : ''}"
+                                        onclick="minidaw.toggleEffect('${track.id}', 'deesser')"
+                                        title="De-esser: abaixa só o 'sss' da voz (banda acima de 5 kHz), sem mexer no resto">
+                                    <i class="fas fa-wave-square"></i> De-esser
+                                </button>
                                 <button class="effect-btn ${track.effects.hpf ? 'active' : ''}"
                                         onclick="minidaw.toggleEffect('${track.id}', 'hpf')">
                                     <i class="fas fa-filter"></i> HPF
@@ -546,6 +555,20 @@ class MiniDAW {
                     <small>
                         Dê play e vá subindo até a respiração sumir. Se a fala começar
                         cortada, volte um pouco.
+                    </small>
+                </div>
+                <div class="deesser-panel ${track.effects.deesser ? 'ativo' : ''}" id="deesserpanel_${track.id}">
+                    <div class="effect-label">
+                        De-esser — força
+                        <strong id="deesserval_${track.id}">${(track.deesserSettings?.forca ?? 5).toFixed(0)}</strong>
+                    </div>
+                    <input type="range" class="form-range" min="1" max="10" step="1"
+                           value="${track.deesserSettings?.forca ?? 5}"
+                           oninput="minidaw.updateDeesserForca('${track.id}', this.value)"
+                           title="Sobe = tira mais 'sss'. Passou do ponto, a voz fica com língua presa.">
+                    <small>
+                        Dê play numa frase cheia de S e vá subindo até o chiado abaixar.
+                        Se a voz ficar com língua presa, volte um ponto.
                     </small>
                 </div>` : ''}
                 <div class="effects-panel ${track.effects.eq ? 'active' : ''}" id="effects_${track.id}">
@@ -756,7 +779,10 @@ class MiniDAW {
         eqNode.connect(eqHighNode);
         eqHighNode.connect(eqAirNode);
         eqAirNode.connect(presenceNode);
-        presenceNode.connect(compressorNode);
+        // De-esser (Suíte v2 D1): MESMO construtor do export (mix-engine).
+        const deesser = MixEngine.criarDeesser(this.audioContext);
+        presenceNode.connect(deesser.input);
+        deesser.output.connect(compressorNode);
         compressorNode.connect(limiterNode);
         limiterNode.connect(gateGain);
         gateGain.connect(analyser);
@@ -789,6 +815,7 @@ class MiniDAW {
             eqHighNode,
             eqAirNode,
             presenceNode,
+            deesser,
             compressorNode,
             limiterNode,
             gateGain,
@@ -845,6 +872,11 @@ class MiniDAW {
 
         // Presence boost
         nodes.presenceNode.gain.value = track.effects.presence ? 4 : 0; // +4dB de presença
+
+        // De-esser (só banda alta; desligado = caminho seco)
+        if (nodes.deesser) {
+            nodes.deesser.aplicar(track.effects.deesser ? MixEngine.paramsDeesser(MixEngine.forcaDeesserDaFaixa(track)) : null);
+        }
 
         // Compressor
         nodes.compressorNode.threshold.value = track.effects.compressor ? -24 : 0;
@@ -2015,6 +2047,7 @@ class MiniDAW {
         destino.effects = Object.assign({}, origem.effects);
         destino.eqSettings = Object.assign({}, origem.eqSettings || {});
         destino.gateSettings = Object.assign({}, origem.gateSettings || {});
+        destino.deesserSettings = Object.assign({}, origem.deesserSettings || {});
         destino.compressorSettings = Object.assign({}, origem.compressorSettings || {});
         if (origem.reverbAmount != null) destino.reverbAmount = origem.reverbAmount;
     }
@@ -2273,6 +2306,23 @@ class MiniDAW {
         if (gatePanel) {
             gatePanel.classList.toggle('ativo', !!track.effects.gate);
         }
+        const deesserPanel = trackCard.querySelector('.deesser-panel');
+        if (deesserPanel) {
+            deesserPanel.classList.toggle('ativo', !!track.effects.deesser);
+        }
+    }
+
+    // Slider de força do de-esser. Aplica na hora pra dar pra ajustar ouvindo.
+    updateDeesserForca(trackId, valor) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        track.deesserSettings = track.deesserSettings || {};
+        track.deesserSettings.forca = Math.min(10, Math.max(1, Math.round(parseFloat(valor) || 5)));
+        const rotulo = document.getElementById(`deesserval_${trackId}`);
+        if (rotulo) rotulo.textContent = String(track.deesserSettings.forca);
+        this.applyEffectStates(track);
+        clearTimeout(this._deesserSaveTimer);
+        this._deesserSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
     updateEQ(trackId, band, value) {
@@ -4619,7 +4669,8 @@ class MiniDAW {
                         fadeOut: track.fadeOut,
                         effects: track.effects,
                         eqSettings: track.eqSettings,
-                        gateSettings: track.gateSettings
+                        gateSettings: track.gateSettings,
+                        deesserSettings: track.deesserSettings
                     });
 
                     project.audioData[track.id] = base64;
@@ -4756,6 +4807,7 @@ class MiniDAW {
                     fadeIn: t.fadeIn, fadeOut: t.fadeOut,
                     effects: t.effects, eqSettings: t.eqSettings,
                     gateSettings: t.gateSettings,
+                    deesserSettings: t.deesserSettings,
                     automacaoVolume: t.automacaoVolume,
                     buffers: [], clips: []
                 };
@@ -4912,6 +4964,7 @@ class MiniDAW {
                 track.effects   = td.effects    || track.effects;
                 track.eqSettings= td.eqSettings || track.eqSettings;
                 track.gateSettings = td.gateSettings || track.gateSettings;
+                track.deesserSettings = td.deesserSettings || track.deesserSettings;
                 // Normaliza o formato -- cobre projetos salvos antes desta
                 // feature (campo ausente), e os salvos HOJE mais cedo antes
                 // do liga/desliga de verdade existir (formato antigo: array
