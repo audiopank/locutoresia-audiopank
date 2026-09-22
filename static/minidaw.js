@@ -452,6 +452,14 @@ class MiniDAW {
                         <input type="range" class="form-range pan-slider" min="-100" max="100" value="${track.pan * 100}"
                                onchange="minidaw.updateTrackPan('${track.id}', this.value)">
                     </div>
+                    ${track.type === 'music' ? `
+                    <div class="control-group">
+                        <span class="control-label">Largura:</span>
+                        <input type="range" class="form-range pan-slider" min="0" max="200" step="5" value="${Math.round(MixEngine.larguraDaFaixa(track) * 100)}"
+                               title="Largura estéreo da trilha: 0% = mono, 100% = como veio, 200% = bem aberta. A voz fica no centro e a trilha abre em volta dela. Vale na prévia e no export."
+                               oninput="minidaw.updateTrackLargura('${track.id}', this.value)">
+                        <span class="control-label" id="largura_val_${track.id}">${Math.round(MixEngine.larguraDaFaixa(track) * 100)}%</span>
+                    </div>` : ''}
                     <div class="control-group">
                         <span class="control-label">Fade In:</span>
                         <input type="range" class="form-range fade-slider" min="0" max="8" step="0.1" value="${track.fadeIn}"
@@ -816,7 +824,11 @@ class MiniDAW {
         // liga no trackGain — as duas pontas precisam bater.
         delayMix.connect(gainNode);
         gainNode.connect(panNode);
-        panNode.connect(this.masterGain);
+        // Largura estéreo (Suíte v2 D3): MESMO nó do export; largura 1 = seco.
+        const largura = MixEngine.criarLargura(this.audioContext);
+        largura.aplicar(MixEngine.larguraDaFaixa(track));
+        panNode.connect(largura.input);
+        largura.output.connect(this.masterGain);
         
         // Store nodes
         this.trackNodes.set(track.id, {
@@ -828,6 +840,7 @@ class MiniDAW {
             eqAirNode,
             presenceNode,
             deesser,
+            largura,
             compressorNode,
             limiterNode,
             gateGain,
@@ -2209,6 +2222,19 @@ class MiniDAW {
             }
             this.saveToLocalStorage();
         }
+    }
+
+    // Largura estéreo da trilha (0..200% → 0..2). Aplica ao vivo; salva com atraso.
+    updateTrackLargura(trackId, pct) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || track.type !== 'music') return;
+        track.largura = Math.max(0, Math.min(2, (parseFloat(pct) || 0) / 100));
+        const nodes = this.trackNodes.get(trackId);
+        if (nodes && nodes.largura) nodes.largura.aplicar(MixEngine.larguraDaFaixa(track));
+        const rotulo = document.getElementById(`largura_val_${trackId}`);
+        if (rotulo) rotulo.textContent = Math.round(track.largura * 100) + '%';
+        clearTimeout(this._larguraSaveTimer);
+        this._larguraSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
     // Enquanto o slider anda: rótulo em segundos + rampa desenhada no clip.
@@ -4732,7 +4758,8 @@ class MiniDAW {
                         effects: track.effects,
                         eqSettings: track.eqSettings,
                         gateSettings: track.gateSettings,
-                        deesserSettings: track.deesserSettings
+                        deesserSettings: track.deesserSettings,
+                        largura: track.largura
                     });
 
                     project.audioData[track.id] = base64;
@@ -4865,6 +4892,7 @@ class MiniDAW {
                 const td = {
                     name: t.name, type: t.type, sfx: !!t.sfx,
                     autoFade: t.autoFade !== false,
+                    largura: MixEngine.larguraDaFaixa(t),     // trilha: 0..2; voz sempre 1
                     volume: t.volume, pan: t.pan,
                     fadeIn: t.fadeIn, fadeOut: t.fadeOut,
                     effects: t.effects, eqSettings: t.eqSettings,
@@ -5019,6 +5047,7 @@ class MiniDAW {
                 track.name      = td.name ?? track.name;
                 track.sfx       = !!td.sfx;                 // a marca de efeito era salva mas não voltava
                 track.autoFade  = td.autoFade !== false;    // projeto antigo (sem o campo) = ligado
+                track.largura   = Number.isFinite(Number(td.largura)) ? Number(td.largura) : 1;   // projeto antigo = como veio
                 track.volume    = (td.volume    != null) ? td.volume    : 100;
                 track.pan       = (td.pan       != null) ? td.pan       : 0;
                 track.fadeIn    = (td.fadeIn    != null) ? td.fadeIn    : 0;

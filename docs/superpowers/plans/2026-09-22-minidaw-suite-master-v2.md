@@ -56,5 +56,5 @@ Vocoder, Cassetten NR-B, Karaokê, segundo compressor de master (o MultiMax já 
 
 ## Status
 - D1: ✅ no ar e aprovado de ouvido no Charon (22/09/2026; v1.1 com faixa do corte e redução ao vivo).
-- D2: implementado 22/09/2026 (engine v13, master-suite v5), aguardando ouvido dele.
-- D3: gaveta até D2 aprovado.
+- D2: ✅ no ar e aprovado de ouvido (22/09/2026, "ficou show").
+- D3: implementado 22/09/2026 (engine v14, master-suite v6, minidaw v67), aguardando ouvido dele.

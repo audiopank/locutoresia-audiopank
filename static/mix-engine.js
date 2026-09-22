@@ -632,7 +632,11 @@
                 delayNode.connect(delayMix);
                 delayMix.connect(trackGain);
                 trackGain.connect(pan);
-                pan.connect(masterGain);
+                // Largura estéreo (Suíte v2 D3) — MESMO nó do playback; largura 1 = seco.
+                const largura = criarLargura(offlineContext);
+                largura.aplicar(larguraDaFaixa(track));
+                pan.connect(largura.input);
+                largura.output.connect(masterGain);
 
                 // Start source
                 for (const s of sources) s.source.start(s.clip.inicio, s.clip.offset, s.clip.duracao);
@@ -918,6 +922,55 @@
         return mb;
     }
 
+    // ── LARGURA ESTÉREO (Suíte v2, D3 — 22/09/2026) ──────────────────────
+    // Mid/Side: M = (L+R)/2 fica como está, S = (L−R)/2 é multiplicado pela
+    // largura (0 = mono, 1 = como veio, 2 = bem aberto), e volta L = M+S,
+    // R = M−S. Na TRILHA abre o fundo em volta da voz (que fica no centro);
+    // no MASTER, com largura 0, vira o "Mono" de checagem (rádio AM, celular).
+    // Largura 1 = caminho seco (bit-idêntico). Fonte mono vira L = R no
+    // splitter, então S = 0 e nada muda — seguro em qualquer faixa.
+    function criarLargura(ctx) {
+        const entrada = ctx.createGain(), saida = ctx.createGain();
+        const dry = ctx.createGain(), wet = ctx.createGain();
+        entrada.gain.value = 1; saida.gain.value = 1; dry.gain.value = 1; wet.gain.value = 0;
+        entrada.connect(dry); dry.connect(saida);
+        const split = ctx.createChannelSplitter(2);
+        const merge = ctx.createChannelMerger(2);
+        const g = (v) => { const n = ctx.createGain(); n.gain.value = v; return n; };
+        const lM = g(0.5), rM = g(0.5), lS = g(0.5), rS = g(-0.5);
+        const somaM = g(1), somaS = g(1), sInv = g(-1), outL = g(1), outR = g(1);
+        entrada.connect(split);
+        split.connect(lM, 0); split.connect(lS, 0);
+        split.connect(rM, 1); split.connect(rS, 1);
+        lM.connect(somaM); rM.connect(somaM);
+        lS.connect(somaS); rS.connect(somaS);
+        somaM.connect(outL); somaS.connect(outL);            // L = M + S·w
+        somaM.connect(outR); somaS.connect(sInv); sInv.connect(outR);   // R = M − S·w
+        outL.connect(merge, 0, 0); outR.connect(merge, 0, 1);
+        merge.connect(wet); wet.connect(saida);
+        const lg = {
+            input: entrada, output: saida, dry, wet, somaS, somaM, largura: 1,
+            aplicar(w) {
+                const v = Number(w);
+                const largura = Number.isFinite(v) ? Math.max(0, Math.min(2, v)) : 1;
+                const seco = Math.abs(largura - 1) < 0.005;
+                somaS.gain.value = largura;
+                dry.gain.value = seco ? 1 : 0;
+                wet.gain.value = seco ? 0 : 1;
+                lg.largura = largura;
+                return largura;
+            }
+        };
+        lg.aplicar(1);
+        return lg;
+    }
+    // Largura efetiva de uma faixa: só TRILHA tem; voz e projeto antigo = 1 (seco).
+    function larguraDaFaixa(track) {
+        if (!track || track.type !== 'music') return 1;
+        const w = Number(track.largura);
+        return Number.isFinite(w) ? Math.max(0, Math.min(2, w)) : 1;
+    }
+
     // Força efetiva de uma faixa (5 se o projeto/rascunho antigo não tem o campo).
     function forcaDeesserDaFaixa(track) {
         const s = track && track.deesserSettings;
@@ -933,6 +986,7 @@
         renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
         paramsDeesser, criarDeesser, forcaDeesserDaFaixa, freqDeesserDaFaixa, DEESSER_FREQ_HZ, DEESSER_FREQS,
         paramsMultimax, criarMultiband, presetMultimax, PRESETS_MULTIMAX, MULTIMAX_CORTES, MULTIMAX_PRESET_PADRAO,
+        criarLargura, larguraDaFaixa,
         detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
         agendarAutomacaoVolume,
         DUCK_PADRAO, GATE_PADRAO

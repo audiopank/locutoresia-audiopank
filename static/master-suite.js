@@ -258,7 +258,10 @@
         no.connect(lim.preGain);
         lim.preGain.connect(lim.comp);
         lim.comp.connect(lim.compGain);
-        lim.compGain.connect(daw.masterOut);
+        // Mono de checagem (módulo D3): depois do limiter, só na prévia.
+        mono.no = (global.MixEngine && global.MixEngine.criarLargura) ? global.MixEngine.criarLargura(ctx) : null;
+        if (mono.no) { lim.compGain.connect(mono.no.input); mono.no.output.connect(daw.masterOut); }
+        else lim.compGain.connect(daw.masterOut);
 
         const canvas = $('msEqCanvas');
         if (canvas) {
@@ -306,6 +309,8 @@
         }
         const bmb = $('msMbBotao');
         if (bmb) bmb.onclick = () => { mb.ligado = !mb.ligado; aplicarMultimax(); salvar(); };
+        const bmono = $('msMono');
+        if (bmono) bmono.onclick = () => { mono.ligado = !mono.ligado; aplicarMono(); };
         const rmb = $('msMbReset');
         if (rmb) rmb.onclick = () => { mb.ganhos = [0, 0, 0]; mb.preset = 'loud2'; aplicarMultimax(); salvar(); };
         [0, 1, 2].forEach(i => {
@@ -510,6 +515,16 @@
         const wrap = $('msMb'); if (wrap) wrap.classList.toggle('ligado', mb.ligado);
     }
     function multimaxParaRender() { return paramsMultimaxAtual(); }
+
+    // ── D3. MONO DE CHECAGEM ─────────────────────────────────────────────
+    // Soma L+R na PRÉVIA (largura 0 no master) pra ouvir como o spot fica em
+    // rádio AM e no alto-falante do celular. Só monitoração: não vai pro
+    // arquivo nem pro projeto — por isso fica fora do estadoParaSalvar.
+    const mono = { ligado: false, no: null };
+    function aplicarMono() {
+        if (mono.no) mono.no.aplicar(mono.ligado ? 0 : 1);
+        const b = $('msMono'); if (b) b.classList.toggle('active', mono.ligado);
+    }
     function paramsLimiter(tetoDb) {
         // Fonte única dos números: o motor de export usa a MESMA função.
         return global.MixEngine && global.MixEngine.paramsLimiterMaster
