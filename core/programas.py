@@ -22,7 +22,13 @@ PROGRAMAS = {
         'vinheta': 'Vida Saudável, um minuto e meio por dia sobre saúde e bem-estar. Episódio {episodio}.',
         'aviso': 'Este conteúdo é informativo e não substitui a orientação do seu médico.',
         'fecho': ('Vida Saudável é produzido por Locutores IA, Áudio Pank Produtora. {patrocinio} '
-                  'Informações pelo WhatsApp: oitenta e cinco, nove, nove dois dois seis, dois dois nove sete.'),
+                  # Dígitos, com o espaço depois do hífen: é assim que o Charon fala o
+                  # número certo (ele regravou de ouvido em 23/09/2026 e aprovou).
+                  # Por extenso o TTS engasgava.
+                  'Informações pelo WhatsApp: 85 9 9226- 2297.'),
+        # Fechos de episódios ANTIGOS (.txt dos rascunhos, ep. 1-12) terminam por
+        # extenso: o extrair_miolo continua reconhecendo pra não dobrar o fecho.
+        'fecho_finais_antigos': ['dois dois nove sete'],
         # Slot de patrocínio: vazio vende o espaço; com marca, é o oferecimento.
         'patrocinio_vazio': 'Esse espaço pode ser da sua marca.',
         'patrocinio_com': 'Um oferecimento de {marca}.',
@@ -164,7 +170,9 @@ def extrair_miolo(pid, texto):
     inicio_fecho = p['fecho'].split('{patrocinio}')[0].strip()        # "... Áudio Pank Produtora."
     fim_fecho = ' '.join(p['fecho'].rsplit(' ', 2)[-2:]).rstrip('.')   # últimas 2 palavras, sem o ponto
     # (o ponto sai ANTES do escape: tirar depois deixava uma barra solta no padrão)
-    fecho_re = re.compile(re.escape(inicio_fecho) + r'.*?' + re.escape(fim_fecho) + r'\.?', re.I | re.S)
+    # Fecho novo (dígitos) OU fecho antigo por extenso (.txt dos episódios 1-12).
+    finais = [fim_fecho] + [f.rstrip('.') for f in p.get('fecho_finais_antigos', [])]
+    fecho_re = re.compile(re.escape(inicio_fecho) + r'.*?(?:' + '|'.join(re.escape(f) for f in finais) + r')\.?', re.I | re.S)
     t, n = fecho_re.subn(' ', t)
     if n:
         removidas.append('fecho')

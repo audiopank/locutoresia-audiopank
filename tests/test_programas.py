@@ -33,7 +33,7 @@ def test_montar_roteiro_tem_as_quatro_partes_na_ordem():
     assert partes[1] == 'Miolo do episódio.'
     assert partes[2] == 'Este conteúdo é informativo e não substitui a orientação do seu médico.'
     assert partes[3].startswith('Vida Saudável é produzido por Locutores IA, Áudio Pank Produtora. Esse espaço pode ser da sua marca.')
-    assert partes[3].endswith('oitenta e cinco, nove, nove dois dois seis, dois dois nove sete.')
+    assert partes[3].endswith('Informações pelo WhatsApp: 85 9 9226- 2297.')      # dígitos: pronúncia aprovada 23/09
     assert len(partes) == 4
 
 
@@ -61,7 +61,7 @@ O problema? A maioria das pessoas não alcança a ingestão ideal dessas substâ
 Fica a dica! Mais cor no prato, mais vida no coração!
 Este conteúdo é informativo e não substitui a orientação do seu médico.
 
-Vida Saudável é produzido por Locutores IA, Áudio Pank Produtora. Esse espaço pode ser da sua marca. Informações pelo WhatsApp: oitenta e cinco, nove, nove dois dois seis, dois dois nove sete.
+Vida Saudável é produzido por Locutores IA, Áudio Pank Produtora. Esse espaço pode ser da sua marca. Informações pelo WhatsApp: 85 9 9226- 2297.
 [SFX: Vinheta de saída]"""
 
 
@@ -77,17 +77,22 @@ def test_extrair_miolo_do_roteiro_inteiro_colado_do_suno():
     assert miolo.startswith('Você bate a meta de 5 porções')
     assert miolo.endswith('Mais cor no prato, mais vida no coração!')
     assert 'Episódio' not in miolo and 'orientação do seu médico' not in miolo
-    assert 'Locutores IA' not in miolo and 'nove sete' not in miolo and '[' not in miolo
+    assert 'Locutores IA' not in miolo and '2297' not in miolo and '[' not in miolo
     # remontado, o roteiro tem cada parte fixa UMA vez só
     r = pr.montar_roteiro('vida', 3, miolo)
-    assert r.count('Episódio três') == 1 and r.count('orientação do seu médico') == 1 and r.count('nove sete') == 1
+    assert r.count('Episódio três') == 1 and r.count('orientação do seu médico') == 1 and r.count('2297') == 1
 
 
 def test_extrair_miolo_com_patrocinador_no_fecho_colado():
     texto = ('Miolo aqui.\n\nVida Saudável é produzido por Locutores IA, Áudio Pank Produtora. '
-             'Um oferecimento de Farmácia X. Informações pelo WhatsApp: oitenta e cinco, nove, nove dois dois seis, dois dois nove sete')
+             'Um oferecimento de Farmácia X. Informações pelo WhatsApp: 85 9 9226- 2297')
     miolo, removidas = pr.extrair_miolo('vida', texto)
     assert miolo == 'Miolo aqui.' and removidas == ['fecho']
+    # Fecho ANTIGO (por extenso), colado de um .txt dos episódios 1-12: continua reconhecido.
+    antigo = ('Miolo aqui.\n\nVida Saudável é produzido por Locutores IA, Áudio Pank Produtora. Esse espaço pode ser da sua marca. '
+              'Informações pelo WhatsApp: oitenta e cinco, nove, nove dois dois seis, dois dois nove sete.')
+    miolo2, removidas2 = pr.extrair_miolo('vida', antigo)
+    assert miolo2 == 'Miolo aqui.' and removidas2 == ['fecho']
 
 
 def test_extrair_miolo_sem_partes_fixas_devolve_limpo():
@@ -197,7 +202,7 @@ def test_roteiro_com_miolo_pronto_nao_chama_a_ia(cliente, monkeypatch):
         'programa': 'vida', 'tema': 'sono', 'episodio': 3, 'miolo': miolo, 'patrocinador': ''}).get_json()
     assert d['success'] and d['fonte'] == 'pronto'
     assert d['roteiro'].startswith('Vida Saudável, um minuto e meio por dia sobre saúde e bem-estar. Episódio três.')
-    assert d['roteiro'].endswith('dois dois nove sete.')
+    assert d['roteiro'].endswith('85 9 9226- 2297.')
     assert d['nome_spot'] == 'Vida Saudável, episódio 3: sono'
     assert d['palavras_miolo'] == 140 and d['alvo_miolo'] == [135, 165]
     assert d['conta_feed'] == 'vida' and d['avisos'] == []
@@ -236,7 +241,7 @@ def test_roteiro_com_roteiro_inteiro_colado_nao_duplica_partes_fixas(cliente):
     assert d['success'] and d['fonte'] == 'pronto'
     assert d['roteiro'].count('Episódio três') == 1
     assert d['roteiro'].count('orientação do seu médico') == 1
-    assert d['roteiro'].count('nove sete') == 1
+    assert d['roteiro'].count('2297') == 1
     assert '[' not in d['roteiro']
     assert any('partes fixas' in a for a in d['avisos'])
 
