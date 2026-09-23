@@ -47,6 +47,9 @@ CONTAS = {
     # Programa "Vida Saudável" — podcast diário de saúde e bem-estar, vitrine do
     # produto "Podcast Diário com a marca do cliente" (decisão de 04/09/2026).
     'vida': ('NEWPOST_FEED_EMAIL_VIDA', 'NEWPOST_FEED_SENHA_VIDA'),
+    # Perfil "Achadinhos da NewPost-IA" (achadinhos@gmail.com) — comunidade de
+    # ofertas; assina os áudios pra vídeo do Achadinhos (pedido de 23/09/2026).
+    'achadinhos': ('NEWPOST_FEED_EMAIL_ACHADINHOS', 'NEWPOST_FEED_SENHA_ACHADINHOS'),
 }
 
 # ── Tags e série por conta (Gerador → feed) ─────────────────────────────────
@@ -58,6 +61,7 @@ CONTAS = {
 TAGS_PADRAO = ['LocutoresIA', 'Spot']
 TAGS_POR_CONTA = {
     'vida': ['VidaSaudavel', 'Podcast', 'Saúde'],
+    'achadinhos': ['Achadinhos', 'Ofertas'],
 }
 
 # Programa por conta = série na NewPost-IA (tabela `series`; o post leva

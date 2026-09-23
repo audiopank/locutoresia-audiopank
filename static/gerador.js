@@ -1571,7 +1571,7 @@
         document.getElementById('btnPublicarFeed').onclick = async () => {
             if (!exigeAudio()) return;
             const conta = document.getElementById('selectContaFeed').value;
-            const rotulos = { locutores: 'LOCUTORES IA', principal: 'NewPost-IA ✓', futuro: 'Futuro em Pauta', vida: 'Vida Saudável' };
+            const rotulos = { locutores: 'LOCUTORES IA', principal: 'NewPost-IA ✓', futuro: 'Futuro em Pauta', vida: 'Vida Saudável', achadinhos: 'Achadinhos' };
             if (!confirm(`Publicar este spot no FEED PÚBLICO da NewPost-IA assinando como ${rotulos[conta]}?`)) return;
             const btn = document.getElementById('btnPublicarFeed');
             btn.disabled = true;
@@ -1589,7 +1589,11 @@
                     body: JSON.stringify({
                         conta,
                         nome: (document.getElementById('inputNome').value || 'Spot').trim(),
-                        texto: document.getElementById('textoComercial').value || '',
+                        // Áudio para vídeo: o post leva só a NARRAÇÃO — "CENA n" e
+                        // "[Ambiente: …]" são instrução de produção, não texto pro leitor.
+                        texto: (pecaAtual() === 'video' && estado.cenas.length)
+                            ? estado.cenas.map(c => c.narracao).join('\n\n')
+                            : (document.getElementById('textoComercial').value || ''),
                         // Com programa, o número do episódio vai explícito (o
                         // nome do spot não tem mais "#N" — o badge da série mostra).
                         episodio: programaAtual()

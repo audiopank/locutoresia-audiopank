@@ -6542,7 +6542,7 @@ def api_gerador_publicar_feed():
     try:
         data = request.get_json() or {}
         conta = str(data.get('conta') or 'locutores')
-        if conta not in ('locutores', 'principal', 'futuro', 'vida'):
+        if conta not in ('locutores', 'principal', 'futuro', 'vida', 'achadinhos'):
             return jsonify({"success": False, "error": "Conta inválida."}), 400
         from core import newpost_feed
         # Sem as credenciais da conta escolhida o módulo cairia CALADO na
