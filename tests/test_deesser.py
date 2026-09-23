@@ -82,6 +82,6 @@ def cliente():
 def test_css_e_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     assert '.deesser-panel' in html and '.deesser-panel.ativo' in html
-    assert 'mix-engine.js?v=14' in html and 'minidaw.js?v=67' in html
+    assert 'mix-engine.js?v=14' in html and 'minidaw.js?v=68' in html
     for pagina in ('/gerador', '/narrativa'):
         assert 'mix-engine.js?v=14' in cliente.get(pagina).get_data(as_text=True), pagina

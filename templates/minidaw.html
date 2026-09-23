@@ -785,6 +785,22 @@
         }
         .clip-bloco:active { cursor: grabbing; }
         .clip-bloco.arrastando { opacity: .75; z-index: 10; box-shadow: 0 0 0 2px #ec4899; }
+        /* Menu de contexto do objeto (botão direito) — 23/09/2026 */
+        .menu-objeto {
+            position: fixed; z-index: 3000; min-width: 220px; display: none;
+            background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+            box-shadow: 0 12px 30px rgba(0,0,0,.6); padding: .3rem;
+        }
+        .menu-objeto.aberto { display: block; }
+        .menu-objeto button {
+            display: flex; justify-content: space-between; gap: 1rem; width: 100%;
+            background: none; border: 0; color: #e2e8f0; font-size: .82rem;
+            padding: .35rem .6rem; border-radius: 5px; text-align: left; cursor: pointer;
+        }
+        .menu-objeto button:hover { background: #1e293b; }
+        .menu-objeto button:disabled { color: #64748b; cursor: default; background: none; }
+        .menu-objeto button .tecla { color: #64748b; font-size: .72rem; }
+        .menu-objeto hr { border: 0; border-top: 1px solid #1f2937; margin: .25rem 0; }
         /* Objeto selecionado (alvo do Ctrl+C/Ctrl+X) — laranja, igual ao
            Samplitude, pra não confundir com o rosa do arrasto. */
         .clip-bloco.selecionado {
@@ -1256,7 +1272,7 @@
     <script src="/static/loudness.js?v=1"></script>
     <script src="/static/master-suite.js?v=6"></script>
     <script src="/static/time-stretch.js?v=2"></script>
-    <script src="/static/minidaw.js?v=67"></script>
+    <script src="/static/minidaw.js?v=68"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

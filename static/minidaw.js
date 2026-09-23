@@ -55,8 +55,10 @@ class MiniDAW {
         this.cursorTempo = null;  // tempo do projeto sob o mouse (linha de corte)
         this.cursorLane = null;   // trackId da lane sob o mouse
         // Copiar/colar objeto entre faixas (Ctrl+C/X/V, estilo Samplitude).
-        this.clipSelecionado = null;  // {trackId, clipId} do objeto realçado
+        this.clipSelecionado = null;  // {trackId, clipId} do objeto PRINCIPAL (Ctrl+C simples, Time Stretch)
+        this.selecionados = [];       // seleção múltipla: [{trackId, clipId}] (Ctrl+A, Ctrl+clique) — 23/09/2026
         this.clipboardClip = null;    // molde copiado (buffer por REFERÊNCIA)
+        this.clipboardGrupo = null;   // conjunto copiado com posições relativas e faixa de origem
         // Ctrl+V precisa saber ONDE colar, e keydown não traz coordenada de
         // mouse. Guardar o último ponto é o que permite colar na faixa sob o
         // ponteiro — inclusive numa faixa VAZIA, que não tem lane pra hover.
@@ -222,16 +224,31 @@ class MiniDAW {
                 if (k === 'c') { if (this.copiarClip()) e.preventDefault(); return; }
                 if (k === 'x') { if (this.recortarClip()) e.preventDefault(); return; }
                 if (k === 'v') { if (this.colarClip()) e.preventDefault(); return; }
+                // Ctrl+A = todos os objetos de todas as faixas (23/09/2026). Sem
+                // objeto nenhum, a tecla segue pro navegador (selecionar texto).
+                if (k === 'a') { if (this.selecionarTodos()) e.preventDefault(); return; }
                 return;   // outros Ctrl+... seguem pro navegador
             }
             if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (e.key === 'Escape') {
+                this._fecharMenuObjeto();
+                if (this.selecionados.length) { this.limparSelecao(); this.showNotification('Seleção limpa', 'info'); }
+                return;
+            }
             if ((k === 'd' || k === 't') && this.cursorLane != null && this.cursorTempo != null) {
                 e.preventDefault();
                 this.cutTrackAtTime(this.cursorLane, this.cursorTempo);
             }
-            if ((e.key === 'Delete' || e.key === 'Backspace') && this.cursorLane != null && this.cursorTempo != null) {
-                e.preventDefault();
-                this.deletarClipNoPonto(this.cursorLane, this.cursorTempo);
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                // Grupo selecionado (Ctrl+A / Ctrl+clique): apaga todos, um Ctrl+Z desfaz.
+                if (this.selecionados.length >= 2) { e.preventDefault(); this.apagarSelecionados(); return; }
+                if (this.cursorLane != null && this.cursorTempo != null) {
+                    e.preventDefault();
+                    this.deletarClipNoPonto(this.cursorLane, this.cursorTempo);
+                    return;
+                }
+                // Mouse fora das lanes, mas há um objeto selecionado: apaga ele.
+                if (this._clipSelecionadoVivo()) { e.preventDefault(); this.apagarSelecionados(); }
             }
             // Q ("quieto") = silenciar o trecho marcado com a Tesoura, sem encurtar
             // o off. Marca, Q, marca, Q: limpar respirações em sequência.
@@ -1296,10 +1313,12 @@ class MiniDAW {
                 }
             }
             // Realce sobrevive ao redesenho (renderizarClips recria os blocos).
-            if (this.clipSelecionado && this.clipSelecionado.clipId === clip.id) {
+            if (this._estaSelecionado(clip.id)) {
                 el.classList.add('selecionado');
             }
             el.addEventListener('mousedown', (ev) => this.mousedownClip(ev, track.id, clip.id));
+            // Botão direito = seleciona SÓ este objeto e abre o menu (Samplitude).
+            el.addEventListener('contextmenu', (ev) => this.menuDoClip(ev, track.id, clip.id));
             conteudo.appendChild(el);
             this.desenharOndaDoClip(track, clip, el.querySelector('canvas'));
         }
@@ -1522,6 +1541,13 @@ class MiniDAW {
             return;
         }
         if (this.trackTesoura === trackId) return this.iniciarSelecao(ev, trackId);
+        if (ev.button === 2) return;          // botão direito: o contextmenu cuida
+        this._fecharMenuObjeto();
+
+        // Ctrl+clique liga/desliga este objeto no grupo (sem arrastar).
+        if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); this.alternarSelecao(trackId, clipId); return; }
+        // Objeto que já está num grupo: o arrasto leva o grupo inteiro.
+        if (this._estaSelecionado(clipId) && this.selecionados.length >= 2) return this._arrastarGrupo(ev, track, clip);
 
         // Clicar no corpo já seleciona (o Ctrl+C copia o selecionado). Vale
         // mesmo que o clique não vire arrasto — é o "clique pra selecionar".
@@ -1937,10 +1963,210 @@ class MiniDAW {
     // bloco no meio do gesto mataria o drag.
     selecionarClip(trackId, clipId) {
         this.clipSelecionado = { trackId, clipId };
-        document.querySelectorAll('.clip-bloco.selecionado')
-            .forEach(el => el.classList.remove('selecionado'));
-        const el = document.getElementById(`clip_el_${clipId}`);
-        if (el) el.classList.add('selecionado');
+        this.selecionados = [{ trackId, clipId }];
+        this._marcarSelecaoNaTela();
+    }
+
+    // ── SELEÇÃO MÚLTIPLA (23/09/2026) ────────────────────────────────────
+    // Ctrl+A / Ctrl+clique / botão direito, como no Samplitude. O grupo é o que
+    // o arrasto move junto, o Delete apaga e o Ctrl+C copia com as posições.
+    _estaSelecionado(clipId) { return this.selecionados.some(s => s.clipId === clipId); }
+
+    _marcarSelecaoNaTela() {
+        const ids = new Set(this.selecionados.map(s => s.clipId));
+        document.querySelectorAll('.clip-bloco').forEach(el => {
+            el.classList.toggle('selecionado', ids.has(el.id.replace('clip_el_', '')));
+        });
+    }
+
+    // Resolve o grupo em [{track, clip}] REAIS (objeto apagado/desfeito some).
+    _selecionadosVivos() {
+        const vivos = [];
+        for (const s of this.selecionados) {
+            const track = this.tracks.find(t => t.id === s.trackId);
+            if (!track) continue;
+            const clip = this._clipsDaFaixa(track).find(c => c.id === s.clipId);
+            if (clip) vivos.push({ track, clip });
+        }
+        return vivos;
+    }
+
+    alternarSelecao(trackId, clipId) {
+        const i = this.selecionados.findIndex(s => s.clipId === clipId);
+        if (i >= 0) this.selecionados.splice(i, 1); else this.selecionados.push({ trackId, clipId });
+        this.clipSelecionado = this.selecionados.length ? this.selecionados[this.selecionados.length - 1] : null;
+        this._marcarSelecaoNaTela();
+    }
+
+    selecionarTodos() {
+        const todos = [];
+        for (const t of this.tracks) for (const c of this._clipsDaFaixa(t)) todos.push({ trackId: t.id, clipId: c.id });
+        if (!todos.length) return false;
+        this.selecionados = todos;
+        this.clipSelecionado = todos[0];
+        this._marcarSelecaoNaTela();
+        this.showNotification(`${todos.length} objetos selecionados — arraste pra mover juntos, Delete apaga, Ctrl+C copia, Esc limpa`, 'info');
+        return true;
+    }
+
+    limparSelecao() {
+        this.selecionados = [];
+        this.clipSelecionado = null;
+        this._marcarSelecaoNaTela();
+    }
+
+    // Apaga o grupo (ou o único selecionado). Um Ctrl+Z desfaz tudo.
+    apagarSelecionados() {
+        const grupo = this._selecionadosVivos();
+        if (!grupo.length) return false;
+        this._guardarUndo(this._snapshotClips());
+        const ids = new Set(grupo.map(g => g.clip.id));
+        const faixas = [...new Set(grupo.map(g => g.track))];
+        for (const t of faixas) {
+            t.clips = this._clipsDaFaixa(t).filter(c => !ids.has(c.id));
+            this._sincronizarDerivados(t);
+            if (!t.clips.length) this.updateTrackUI(t);   // esvaziou: vira drop-zone
+        }
+        this.limparSelecao();
+        this.aposMudancaDeClips(faixas);
+        this.showNotification(`${grupo.length} objeto${grupo.length > 1 ? 's' : ''} apagado${grupo.length > 1 ? 's' : ''} — Ctrl+Z desfaz`, 'success');
+        return true;
+    }
+
+    // Arrasto em grupo: todos andam o MESMO delta, cada um na própria faixa.
+    // Imã do objeto agarrado (bordas dos NÃO selecionados, marcadores, 0, cursor);
+    // ninguém passa do 0:00; se algum selecionado invadiria um não selecionado
+    // da própria faixa, o grupo não anda. Um Ctrl+Z desfaz o grupo inteiro.
+    _arrastarGrupo(ev, track, clip) {
+        ev.preventDefault();
+        const grupo = this._selecionadosVivos();
+        if (grupo.length < 2) return;
+        const idsGrupo = new Set(grupo.map(g => g.clip.id));
+        const iniciais = new Map(grupo.map(g => [g.clip.id, g.clip.inicio]));
+        const minIni = Math.min(...grupo.map(g => g.clip.inicio));
+        const x0 = ev.clientX;
+        const tempoDoClique = this._tempoNoPonto(ev, track);
+        const snapshot = this._snapshotClips();
+        let moveu = false, deltaAtual = 0;
+        this.clipDrag = { track, clip, moveu: false, grupo: true };
+        const blocos = () => grupo.map(g => document.getElementById(`clip_el_${g.clip.id}`)).filter(Boolean);
+        blocos().forEach(el => el.classList.add('arrastando'));
+
+        const mover = (e) => {
+            if (!(e.buttons & 1)) return soltar();
+            const dx = e.clientX - x0;
+            if (!moveu && Math.abs(dx) < 3) return;
+            moveu = true; this.clipDrag.moveu = true;
+            const alvos = [0, this.currentTime || 0];
+            for (const t of this.tracks) {
+                for (const c of this._clipsDaFaixa(t)) {
+                    if (idsGrupo.has(c.id)) continue;
+                    alvos.push(c.inicio, ClipModel.fimDoClip(c), c.inicio - clip.duracao, ClipModel.fimDoClip(c) - clip.duracao);
+                }
+            }
+            for (const mt of this._temposDosMarcadores()) alvos.push(mt, mt - clip.duracao);
+            const pedido = iniciais.get(clip.id) + dx / this.pxPorSegundo;
+            const ajustado = ClipModel.calcularSnap(pedido, alvos, 8 / this.pxPorSegundo);
+            let delta = Math.max(-minIni, ajustado - iniciais.get(clip.id));   // ninguém passa do 0:00
+            for (const g of grupo) {
+                const outros = this._clipsDaFaixa(g.track).filter(c => !idsGrupo.has(c.id));
+                const teste = { id: g.clip.id, inicio: iniciais.get(g.clip.id) + delta, duracao: g.clip.duracao };
+                if (ClipModel.temSobreposicao(outros.concat([teste]), teste)) return;   // bateu: o grupo fica onde está
+            }
+            deltaAtual = delta;
+            for (const g of grupo) {
+                g.clip.inicio = iniciais.get(g.clip.id) + delta;
+                const el = document.getElementById(`clip_el_${g.clip.id}`);
+                if (el) el.style.left = (g.clip.inicio * this.pxPorSegundo) + 'px';
+            }
+        };
+        const soltar = () => {
+            document.removeEventListener('mousemove', mover);
+            document.removeEventListener('mouseup', soltar);
+            blocos().forEach(el => el.classList.remove('arrastando'));
+            this.clipDrag = null;
+            if (!moveu) {
+                // Clique seco num objeto do grupo: vira seleção só dele (Samplitude).
+                this.selecionarClip(track.id, clip.id);
+                this.irPara(tempoDoClique);
+                return;
+            }
+            this._guardarUndo(snapshot);
+            const faixas = [...new Set(grupo.map(g => g.track))];
+            for (const t of faixas) t.clips = ClipModel.ordenarClips(this._clipsDaFaixa(t));
+            this.aposMudancaDeClips(faixas);
+            this.showNotification(`${grupo.length} objetos movidos ${deltaAtual >= 0 ? '+' : '−'}${Math.abs(deltaAtual).toFixed(2)}s — Ctrl+Z desfaz`, 'success');
+        };
+        document.addEventListener('mousemove', mover);
+        document.addEventListener('mouseup', soltar);
+    }
+
+    // ── MENU DE CONTEXTO DO OBJETO (botão direito) ───────────────────────
+    menuDoClip(ev, trackId, clipId) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (this.clipDrag || this.clipTrim) return;
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        // Botão direito seleciona SÓ este objeto — a menos que ele já faça parte
+        // de um grupo (aí o menu age no grupo).
+        if (!(this._estaSelecionado(clipId) && this.selecionados.length >= 2)) this.selecionarClip(trackId, clipId);
+        const n = this.selecionados.length;
+        const tempo = this._tempoNoPonto(ev, track);
+        const alvo = { trackId, tempo };
+        const plural = n >= 2 ? ` ${n} objetos` : '';
+        const itens = [
+            { rotulo: 'Copiar' + plural, tecla: 'Ctrl+C', acao: () => this.copiarClip() },
+            { rotulo: 'Recortar' + plural, tecla: 'Ctrl+X', acao: () => this.recortarClip() },
+            { rotulo: 'Colar aqui', tecla: 'Ctrl+V', desabilitado: !this.clipboardClip && !this.clipboardGrupo, acao: () => this.colarClip(alvo) },
+            { sep: true },
+            { rotulo: 'Dividir aqui', tecla: 'D', acao: () => this.cutTrackAtTime(trackId, tempo) },
+            { rotulo: 'Time Stretch exato…', acao: () => this.stretchExato(trackId, clipId) },
+            { sep: true },
+            { rotulo: 'Apagar' + plural, tecla: 'Delete', acao: () => this.apagarSelecionados() },
+            { rotulo: 'Selecionar todos', tecla: 'Ctrl+A', acao: () => this.selecionarTodos() },
+        ];
+        this._abrirMenuObjeto(ev.clientX, ev.clientY, itens);
+    }
+
+    _menuObjetoEl() {
+        let m = document.getElementById('menuObjeto');
+        if (m) return m;
+        m = document.createElement('div');
+        m.id = 'menuObjeto';
+        m.className = 'menu-objeto';
+        document.body.appendChild(m);
+        // Fecha em clique fora, rolagem e troca de janela (não em clique dentro).
+        document.addEventListener('mousedown', (e) => { if (!m.contains(e.target)) this._fecharMenuObjeto(); });
+        window.addEventListener('scroll', () => this._fecharMenuObjeto(), true);
+        window.addEventListener('blur', () => this._fecharMenuObjeto());
+        return m;
+    }
+
+    _abrirMenuObjeto(x, y, itens) {
+        const m = this._menuObjetoEl();
+        m.innerHTML = '';
+        for (const it of itens) {
+            if (it.sep) { m.appendChild(document.createElement('hr')); continue; }
+            const b = document.createElement('button');
+            b.type = 'button';
+            const r = document.createElement('span'); r.textContent = it.rotulo;   // textContent: nada de HTML
+            b.appendChild(r);
+            if (it.tecla) { const t = document.createElement('span'); t.className = 'tecla'; t.textContent = it.tecla; b.appendChild(t); }
+            b.disabled = !!it.desabilitado;
+            b.addEventListener('click', () => { this._fecharMenuObjeto(); it.acao(); });
+            m.appendChild(b);
+        }
+        m.classList.add('aberto');
+        // Dentro da janela: se não cabe embaixo/à direita, abre pra cima/esquerda.
+        const w = m.offsetWidth, h = m.offsetHeight;
+        m.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 4)) + 'px';
+        m.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 4)) + 'px';
+    }
+
+    _fecharMenuObjeto() {
+        const m = document.getElementById('menuObjeto');
+        if (m) m.classList.remove('aberto');
     }
 
     // Resolve a seleção em {track, clip} REAIS. Devolve null se o objeto sumiu
@@ -1968,6 +2194,7 @@ class MiniDAW {
     // Guarda o molde na área de transferência. Buffer POR REFERÊNCIA: colar a
     // mesma voz em 4 faixas não pesa memória nem vira 4 WAVs ao salvar.
     _copiarParaClipboard(clip, origemId) {
+        this.clipboardGrupo = null;                       // cópia simples manda
         this.clipboardClip = {
             buffer: clip.buffer, offset: clip.offset, duracao: clip.duracao,
             fadeIn: clip.fadeIn || 0, fadeOut: clip.fadeOut || 0,
@@ -1976,12 +2203,74 @@ class MiniDAW {
         };
     }
 
+    // Conjunto: cada objeto guarda a faixa de origem e a posição RELATIVA ao
+    // primeiro (Ctrl+V cola nas mesmas faixas, ancorado no tempo pedido).
+    _copiarGrupoParaClipboard(grupo) {
+        const base = Math.min(...grupo.map(g => g.clip.inicio));
+        this.clipboardClip = null;
+        this.clipboardGrupo = grupo.map(g => ({
+            trackId: g.track.id, rel: g.clip.inicio - base,
+            buffer: g.clip.buffer, offset: g.clip.offset, duracao: g.clip.duracao,
+            fadeIn: g.clip.fadeIn || 0, fadeOut: g.clip.fadeOut || 0,
+            stretch: g.clip.stretch, origem: g.clip.origem
+        }));
+    }
+
+    // Cola o conjunto nas MESMAS faixas de origem. Tudo ou nada: faixa sumida
+    // ou objeto sem espaço = não cola (um objeto colado sozinho fora do lugar
+    // seria pior que não colar). `alvo` = {trackId, tempo} do menu de contexto.
+    _colarGrupo(alvo) {
+        const g = this.clipboardGrupo;
+        const tempoBase = alvo && typeof alvo.tempo === 'number' ? alvo.tempo
+            : (this.cursorTempo != null ? this.cursorTempo : (this.currentTime || 0));
+        const porFaixa = new Map();
+        for (const item of g) {
+            const track = this.tracks.find(t => t.id === item.trackId);
+            if (!track) {
+                this.showNotification('Uma das faixas de origem não existe mais — nada colado', 'info');
+                return true;
+            }
+            if (!porFaixa.has(track)) porFaixa.set(track, { lista: this._clipsDaFaixa(track).slice(), novos: [] });
+            const ent = porFaixa.get(track);
+            const novo = ClipModel.clonarClip(item, Math.max(0, tempoBase + item.rel));
+            if (item.stretch > 0) novo.stretch = item.stretch;
+            if (item.origem) novo.origem = item.origem;
+            if (ClipModel.temSobreposicao(ent.lista.concat([novo]), novo)) {
+                this.showNotification(`Sem espaço em "${track.name}" a ${novo.inicio.toFixed(2)}s — nada colado (tudo ou nada)`, 'info');
+                return true;
+            }
+            ent.lista.push(novo);
+            ent.novos.push(novo);
+        }
+        this._guardarUndo(this._snapshotClips());
+        const faixas = [];
+        this.selecionados = [];
+        for (const [track, ent] of porFaixa) {
+            const eraVazia = this._clipsDaFaixa(track).length === 0;
+            track.clips = ClipModel.ordenarClips(ent.lista);
+            this._sincronizarDerivados(track);
+            if (eraVazia) this.updateTrackUI(track);
+            faixas.push(track);
+            for (const n of ent.novos) this.selecionados.push({ trackId: track.id, clipId: n.id });
+        }
+        this.clipSelecionado = this.selecionados[0] || null;
+        this.aposMudancaDeClips(faixas);
+        this.showNotification(`${g.length} objetos colados a partir de ${tempoBase.toFixed(2)}s — Ctrl+Z desfaz`, 'success');
+        return true;
+    }
+
     copiarClip() {
         // Texto selecionado na página tem prioridade: senão o Ctrl+C de copiar
         // um roteiro da tela viraria "copiar objeto" com um clip realçado.
         const texto = (typeof window.getSelection === 'function')
             ? String(window.getSelection() || '').trim() : '';
         if (texto) return false;
+        const grupo = this._selecionadosVivos();
+        if (grupo.length >= 2) {
+            this._copiarGrupoParaClipboard(grupo);
+            this.showNotification(`${grupo.length} objetos copiados com as posições — aponte o tempo e Ctrl+V (colam nas mesmas faixas)`, 'success');
+            return true;
+        }
         const alvo = this._clipSelecionadoVivo();
         if (!alvo) {
             this.showNotification('Clique num objeto da timeline antes de copiar', 'info');
@@ -1994,6 +2283,13 @@ class MiniDAW {
     }
 
     recortarClip() {
+        const grupo = this._selecionadosVivos();
+        if (grupo.length >= 2) {
+            this._copiarGrupoParaClipboard(grupo);
+            this.apagarSelecionados();
+            this.showNotification(`${grupo.length} objetos recortados — Ctrl+V cola nas mesmas faixas, Ctrl+Z desfaz`, 'success');
+            return true;
+        }
         const alvo = this._clipSelecionadoVivo();
         if (!alvo) {
             this.showNotification('Clique num objeto da timeline antes de recortar', 'info');
@@ -2004,19 +2300,21 @@ class MiniDAW {
         const { track, clip } = alvo;
         track.clips = this._clipsDaFaixa(track).filter(c => c.id !== clip.id);
         this._sincronizarDerivados(track);
-        this.clipSelecionado = null;
+        this.limparSelecao();
         if (!track.clips.length) this.updateTrackUI(track);   // esvaziou: vira drop-zone
         this.aposMudancaDeClips([track]);
         this.showNotification('Objeto recortado — Ctrl+V cola, Ctrl+Z desfaz', 'success');
         return true;
     }
 
-    colarClip() {
+    colarClip(alvo) {
+        if (this.clipboardGrupo && this.clipboardGrupo.length) return this._colarGrupo(alvo);
         if (!this.clipboardClip) {
             this.showNotification('Nada copiado ainda (clique num objeto e Ctrl+C)', 'info');
             return false;
         }
-        const destino = this._faixaSobOMouse();
+        // `alvo` vem do menu de contexto (o mouse está sobre o menu, não na lane).
+        const destino = (alvo && alvo.trackId) ? this.tracks.find(t => t.id === alvo.trackId) : this._faixaSobOMouse();
         if (!destino) {
             this.showNotification('Aponte o mouse na faixa onde quer colar e tecle Ctrl+V', 'info');
             return false;
@@ -2024,9 +2322,10 @@ class MiniDAW {
         // Ponto de destino: a linha de corte, se o mouse está sobre a lane —
         // mesma regra do D/T e do Delete. Sobre o card de uma faixa vazia (sem
         // lane) não há linha: cola no cursor de reprodução.
-        const inicioPedido = (this.cursorLane === destino.id && this.cursorTempo != null)
-            ? this.cursorTempo
-            : (this.currentTime || 0);
+        const inicioPedido = (alvo && typeof alvo.tempo === 'number') ? alvo.tempo
+            : (this.cursorLane === destino.id && this.cursorTempo != null)
+                ? this.cursorTempo
+                : (this.currentTime || 0);
 
         const clipsDestino = this._clipsDaFaixa(destino);
         const novo = ClipModel.clonarClip(this.clipboardClip, inicioPedido);
@@ -5034,8 +5333,9 @@ class MiniDAW {
             this.redoClips = [];
             // Seleção e área de transferência são do projeto ANTERIOR: colar
             // áudio de outro spot depois de abrir um projeto seria surpresa.
-            this.clipSelecionado = null;
+            this.limparSelecao();
             this.clipboardClip = null;
+            this.clipboardGrupo = null;
             this.marcadores = this._normalizarMarcadores(proj.marcadores);
             if (window.MasterSuite) MasterSuite.carregar(proj.master || null);   // sem master salvo = EQ zerado
 

@@ -72,7 +72,7 @@ def cliente():
 
 def test_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    assert 'clip-model.js?v=5' in html and 'minidaw.js?v=67' in html
+    assert 'clip-model.js?v=5' in html and 'minidaw.js?v=68' in html
 
 
 def test_varios_trechos_num_clique():
