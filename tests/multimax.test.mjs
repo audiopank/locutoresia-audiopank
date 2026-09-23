@@ -25,8 +25,11 @@ function contextoFalso() {
 
 test('presets: 7 do Samplitude, todos sãos (limiar ≤ 0, ratio ≥ 1, ganho moderado), padrão = Loudness médio', () => {
     const P = MixEngine.PRESETS_MULTIMAX;
-    assert.equal(P.length, 7);
-    assert.deepEqual(P.map(p => p.chave), ['loud1', 'loud2', 'loud3', 'radio', 'presenca', 'graves', 'sib']);
+    assert.equal(P.length, 8);
+    assert.deepEqual(P.map(p => p.chave), ['loud1', 'loud2', 'loud3', 'radio', 'presenca', 'graves', 'sib', 'autoradio']);
+    // Autoradio (Pop): o padrão do Samplitude que ele gosta — cortes próprios em 200 Hz / 4 kHz.
+    assert.deepEqual(MixEngine.presetMultimax('autoradio').cortes, [200, 4000]);
+    assert.deepEqual(MixEngine.paramsMultimax('autoradio').cortes, [200, 4000]);
     for (const p of P) {
         assert.equal(p.bandas.length, 3, p.chave);
         for (const [thr, ratio, ganho] of p.bandas) {
@@ -69,6 +72,14 @@ test('criarMultiband: crossover LR4 3 vias (8 biquads Q=1/√2), 1 compressor po
     const mb = MixEngine.criarMultiband(ctx);
     assert.deepEqual(mb.cortes, [100, 5000]);
     const F = mb.filtros;
+    // Cortes mudam ao vivo com o preset; fora da faixa sã, ficam como estão.
+    assert.deepEqual(mb.setCortes([200, 4000]), [200, 4000]);
+    for (const n of [...F.low, ...F.rest]) assert.equal(n.frequency.value, 200);
+    for (const n of [...F.mid, ...F.hi]) assert.equal(n.frequency.value, 4000);
+    assert.deepEqual(mb.setCortes([5, 90000]), [200, 4000]);
+    mb.aplicar(MixEngine.paramsMultimax('loud2'));
+    assert.deepEqual(mb.cortes, [100, 5000]);                           // aplicar() leva os cortes do preset
+    mb.aplicar(null);                                                   // volta ao estado de nascença pras checagens abaixo
     for (const n of F.low)  { assert.equal(n.type, 'lowpass');  assert.equal(n.frequency.value, 100); }
     for (const n of F.rest) { assert.equal(n.type, 'highpass'); assert.equal(n.frequency.value, 100); }
     for (const n of F.mid)  { assert.equal(n.type, 'lowpass');  assert.equal(n.frequency.value, 5000); }

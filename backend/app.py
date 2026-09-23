@@ -9674,7 +9674,7 @@ def _sanear_marcadores(lista):
 
 
 # Espelho de static/mix-engine.js (PRESETS_MULTIMAX): mudou lá, muda aqui.
-MULTIMAX_PRESETS = ('loud1', 'loud2', 'loud3', 'radio', 'presenca', 'graves', 'sib')
+MULTIMAX_PRESETS = ('loud1', 'loud2', 'loud3', 'radio', 'presenca', 'graves', 'sib', 'autoradio')
 
 
 def _sanear_master(d):

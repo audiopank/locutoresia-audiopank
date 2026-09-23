@@ -88,6 +88,6 @@ def test_pagina_carrega_painel_e_scripts_na_ordem(cliente):
     for t in ('id="masterSuite"', 'id="msEspectro"', 'id="msCobreL"', 'id="msPicoR"', 'id="msLufsM"', 'id="msClip"', 'id="msArquivo"',
               '.master-suite {', 'minidaw.js?v=68'):
         assert t in html, t
-    assert html.index('mix-engine.js?v=14') < html.index('loudness.js?v=1') < html.index('master-suite.js?v=6') < html.index('minidaw.js?v=68')
+    assert html.index('mix-engine.js?v=15') < html.index('loudness.js?v=1') < html.index('master-suite.js?v=7') < html.index('minidaw.js?v=68')
     assert cliente.get('/static/loudness.js').status_code == 200
     assert cliente.get('/static/master-suite.js').status_code == 200

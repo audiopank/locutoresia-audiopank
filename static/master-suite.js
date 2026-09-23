@@ -509,8 +509,17 @@
         if (info) {
             const p = (global.MixEngine && global.MixEngine.presetMultimax) ? global.MixEngine.presetMultimax(mb.preset) : null;
             info.textContent = mb.ligado
-                ? `${p ? p.rotulo + ' — ' + p.dica : ''} Cortes em 100 Hz e 5 kHz. Vale na prévia e no arquivo (Exportar, Otimizar, Ouvir no alvo); stems saem crus.`
+                ? `${p ? p.rotulo + ' — ' + p.dica : ''} Vale na prévia e no arquivo (Exportar, Otimizar, Ouvir no alvo); stems saem crus.`
                 : 'Desligado: o mix passa seco, igual ao aprovado. Ligue pra colar voz e trilha e encher o som.';
+        }
+        // Rótulos das bandas seguem os cortes do preset (Autoradio = 200 Hz / 4 kHz).
+        const q = paramsMultimaxAtual() || (global.MixEngine && global.MixEngine.paramsMultimax ? global.MixEngine.paramsMultimax(mb.preset, mb.ganhos) : null);
+        if (q && Array.isArray(q.cortes)) {
+            const [c0, c1] = q.cortes;
+            const n0 = $('msMbNome0'), n1 = $('msMbNome1'), n2 = $('msMbNome2');
+            if (n0) n0.textContent = `Graves · até ${fmtHz(c0)}`;
+            if (n1) n1.textContent = `Médios · ${fmtHz(c0)} a ${fmtHz(c1)} (a voz mora aqui)`;
+            if (n2) n2.textContent = `Agudos · acima de ${fmtHz(c1)}`;
         }
         const wrap = $('msMb'); if (wrap) wrap.classList.toggle('ligado', mb.ligado);
     }

@@ -848,6 +848,10 @@
         { chave: 'presenca', rotulo: 'Mais presença',   dica: 'Médios pra frente: a voz atravessa a trilha.',        bandas: [[-24, 2, 0],   [-27, 2.5, 2.5], [-26, 2, 1]] },
         { chave: 'graves',   rotulo: 'Mais graves',     dica: 'Peito na voz e corpo na trilha, sem embolar.',        bandas: [[-26, 2.5, 3], [-24, 2, 0],     [-24, 2, 0]] },
         { chave: 'sib',      rotulo: 'Voz sibilante',   dica: 'Agudo comprimido forte: de-esser de master.',         bandas: [[-24, 2, 0],   [-24, 2, 0],     [-34, 6, 0]] },
+        // O preset do Samplitude que ele gosta (23/09/2026): cortes em 200 Hz e
+        // 4 kHz (o grave "fala" mais alto e a presença entra na banda de cima),
+        // toque leve nas três bandas (os knobs dele ficam em 15%).
+        { chave: 'autoradio', rotulo: 'Autoradio (Pop)', dica: 'Cortes em 200 Hz e 4 kHz, toque leve nas três bandas: o padrão de rádio do Samplitude.', cortes: [200, 4000], bandas: [[-26, 2.5, 1.5], [-26, 2.5, 1], [-26, 2.5, 1]] },
     ];
     const MULTIMAX_PRESET_PADRAO = 'loud2';
     function presetMultimax(chave) {
@@ -859,7 +863,7 @@
         const p = presetMultimax(chave);
         const g = Array.isArray(ganhos) ? ganhos : [0, 0, 0];
         return {
-            ativo: true, preset: p.chave, cortes: MULTIMAX_CORTES.slice(),
+            ativo: true, preset: p.chave, cortes: (p.cortes || MULTIMAX_CORTES).slice(),   // preset pode ter cortes próprios
             bandas: p.bandas.map(([threshold, ratio, ganhoDb], i) => {
                 const extra = Math.max(-6, Math.min(6, Number(g[i]) || 0));
                 return {
@@ -897,8 +901,19 @@
         const mb = {
             input: entrada, output: saida, dry, wet, bandas, cortes: c.slice(),
             filtros: { low: [lowA, lowB], rest: [restA, restB], mid: [midA, midB], hi: [hiA, hiB] },
+            // Muda os cortes ao vivo (8 biquads). Fora de 40..1000 / 1000..12000 Hz, ignora.
+            setCortes(cortes) {
+                if (!Array.isArray(cortes) || cortes.length !== 2) return mb.cortes;
+                const c0 = Number(cortes[0]), c1 = Number(cortes[1]);
+                if (!(c0 >= 40 && c0 <= 1000 && c1 >= 1000 && c1 <= 12000)) return mb.cortes;
+                for (const n of [lowA, lowB, restA, restB]) n.frequency.value = c0;
+                for (const n of [midA, midB, hiA, hiB]) n.frequency.value = c1;
+                mb.cortes = [c0, c1];
+                return mb.cortes;
+            },
             aplicar(p) {
                 const ativo = !!(p && p.ativo && Array.isArray(p.bandas));
+                if (ativo && Array.isArray(p.cortes)) mb.setCortes(p.cortes);
                 bandas.forEach((b, i) => {
                     const q = ativo ? p.bandas[i] : null;
                     if (q) {
