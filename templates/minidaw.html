@@ -400,6 +400,8 @@
         .master-suite { margin-top: 1rem; border: 1px solid var(--border-color); border-radius: 10px; background: #0b1020; padding: .75rem 1rem; }
         .ms-cab { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline; margin-bottom: .5rem; }
         .ms-titulo { font-weight: 600; color: #c7d2fe; font-size: .9rem; }
+        .ms-presets { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: -.2rem 0 .6rem; padding: .35rem .5rem; background: #0b1020; border: 1px solid #1f2937; border-radius: 6px; }
+        .ms-presets .ms-select { margin: 0; min-width: 220px; }
         .ms-arquivo { font-size: .78rem; color: #94a3b8; }
         .ms-arquivo.medido { color: #bbf7d0; }
         .ms-corpo { display: grid; grid-template-columns: minmax(280px, 360px) minmax(220px, 1fr) minmax(240px, 300px); gap: 1rem; align-items: stretch; }
@@ -1162,6 +1164,15 @@
                 <span class="ms-titulo"><i class="fas fa-wave-square me-1"></i>Master · EQ, MultiMax, medidores e limiter</span>
                 <span class="ms-arquivo" id="msArquivo">Exporte um mix pra medir o arquivo: LUFS integrado · pico real · faixa dinâmica.</span>
             </div>
+            <!-- MEUS PRESETS DO MASTER (23/09/2026): o ajuste aprovado (EQ + MultiMax +
+                 limiter) com nome, guardado no Supabase, pra aplicar em qualquer
+                 projeto com um clique — "temos Crato toda semana". -->
+            <div class="ms-presets" title="Meus presets do master: guarde o ajuste atual (EQ, MultiMax e destino) com um nome e aplique em qualquer projeto com um clique. Fica no Supabase, vale em qualquer máquina.">
+                <span class="ms-titulo"><i class="fas fa-bookmark me-1"></i>Meus presets</span>
+                <select class="form-select form-select-sm ms-select" id="msPresetsSel"><option value="">— carregando… —</option></select>
+                <button type="button" class="ms-btn" id="msPresetsGuardar" title="Guarda o master atual como preset (mesmo nome = substitui)"><i class="fas fa-floppy-disk me-1"></i>Guardar atual…</button>
+                <button type="button" class="ms-btn" id="msPresetsApagar" title="Apaga o preset selecionado" disabled><i class="fas fa-trash"></i></button>
+            </div>
             <div class="ms-corpo">
                 <!-- Módulo B: EQ master de 4 bandas. Os pontos são a resposta REAL dos
                      biquads vivos; o export usa os mesmos parâmetros (prévia = arquivo). -->
@@ -1270,7 +1281,7 @@
     <script src="/static/mix-engine.js?v=15"></script>
     <script src="/static/clip-model.js?v=5"></script>
     <script src="/static/loudness.js?v=1"></script>
-    <script src="/static/master-suite.js?v=7"></script>
+    <script src="/static/master-suite.js?v=8"></script>
     <script src="/static/time-stretch.js?v=2"></script>
     <script src="/static/minidaw.js?v=68"></script>
     

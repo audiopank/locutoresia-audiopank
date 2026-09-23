@@ -311,6 +311,14 @@
         if (bmb) bmb.onclick = () => { mb.ligado = !mb.ligado; aplicarMultimax(); salvar(); };
         const bmono = $('msMono');
         if (bmono) bmono.onclick = () => { mono.ligado = !mono.ligado; aplicarMono(); };
+        // Meus presets do master.
+        const selP = $('msPresetsSel');
+        if (selP) selP.onchange = () => { if (selP.value) aplicarPresetSalvo(selP.value); desenharPresets(); };
+        const bg = $('msPresetsGuardar');
+        if (bg) bg.onclick = guardarPresetAtual;
+        const bap = $('msPresetsApagar');
+        if (bap) bap.onclick = apagarPresetSelecionado;
+        carregarPresets();
         const rmb = $('msMbReset');
         if (rmb) rmb.onclick = () => { mb.ganhos = [0, 0, 0]; mb.preset = 'loud2'; aplicarMultimax(); salvar(); };
         [0, 1, 2].forEach(i => {
@@ -525,6 +533,93 @@
     }
     function multimaxParaRender() { return paramsMultimaxAtual(); }
 
+    // ── E. MEUS PRESETS DO MASTER (23/09/2026) ──────────────────────────
+    // "Temos Crato toda semana": o master inteiro (EQ + MultiMax + limiter)
+    // vira preset com nome, guardado no Supabase (app_config) via
+    // /api/master-presets — vale em qualquer projeto e em qualquer máquina.
+    // Cópia em localStorage só pra listar quando a rede falha.
+    const presets = { lista: [] };
+    function avisar(msg, tipo) { if (daw && typeof daw.showNotification === 'function') daw.showNotification(msg, tipo || 'info'); }
+    function desenharPresets() {
+        const sel = $('msPresetsSel');
+        if (!sel) return;
+        const atual = sel.value;
+        sel.innerHTML = '';
+        const o0 = document.createElement('option');
+        o0.value = ''; o0.textContent = presets.lista.length ? '— aplicar um preset meu —' : '— nenhum preset guardado —';
+        sel.appendChild(o0);
+        for (const p of presets.lista) {
+            const o = document.createElement('option');
+            o.value = p.nome; o.textContent = p.nome;
+            sel.appendChild(o);
+        }
+        if (atual && presets.lista.some(p => p.nome === atual)) sel.value = atual;
+        const ba = $('msPresetsApagar');
+        if (ba) ba.disabled = !sel.value;
+    }
+    async function carregarPresets() {
+        try {
+            const r = await fetch('/api/master-presets');
+            const d = await r.json();
+            if (d && d.success) {
+                presets.lista = d.presets || [];
+                try { localStorage.setItem('minidaw_master_presets', JSON.stringify(presets.lista)); } catch (e) { /* sem espaço */ }
+            } else {
+                throw new Error((d && d.error) || 'falha');
+            }
+        } catch (e) {
+            try { presets.lista = JSON.parse(localStorage.getItem('minidaw_master_presets') || '[]'); } catch (e2) { presets.lista = []; }
+            console.warn('[master] presets: usando a cópia local —', e.message);
+        }
+        desenharPresets();
+    }
+    function aplicarPresetSalvo(nome) {
+        const p = presets.lista.find(x => x.nome === nome);
+        if (!p) return;
+        carregar(p.master || null);
+        salvar();
+        avisar(`Preset "${p.nome}" aplicado no master — EQ, MultiMax e destino. Vai junto ao salvar o projeto.`, 'success');
+    }
+    async function guardarPresetAtual() {
+        const sel = $('msPresetsSel');
+        const sugestao = (sel && sel.value) || '';
+        const nome = prompt('Nome do preset (ex.: Rádio Crato). Mesmo nome = substitui.', sugestao);
+        if (nome == null || !String(nome).trim()) return;
+        try {
+            const r = await fetch('/api/master-presets', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nome: String(nome).trim(), master: estadoParaSalvar() })
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'falha ao guardar');
+            presets.lista = d.presets || [];
+            try { localStorage.setItem('minidaw_master_presets', JSON.stringify(presets.lista)); } catch (e) { /* sem espaço */ }
+            desenharPresets();
+            if (sel) { sel.value = String(nome).trim(); desenharPresets(); }
+            avisar(`Preset "${String(nome).trim()}" ${d.substituiu ? 'atualizado' : 'guardado'} — disponível em qualquer projeto.`, 'success');
+        } catch (e) {
+            avisar('Não consegui guardar o preset: ' + e.message, 'error');
+        }
+    }
+    async function apagarPresetSelecionado() {
+        const sel = $('msPresetsSel');
+        const nome = sel && sel.value;
+        if (!nome) return;
+        if (!confirm(`Apagar o preset "${nome}"? O master atual continua como está.`)) return;
+        try {
+            const r = await fetch('/api/master-presets/' + encodeURIComponent(nome), { method: 'DELETE' });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'falha ao apagar');
+            presets.lista = d.presets || [];
+            try { localStorage.setItem('minidaw_master_presets', JSON.stringify(presets.lista)); } catch (e) { /* sem espaço */ }
+            if (sel) sel.value = '';
+            desenharPresets();
+            avisar(`Preset "${nome}" apagado.`, 'info');
+        } catch (e) {
+            avisar('Não consegui apagar o preset: ' + e.message, 'error');
+        }
+    }
+
     // ── D3. MONO DE CHECAGEM ─────────────────────────────────────────────
     // Soma L+R na PRÉVIA (largura 0 no master) pra ouvir como o spot fica em
     // rádio AM e no alto-falante do celular. Só monitoração: não vai pro
@@ -729,6 +824,6 @@
         instalar, ligar, desligar, medirArquivo, BANDAS_HZ, DESTINOS,
         estadoParaSalvar, carregar, eqParaRender,
         limiterParaRender, loudnessAtivo, masterizarParaAlvo, garantirTeto, medirMix,
-        multimaxParaRender
+        multimaxParaRender, carregarPresets, aplicarPresetSalvo
     };
 })(window);

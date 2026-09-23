@@ -9714,6 +9714,80 @@ def _sanear_master(d):
     return saida
 
 
+# ── MEUS PRESETS DO MASTER (23/09/2026) ─────────────────────────────────
+# "Temos Crato toda semana": o ajuste de master aprovado (EQ + MultiMax +
+# limiter) vira preset com nome, guardado em app_config (chave
+# 'master_presets') pra valer em QUALQUER projeto e em qualquer máquina.
+# Rotas atrás do portão de senha (não estão em ROTAS_PUBLICAS).
+MASTER_PRESETS_CHAVE = 'master_presets'
+MASTER_PRESETS_MAX = 30
+
+
+def _ler_master_presets():
+    try:
+        r = supabase_manager.newpost_manager_client.table('app_config') \
+            .select('valor').eq('chave', MASTER_PRESETS_CHAVE).limit(1).execute()
+        lista = r.data[0].get('valor') if r.data else None
+        return [p for p in (lista or []) if isinstance(p, dict) and p.get('nome')]
+    except Exception as e:
+        print(f"master_presets indisponível: {e}")
+        return []
+
+
+def _gravar_master_presets(lista):
+    supabase_manager.newpost_manager_client.table('app_config').upsert({
+        "chave": MASTER_PRESETS_CHAVE, "valor": lista,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }).execute()
+
+
+@app.route('/api/master-presets', methods=['GET'])
+def listar_master_presets():
+    if not supabase_manager or not supabase_manager.newpost_manager_client:
+        return jsonify({'success': False, 'error': 'Supabase não configurado', 'presets': []}), 500
+    return jsonify({'success': True, 'presets': _ler_master_presets()})
+
+
+@app.route('/api/master-presets', methods=['POST'])
+def salvar_master_preset():
+    """Guarda (ou substitui, pelo nome) o master atual como preset."""
+    if not supabase_manager or not supabase_manager.newpost_manager_client:
+        return jsonify({'success': False, 'error': 'Supabase não configurado'}), 500
+    data = request.get_json() or {}
+    nome = str(data.get('nome') or '').strip()[:40]
+    if not nome:
+        return jsonify({'success': False, 'error': 'Dê um nome ao preset'}), 400
+    master = _sanear_master(data.get('master'))
+    if not master:
+        return jsonify({'success': False, 'error': 'Master inválido'}), 400
+    try:
+        lista = [p for p in _ler_master_presets() if p.get('nome', '').lower() != nome.lower()]
+        substituiu = len(lista) != len(_ler_master_presets())
+        if len(lista) >= MASTER_PRESETS_MAX:
+            return jsonify({'success': False, 'error': f'Limite de {MASTER_PRESETS_MAX} presets — apague algum'}), 400
+        lista.append({'nome': nome, 'master': master, 'salvo_em': datetime.now(timezone.utc).isoformat()})
+        lista.sort(key=lambda p: p['nome'].lower())
+        _gravar_master_presets(lista)
+        return jsonify({'success': True, 'presets': lista, 'substituiu': substituiu})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/master-presets/<nome>', methods=['DELETE'])
+def apagar_master_preset(nome):
+    if not supabase_manager or not supabase_manager.newpost_manager_client:
+        return jsonify({'success': False, 'error': 'Supabase não configurado'}), 500
+    try:
+        antes = _ler_master_presets()
+        lista = [p for p in antes if p.get('nome', '').lower() != str(nome or '').strip().lower()]
+        if len(lista) == len(antes):
+            return jsonify({'success': False, 'error': 'Preset não encontrado'}), 404
+        _gravar_master_presets(lista)
+        return jsonify({'success': True, 'presets': lista})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/projects', methods=['POST', 'OPTIONS'])
 def save_vip_project():
     if request.method == 'OPTIONS':

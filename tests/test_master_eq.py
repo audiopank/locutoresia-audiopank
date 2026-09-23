@@ -64,7 +64,7 @@ def cliente():
 def test_painel_eq_e_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('id="msEqCanvas"', 'id="msEqBypass"', 'id="msEqReset"', 'id="msEqBandas"', '.ms-eq canvas {',
-              'mix-engine.js?v=15', 'master-suite.js?v=7', 'minidaw.js?v=68'):
+              'mix-engine.js?v=15', 'master-suite.js?v=8', 'minidaw.js?v=68'):
         assert t in html, t
     assert os.path.exists(os.path.join(RAIZ, 'MINIDAW_MASTER.sql'))
 
