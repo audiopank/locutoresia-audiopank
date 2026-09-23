@@ -205,6 +205,14 @@
             .map((p, i) => limpa({ n: i + 1, titulo: '', narracao: p, ambiente: '' }));
     }
 
+    // Post do feed: se o texto está em cenas, só a narração (sem "CENA n"/"[Ambiente]").
+    function textoParaFeed(texto) {
+        const t = String(texto || '').trim();
+        if (!RE_CENA.test(t)) return t;
+        const so = parsearCenas(t).map(c => c.narracao).join('\n\n');
+        return so || t;
+    }
+
     function textoDeCenas(cenas) {
         return cenas.map(c => `CENA ${c.n} — ${c.titulo}\n${c.narracao}` + (c.ambiente ? `\n[Ambiente: ${c.ambiente}]` : '')).join('\n\n');
     }
@@ -1591,9 +1599,9 @@
                         nome: (document.getElementById('inputNome').value || 'Spot').trim(),
                         // Áudio para vídeo: o post leva só a NARRAÇÃO — "CENA n" e
                         // "[Ambiente: …]" são instrução de produção, não texto pro leitor.
-                        texto: (pecaAtual() === 'video' && estado.cenas.length)
-                            ? estado.cenas.map(c => c.narracao).join('\n\n')
-                            : (document.getElementById('textoComercial').value || ''),
+                        // Texto em cenas (mesmo reaberto dos guardados) vai só com a narração;
+                        // o servidor garante o mesmo de novo (narracao_para_feed).
+                        texto: textoParaFeed(document.getElementById('textoComercial').value || ''),
                         // Com programa, o número do episódio vai explícito (o
                         // nome do spot não tem mais "#N" — o badge da série mostra).
                         episodio: programaAtual()

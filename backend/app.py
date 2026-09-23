@@ -950,6 +950,19 @@ def cenas_de_texto(texto):
     return [{'n': i + 1, 'titulo': f'Cena {i + 1}', 'narracao': p[:1200], 'ambiente': ''} for i, p in enumerate(pars[:12])]
 
 
+def narracao_para_feed(texto):
+    """Texto do post no feed: se veio em cenas, fica só a NARRAÇÃO.
+
+    "CENA n — título" e "[Ambiente: …]" são instrução de produção pro editor de
+    vídeo, não texto pro leitor (23/09/2026: saiu no feed do Achadinhos). Vale
+    pra qualquer caminho — tela nova, spot reaberto, texto colado.
+    """
+    texto = str(texto or '').strip()
+    if not RE_CENA.search(texto):
+        return texto
+    return '\n\n'.join(c['narracao'] for c in cenas_de_texto(texto)) or texto
+
+
 def estimar_duracao_locucao(texto):
     """Segundos estimados de locução para um texto. Só conta palavras."""
     palavras = [p for p in re.split(r'\s+', str(texto or '').strip()) if p]
@@ -6559,7 +6572,7 @@ def api_gerador_publicar_feed():
                                      "Confira o nome exato na Vercel (ambiente Production) e faça Redeploy — "
                                      "variável nova só vale em deploy novo."}), 400
         nome = str(data.get('nome') or 'Spot').strip()[:120]
-        texto = str(data.get('texto') or '').strip()
+        texto = narracao_para_feed(data.get('texto'))     # cenas → só a narração
         audio_b64 = str(data.get('audio_base64') or '')
         if ',' in audio_b64[:80]:
             audio_b64 = audio_b64.split(',', 1)[1]   # tira o prefixo data:...;base64,

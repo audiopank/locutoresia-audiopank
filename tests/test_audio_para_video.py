@@ -102,5 +102,5 @@ def test_tela_e_versao(cliente):
     html = cliente.get('/gerador').get_data(as_text=True)
     for t in ('id="selectPeca"', 'id="grupoVideo"', 'id="selectDuracaoVideo"', 'id="selectEstiloNarracao"', 'id="grupoPlano"',
               'id="painelCenas"', 'id="listaCenas"', 'id="cenasConferencia"', 'id="btnCopiarCronometrado"',
-              'id="btnBaixarCronometrado"', 'id="btnBaixarSoVoz"', '.cena-item {', 'gerador.js?v=27'):
+              'id="btnBaixarCronometrado"', 'id="btnBaixarSoVoz"', '.cena-item {', 'gerador.js?v=28'):
         assert t in html, t
