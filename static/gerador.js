@@ -37,6 +37,7 @@
         trilhaCliente: null, // trilha subida NESTA aba: {id, name, file_url, buffer}
         roteiroMontado: false, // programa: o texto do comercial veio do "Montar roteiro"
         rascunhoMeta: null,    // spot reaberto dos guardados: {nome, conta, episodio, ...}
+        cenas: [],             // Áudio para vídeo: [{n, titulo, narracao, ambiente, buffer, inicio, fim}]
         duracaoMix: 0          // duração do último mix (vai no .txt gêmeo do rascunho)
     };
 
@@ -150,6 +151,188 @@
                 `<option value="${esc(v.id)}"${i === Math.min(1, gemini.length - 1) ? ' selected' : ''}>${rotuloVoz(v)}</option>`
               ).join('')
             : '<option value="">— catálogo de vozes vazio —</option>';
+    }
+
+    // ── ÁUDIO PARA VÍDEO (23/09/2026) ─────────────────────────────────────
+    // O modal "Ideia para vídeo com IA" que ele mostrou, virado em SOM: a IA
+    // escreve em cenas, a tela grava UMA voz por cena e o tempo de cada cena
+    // sai MEDIDO do áudio. Formato de texto reparseável — espelho de
+    // cenas_de_texto/texto_de_cenas do backend: mudou lá, muda aqui.
+    const PAUSA_CENA = 0.35;                       // respiro entre cenas (s)
+    const RE_CENA = /^[ \t]*CENA[ \t]+(\d+)[ \t]*(?:[—\-–:·][ \t]*(.*))?$/im;
+
+    function pecaAtual() {
+        const s = document.getElementById('selectPeca');
+        return (s && s.value === 'video') ? 'video' : 'spot';
+    }
+
+    function atualizarPeca() {
+        const video = pecaAtual() === 'video';
+        const g = document.getElementById('grupoVideo');
+        if (g) g.style.display = video ? 'block' : 'none';
+        const gp = document.getElementById('grupoPlano');
+        if (gp) gp.style.display = video ? 'none' : 'block';
+        const painel = document.getElementById('painelCenas');
+        if (painel && !video) painel.style.display = 'none';
+        if (video && duasVozes()) {
+            document.getElementById('selectFormato').value = 'unico';
+            document.getElementById('selectFormato').dispatchEvent(new Event('change'));
+            avisar('Áudio para vídeo é com 1 voz por enquanto — formato trocado pra Locutor único.', 'info');
+        }
+    }
+
+    function parsearCenas(texto) {
+        texto = String(texto || '').trim();
+        if (!texto) return [];
+        const limpa = (c) => Object.assign(c, { n: c.n, titulo: (c.titulo || `Cena ${c.n}`).slice(0, 60), narracao: c.narracao.slice(0, 1200), ambiente: (c.ambiente || '').slice(0, 300) });
+        if (RE_CENA.test(texto)) {
+            const cenas = [];
+            for (let b of texto.split(/(?=^[ \t]*CENA[ \t]+\d+)/im)) {
+                b = b.trim();
+                if (!b) continue;
+                const m = b.match(RE_CENA);
+                let corpo = m ? b.slice(m.index + m[0].length).trim() : b;
+                const titulo = m ? (m[2] || '').trim() : '';
+                let ambiente = '';
+                const ma = corpo.match(/\[Ambiente:\s*([\s\S]*?)\]/i);
+                if (ma) { ambiente = ma[1].trim(); corpo = (corpo.slice(0, ma.index) + corpo.slice(ma.index + ma[0].length)).trim(); }
+                if (corpo) cenas.push(limpa({ n: cenas.length + 1, titulo, narracao: corpo, ambiente }));
+                if (cenas.length >= 12) break;
+            }
+            return cenas;
+        }
+        return texto.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).slice(0, 12)
+            .map((p, i) => limpa({ n: i + 1, titulo: '', narracao: p, ambiente: '' }));
+    }
+
+    function textoDeCenas(cenas) {
+        return cenas.map(c => `CENA ${c.n} — ${c.titulo}\n${c.narracao}` + (c.ambiente ? `\n[Ambiente: ${c.ambiente}]` : '')).join('\n\n');
+    }
+
+    // Espera no limite por MINUTO do Gemini (3 TTS/min): padrão da Narrativa.
+    function tipoDe429(msg) {
+        const m = String(msg || '');
+        if (/PerDay|por dia|daily/i.test(m)) return 'dia';
+        if (/PerMinute|por minuto|retry in|429|quota|cota/i.test(m)) return 'minuto';
+        return '';
+    }
+    function segundosParaTentarDeNovo(msg) {
+        const m = String(msg || '').match(/retry in (\d+)/i) || String(msg || '').match(/(\d+)\s*s/i);
+        return m ? parseInt(m[1], 10) : 0;
+    }
+    function esperar(seg) { return new Promise(r => setTimeout(r, seg * 1000)); }
+
+    // Uma gravação por cena; devolve o buffer emendado (com pausa) e carimba em
+    // cada cena o buffer e o tempo REAL (inicio/fim) — é o que vira a tabela.
+    async function gerarVozPorCenas(cenas, aoProgredir) {
+        if (!cenas.length) throw new Error('Nenhuma cena pra gravar.');
+        const voz = document.getElementById('selectVoz').value, api = providerDaVoz();
+        const style = document.getElementById('selectEstilo').value;
+        for (let i = 0; i < cenas.length; i++) {
+            const c = cenas[i];
+            if (aoProgredir) aoProgredir(i + 1, cenas.length, '');
+            let d;
+            for (let tentativa = 1; ; tentativa++) {
+                const r = await fetch('/api/generate-audio', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: comDirecao(c.narracao), voice: voz, api, style, language: 'pt-BR' })
+                });
+                d = await r.json().catch(() => ({}));
+                if (d.success) break;
+                const msg = d.error || `falha na locução (HTTP ${r.status})`;
+                if (tipoDe429(msg) !== 'minuto' || tentativa >= 3) throw new Error(`Cena ${c.n}: ${msg}`);
+                const seg = Math.min(segundosParaTentarDeNovo(msg) || 30, 120) + 2;
+                if (aoProgredir) aoProgredir(i + 1, cenas.length, ` limite por minuto do Gemini, esperando ${seg}s`);
+                await esperar(seg);
+            }
+            c.buffer = await baixarEDecodificar(d.download_url);
+        }
+        // Emenda: estéreo, mesma taxa do contexto, pausa entre cenas.
+        const sr = ctx.sampleRate;
+        const total = cenas.reduce((s, c) => s + c.buffer.duration, 0) + (cenas.length - 1) * PAUSA_CENA + 0.25;
+        const out = ctx.createBuffer(2, Math.ceil(total * sr), sr);
+        let pos = 0;
+        for (const c of cenas) {
+            c.inicio = pos;
+            for (let ch = 0; ch < 2; ch++) {
+                out.getChannelData(ch).set(c.buffer.getChannelData(Math.min(ch, c.buffer.numberOfChannels - 1)), Math.round(pos * sr));
+            }
+            pos += c.buffer.duration;
+            c.fim = pos;
+            pos += PAUSA_CENA;
+        }
+        return out;
+    }
+
+    function tc(seg) {
+        const s = Math.max(0, Math.round(seg));
+        return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    }
+
+    function duracaoVideoAlvo() {
+        const s = document.getElementById('selectDuracaoVideo');
+        return s ? parseInt(s.value, 10) || 0 : 0;
+    }
+
+    // Tabela de cenas com tempo MEDIDO + linha de conferência contra o vídeo.
+    function desenharCenas() {
+        const painel = document.getElementById('painelCenas'), lista = document.getElementById('listaCenas');
+        if (!painel || !lista) return;
+        lista.innerHTML = '';
+        const cenas = estado.cenas.filter(c => c.buffer);
+        for (const c of cenas) {
+            const row = document.createElement('div');
+            row.className = 'cena-item';
+            const cab = document.createElement('div');
+            cab.className = 'cena-cab';
+            const t = document.createElement('strong');
+            t.textContent = `Cena ${c.n} · ${tc(c.inicio)}–${tc(c.fim)} · ${c.titulo}`;      // textContent: dado, não HTML
+            const play = document.createElement('button');
+            play.type = 'button'; play.className = 'btn btn-outline-light btn-sm'; play.textContent = '▶ ouvir';
+            play.onclick = () => { const s = ctx.createBufferSource(); s.buffer = c.buffer; s.connect(ctx.destination); s.start(); };
+            cab.appendChild(t); cab.appendChild(play);
+            const narr = document.createElement('div'); narr.className = 'cena-narr'; narr.textContent = c.narracao;
+            row.appendChild(cab); row.appendChild(narr);
+            if (c.ambiente) { const amb = document.createElement('div'); amb.className = 'cena-amb'; amb.textContent = 'Ambiente: ' + c.ambiente; row.appendChild(amb); }
+            lista.appendChild(row);
+        }
+        const fim = cenas.length ? cenas[cenas.length - 1].fim : 0;
+        const alvo = duracaoVideoAlvo();
+        const conf = document.getElementById('cenasConferencia');
+        if (conf) {
+            if (!alvo) conf.textContent = `Narração: ${tc(fim)} (${cenas.length} cenas) · sem duração fixa.`;
+            else if (fim > alvo + 0.5) conf.textContent = `⚠️ Narração: ${tc(fim)} — passa do vídeo de ${alvo} s. Encurte uma cena e clique "Regerar só a voz".`;
+            else conf.textContent = `✅ Narração: ${tc(fim)} (${cenas.length} cenas) · cabe no vídeo de ${alvo} s.`;
+        }
+        painel.style.display = cenas.length ? 'block' : 'none';
+    }
+
+    function roteiroCronometrado() {
+        const cenas = estado.cenas.filter(c => c.buffer);
+        const alvo = duracaoVideoAlvo();
+        const fim = cenas.length ? cenas[cenas.length - 1].fim : 0;
+        const linhas = [
+            (document.getElementById('inputNome').value || 'Roteiro do vídeo').trim(),
+            `Narração: ${tc(fim)}` + (alvo ? ` · vídeo de ${alvo} s` : '') + ` · ${cenas.length} cenas · gerado em ${new Date().toLocaleString('pt-BR')}`,
+            ''
+        ];
+        for (const c of cenas) {
+            linhas.push(`CENA ${c.n} · ${tc(c.inicio)}–${tc(c.fim)} · ${c.titulo}`);
+            linhas.push(`Narração: ${c.narracao}`);
+            if (c.ambiente) linhas.push(`Ambiente: ${c.ambiente}`);
+            linhas.push('');
+        }
+        linhas.push('Tempos medidos do áudio gerado (não são estimativa). Locutores IA — Áudio Pank Produtora.');
+        return linhas.join('\r\n');
+    }
+
+    async function baixarSoVoz() {
+        if (!estado.vozBuffer) { alert('Gere o áudio primeiro.'); return; }
+        const blob = await MixEngine.bufferToMp3(estado.vozBuffer, 192);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = nomeArquivo().replace(/\.(mp3|wav)$/i, '') + '-so-voz.' + (blob.type === 'audio/mpeg' ? 'mp3' : 'wav');
+        a.click();
     }
 
     function formatoAtual() {
@@ -1055,6 +1238,7 @@
                 // sem IA no meio. A checagem de duração do passo [6] segue
                 // valendo — avisar que estourou a grade continua sendo dever.
                 estado.roteiro = briefing;
+                estado.cenas = (pecaAtual() === 'video') ? parsearCenas(briefing) : [];
                 avisar('📝 Texto do cliente usado como está — a IA não mexeu em nada.', 'info');
             } else {
                 const rRot = await fetch('/api/gerador/roteiro', {
@@ -1063,15 +1247,23 @@
                         briefing: briefing,
                         // O select é a fonte do plano: ele já foi sincronizado com o
                         // pedido (quando há um) e cobre o briefing escrito na mão.
-                        plano: document.getElementById('selectPlano').value,
+                        // No vídeo a grade é a do VÍDEO, não do plano.
+                        plano: pecaAtual() === 'video' ? 'outro' : document.getElementById('selectPlano').value,
                         formato: formatoAtual(),
                         tipo: (estado.pedido && estado.pedido.tipo) || '',
-                        estilo_voz: (estado.pedido && estado.pedido.estilo_voz) || ''
+                        estilo_voz: (estado.pedido && estado.pedido.estilo_voz) || '',
+                        peca: pecaAtual(),
+                        duracao_video: pecaAtual() === 'video' ? duracaoVideoAlvo() : undefined,
+                        estilo_narracao: pecaAtual() === 'video' ? document.getElementById('selectEstiloNarracao').value : undefined
                     })
                 });
                 const dRot = await rRot.json();
                 if (!dRot.success) throw new Error(dRot.error || 'Falha ao escrever o roteiro');
                 estado.roteiro = dRot.roteiro;
+                estado.cenas = (pecaAtual() === 'video') ? ((dRot.cenas && dRot.cenas.length) ? dRot.cenas : parsearCenas(dRot.roteiro)) : [];
+                if (pecaAtual() === 'video' && dRot.titulo && !document.getElementById('inputNome').value.trim()) {
+                    document.getElementById('inputNome').value = dRot.titulo;
+                }
                 document.getElementById('textoComercial').value = estado.roteiro;
                 atualizarContador();
                 if (dRot.fonte === 'base') {
@@ -1110,7 +1302,16 @@
                        + ' e ' + txt(document.getElementById('selectVoz2'))
                        + ' se alternam a cada parágrafo. Sem personagens no texto.', 'info');
             }
-            estado.vozBuffer = await gerarVoz(estado.roteiro);
+            if (pecaAtual() === 'video') {
+                if (!estado.cenas.length) estado.cenas = parsearCenas(estado.roteiro);
+                estado.vozBuffer = await gerarVozPorCenas(estado.cenas,
+                    (i, n, extra) => passo(2, TOTAL, `Gravando cena ${i} de ${n}...${extra || ''}`));
+                desenharCenas();
+            } else {
+                const painel = document.getElementById('painelCenas');
+                if (painel) painel.style.display = 'none';
+                estado.vozBuffer = await gerarVoz(estado.roteiro);
+            }
 
             // [3] TRILHA — falha aqui NÃO interrompe: locução seca é entregável.
             passo(3, TOTAL, 'Escolhendo a trilha...');
@@ -1243,7 +1444,14 @@
             if (!estado.roteiro) throw new Error('O texto está vazio.');
 
             passo(1, 2, 'Regravando a locução...');
-            estado.vozBuffer = await gerarVoz(estado.roteiro);
+            if (pecaAtual() === 'video') {
+                estado.cenas = parsearCenas(estado.roteiro);
+                estado.vozBuffer = await gerarVozPorCenas(estado.cenas,
+                    (i, n, extra) => passo(1, 2, `Regravando cena ${i} de ${n}...${extra || ''}`));
+                desenharCenas();
+            } else {
+                estado.vozBuffer = await gerarVoz(estado.roteiro);
+            }
 
             passo(2, 2, 'Remixando...');
             const r = await mixar(null);
@@ -1325,6 +1533,23 @@
         const btnBancada = document.getElementById('btnGuardarBancada');
         if (btnBancada) btnBancada.onclick = guardarBancada;
         document.getElementById('btnRegerarVoz').onclick = regerarVoz;
+        // Áudio para vídeo (23/09/2026)
+        const selPeca = document.getElementById('selectPeca');
+        if (selPeca) { selPeca.addEventListener('change', atualizarPeca); atualizarPeca(); }
+        const bSoVoz = document.getElementById('btnBaixarSoVoz');
+        if (bSoVoz) bSoVoz.onclick = baixarSoVoz;
+        const bCopiar = document.getElementById('btnCopiarCronometrado');
+        if (bCopiar) bCopiar.onclick = async () => {
+            try { await navigator.clipboard.writeText(roteiroCronometrado()); avisar('Roteiro cronometrado copiado.', 'ok'); }
+            catch (e) { avisar('Não consegui copiar — use "Baixar .txt".', 'atencao'); }
+        };
+        const bTxt = document.getElementById('btnBaixarCronometrado');
+        if (bTxt) bTxt.onclick = () => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([roteiroCronometrado()], { type: 'text/plain;charset=utf-8' }));
+            a.download = nomeArquivo().replace(/\.(mp3|wav)$/i, '') + '-cenas.txt';
+            a.click();
+        };
 
         document.getElementById('btnDownload').onclick = () => {
             if (!exigeAudio()) return;

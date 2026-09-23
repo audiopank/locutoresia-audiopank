@@ -874,6 +874,82 @@ PALAVRAS_POR_SEGUNDO_LENTO = 2.15
 CAUDA_TRILHA_SEGUNDOS = 3.05
 
 
+# ── ÁUDIO PARA VÍDEO (23/09/2026) ─────────────────────────────────────────
+# O modal "Ideia para vídeo com IA" que ele mostrou: ideia → duração → estilo →
+# cenas numeradas (título, enredo, legenda, tempo). Aqui vira SOM: a IA escreve
+# a NARRAÇÃO em cenas, a tela grava 1 voz por cena e o tempo de cada cena sai
+# MEDIDO do áudio (o deles é chute). Formato de texto reparseável, pra ir e
+# voltar do campo de roteiro e do .txt do rascunho.
+DURACOES_VIDEO = (15, 30, 60, 90)
+CENAS_POR_DURACAO = {15: (3, 4), 30: (4, 5), 60: (5, 7), 90: (7, 9), 0: (4, 8)}
+ESTILOS_NARRACAO = {
+    'institucional': 'institucional (empresa se apresentando, tom confiante e claro)',
+    'documentario': 'documentário (narrador observador, ritmo calmo, frases com peso)',
+    'tutorial': 'tutorial (passo a passo, direto, sem enrolar)',
+    'vlog': 'vlog (primeira pessoa, próximo, como quem conversa)',
+    'unboxing': 'unboxing / review (curioso, reage ao produto, destaca detalhes)',
+    'promo': 'promocional (energia de oferta, chamada pra ação no fim)',
+}
+RE_CENA = re.compile(r'^[ \t]*CENA[ \t]+(\d+)[ \t]*(?:[—\-–:·][ \t]*(.*))?$', re.I | re.M)
+RE_AMBIENTE = re.compile(r'\[Ambiente:\s*(.*?)\]', re.I | re.S)
+
+
+def normalizar_cenas(cenas):
+    """Lista da IA → cenas saneadas (n, titulo, narracao, ambiente). Sem narração = fora."""
+    saida = []
+    for c in (cenas or []):
+        if not isinstance(c, dict):
+            continue
+        narr = str(c.get('narracao') or '').strip()
+        if not narr:
+            continue
+        n = len(saida) + 1
+        saida.append({'n': n, 'titulo': (str(c.get('titulo') or '').strip() or f'Cena {n}')[:60],
+                      'narracao': narr[:1200], 'ambiente': str(c.get('ambiente') or '').strip()[:300]})
+        if len(saida) >= 12:
+            break
+    return saida
+
+
+def texto_de_cenas(cenas):
+    """Cenas → texto do campo de roteiro / .txt: 'CENA n — Título' / narração / [Ambiente: …]."""
+    partes = []
+    for c in cenas:
+        bloco = f"CENA {c['n']} — {c['titulo']}\n{c['narracao']}"
+        if c.get('ambiente'):
+            bloco += f"\n[Ambiente: {c['ambiente']}]"
+        partes.append(bloco)
+    return "\n\n".join(partes)
+
+
+def cenas_de_texto(texto):
+    """Texto → cenas. Com cabeçalhos 'CENA n — título' usa-os; senão, 1 cena por parágrafo.
+    ⚠️ Espelhado em static/gerador.js (parsearCenas): mudou aqui, muda lá."""
+    texto = str(texto or '').strip()
+    if not texto:
+        return []
+    if RE_CENA.search(texto):
+        cenas = []
+        for b in re.split(r'(?=^[ \t]*CENA[ \t]+\d+)', texto, flags=re.I | re.M):
+            b = b.strip()
+            if not b:
+                continue
+            m = RE_CENA.match(b)
+            corpo = b[m.end():].strip() if m else b
+            titulo = (m.group(2) or '').strip() if m else ''
+            amb = ''
+            ma = RE_AMBIENTE.search(corpo)
+            if ma:
+                amb = ma.group(1).strip()
+                corpo = (corpo[:ma.start()] + corpo[ma.end():]).strip()
+            if corpo:
+                n = len(cenas) + 1
+                cenas.append({'n': n, 'titulo': (titulo or f'Cena {n}')[:60], 'narracao': corpo[:1200], 'ambiente': amb[:300]})
+        return cenas[:12]
+    pars = [p.strip() for p in re.split(r'\n\s*\n', texto) if p.strip()]
+    return [{'n': i + 1, 'titulo': f'Cena {i + 1}', 'narracao': p[:1200], 'ambiente': ''} for i, p in enumerate(pars[:12])]
+
+
 def estimar_duracao_locucao(texto):
     """Segundos estimados de locução para um texto. Só conta palavras."""
     palavras = [p for p in re.split(r'\s+', str(texto or '').strip()) if p]
@@ -991,6 +1067,23 @@ def gerador_roteiro():
             formato = 'unico'
         faixa = duracao_alvo_do_plano(plano)
 
+        # Áudio para vídeo (23/09/2026): a duração é a do VÍDEO, não do plano;
+        # a voz não pode passar dele. Uma voz só na v1.
+        peca = 'video' if str(data.get('peca') or '') == 'video' else 'spot'
+        duracao_video, estilo_narracao = 0, ''
+        if peca == 'video':
+            try:
+                duracao_video = int(data.get('duracao_video') or 0)
+            except (TypeError, ValueError):
+                duracao_video = 0
+            if duracao_video not in DURACOES_VIDEO:
+                duracao_video = 0
+            estilo_narracao = str(data.get('estilo_narracao') or '')
+            if estilo_narracao not in ESTILOS_NARRACAO:
+                estilo_narracao = 'institucional'
+            formato = 'unico'
+            faixa = (int(round(duracao_video * 0.75)), duracao_video) if duracao_video else None
+
         def estimar(texto_roteiro):
             # No diálogo, os rótulos "Nome:" não são falados — descontar.
             base = texto_falado_do_dialogo(texto_roteiro) if formato == 'dialogo' else texto_roteiro
@@ -1004,13 +1097,21 @@ def gerador_roteiro():
             # respondeu" é um beco sem saída — não dá pra saber se foi cota,
             # rede ou resposta malformada, e o produtor conclui que a
             # ferramenta piorou.
-            return jsonify({
-                "success": True, "fonte": "base", "roteiro": briefing,
+            resp = {
+                "success": True, "fonte": "base", "roteiro": briefing, "peca": peca,
                 "tempo_leitura_estimado": estimar(briefing),
                 "faixa_alvo": list(faixa) if faixa else None,
                 "erro_ia": motivo,
                 "aviso": "A IA não respondeu agora — este é o briefing do cliente como veio. Edite antes de aprovar."
-            })
+            }
+            if peca == 'video':
+                # Sem IA: 1 cena por parágrafo da ideia — a tela grava e mede do mesmo jeito.
+                cenas = cenas_de_texto(briefing)
+                resp["cenas"] = cenas
+                resp["titulo"] = ''
+                if cenas:
+                    resp["roteiro"] = texto_de_cenas(cenas)
+            return jsonify(resp)
 
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_AI_STUDIO_API_KEY")
         if not api_key:
@@ -1084,6 +1185,34 @@ REGRAS:
 Devolva SOMENTE um JSON válido, sem markdown:
 {{"roteiro": "o texto falado", "resumo": "1 frase sobre a escolha criativa"}}"""
 
+        if peca == 'video':
+            n_min, n_max = CENAS_POR_DURACAO.get(duracao_video, (4, 8))
+            if faixa:
+                pal_min = max(3, int(faixa[0] * PALAVRAS_POR_SEGUNDO_LENTO))
+                pal_max = max(pal_min + 2, int(faixa[1] * PALAVRAS_POR_SEGUNDO_LENTO))
+                alvo_video = (f"A NARRAÇÃO inteira (somando todas as cenas) precisa durar entre {faixa[0]} e "
+                              f"{faixa[1]} segundos falados — cerca de {pal_min} a {pal_max} palavras no total. "
+                              f"O vídeo tem {duracao_video} segundos e a voz NÃO pode passar dele.")
+            else:
+                alvo_video = "Não há duração fixa — escreva no tamanho que a história pedir, sem enrolar."
+            prompt = f"""Você é roteirista de vídeos curtos no Brasil. A partir da IDEIA abaixo, escreva a NARRAÇÃO de um vídeo em CENAS numeradas, no estilo {ESTILOS_NARRACAO[estilo_narracao]}.
+
+IDEIA / BRIEFING:
+{briefing}
+
+{alvo_video}
+Divida em {n_min} a {n_max} cenas. Cada cena tem: um TÍTULO curto (2 a 4 palavras), a NARRAÇÃO (o que a voz fala nessa cena, 1 a 3 frases, falado, natural) e o AMBIENTE SONORO (1 frase: clima da trilha e efeitos sonoros que cabem na cena — ex.: "trilha leve e otimista; notificação de celular").
+
+REGRAS:
+- Português do Brasil, falado, natural na boca. Frases curtas.
+- A narração de cada cena tem que fazer sentido sozinha e emendar com a seguinte.
+- Números e siglas por extenso, como se fala.
+- Não invente preço, endereço, telefone ou prazo que não estejam na ideia.
+- Nada de rubrica, "LOCUTOR:", colchetes ou instrução de produção dentro da narração.
+
+Devolva SOMENTE um JSON válido, sem markdown:
+{{"titulo": "título do vídeo", "cenas": [{{"titulo": "...", "narracao": "...", "ambiente": "..."}}], "resumo": "1 frase sobre a escolha criativa"}}"""
+
         # THINKING DESLIGADO. Medido neste prompt: o modelo gastava 978-1969
         # tokens "pensando" pra 172-197 tokens de roteiro — 90% do tempo era
         # deliberação. Além de lento, é o que arrisca truncar a resposta: quanto
@@ -1109,7 +1238,13 @@ Devolva SOMENTE um JSON válido, sem markdown:
                 if not texto:
                     raise ValueError('resposta vazia do modelo')
                 candidato = json.loads(texto)
-                if not (candidato.get('roteiro') or '').strip():
+                if peca == 'video':
+                    cenas_ok = normalizar_cenas(candidato.get('cenas'))
+                    if len(cenas_ok) < 2:
+                        raise ValueError('vídeo veio com menos de 2 cenas')
+                    candidato['cenas'] = cenas_ok
+                    candidato['roteiro'] = texto_de_cenas(cenas_ok)
+                elif not (candidato.get('roteiro') or '').strip():
                     raise ValueError('JSON sem o campo roteiro')
                 if formato == 'narracao' and not rotular_narracao_revezada(candidato['roteiro']):
                     # Sem 2 blocos não há como revezar as vozes: resposta
@@ -1134,11 +1269,13 @@ Devolva SOMENTE um JSON válido, sem markdown:
         roteiro = parsed['roteiro'].strip()
 
         return jsonify({
-            "success": True, "fonte": "ia",
+            "success": True, "fonte": "ia", "peca": peca,
             "roteiro": roteiro[:5000],
             "resumo": (parsed.get('resumo') or '').strip()[:300],
             "tempo_leitura_estimado": estimar(roteiro),
-            "faixa_alvo": list(faixa) if faixa else None
+            "faixa_alvo": list(faixa) if faixa else None,
+            "cenas": parsed.get('cenas') if peca == 'video' else None,
+            "titulo": (str(parsed.get('titulo') or '').strip()[:120]) if peca == 'video' else None
         })
 
     except Exception as e:
