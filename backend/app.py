@@ -6616,8 +6616,11 @@ def api_gerador_publicar_feed():
             except (TypeError, ValueError):
                 episodio = None
             episodio = episodio or newpost_feed.numero_do_episodio(nome)
+        # `texto` é a narração inteira (o que a locução FALA); o content leva só um trecho.
+        # Vai como transcrição do post (fonte 'roteiro') — de graça, sem Gemini (IA de áudio 1b).
         r = newpost_feed.publicar(conteudo, conta=conta, tags=tags, audio_url=audio_url, chave=audio_url,
-                                  series_id=serie['id'] if serie else None, episode_number=episodio)
+                                  series_id=serie['id'] if serie else None, episode_number=episodio,
+                                  transcricao=texto)
         if r.get('success'):
             return jsonify({"success": True, "post_id": r.get('post_id'), "audio_url": audio_url,
                             "tags": tags, "serie": serie['titulo'] if serie else None,

@@ -198,6 +198,40 @@ def test_publicar_privado_para_teste(feed, monkeypatch):
     assert corpos[0]['privacy'] == 'public'
 
 
+# ── publicar() com transcrição (IA de áudio 1b) ─────────────────────────────
+
+def test_publicar_com_audio_manda_o_roteiro_como_transcricao(feed, monkeypatch):
+    corpos = _captura_post(monkeypatch, Resp(201, [{'id': 'P5'}]))
+    r = feed.publicar('texto', conta='vida', audio_url='https://x/post-audio/a.mp3',
+                      transcricao='  o que a locução fala  ')
+    assert r['success']
+    assert corpos[0]['transcricao'] == 'o que a locução fala'
+    assert corpos[0]['transcricao_status'] == 'ok'
+    assert corpos[0]['transcricao_fonte'] == 'roteiro'
+    assert corpos[0]['transcricao_atualizada_em']
+
+
+def test_publicar_sem_audio_nao_manda_transcricao(feed, monkeypatch):
+    corpos = _captura_post(monkeypatch, Resp(201, [{'id': 'P6'}]))
+    feed.publicar('texto', conta='vida', transcricao='fala sem áudio')
+    assert 'transcricao' not in corpos[0] and 'transcricao_status' not in corpos[0]
+
+
+def test_publicar_feed_sem_colunas_de_transcricao_republica_sem_elas(feed, monkeypatch):
+    respostas = [Resp(400, {'code': 'PGRST204', 'message': "Could not find the 'transcricao' column"}),
+                 Resp(201, [{'id': 'P7'}])]
+    corpos = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        corpos.append(dict(json))
+        return respostas.pop(0)
+    monkeypatch.setattr(nf.requests, 'post', post)
+    r = feed.publicar('texto', conta='vida', audio_url='https://x/post-audio/a.mp3', transcricao='fala')
+    assert r['success'] and r['post_id'] == 'P7'
+    assert 'transcricao' in corpos[0] and 'transcricao' not in corpos[1]
+    assert corpos[1]['audio_url'] == 'https://x/post-audio/a.mp3'
+
+
 # ── endpoint do Gerador ──────────────────────────────────────────────────────
 
 @pytest.fixture

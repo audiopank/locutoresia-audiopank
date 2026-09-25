@@ -33,6 +33,7 @@ import hashlib
 import logging
 import threading
 import unicodedata
+from datetime import datetime, timezone
 
 import requests
 
@@ -343,8 +344,15 @@ def _chave_idempotente(user_id, base):
 
 def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_types=None,
              is_ia=True, chave=None, audio_url=None, series_id=None, episode_number=None,
-             privacy='public'):
+             privacy='public', transcricao=None):
     """Insere um post no feed como a conta indicada.
+
+    `transcricao` (IA de áudio 1b, 25/09): o TEXTO FALADO da locução. O feed
+    transcreve áudio humano com a Gemini, mas aqui o roteiro já existe — vai de
+    graça como transcrição do post (status 'ok', fonte 'roteiro'): o post nasce
+    com "Ver transcrição (roteiro original)" e a busca do feed acha pelo falado.
+    Só entra junto com `audio_url`. Se o feed recusar as colunas (PGRST204), o
+    post é republicado sem elas — publicar nunca trava por causa da transcrição.
 
     `chave` (ex.: link da notícia) vira idempotency_key — o mesmo artigo não
     posta duas vezes. Devolve dict: success/post_id ou error (+ already=True
@@ -387,6 +395,16 @@ def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_type
         payload['series_id'] = series_id
         if episode_number:
             payload['episode_number'] = int(episode_number)
+    texto_falado = (transcricao or '').strip()
+    campos_transcricao = {}
+    if audio_url and texto_falado:
+        campos_transcricao = {
+            'transcricao': texto_falado,
+            'transcricao_status': 'ok',
+            'transcricao_fonte': 'roteiro',
+            'transcricao_atualizada_em': datetime.now(timezone.utc).isoformat(),
+        }
+        payload.update(campos_transcricao)
 
     cabecalhos = {
         'apikey': anon,
@@ -396,6 +414,12 @@ def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_type
     }
     try:
         r = requests.post(f'{url}/rest/v1/posts', headers=cabecalhos, json=payload, timeout=30)
+        if r.status_code not in (200, 201) and campos_transcricao and 'transcricao' in (r.text or ''):
+            # Feed sem as colunas de transcrição (ou CHECK diferente): publica sem elas.
+            print(f"[newpost_feed] feed recusou a transcrição, publicando sem ela: {(r.text or '')[:160]}")
+            for k in campos_transcricao:
+                payload.pop(k, None)
+            r = requests.post(f'{url}/rest/v1/posts', headers=cabecalhos, json=payload, timeout=30)
     except requests.RequestException as e:
         return {'success': False, 'error': f'rede: {e}'}
 
