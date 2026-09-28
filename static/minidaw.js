@@ -227,6 +227,13 @@ class MiniDAW {
                 // Ctrl+A = todos os objetos de todas as faixas (23/09/2026). Sem
                 // objeto nenhum, a tecla segue pro navegador (selecionar texto).
                 if (k === 'a') { if (this.selecionarTodos()) e.preventDefault(); return; }
+                // Ctrl+Q = Volume do trecho marcado com a Tesoura (28/09/2026, igual ao
+                // Samplitude). Sem trecho marcado, a tecla segue pro navegador.
+                if (k === 'q' && !e.shiftKey && this.trackTesoura && (this.selecoes || {})[this.trackTesoura]) {
+                    e.preventDefault();
+                    this.aplicarVolumeTrecho(this.trackTesoura);
+                    return;
+                }
                 return;   // outros Ctrl+... seguem pro navegador
             }
             if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -252,9 +259,12 @@ class MiniDAW {
             }
             // Q ("quieto") = silenciar o trecho marcado com a Tesoura, sem encurtar
             // o off. Marca, Q, marca, Q: limpar respirações em sequência.
+            // Shift+Q = Igualar o trecho ao nível da fala do resto (Volume do trecho).
+            // Ctrl+Shift+Q NÃO: no Chrome/Firefox do Windows essa fecha o navegador.
             if (k === 'q' && this.trackTesoura && (this.selecoes || {})[this.trackTesoura]) {
                 e.preventDefault();
-                this.aplicarCorte(this.trackTesoura, 'silenciar');
+                if (e.shiftKey) this.igualarTrecho(this.trackTesoura);
+                else this.aplicarCorte(this.trackTesoura, 'silenciar');
             }
         });
 
@@ -445,6 +455,20 @@ class MiniDAW {
                             title="Vários trechos: ligado, cada novo arrasto GUARDA o trecho anterior (fica âmbar) em vez de descartar; no fim, um clique em Silenciar aplica em todos. Segurar Shift ao arrastar faz o mesmo sem ligar nada.">
                         <i class="fas fa-layer-group me-1"></i>Vários
                     </button>` : ''}
+                    <span class="vol-trecho" title="Volume do trecho: sobe ou desce SÓ o trecho marcado — o resto fica igual e o tempo não muda. Ctrl+Q aplica (de novo soma mais) · Shift+Q = Igualar · Ctrl+Z desfaz.">
+                        <button class="btn btn-sm btn-info" id="btnvoltrecho_${track.id}" onclick="minidaw.aplicarVolumeTrecho('${track.id}')">
+                            <i class="fas fa-volume-high me-1"></i><span>Volume do trecho</span>
+                        </button>
+                        <input type="number" class="form-control form-control-sm vol-trecho-db" id="voltrechodb_${track.id}"
+                               value="${this.volTrechoDb ?? 3}" step="0.5" min="-18" max="18" aria-label="dB do volume do trecho"
+                               oninput="minidaw.definirVolTrechoDb(this.value)"
+                               onkeydown="if (event.key === 'Enter') { event.preventDefault(); minidaw.aplicarVolumeTrecho('${track.id}'); }">
+                        <span class="vol-trecho-un">dB</span>
+                        <button class="btn btn-sm btn-outline-info" onclick="minidaw.igualarTrecho('${track.id}')"
+                                title="Igualar: mede o trecho e a fala do resto da faixa e sobe/desce só o que falta pra ficar no mesmo nível. Shift+Q.">
+                            <i class="fas fa-scale-balanced me-1"></i>Igualar
+                        </button>
+                    </span>
                     <button class="btn btn-sm btn-primary" onclick="minidaw.aplicarCorte('${track.id}', 'manter')">
                         <i class="fas fa-crop me-1"></i>Manter só isto
                     </button>
@@ -1286,6 +1310,14 @@ class MiniDAW {
             nome.className = 'clip-nome';
             nome.textContent = track.name;   // textContent: nome é DADO, não HTML (XSS recorrente da casa)
             el.appendChild(nome);
+            const gDb = MixEngine.ganhoDbDoClip(clip);
+            if (Math.abs(gDb) >= 0.05) {
+                const v = document.createElement('span');
+                v.className = 'clip-vol ' + (gDb > 0 ? 'sobe' : 'desce');
+                v.textContent = this._fmtDb(gDb);
+                v.title = 'Volume deste objeto (Volume do trecho). Botão direito → "Volume do objeto…" pra mudar ou zerar.';
+                el.appendChild(v);
+            }
             if (window.TimeStretch) {
                 // Time Stretch (21/09/2026): alça no canto INFERIOR direito, como o
                 // objeto do Samplitude — puxar pra esquerda acelera SEM mudar o
@@ -1486,7 +1518,9 @@ class MiniDAW {
         // Ganho VISUAL da onda: multiplica só o DESENHO, nunca o áudio. Serve
         // pra caçar detalhe em trecho fraco (respiração, "sss", ruído de fundo)
         // que num desenho 1x fica rente à linha do meio e some.
-        const ganho = track.ganhoOnda || 1;
+        // Volume do objeto (Volume do trecho) ENTRA no desenho: a onda mostra o
+        // que se ouve, como no Samplitude — trecho que subiu fica maior.
+        const ganho = (track.ganhoOnda || 1) * MixEngine.dbParaLinear(MixEngine.ganhoDbDoClip(clip));
         const amostrasPorPixel = (a1 - a0) / width;
         for (let px = 0; px < width; px++) {
             const ini = a0 + Math.floor(px * amostrasPorPixel);
@@ -2122,6 +2156,7 @@ class MiniDAW {
             { sep: true },
             { rotulo: 'Dividir aqui', tecla: 'D', acao: () => this.cutTrackAtTime(trackId, tempo) },
             { rotulo: 'Time Stretch exato…', acao: () => this.stretchExato(trackId, clipId) },
+            { rotulo: 'Volume do objeto…' + plural, acao: () => this.volumeDoObjeto(trackId, clipId) },
             { sep: true },
             { rotulo: 'Apagar' + plural, tecla: 'Delete', acao: () => this.apagarSelecionados() },
             { rotulo: 'Selecionar todos', tecla: 'Ctrl+A', acao: () => this.selecionarTodos() },
@@ -2198,6 +2233,7 @@ class MiniDAW {
         this.clipboardClip = {
             buffer: clip.buffer, offset: clip.offset, duracao: clip.duracao,
             fadeIn: clip.fadeIn || 0, fadeOut: clip.fadeOut || 0,
+            ganhoDb: clip.ganhoDb,                         // Volume do objeto viaja junto
             // De qual faixa saiu — pra faixa vazia poder herdar os efeitos.
             origemId: origemId || null
         };
@@ -2212,7 +2248,7 @@ class MiniDAW {
             trackId: g.track.id, rel: g.clip.inicio - base,
             buffer: g.clip.buffer, offset: g.clip.offset, duracao: g.clip.duracao,
             fadeIn: g.clip.fadeIn || 0, fadeOut: g.clip.fadeOut || 0,
-            stretch: g.clip.stretch, origem: g.clip.origem
+            stretch: g.clip.stretch, origem: g.clip.origem, ganhoDb: g.clip.ganhoDb
         }));
     }
 
@@ -3015,8 +3051,13 @@ class MiniDAW {
                 g.linearRampToValueAtTime(0, Math.max(0, base + fimClip));
             }
 
+            // Volume do objeto (Volume do trecho, 28/09/2026): ganho próprio depois
+            // dos fades, com rampa na emenda — a MESMA função do export.
+            const volGain = this.audioContext.createGain();
+            MixEngine.agendarVolumeDoClip(volGain.gain, this._clipsDaFaixa(track), clip, base);
             source.connect(clipGain);
-            clipGain.connect(nodes.inputNode);
+            clipGain.connect(volGain);
+            volGain.connect(nodes.inputNode);
 
             if (agora > clip.inicio) {
                 // Retomando no meio do clip: entra já andado.
@@ -4668,6 +4709,128 @@ class MiniDAW {
         this.desenharSelecao(trackId);
     }
 
+    // ── VOLUME DO TRECHO (28/09/2026) ────────────────────────────────────
+    // Pedido dele, do Samplitude: marca com a Tesoura o trecho que o locutor
+    // falou mais baixo e sobe (ou desce) SÓ ali — o "editor de performance".
+    // O trecho vira um objeto com volume próprio (ClipModel.volumeNoTrecho),
+    // no lugar, sem mudar o tempo. Vale em voz, trilha e efeito. A marcação
+    // FICA depois de aplicar: Ctrl+Q de novo soma mais; Ctrl+Z desfaz.
+    _fmtDb(db) {
+        const d = Number(db) || 0;
+        return (d > 0 ? '+' : d < 0 ? '−' : '') + Math.abs(d).toFixed(1).replace('.', ',') + ' dB';
+    }
+
+    definirVolTrechoDb(v) {
+        const n = parseFloat(String(v).replace(',', '.'));
+        if (!isFinite(n)) return;
+        this.volTrechoDb = ClipModel.limitarGanhoDb(n);
+        document.querySelectorAll('.vol-trecho-db').forEach(el => {
+            if (el !== document.activeElement) el.value = this.volTrechoDb;
+        });
+    }
+
+    _trechosMarcados(trackId) {
+        const s = (this.selecoes || {})[trackId];
+        const extras = ((this.selecoesExtras || {})[trackId] || []);
+        return extras.concat((s && s.fim - s.ini >= 0.01) ? [{ ini: s.ini, fim: s.fim }] : []);
+    }
+
+    aplicarVolumeTrecho(trackId, deltaDb) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.audioBuffer) return;
+        const trechos = this._trechosMarcados(trackId);
+        if (!trechos.length) {
+            this.showNotification('Arraste sobre a onda com a Tesoura pra marcar o trecho primeiro', 'warning');
+            return;
+        }
+        const delta = ClipModel.limitarGanhoDb(deltaDb != null ? deltaDb : (this.volTrechoDb ?? 3));
+        if (!delta) { this.showNotification('Escolha quantos dB: 3 sobe, -3 desce', 'info'); return; }
+        const snap = this._snapshotClips();
+        const clips = this._clipsDaFaixa(track);
+        let novos = clips;
+        for (const r of trechos) novos = ClipModel.volumeNoTrecho(novos, r.ini, r.fim, delta);
+        if (novos.length === clips.length && novos.every((c, i) => c === clips[i])) {
+            this.showNotification('Não tem áudio nesse trecho', 'info');
+            return;
+        }
+        this._guardarUndo(snap);
+        track.clips = novos;
+        this._sincronizarDerivados(track);
+        this.aposMudancaDeClips([track]);
+        this.desenharSelecao(trackId);
+        const quem = trechos.length > 1 ? `${trechos.length} trechos` : 'Trecho';
+        this.showNotification(`${quem} ${this._fmtDb(delta)} — Ctrl+Q de novo soma mais · Ctrl+Z desfaz`, 'success');
+    }
+
+    // Igualar: mede o trecho contra a fala do resto da faixa e aplica só a
+    // diferença (ClipModel.igualarDb). Cada trecho marcado é medido sozinho.
+    igualarTrecho(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.audioBuffer) return;
+        const trechos = this._trechosMarcados(trackId);
+        if (!trechos.length) {
+            this.showNotification('Arraste sobre a onda com a Tesoura pra marcar o trecho primeiro', 'warning');
+            return;
+        }
+        const snap = this._snapshotClips();
+        let novos = this._clipsDaFaixa(track);
+        const aplicados = [];
+        for (const r of trechos) {
+            const d = ClipModel.igualarDb(novos, r.ini, r.fim);
+            if (d == null || Math.abs(d) < 0.5) continue;
+            novos = ClipModel.volumeNoTrecho(novos, r.ini, r.fim, d);
+            aplicados.push(d);
+        }
+        if (!aplicados.length) {
+            this.showNotification('Esse trecho já está no nível do resto da fala (ou não tem fala pra medir)', 'info');
+            return;
+        }
+        this._guardarUndo(snap);
+        track.clips = novos;
+        this._sincronizarDerivados(track);
+        this.aposMudancaDeClips([track]);
+        this.desenharSelecao(trackId);
+        this.showNotification(aplicados.length > 1
+            ? `${aplicados.length} trechos igualados (${aplicados.map(d => this._fmtDb(d)).join(', ')}) — Ctrl+Z desfaz`
+            : `Igualado: trecho ${this._fmtDb(aplicados[0])} pra ficar no nível do resto da fala — Ctrl+Z desfaz`, 'success');
+    }
+
+    // Botão direito → "Volume do objeto…": digitar o dB do objeto inteiro (ou do
+    // grupo selecionado). 0 = volta ao original.
+    volumeDoObjeto(trackId, clipId) {
+        let grupo = (this.selecionados.length >= 2 && this._estaSelecionado(clipId)) ? this._selecionadosVivos() : null;
+        if (!grupo || !grupo.length) {
+            const track = this.tracks.find(t => t.id === trackId);
+            const clip = track ? this._clipsDaFaixa(track).find(c => c.id === clipId) : null;
+            if (!clip) return;
+            grupo = [{ track, clip }];
+        }
+        const atual = MixEngine.ganhoDbDoClip(grupo[0].clip);
+        const quem = grupo.length > 1 ? `destes ${grupo.length} objetos` : 'deste objeto';
+        const resp = prompt(`Volume ${quem} em dB (0 = original · 3 sobe · -3 desce · limite ±18):`,
+                            String(atual).replace('.', ','));
+        if (resp == null) return;
+        const db = parseFloat(String(resp).replace(',', '.'));
+        if (!isFinite(db)) { this.showNotification('Valor inválido — use um número, ex.: 3 ou -2,5', 'error'); return; }
+        const alvo = ClipModel.limitarGanhoDb(db);
+        this._guardarUndo(this._snapshotClips());
+        const faixas = new Set();
+        for (const g of grupo) {
+            g.track.clips = this._clipsDaFaixa(g.track).map(c => {
+                if (c.id !== g.clip.id) return c;
+                const novo = Object.assign({}, c, { ganhoDb: alvo });
+                if (!alvo) delete novo.ganhoDb;
+                return novo;
+            });
+            faixas.add(g.track);
+        }
+        for (const t of faixas) this._sincronizarDerivados(t);
+        this.aposMudancaDeClips([...faixas]);
+        this.showNotification(alvo
+            ? `Volume ${quem}: ${this._fmtDb(alvo)} — Ctrl+Z desfaz`
+            : `Volume ${quem} voltou ao original — Ctrl+Z desfaz`, 'success');
+    }
+
     // modo: 'remover' (tira o trecho), 'manter' (fica só o trecho),
     //       'dividir' (parte o clip no início da marcação)
     // Agora NÃO-DESTRUTIVO: nada de copiar buffers — só matemática de clips
@@ -5230,7 +5393,8 @@ class MiniDAW {
                         buffer: indicePorBuffer.get(c.buffer),
                         inicio: c.inicio, offset: c.offset, duracao: c.duracao,
                         fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
-                        stretch: (c.stretch > 0) ? c.stretch : 1        // Time Stretch aplicado (só informativo: o áudio salvo JÁ está esticado)
+                        stretch: (c.stretch > 0) ? c.stretch : 1,       // Time Stretch aplicado (só informativo: o áudio salvo JÁ está esticado)
+                        ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined // Volume do objeto (sem volume: campo nem vai)
                     });
                 }
                 tracks.push(td);
@@ -5383,7 +5547,8 @@ class MiniDAW {
                             id: ClipModel.novoId(), buffer: buffers[c.buffer],
                             inicio: c.inicio, offset: c.offset, duracao: c.duracao,
                             fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
-                            stretch: (c.stretch > 0 && Math.abs(c.stretch - 1) > 1e-3) ? c.stretch : undefined
+                            stretch: (c.stretch > 0 && Math.abs(c.stretch - 1) > 1e-3) ? c.stretch : undefined,
+                            ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined
                         }));
                     this._sincronizarDerivados(track);
                 } else if (td.audio_url) {

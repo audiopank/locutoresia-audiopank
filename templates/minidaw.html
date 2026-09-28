@@ -842,6 +842,16 @@
             color: #e6e8f0; font-size: .6rem; pointer-events: none;
             text-shadow: 0 1px 2px #000;
         }
+        /* Volume do objeto (Volume do trecho, 28/09/2026): etiqueta no canto de cima. */
+        .clip-vol {
+            position: absolute; right: 6px; top: 2px; z-index: 3;
+            font-size: .6rem; font-weight: 700; color: #fff; pointer-events: none;
+            padding: 0 5px; border-radius: 3px; background: rgba(8,145,178,.9);
+        }
+        .clip-vol.desce { background: rgba(124,58,237,.9); }
+        .vol-trecho { display: inline-flex; align-items: center; gap: 4px; }
+        .vol-trecho .vol-trecho-db { width: 62px; padding: 1px 4px; }
+        .vol-trecho .vol-trecho-un { font-size: .75rem; color: #cbd5e1; }
         .linha-corte {
             position: absolute; top: 0; bottom: 0; width: 1px; z-index: 4;
             background: rgba(239,68,68,.85); pointer-events: none; display: none;
@@ -1278,12 +1288,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
-    <script src="/static/mix-engine.js?v=15"></script>
-    <script src="/static/clip-model.js?v=5"></script>
+    <script src="/static/mix-engine.js?v=16"></script>
+    <script src="/static/clip-model.js?v=6"></script>
     <script src="/static/loudness.js?v=1"></script>
     <script src="/static/master-suite.js?v=8"></script>
     <script src="/static/time-stretch.js?v=2"></script>
-    <script src="/static/minidaw.js?v=68"></script>
+    <script src="/static/minidaw.js?v=69"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

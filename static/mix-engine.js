@@ -459,8 +459,13 @@
                         cg.setValueAtTime(1, Math.max(clip.inicio, clip.inicio + clip.duracao - clip.fadeOut));
                         cg.linearRampToValueAtTime(0, clip.inicio + clip.duracao);
                     }
+                    // Volume do objeto (Volume do trecho): ganho PRÓPRIO depois dos
+                    // fades, com rampa curta na emenda — espelho do playTrack.
+                    const volGain = offlineContext.createGain();
+                    agendarVolumeDoClip(volGain.gain, clips, clip, 0);
                     source.connect(clipGain);
-                    sources.push({ source, clipGain, clip });
+                    clipGain.connect(volGain);
+                    sources.push({ source, clipGain: volGain, clip });
                 }
 
                 // Build effect chain
@@ -645,6 +650,44 @@
             if (aoProgredir) aoProgredir(90, 'Renderizando áudio...');
             return await offlineContext.startRendering();
         }
+    }
+
+    // ── VOLUME DO OBJETO (Volume do trecho, 28/09/2026) ──────────────────
+    // `clip.ganhoDb` vem do ClipModel.volumeNoTrecho (espelho do limite ±18 dB).
+    // Cada objeto ganha um GainNode PRÓPRIO depois do de fades. Na emenda
+    // contínua (mesmo arquivo, colado no vizinho) o pedaço entra no volume do
+    // vizinho e chega ao seu em RAMPA_VOLUME_S — degrau seco no meio da onda
+    // estala. Play (minidaw.playTrack) e arquivo (renderizarMix) chamam a MESMA
+    // função: prévia = arquivo.
+    const GANHO_OBJETO_MAX_DB = 18;
+    const RAMPA_VOLUME_S = 0.012;
+    function ganhoDbDoClip(c) {
+        const g = Number(c && c.ganhoDb);
+        if (!isFinite(g) || !g) return 0;
+        return Math.max(-GANHO_OBJETO_MAX_DB, Math.min(GANHO_OBJETO_MAX_DB, g));
+    }
+    function dbParaLinear(db) { return Math.pow(10, (Number(db) || 0) / 20); }
+    function emendaContinua(a, b) {
+        return !!(a && b && a.buffer === b.buffer
+            && Math.abs((a.inicio + a.duracao) - b.inicio) < 0.002
+            && Math.abs(((a.offset || 0) + a.duracao) - (b.offset || 0)) < 0.002);
+    }
+    function volumeDoClip(clips, clip) {
+        const g = dbParaLinear(ganhoDbDoClip(clip));
+        let de = g;
+        for (const c of (clips || [])) {
+            if (c !== clip && emendaContinua(c, clip)) { de = dbParaLinear(ganhoDbDoClip(c)); break; }
+        }
+        return { g, de, rampa: Math.min(RAMPA_VOLUME_S, (clip.duracao || 0) / 2) };
+    }
+    function agendarVolumeDoClip(param, clips, clip, base) {
+        const v = volumeDoClip(clips, clip);
+        if (Math.abs(v.de - v.g) < 1e-9 || !(v.rampa > 0)) { param.setValueAtTime(v.g, 0); return v; }
+        const t0 = Math.max(0, (base || 0) + clip.inicio);
+        param.setValueAtTime(v.de, 0);
+        param.setValueAtTime(v.de, t0);
+        param.linearRampToValueAtTime(v.g, t0 + v.rampa);
+        return v;
     }
 
     function bufferToWav(buffer) {
@@ -998,6 +1041,7 @@
     }
 
     global.MixEngine = {
+        GANHO_OBJETO_MAX_DB, RAMPA_VOLUME_S, ganhoDbDoClip, dbParaLinear, volumeDoClip, agendarVolumeDoClip,
         renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
         paramsDeesser, criarDeesser, forcaDeesserDaFaixa, freqDeesserDaFaixa, DEESSER_FREQ_HZ, DEESSER_FREQS,
         paramsMultimax, criarMultiband, presetMultimax, PRESETS_MULTIMAX, MULTIMAX_CORTES, MULTIMAX_PRESET_PADRAO,

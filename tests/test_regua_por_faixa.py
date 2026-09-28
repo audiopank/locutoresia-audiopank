@@ -59,5 +59,5 @@ def cliente():
 
 def test_css_e_versao(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    for t in ('.regua-faixa {', '.regua-faixa + .clips-lane {', '.regua-faixa .marcador {', 'minidaw.js?v=68'):
+    for t in ('.regua-faixa {', '.regua-faixa + .clips-lane {', '.regua-faixa .marcador {', 'minidaw.js?v=69'):
         assert t in html, t
