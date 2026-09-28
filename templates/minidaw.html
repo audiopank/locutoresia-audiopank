@@ -849,6 +849,14 @@
             padding: 0 5px; border-radius: 3px; background: rgba(8,145,178,.9);
         }
         .clip-vol.desce { background: rgba(124,58,237,.9); }
+        /* Crossfade dentro da faixa (28/09/2026): região com X, como no Samplitude. */
+        .xfade-regiao {
+            position: absolute; top: 4px; bottom: 4px; z-index: 5; pointer-events: none;
+            background: rgba(250,204,21,.16);
+            border-left: 1px solid rgba(250,204,21,.8); border-right: 1px solid rgba(250,204,21,.8);
+        }
+        .xfade-regiao svg { width: 100%; height: 100%; display: block; }
+        .xfade-regiao line { stroke: rgba(250,204,21,.9); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
         /* Cadeado no objeto (28/09/2026): embaixo, no meio, como no Samplitude. */
         .clip-cadeado {
             position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%); z-index: 4;
@@ -1300,12 +1308,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
-    <script src="/static/mix-engine.js?v=16"></script>
-    <script src="/static/clip-model.js?v=7"></script>
+    <script src="/static/mix-engine.js?v=17"></script>
+    <script src="/static/clip-model.js?v=8"></script>
     <script src="/static/loudness.js?v=1"></script>
     <script src="/static/master-suite.js?v=8"></script>
     <script src="/static/time-stretch.js?v=2"></script>
-    <script src="/static/minidaw.js?v=70"></script>
+    <script src="/static/minidaw.js?v=71"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

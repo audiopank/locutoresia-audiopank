@@ -1296,6 +1296,7 @@ class MiniDAW {
         // Remove só os blocos de clip — as guias da Tesoura (selreg_/selini_/
         // selfim_) moram na mesma lane e precisam sobreviver ao redesenho.
         conteudo.querySelectorAll('.clip-bloco').forEach(el => el.remove());
+        conteudo.querySelectorAll('.xfade-regiao').forEach(el => el.remove());
         for (const clip of this._clipsDaFaixa(track)) {
             const el = document.createElement('div');
             el.className = 'clip-bloco';
@@ -1368,6 +1369,20 @@ class MiniDAW {
             el.addEventListener('contextmenu', (ev) => this.menuDoClip(ev, track.id, clip.id));
             conteudo.appendChild(el);
             this.desenharOndaDoClip(track, clip, el.querySelector('canvas'));
+        }
+        // Crossfade (28/09/2026): região amarela com X por cima da sobreposição,
+        // como no Samplitude. Só desenho (pointer-events: none).
+        const ordXf = ClipModel.ordenarClips(this._clipsDaFaixa(track));
+        for (let i = 0; i < ordXf.length - 1; i++) {
+            const fa = ClipModel.fimDoClip(ordXf[i]), bIni = ordXf[i + 1].inicio;
+            if (bIni >= fa - 1e-9) continue;
+            const d = document.createElement('div');
+            d.className = 'xfade-regiao';
+            d.style.left = (bIni * this.pxPorSegundo) + 'px';
+            d.style.width = Math.max(2, (fa - bIni) * this.pxPorSegundo) + 'px';
+            d.title = `Crossfade de ${(fa - bIni).toFixed(2).replace('.', ',')} s`;
+            d.innerHTML = '<svg viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="0" y1="0" x2="100" y2="100"/><line x1="0" y1="100" x2="100" y2="0"/></svg>';
+            conteudo.appendChild(d);
         }
         this.desenharAutomacaoVolume(track);
     }
@@ -1570,6 +1585,29 @@ class MiniDAW {
             ctx.beginPath(); ctx.moveTo(width, height); ctx.lineTo(width - w, 0); ctx.lineTo(width, 0); ctx.closePath(); ctx.fill();
             ctx.beginPath(); ctx.moveTo(width, height); ctx.lineTo(width - w, 0); ctx.stroke();
         }
+        // Curvas do crossfade (28/09/2026): entra em seno, sai em cosseno.
+        const xf = MixEngine.crossfadesDoClip(this._clipsDaFaixa(track), clip);
+        ctx.strokeStyle = 'rgba(250,204,21,.95)';
+        ctx.lineWidth = 1.5;
+        const N = 24;
+        if (xf.entrada > 0) {
+            const w = Math.min(width, xf.entrada * pxPorSeg);
+            ctx.beginPath();
+            for (let k = 0; k <= N; k++) {
+                const x = w * k / N, y = height - Math.sin(k / N * Math.PI / 2) * height;
+                if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+            }
+            ctx.stroke();
+        }
+        if (xf.saida > 0) {
+            const w = Math.min(width, xf.saida * pxPorSeg);
+            ctx.beginPath();
+            for (let k = 0; k <= N; k++) {
+                const x = width - w + w * k / N, y = height - Math.cos(k / N * Math.PI / 2) * height;
+                if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+            }
+            ctx.stroke();
+        }
     }
 
     // ── ARRASTO DE CLIP (tempo + entre faixas) ───────────────────────────
@@ -1659,7 +1697,8 @@ class MiniDAW {
             const clipsAlvo = (faixaAlvo === track)
                 ? this._clipsDaFaixa(track)
                 : this._clipsDaFaixa(faixaAlvo).concat([clip]);
-            novoInicio = ClipModel.moverClip(clipsAlvo, clip, novoInicio);
+            // Crossfade (28/09/2026): por cima do vizinho vale, se for crossfade válido.
+            novoInicio = ClipModel.moverComCrossfade(clipsAlvo, clip, novoInicio);
 
             clip.inicio = novoInicio;
             el.style.left = (novoInicio * this.pxPorSegundo) + 'px';
@@ -1687,12 +1726,13 @@ class MiniDAW {
                 this.moverClipParaFaixa(track, clip, d.trackAlvoId, inicioOriginal);
             } else {
                 track.clips = ClipModel.ordenarClips(this._clipsDaFaixa(track));
-                if (ClipModel.temSobreposicao(track.clips, clip)) {
-                    // Vão menor que o clip: volta pra onde estava (não comete overlap).
+                if (ClipModel.sobreposicaoInvalida(track.clips, clip)) {
+                    // Sobreposição que não é crossfade válido: volta pra onde estava.
                     clip.inicio = inicioOriginal;
                     track.clips = ClipModel.ordenarClips(track.clips);
                 }
                 this.aposMudancaDeClips([track]);
+                this._avisarCrossfade(track, clip);
             }
         };
         document.addEventListener('mousemove', mover);
@@ -1735,8 +1775,8 @@ class MiniDAW {
             const ajustado = ClipModel.calcularSnap(t, alvos, 8 / this.pxPorSegundo);
 
             const novo = ClipModel.aplicarTrim(clip, borda, ajustado);
-            // Borda não pode invadir o clip vizinho.
-            if (ClipModel.temSobreposicao(this._clipsDaFaixa(track), Object.assign({}, novo, { id: clip.id }))) return;
+            // Borda por cima do vizinho só se virar crossfade válido (28/09/2026).
+            if (ClipModel.sobreposicaoInvalida(this._clipsDaFaixa(track), Object.assign({}, novo, { id: clip.id }))) return;
 
             moveu = true;
             Object.assign(clip, novo, { id: clip.id });   // muta in-place, id fica
@@ -1803,8 +1843,8 @@ class MiniDAW {
             const fim = ClipModel.calcularSnap(fimPedido, alvos, 8 / this.pxPorSegundo);
             let dur = fim - clip.inicio;
             dur = Math.max(base.duracao * TimeStretch.FATOR_MIN, Math.min(base.duracao * TimeStretch.FATOR_MAX, dur));
-            // Esticar não pode invadir o clip vizinho.
-            if (ClipModel.temSobreposicao(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: dur })) return;
+            // Esticar por cima do vizinho só se virar crossfade válido (28/09/2026).
+            if (ClipModel.sobreposicaoInvalida(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: dur })) return;
             moveu = true;
             novaDur = dur;
             el.style.width = Math.max(8, dur * this.pxPorSegundo) + 'px';
@@ -1843,8 +1883,8 @@ class MiniDAW {
         if (!(dur > 0)) { this.showNotification('Duração inválida.', 'error'); return; }
         const fator = TimeStretch.limitarFator(dur / base.duracao);
         const novaDur = base.duracao * fator;
-        if (ClipModel.temSobreposicao(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: novaDur })) {
-            this.showNotification('Não cabe: o objeto invadiria o clip vizinho. Afaste o vizinho antes.', 'error');
+        if (ClipModel.sobreposicaoInvalida(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: novaDur })) {
+            this.showNotification('Não cabe: o objeto engoliria o vizinho (ou cruzaria um travado). Afaste o vizinho antes.', 'error');
             return;
         }
         if (Math.abs(fator - dur / base.duracao) > 1e-6) {
@@ -1902,8 +1942,8 @@ class MiniDAW {
         // vazia (audioBuffer ainda não foi zerado neste ponto).
         const origemSemClip = this._clipsDaFaixa(origem).filter(c => c.id !== clip.id);
         const clipsDestino = this._clipsDaFaixa(destino);
-        clip.inicio = ClipModel.moverClip(clipsDestino.concat([clip]), clip, clip.inicio);
-        if (ClipModel.temSobreposicao(clipsDestino.concat([clip]), clip)) {
+        clip.inicio = ClipModel.moverComCrossfade(clipsDestino.concat([clip]), clip, clip.inicio);
+        if (ClipModel.sobreposicaoInvalida(clipsDestino.concat([clip]), clip)) {
             // Não coube no destino: devolve pra origem, na posição de partida.
             clip.inicio = (inicioOriginal != null) ? inicioOriginal : 0;
             origem.clips = ClipModel.ordenarClips(origemSemClip.concat([clip]));
@@ -2145,7 +2185,7 @@ class MiniDAW {
             for (const g of grupo) {
                 const outros = this._clipsDaFaixa(g.track).filter(c => !idsGrupo.has(c.id));
                 const teste = { id: g.clip.id, inicio: iniciais.get(g.clip.id) + delta, duracao: g.clip.duracao };
-                if (ClipModel.temSobreposicao(outros.concat([teste]), teste)) return;   // bateu: o grupo fica onde está
+                if (ClipModel.sobreposicaoInvalida(outros.concat([teste]), teste)) return;   // bateu: o grupo fica onde está
             }
             deltaAtual = delta;
             for (const g of grupo) {
@@ -3104,9 +3144,13 @@ class MiniDAW {
             // dos fades, com rampa na emenda — a MESMA função do export.
             const volGain = this.audioContext.createGain();
             MixEngine.agendarVolumeDoClip(volGain.gain, this._clipsDaFaixa(track), clip, base);
+            // Crossfade dentro da faixa (28/09/2026): a MESMA função do export.
+            const xfGain = this.audioContext.createGain();
+            MixEngine.agendarCrossfadeDoClip(xfGain.gain, this._clipsDaFaixa(track), clip, base);
             source.connect(clipGain);
             clipGain.connect(volGain);
-            volGain.connect(nodes.inputNode);
+            volGain.connect(xfGain);
+            xfGain.connect(nodes.inputNode);
 
             if (agora > clip.inicio) {
                 // Retomando no meio do clip: entra já andado.
@@ -4795,6 +4839,13 @@ class MiniDAW {
         this.showNotification(travar
             ? `${quem} travado${grupo.length > 1 ? 's' : ''} 🔒 — ninguém mexe até destravar no cadeado`
             : `${quem} destravado${grupo.length > 1 ? 's' : ''} 🔓`, travar ? 'success' : 'info');
+    }
+
+    // Aviso ao soltar um objeto por cima do vizinho: diz o tamanho do crossfade.
+    _avisarCrossfade(track, clip) {
+        const xf = MixEngine.crossfadesDoClip(this._clipsDaFaixa(track), clip);
+        const s = Math.max(xf.entrada, xf.saida);
+        if (s > 0) this.showNotification(`Crossfade de ${s.toFixed(2).replace('.', ',')} s — Ctrl+Z desfaz`, 'success');
     }
 
     // O trecho marcado encosta em algum objeto travado desta faixa?

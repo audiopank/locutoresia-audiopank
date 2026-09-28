@@ -54,7 +54,7 @@ def test_arrasto_em_grupo_e_apagar_em_grupo():
     js = _ler('static', 'minidaw.js')
     ag = js[js.index("    _arrastarGrupo(ev, track, clip) {"):js.index("    // ── MENU DE CONTEXTO DO OBJETO")]
     assert "let delta = Math.max(-minIni, ajustado - iniciais.get(clip.id));" in ag          # ninguém passa do 0:00
-    assert "if (ClipModel.temSobreposicao(outros.concat([teste]), teste)) return;" in ag     # colisão = grupo não anda
+    assert "if (ClipModel.sobreposicaoInvalida(outros.concat([teste]), teste)) return;" in ag     # colisão = grupo não anda
     assert "this._guardarUndo(snapshot);" in ag                                                # um Ctrl+Z pro grupo
     assert "this.selecionarClip(track.id, clip.id);\n                this.irPara(tempoDoClique);" in ag   # clique seco = só ele
     ap = js[js.index("    apagarSelecionados() {"):js.index("    // Arrasto em grupo:")]
@@ -87,4 +87,4 @@ def cliente():
 
 def test_css_e_versao(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    assert '.menu-objeto {' in html and '.menu-objeto.aberto {' in html and 'minidaw.js?v=70' in html
+    assert '.menu-objeto {' in html and '.menu-objeto.aberto {' in html and 'minidaw.js?v=71' in html

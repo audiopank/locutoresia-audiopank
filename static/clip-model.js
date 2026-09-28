@@ -322,6 +322,35 @@
         return Math.max(minIni, Math.min(inicioPedido, maxIni));
     }
 
+    // CROSSFADE DENTRO DA FAIXA (28/09/2026, pedido dele no estilo Samplitude):
+    // objeto por cima do vizinho na MESMA faixa vira crossfade automático (o
+    // motor deriva a curva da posição — nada novo é salvo). Sobreposição só é
+    // VÁLIDA como crossfade de dois: não começa junto (< DURACAO_MIN), não
+    // contém o vizinho inteiro, nunca três ao mesmo tempo, nunca com objeto
+    // travado (o cadeado protege o som do aprovado). `clip` substitui o de mesmo
+    // id na lista (a lista pode trazer a posição velha).
+    function sobreposicaoInvalida(clips, clip) {
+        const ord = ordenarClips((clips || []).filter(c => c.id !== clip.id).concat([clip]));
+        for (let i = 0; i < ord.length - 1; i++) {
+            const a = ord[i], b = ord[i + 1];
+            const fa = fimDoClip(a);
+            if (b.inicio >= fa - 1e-9) continue;                          // encostado ou longe
+            if (b.inicio - a.inicio < DURACAO_MIN) return true;             // começam juntos
+            if (fimDoClip(b) <= fa + 1e-9) return true;                     // b inteiro dentro de a
+            if (estaTravado(a) || estaTravado(b)) return true;              // cadeado
+            if (i + 2 < ord.length && ord[i + 2].inicio < fa - 1e-9) return true;   // três juntos
+        }
+        return false;
+    }
+
+    // Posição pedida, se ela for válida (com crossfade ou sem); senão o
+    // comportamento antigo: encosta no vizinho (moverClip).
+    function moverComCrossfade(clips, clip, inicioPedido) {
+        const ini = Math.max(0, inicioPedido);
+        if (!sobreposicaoInvalida(clips, Object.assign({}, clip, { inicio: ini }))) return ini;
+        return moverClip(clips, clip, inicioPedido);
+    }
+
     // true se `clip` invade qualquer outro clip da lista (invariante da v1:
     // clips da mesma faixa não se sobrepõem — sobreposição = dois áudios
     // somados sem crossfade, que soa a erro).
@@ -370,7 +399,8 @@
         duracaoDoProjeto, ordenarClips, clipNoPonto, dividirClip,
         removerTrecho, silenciarTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip,
         temSobreposicao, clonarClip, ehArquivoInteiroNoZero,
-        GANHO_MAX_DB, limitarGanhoDb, volumeNoTrecho, igualarDb, estaTravado
+        GANHO_MAX_DB, limitarGanhoDb, volumeNoTrecho, igualarDb, estaTravado,
+        sobreposicaoInvalida, moverComCrossfade
     };
 
     global.ClipModel = ClipModel;

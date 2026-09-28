@@ -49,7 +49,7 @@ def test_estica_a_partir_da_origem_e_entra_no_desfazer():
     assert "Object.assign(clip, TimeStretch.camposEsticados(clip, base, novoBuffer, fator));" in trecho
     assert "this._sincronizarDerivados(track);" in trecho and "this.aposMudancaDeClips([track]);" in trecho
     # Esticar não invade o vizinho (arrasto e valor digitado).
-    assert js.count("ClipModel.temSobreposicao(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: ") == 2
+    assert js.count("ClipModel.sobreposicaoInvalida(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: ") == 2
 
 
 def test_salvar_projeto_nao_referencia_o_arquivo_original_para_buffer_esticado():
@@ -75,7 +75,7 @@ def cliente():
 def test_tela_carrega_o_motor_antes_da_minidaw(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('.clip-alca-stretch {', '.clip-stretch-rotulo {', '.clip-stretch-rotulo.forcado {',
-              'time-stretch.js?v=2', 'minidaw.js?v=70'):
+              'time-stretch.js?v=2', 'minidaw.js?v=71'):
         assert t in html, t
-    assert html.index('clip-model.js?v=7') < html.index('time-stretch.js?v=2') < html.index('minidaw.js?v=70')
+    assert html.index('clip-model.js?v=8') < html.index('time-stretch.js?v=2') < html.index('minidaw.js?v=71')
     assert cliente.get('/static/time-stretch.js').status_code == 200

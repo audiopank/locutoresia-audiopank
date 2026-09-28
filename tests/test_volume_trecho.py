@@ -28,7 +28,7 @@ def _cliente():
 
 def test_pagina_carrega_as_versoes_novas():
     html = _cliente().get('/minidaw').get_data(as_text=True)
-    for t in ('mix-engine.js?v=16', 'clip-model.js?v=7', 'minidaw.js?v=70', '.clip-vol {', '.vol-trecho {'):
+    for t in ('mix-engine.js?v=17', 'clip-model.js?v=8', 'minidaw.js?v=71', '.clip-vol {', '.vol-trecho {'):
         assert t in html, t
 
 
@@ -61,7 +61,7 @@ def test_menu_do_objeto_e_etiqueta_de_volume():
 def test_play_e_arquivo_usam_a_mesma_funcao_de_volume():
     js = _ler('static', 'minidaw.js')
     assert 'MixEngine.agendarVolumeDoClip(volGain.gain, this._clipsDaFaixa(track), clip, base);' in js
-    assert 'clipGain.connect(volGain);' in js and 'volGain.connect(nodes.inputNode);' in js
+    assert 'clipGain.connect(volGain);' in js and 'volGain.connect(xfGain);' in js   # crossfade depois do volume (28/09)
     motor = _ler('static', 'mix-engine.js')
     assert 'agendarVolumeDoClip(volGain.gain, clips, clip, 0);' in motor
     # a onda desenhada mostra o volume que se ouve

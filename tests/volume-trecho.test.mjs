@@ -183,5 +183,5 @@ test('renderizarMix: objeto com volume passa por um ganho próprio DEPOIS dos fa
     assert.ok(src.includes('const volGain = offlineContext.createGain();'));
     assert.ok(src.includes('agendarVolumeDoClip(volGain.gain, clips, clip, 0);'));
     assert.ok(src.includes('clipGain.connect(volGain);'));
-    assert.ok(src.includes('sources.push({ source, clipGain: volGain, clip });'));
+    assert.ok(src.includes('sources.push({ source, clipGain: xfGain, clip });'));   // crossfade vem depois (28/09)
 });

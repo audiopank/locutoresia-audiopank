@@ -463,9 +463,13 @@
                     // fades, com rampa curta na emenda — espelho do playTrack.
                     const volGain = offlineContext.createGain();
                     agendarVolumeDoClip(volGain.gain, clips, clip, 0);
+                    // Crossfade dentro da faixa (28/09/2026): mais um ganho, depois do volume.
+                    const xfGain = offlineContext.createGain();
+                    agendarCrossfadeDoClip(xfGain.gain, clips, clip, 0);
                     source.connect(clipGain);
                     clipGain.connect(volGain);
-                    sources.push({ source, clipGain: volGain, clip });
+                    volGain.connect(xfGain);
+                    sources.push({ source, clipGain: xfGain, clip });
                 }
 
                 // Build effect chain
@@ -688,6 +692,53 @@
         param.setValueAtTime(v.de, t0);
         param.linearRampToValueAtTime(v.g, t0 + v.rampa);
         return v;
+    }
+
+    // ── CROSSFADE DENTRO DA FAIXA (28/09/2026) ───────────────────────────
+    // Derivado da POSIÇÃO: o objeto que começa dentro do anterior entra em sen,
+    // o anterior sai em cos no mesmo trecho (potência constante: sem buraco de
+    // volume no meio). GainNode próprio depois do volume do objeto. Curva em
+    // XF_SEGMENTOS rampas lineares — setValueCurveAtTime não serve pra retomar
+    // o play no meio do crossfade. Play e arquivo chamam a MESMA função.
+    const XF_SEGMENTOS = 16;
+    function crossfadesDoClip(clips, clip) {
+        let entrada = 0, saida = 0;
+        const fim = clip.inicio + clip.duracao;
+        for (const c of (clips || [])) {
+            if (c === clip || (c.id && c.id === clip.id)) continue;
+            const fc = c.inicio + c.duracao;
+            if (c.inicio < clip.inicio - 1e-9 && fc > clip.inicio + 1e-9) {
+                entrada = Math.max(entrada, Math.min(fc, fim) - clip.inicio);
+            } else if (c.inicio > clip.inicio + 1e-9 && c.inicio < fim - 1e-9) {
+                saida = Math.max(saida, fim - c.inicio);
+            }
+        }
+        const total = entrada + saida;
+        if (total > clip.duracao && total > 0) {          // segurança: nunca passa do objeto
+            const k = clip.duracao / total;
+            entrada *= k; saida *= k;
+        }
+        return { entrada, saida };
+    }
+    function agendarCrossfadeDoClip(param, clips, clip, base) {
+        const xf = crossfadesDoClip(clips, clip);
+        const b = base || 0;
+        param.setValueAtTime(1, 0);
+        if (xf.entrada > 0) {
+            const t0 = b + clip.inicio;
+            param.setValueAtTime(0, Math.max(0, t0));
+            for (let k = 1; k <= XF_SEGMENTOS; k++) {
+                param.linearRampToValueAtTime(Math.sin(k / XF_SEGMENTOS * Math.PI / 2), Math.max(0, t0 + xf.entrada * k / XF_SEGMENTOS));
+            }
+        }
+        if (xf.saida > 0) {
+            const t1 = b + clip.inicio + clip.duracao - xf.saida;
+            param.setValueAtTime(1, Math.max(0, t1));
+            for (let k = 1; k <= XF_SEGMENTOS; k++) {
+                param.linearRampToValueAtTime(Math.cos(k / XF_SEGMENTOS * Math.PI / 2), Math.max(0, t1 + xf.saida * k / XF_SEGMENTOS));
+            }
+        }
+        return xf;
     }
 
     function bufferToWav(buffer) {
@@ -1042,6 +1093,7 @@
 
     global.MixEngine = {
         GANHO_OBJETO_MAX_DB, RAMPA_VOLUME_S, ganhoDbDoClip, dbParaLinear, volumeDoClip, agendarVolumeDoClip,
+        XF_SEGMENTOS, crossfadesDoClip, agendarCrossfadeDoClip,
         renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,
         paramsDeesser, criarDeesser, forcaDeesserDaFaixa, freqDeesserDaFaixa, DEESSER_FREQ_HZ, DEESSER_FREQS,
         paramsMultimax, criarMultiband, presetMultimax, PRESETS_MULTIMAX, MULTIMAX_CORTES, MULTIMAX_PRESET_PADRAO,
