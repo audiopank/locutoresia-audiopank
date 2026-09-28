@@ -34,6 +34,12 @@
         if (!isFinite(g)) return 0;
         return Math.max(-GANHO_MAX_DB, Math.min(GANHO_MAX_DB, Math.round(g * 10) / 10));
     }
+    // CADEADO (28/09/2026): `travado: true` no objeto = ninguém mexe. A tela
+    // recusa as edições; aqui as operações de TRECHO passam por cima do objeto
+    // travado sem tocar nele (defesa em profundidade). Pedaço e cópia NÃO
+    // herdam a trava: colar gera objeto livre.
+    function estaTravado(c) { return !!(c && c.travado === true); }
+
     function herdaVolume(novo, pai) {
         const g = Number(pai && pai.ganhoDb);
         if (g && isFinite(g)) novo.ganhoDb = g;
@@ -146,6 +152,7 @@
         const mf = (typeof microFade === 'number') ? microFade : 0.008;
         const saida = [];
         for (const clip of (clips || [])) {
+            if (estaTravado(clip)) { saida.push(clip); continue; }  // cadeado: intocável
             const a = Math.max(clip.inicio, ini), b = Math.min(fimDoClip(clip), fim);
             if (b - a < 0.001) { saida.push(clip); continue; }      // não encosta no trecho
             const antes = a - clip.inicio, depois = fimDoClip(clip) - b;
@@ -194,6 +201,7 @@
         if (!(fim - ini >= 0.001) || !delta) return clips;
         const saida = [];
         for (const clip of (clips || [])) {
+            if (estaTravado(clip)) { saida.push(clip); continue; }  // cadeado: intocável
             const fimC = fimDoClip(clip);
             let a = Math.max(clip.inicio, ini), b = Math.min(fimC, fim);
             if (b - a < 0.001) { saida.push(clip); continue; }      // não encosta no trecho
@@ -362,7 +370,7 @@
         duracaoDoProjeto, ordenarClips, clipNoPonto, dividirClip,
         removerTrecho, silenciarTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip,
         temSobreposicao, clonarClip, ehArquivoInteiroNoZero,
-        GANHO_MAX_DB, limitarGanhoDb, volumeNoTrecho, igualarDb
+        GANHO_MAX_DB, limitarGanhoDb, volumeNoTrecho, igualarDb, estaTravado
     };
 
     global.ClipModel = ClipModel;

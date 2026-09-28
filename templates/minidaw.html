@@ -849,6 +849,18 @@
             padding: 0 5px; border-radius: 3px; background: rgba(8,145,178,.9);
         }
         .clip-vol.desce { background: rgba(124,58,237,.9); }
+        /* Cadeado no objeto (28/09/2026): embaixo, no meio, como no Samplitude. */
+        .clip-cadeado {
+            position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%); z-index: 4;
+            border: 0; background: none; padding: 0 4px; line-height: 1; cursor: pointer;
+            font-size: .62rem; color: rgba(255,255,255,.4);
+        }
+        .clip-cadeado:hover { color: #fff; }
+        .clip-cadeado.fechado { color: #ef4444; text-shadow: 0 0 3px #000; font-size: .7rem; }
+        .clip-bloco.travado { cursor: not-allowed; border-color: rgba(239,68,68,.55); }
+        .clip-bloco.travado:active { cursor: not-allowed; }
+        .clip-bloco.travado .clip-alca,
+        .clip-bloco.travado .clip-alca-stretch { display: none; }
         .vol-trecho { display: inline-flex; align-items: center; gap: 4px; }
         .vol-trecho .vol-trecho-db { width: 62px; padding: 1px 4px; }
         .vol-trecho .vol-trecho-un { font-size: .75rem; color: #cbd5e1; }
@@ -1289,11 +1301,11 @@
     <script src="/static/enviar-entrega.js?v=3"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
     <script src="/static/mix-engine.js?v=16"></script>
-    <script src="/static/clip-model.js?v=6"></script>
+    <script src="/static/clip-model.js?v=7"></script>
     <script src="/static/loudness.js?v=1"></script>
     <script src="/static/master-suite.js?v=8"></script>
     <script src="/static/time-stretch.js?v=2"></script>
-    <script src="/static/minidaw.js?v=69"></script>
+    <script src="/static/minidaw.js?v=70"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

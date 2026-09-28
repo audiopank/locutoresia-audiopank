@@ -1344,6 +1344,21 @@ class MiniDAW {
                     el.appendChild(selo);
                 }
             }
+            // CADEADO (28/09/2026, Samplitude): embaixo, no meio do objeto. Aberto =
+            // livre (discreto); fechado vermelho = travado. Clique alterna SÓ este.
+            const trav = ClipModel.estaTravado(clip);
+            if (trav) el.classList.add('travado');
+            const cad = document.createElement('button');
+            cad.type = 'button';
+            cad.className = 'clip-cadeado' + (trav ? ' fechado' : '');
+            cad.innerHTML = trav ? '<i class="fas fa-lock"></i>' : '<i class="fas fa-lock-open"></i>';   // HTML fixo, sem dado
+            cad.title = trav
+                ? 'Objeto TRAVADO: não arrasta, não corta, não estica, não muda volume, não apaga. Clique pra destravar.'
+                : 'Travar este objeto (cadeado): protege o que o cliente já aprovou. Clique pra travar.';
+            cad.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+            cad.addEventListener('dblclick', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+            cad.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); this.alternarTrava(track.id, clip.id, true); });
+            el.appendChild(cad);
             // Realce sobrevive ao redesenho (renderizarClips recria os blocos).
             if (this._estaSelecionado(clip.id)) {
                 el.classList.add('selecionado');
@@ -1566,6 +1581,20 @@ class MiniDAW {
         if (!track) return;
         const clip = this._clipsDaFaixa(track).find(c => c.id === clipId);
         if (!clip) return;
+
+        if (ClipModel.estaTravado(clip)) {
+            // Cadeado (28/09/2026): travado não arrasta, não apara, não estica.
+            // Clique ainda SELECIONA (copiar, menu), Ctrl+clique entra no grupo e
+            // a Tesoura ainda MARCA — quem recusa é a operação.
+            if (this.trackTesoura === trackId) return this.iniciarSelecao(ev, trackId);
+            if (ev.button === 2) return;
+            this._fecharMenuObjeto();
+            if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); this.alternarSelecao(trackId, clipId); return; }
+            if (this._estaSelecionado(clipId) && this.selecionados.length >= 2) return this._arrastarGrupo(ev, track, clip);
+            this.selecionarClip(trackId, clipId);
+            ev.preventDefault();
+            return this._avisarTravadoSeArrastar(ev);
+        }
 
         if (ev.target.dataset && ev.target.dataset.stretch) return this.iniciarStretch(ev, track, clip);
         const borda = ev.target.dataset && ev.target.dataset.borda;
@@ -1804,6 +1833,7 @@ class MiniDAW {
         if (!track) return;
         const clip = this._clipsDaFaixa(track).find(c => c.id === clipId);
         if (!clip || !window.TimeStretch || this._stretchOcupado) return;
+        if (ClipModel.estaTravado(clip)) { this.showNotification('Objeto travado — destrave no cadeado pra esticar', 'warning'); return; }
         const base = TimeStretch.baseDoStretch(clip);
         const resposta = prompt(
             `Time Stretch — nova duração do objeto, em segundos\n(agora ${clip.duracao.toFixed(2).replace('.', ',')} s · original ${base.duracao.toFixed(2).replace('.', ',')} s · limite ${(base.duracao * TimeStretch.FATOR_MIN).toFixed(1).replace('.', ',')} a ${(base.duracao * TimeStretch.FATOR_MAX).toFixed(1).replace('.', ',')} s)`,
@@ -2051,8 +2081,15 @@ class MiniDAW {
 
     // Apaga o grupo (ou o único selecionado). Um Ctrl+Z desfaz tudo.
     apagarSelecionados() {
-        const grupo = this._selecionadosVivos();
-        if (!grupo.length) return false;
+        const todos = this._selecionadosVivos();
+        if (!todos.length) return false;
+        // Cadeado: travado NÃO sai (Ctrl+A + Delete apaga só os livres).
+        const grupo = todos.filter(g => !ClipModel.estaTravado(g.clip));
+        const nTravados = todos.length - grupo.length;
+        if (!grupo.length) {
+            this.showNotification(nTravados > 1 ? `${nTravados} objetos travados — nada apagado` : 'Objeto travado — destrave no cadeado pra apagar', 'warning');
+            return true;
+        }
         this._guardarUndo(this._snapshotClips());
         const ids = new Set(grupo.map(g => g.clip.id));
         const faixas = [...new Set(grupo.map(g => g.track))];
@@ -2063,7 +2100,8 @@ class MiniDAW {
         }
         this.limparSelecao();
         this.aposMudancaDeClips(faixas);
-        this.showNotification(`${grupo.length} objeto${grupo.length > 1 ? 's' : ''} apagado${grupo.length > 1 ? 's' : ''} — Ctrl+Z desfaz`, 'success');
+        this.showNotification(`${grupo.length} objeto${grupo.length > 1 ? 's' : ''} apagado${grupo.length > 1 ? 's' : ''}`
+            + (nTravados ? ` · ${nTravados} travado${nTravados > 1 ? 's ficaram' : ' ficou'}` : '') + ' — Ctrl+Z desfaz', 'success');
         return true;
     }
 
@@ -2075,6 +2113,8 @@ class MiniDAW {
         ev.preventDefault();
         const grupo = this._selecionadosVivos();
         if (grupo.length < 2) return;
+        if (grupo.some(g => ClipModel.estaTravado(g.clip))) return this._avisarTravadoSeArrastar(ev,
+            'O grupo tem objeto travado — o grupo não anda. Destrave no cadeado ou tire ele da seleção (Ctrl+clique).');
         const idsGrupo = new Set(grupo.map(g => g.clip.id));
         const iniciais = new Map(grupo.map(g => [g.clip.id, g.clip.inicio]));
         const minIni = Math.min(...grupo.map(g => g.clip.inicio));
@@ -2149,6 +2189,9 @@ class MiniDAW {
         const tempo = this._tempoNoPonto(ev, track);
         const alvo = { trackId, tempo };
         const plural = n >= 2 ? ` ${n} objetos` : '';
+        const alvosTrava = n >= 2 ? this._selecionadosVivos().map(g => g.clip)
+                                  : [this._clipsDaFaixa(track).find(c => c.id === clipId)];
+        const vaiTravar = alvosTrava.some(c => c && !ClipModel.estaTravado(c));
         const itens = [
             { rotulo: 'Copiar' + plural, tecla: 'Ctrl+C', acao: () => this.copiarClip() },
             { rotulo: 'Recortar' + plural, tecla: 'Ctrl+X', acao: () => this.recortarClip() },
@@ -2157,6 +2200,7 @@ class MiniDAW {
             { rotulo: 'Dividir aqui', tecla: 'D', acao: () => this.cutTrackAtTime(trackId, tempo) },
             { rotulo: 'Time Stretch exato…', acao: () => this.stretchExato(trackId, clipId) },
             { rotulo: 'Volume do objeto…' + plural, acao: () => this.volumeDoObjeto(trackId, clipId) },
+            { rotulo: (vaiTravar ? 'Travar ' : 'Destravar ') + (n >= 2 ? `${n} objetos` : 'objeto'), acao: () => this.alternarTrava(trackId, clipId) },
             { sep: true },
             { rotulo: 'Apagar' + plural, tecla: 'Delete', acao: () => this.apagarSelecionados() },
             { rotulo: 'Selecionar todos', tecla: 'Ctrl+A', acao: () => this.selecionarTodos() },
@@ -2320,6 +2364,10 @@ class MiniDAW {
 
     recortarClip() {
         const grupo = this._selecionadosVivos();
+        if (grupo.some(g => ClipModel.estaTravado(g.clip))) {
+            this.showNotification('Tem objeto travado na seleção — destrave no cadeado pra recortar', 'warning');
+            return true;
+        }
         if (grupo.length >= 2) {
             this._copiarGrupoParaClipboard(grupo);
             this.apagarSelecionados();
@@ -2446,6 +2494,7 @@ class MiniDAW {
             this.showNotification('Nenhum clip sob a linha de corte', 'info');
             return;
         }
+        if (ClipModel.estaTravado(clip)) { this.showNotification('Objeto travado — destrave no cadeado pra apagar', 'warning'); return; }
         this._guardarUndo(this._snapshotClips());
         track.clips = clips.filter(c => c.id !== clip.id);
         this._sincronizarDerivados(track);
@@ -3371,6 +3420,12 @@ class MiniDAW {
         if (!this.vozOriginais) this.vozOriginais = new Map();
         const vozes = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
         if (vozes.length === 0) { this.showNotification('Nenhuma voz na timeline', 'warning'); return; }
+        // Cadeado: Encurtar Pausas refaz a voz do zero e desmontaria o objeto travado.
+        const travadosVoz = vozes.reduce((n, t) => n + (t.clips || []).filter(c => ClipModel.estaTravado(c)).length, 0);
+        if (travadosVoz) {
+            this.showNotification(`Encurtar Pausas refaz a voz do zero e desmontaria ${travadosVoz} objeto(s) travado(s). Destrave no cadeado antes.`, 'warning');
+            return;
+        }
 
         // Trocar o buffer recola a faixa num clip único (migração preguiçosa):
         // divisões, trims e posições da timeline se perdem. Isto era só um
@@ -4688,7 +4743,7 @@ class MiniDAW {
         const nTrechos = extras.length + ((s.fim - s.ini >= 0.01) ? 1 : 0);
         if (extras.length) {
             const total = extras.reduce((t, x) => t + (x.fim - x.ini), 0) + Math.max(0, s.fim - s.ini);
-            info.textContent = `${nTrechos} trechos marcados (${total.toFixed(2)}s no total) · ` + info.textContent;
+            info.textContent = `${nTrechos === 1 ? '1 trecho marcado' : `${nTrechos} trechos marcados`} (${total.toFixed(2)}s no total) · ` + info.textContent;
         }
         const bs = document.getElementById(`btnsilenciar_${trackId}`);
         const rot = bs ? bs.querySelector('span') : null;
@@ -4707,6 +4762,66 @@ class MiniDAW {
         if (this.selecoes) delete this.selecoes[trackId];
         if (this.selecoesExtras) delete this.selecoesExtras[trackId];
         this.desenharSelecao(trackId);
+    }
+
+    // ── CADEADO NO OBJETO (28/09/2026) ───────────────────────────────────
+    // Pedido dele, do Samplitude: travar o objeto pra ninguém mexer (o spot que
+    // o cliente já aprovou). Travado não arrasta, não apara, não estica, não
+    // corta, não silencia, não muda volume, não apaga, não recorta. Seleciona e
+    // copia normalmente (a cópia nasce livre). Travar/destravar entra no Ctrl+Z
+    // (senão desfazer uma edição antiga destravaria calado) e fica no projeto.
+    alternarTrava(trackId, clipId, soEste) {
+        let grupo = (!soEste && this.selecionados.length >= 2 && this._estaSelecionado(clipId)) ? this._selecionadosVivos() : null;
+        if (!grupo || !grupo.length) {
+            const track = this.tracks.find(t => t.id === trackId);
+            const clip = track ? this._clipsDaFaixa(track).find(c => c.id === clipId) : null;
+            if (!clip) return;
+            grupo = [{ track, clip }];
+        }
+        const travar = grupo.some(g => !ClipModel.estaTravado(g.clip));
+        this._guardarUndo(this._snapshotClips());
+        for (const g of grupo) {
+            g.track.clips = this._clipsDaFaixa(g.track).map(c => {
+                if (c.id !== g.clip.id) return c;
+                const novo = Object.assign({}, c);
+                if (travar) novo.travado = true; else delete novo.travado;
+                return novo;
+            });
+        }
+        // Só desenho e autosave: a trava não muda o som, não reinicia o play.
+        this.renderizarTimeline();
+        this.saveToLocalStorage();
+        const quem = grupo.length > 1 ? `${grupo.length} objetos` : 'Objeto';
+        this.showNotification(travar
+            ? `${quem} travado${grupo.length > 1 ? 's' : ''} 🔒 — ninguém mexe até destravar no cadeado`
+            : `${quem} destravado${grupo.length > 1 ? 's' : ''} 🔓`, travar ? 'success' : 'info');
+    }
+
+    // O trecho marcado encosta em algum objeto travado desta faixa?
+    _trechoPegaTravado(track, trechos) {
+        return this._clipsDaFaixa(track).some(c => ClipModel.estaTravado(c)
+            && (trechos || []).some(r => r.ini < ClipModel.fimDoClip(c) && c.inicio < Math.max(r.fim, r.ini + 1e-6)));
+    }
+
+    _avisarTrechoTravado() {
+        this.showNotification('O trecho pega um objeto travado 🔒 — destrave no cadeado pra editar', 'warning');
+    }
+
+    // Arrastar travado: nada anda; se o mouse andou de verdade (não foi só um
+    // clique pra selecionar), avisa uma vez por que não andou.
+    _avisarTravadoSeArrastar(ev, msg) {
+        const x0 = ev.clientX, y0 = ev.clientY;
+        const soltar = () => {
+            document.removeEventListener('mousemove', mover);
+            document.removeEventListener('mouseup', soltar);
+        };
+        const mover = (e) => {
+            if (Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) < 5) return;
+            soltar();
+            this.showNotification(msg || 'Objeto travado 🔒 — clique no cadeado pra destravar', 'warning');
+        };
+        document.addEventListener('mousemove', mover);
+        document.addEventListener('mouseup', soltar);
     }
 
     // ── VOLUME DO TRECHO (28/09/2026) ────────────────────────────────────
@@ -4743,6 +4858,7 @@ class MiniDAW {
             this.showNotification('Arraste sobre a onda com a Tesoura pra marcar o trecho primeiro', 'warning');
             return;
         }
+        if (this._trechoPegaTravado(track, trechos)) { this._avisarTrechoTravado(); return; }
         const delta = ClipModel.limitarGanhoDb(deltaDb != null ? deltaDb : (this.volTrechoDb ?? 3));
         if (!delta) { this.showNotification('Escolha quantos dB: 3 sobe, -3 desce', 'info'); return; }
         const snap = this._snapshotClips();
@@ -4772,6 +4888,7 @@ class MiniDAW {
             this.showNotification('Arraste sobre a onda com a Tesoura pra marcar o trecho primeiro', 'warning');
             return;
         }
+        if (this._trechoPegaTravado(track, trechos)) { this._avisarTrechoTravado(); return; }
         const snap = this._snapshotClips();
         let novos = this._clipsDaFaixa(track);
         const aplicados = [];
@@ -4804,6 +4921,10 @@ class MiniDAW {
             const clip = track ? this._clipsDaFaixa(track).find(c => c.id === clipId) : null;
             if (!clip) return;
             grupo = [{ track, clip }];
+        }
+        if (grupo.some(g => ClipModel.estaTravado(g.clip))) {
+            this.showNotification('Objeto travado — destrave no cadeado pra mudar o volume', 'warning');
+            return;
         }
         const atual = MixEngine.ganhoDbDoClip(grupo[0].clip);
         const quem = grupo.length > 1 ? `destes ${grupo.length} objetos` : 'deste objeto';
@@ -4852,6 +4973,13 @@ class MiniDAW {
         const clip = ClipModel.clipNoPonto(clips, s.ini);
         if (!clip && modo !== 'silenciar') {     // o silenciar vale pro TRECHO, mesmo começando num buraco
             this.showNotification('Marque em cima de um clip (a marcação caiu num buraco)', 'warning');
+            return;
+        }
+        const pegaTravado = (modo === 'silenciar')
+            ? this._trechoPegaTravado(track, extras.concat((s.fim - s.ini >= 0.01) ? [{ ini: s.ini, fim: s.fim }] : []))
+            : ClipModel.estaTravado(clip);
+        if (pegaTravado) {
+            this._avisarTrechoTravado();
             return;
         }
 
@@ -5394,7 +5522,8 @@ class MiniDAW {
                         inicio: c.inicio, offset: c.offset, duracao: c.duracao,
                         fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
                         stretch: (c.stretch > 0) ? c.stretch : 1,       // Time Stretch aplicado (só informativo: o áudio salvo JÁ está esticado)
-                        ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined // Volume do objeto (sem volume: campo nem vai)
+                        ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined, // Volume do objeto (sem volume: campo nem vai)
+                        travado: ClipModel.estaTravado(c) || undefined    // Cadeado
                     });
                 }
                 tracks.push(td);
@@ -5548,7 +5677,8 @@ class MiniDAW {
                             inicio: c.inicio, offset: c.offset, duracao: c.duracao,
                             fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
                             stretch: (c.stretch > 0 && Math.abs(c.stretch - 1) > 1e-3) ? c.stretch : undefined,
-                            ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined
+                            ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined,
+                            travado: ClipModel.estaTravado(c) || undefined
                         }));
                     this._sincronizarDerivados(track);
                 } else if (td.audio_url) {
