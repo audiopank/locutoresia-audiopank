@@ -93,6 +93,13 @@ def test_extrair_miolo_com_patrocinador_no_fecho_colado():
               'Informações pelo WhatsApp: oitenta e cinco, nove, nove dois dois seis, dois dois nove sete.')
     miolo2, removidas2 = pr.extrair_miolo('vida', antigo)
     assert miolo2 == 'Miolo aqui.' and removidas2 == ['fecho']
+    # 28/09 (ep.14): ele digita "9226-2297", sem o espaço depois do hífen — o Charon
+    # fala certo das duas formas, e o card tem que reconhecer as duas (senão dobra o fecho).
+    for numero in ('85 9 9226-2297', '85 9 9226 - 2297', '85  9  9226- 2297.'):
+        t = ('Miolo aqui.\n\nVida Saudável é produzido por Locutores IA, Áudio Pank Produtora. Esse espaço pode ser da sua marca. '
+             'Informações pelo WhatsApp: ' + numero)
+        m3, r3 = pr.extrair_miolo('vida', t)
+        assert m3 == 'Miolo aqui.' and r3 == ['fecho'], numero
 
 
 def test_extrair_miolo_sem_partes_fixas_devolve_limpo():

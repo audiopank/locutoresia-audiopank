@@ -143,6 +143,13 @@ def limpar_miolo(miolo):
     return t.strip()
 
 
+def _final_flexivel(final):
+    """Regex do fim do fecho que aceita espaço à vontade: "9226-2297", "9226- 2297"
+    e "9226 - 2297" são o mesmo número (28/09/2026: ele digita sem o espaço e o
+    Charon fala certo das duas formas; só o número POR EXTENSO dá erro)."""
+    return r'\s*-\s*'.join(r'\s+'.join(re.escape(tok) for tok in p_.split()) for p_ in re.split(r'\s*-\s*', final.strip()))
+
+
 def extrair_miolo(pid, texto):
     """Se veio o roteiro INTEIRO colado, tira as partes fixas do programa.
 
@@ -172,7 +179,7 @@ def extrair_miolo(pid, texto):
     # (o ponto sai ANTES do escape: tirar depois deixava uma barra solta no padrão)
     # Fecho novo (dígitos) OU fecho antigo por extenso (.txt dos episódios 1-12).
     finais = [fim_fecho] + [f.rstrip('.') for f in p.get('fecho_finais_antigos', [])]
-    fecho_re = re.compile(re.escape(inicio_fecho) + r'.*?(?:' + '|'.join(re.escape(f) for f in finais) + r')\.?', re.I | re.S)
+    fecho_re = re.compile(re.escape(inicio_fecho) + r'.*?(?:' + '|'.join(_final_flexivel(f) for f in finais) + r')\.?', re.I | re.S)
     t, n = fecho_re.subn(' ', t)
     if n:
         removidas.append('fecho')
