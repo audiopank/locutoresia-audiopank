@@ -10070,6 +10070,33 @@ def get_vip_project(project_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _caminhos_de_audio(tracks):
+    """audio_path de um projeto: faixas antigas (1 áudio por faixa) + buffers da timeline."""
+    caminhos = []
+    for tr in (tracks or []):
+        if tr.get('audio_path'):
+            caminhos.append(tr['audio_path'])
+        for b in (tr.get('buffers') or []):
+            if b.get('audio_path'):
+                caminhos.append(b['audio_path'])
+    return caminhos
+
+
+def _caminhos_so_deste_projeto(tracks_deste, tracks_dos_outros):
+    """Arquivos que podem sair do Storage ao apagar um projeto: os dele que NENHUM
+    outro projeto usa. Desde 30/09/2026 o Salvar reaproveita o áudio já enviado, então
+    um "Salvar com outro nome" COMPARTILHA arquivos entre projetos."""
+    em_uso = set()
+    for tracks in (tracks_dos_outros or []):
+        em_uso.update(_caminhos_de_audio(tracks))
+    vistos, saida = set(), []
+    for c in _caminhos_de_audio(tracks_deste):
+        if c not in em_uso and c not in vistos:
+            vistos.add(c)
+            saida.append(c)
+    return saida
+
+
 @app.route('/api/projects/<project_id>', methods=['DELETE', 'OPTIONS'])
 def delete_vip_project(project_id):
     if request.method == 'OPTIONS':
@@ -10086,13 +10113,18 @@ def delete_vip_project(project_id):
             r = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
                 .select('tracks').eq('id', project_id).limit(1).execute()
             if r.data:
-                paths = []
-                for tr in (r.data[0].get('tracks') or []):
-                    if tr.get('audio_path'):
-                        paths.append(tr['audio_path'])
-                    for b in (tr.get('buffers') or []):
-                        if b.get('audio_path'):
-                            paths.append(b['audio_path'])
+                # Arquivo que OUTRO projeto usa fica (Salvar com outro nome compartilha).
+                # Se não der pra ler os outros, a exceção pula a faxina: na dúvida, não apaga.
+                outros = supabase_manager.newpost_manager_client.table(MINIDAW_PROJECTS_TABLE) \
+                    .select('tracks').neq('id', project_id).execute()
+                outros_dados = outros.data or []
+                if len(outros_dados) >= 1000:
+                    # Limite de linhas do PostgREST: a lista pode ter vindo cortada.
+                    print('[VIP] faxina pulada: lista de projetos pode estar incompleta')
+                    paths = []
+                else:
+                    paths = _caminhos_so_deste_projeto(
+                        r.data[0].get('tracks'), [o.get('tracks') for o in outros_dados])
                 if paths:
                     supabase_manager.newpost_manager_client.storage \
                         .from_(CLIENT_DELIVERIES_BUCKET).remove(paths)

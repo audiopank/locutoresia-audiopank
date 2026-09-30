@@ -5528,6 +5528,20 @@ class MiniDAW {
     // ═══════════════════════════════════════════════════════════════════
 
     // Sobe um WAV da faixa pro Storage e devolve o audio_path.
+    // Depois de excluir QUALQUER projeto, os áudios abertos esquecem de onde vieram:
+    // se o excluído era o mesmo que está na tela, o próximo Salvar apontaria pra
+    // arquivos que acabaram de sair do Storage. Sem a marca, ele sobe de novo (seguro).
+    _esquecerOrigensDosAudios() {
+        for (const t of this.tracks) {
+            const bufs = new Set([t.audioBuffer, ...((t.clips || []).map(c => c.buffer))]);
+            for (const b of bufs) {
+                if (!b) continue;
+                delete b._audioPath;
+                delete b._audioUrlDireto;
+            }
+        }
+    }
+
     async _uploadAudioProjeto(blob) {
         const ru = await fetch('/api/client-deliveries/upload-url', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -5602,7 +5616,19 @@ class MiniDAW {
                         indicePorBuffer.set(c.buffer, idx);
                         const urlEstavel = t.audioUrl && /^https?:/i.test(t.audioUrl)
                             && !/\/object\/sign\/|token=/i.test(t.audioUrl);   // signed URL de 1h NÃO é referência estável
-                        if (c.buffer === t.audioBuffer && urlEstavel && !c.buffer._esticado && !(c.stretch > 0 && c.stretch !== 1)) {
+                        if (c.buffer._audioPath) {
+                            // Já está no Storage: veio de um projeto reaberto ou subiu num
+                            // Salvar anterior desta sessão. REAPROVEITA. Até 30/09/2026 todo
+                            // Salvar reenviava o WAV com nome novo e deixava o antigo órfão:
+                            // a pasta projetos/ chegou a 1,95 GB e o Supabase bloqueou.
+                            // (Nenhum recurso altera um áudio carregado — cortar, esticar,
+                            // encurtar e masterizar sempre criam um AudioBuffer novo.)
+                            passo = `reaproveitar áudio ${idx + 1} da faixa ${i + 1} (${t.name}) — já no Storage`;
+                            console.log('[projeto] ' + passo);
+                            td.buffers.push({ audio_path: c.buffer._audioPath });
+                        } else if (c.buffer._audioUrlDireto) {
+                            td.buffers.push({ audio_url_direct: c.buffer._audioUrlDireto });
+                        } else if (c.buffer === t.audioBuffer && urlEstavel && !c.buffer._esticado && !(c.stretch > 0 && c.stretch !== 1)) {
                             // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
                             // /object/public/...). NÃO reenvia — evita reupload de arquivo
                             // grande (era o gargalo) e aponta direto pra URL pública.
@@ -5616,7 +5642,9 @@ class MiniDAW {
                             const wav = this.bufferToWav(c.buffer);
                             passo = `enviar áudio ${idx + 1} da faixa ${i + 1} — ${(wav.size / 1024 / 1024).toFixed(1)}MB`;
                             console.log('[projeto] ' + passo);
-                            td.buffers.push({ audio_path: await this._uploadAudioProjeto(wav) });
+                            const caminho = await this._uploadAudioProjeto(wav);
+                            c.buffer._audioPath = caminho;        // o próximo Salvar reaproveita
+                            td.buffers.push({ audio_path: caminho });
                         }
                     }
                     td.clips.push({
@@ -5704,8 +5732,9 @@ class MiniDAW {
                 b.onclick = () => { fechar(); this.carregarProjetoSupabase(b.getAttribute('data-abrir')); });
             modal.querySelectorAll('[data-excluir]').forEach(b =>
                 b.onclick = async () => {
-                    if (!confirm('Excluir este projeto? O áudio salvo continua no Storage.')) return;
+                    if (!confirm('Excluir este projeto? O áudio que só ele usa sai do Storage (o que outro projeto usa fica).')) return;
                     await fetch(`/api/projects/${b.getAttribute('data-excluir')}`, { method: 'DELETE' });
+                    this._esquecerOrigensDosAudios();
                     fechar(); this.abrirMeusProjetos();
                 });
         } catch (e) {
@@ -5767,7 +5796,12 @@ class MiniDAW {
                         const resp = await fetch(b.audio_url);
                         if (!resp.ok) { buffers.push(null); continue; }   // URL expirada/inválida — vira aviso abaixo, não EncodingError
                         const arr = await resp.arrayBuffer();
-                        buffers.push(await this.audioContext.decodeAudioData(arr));
+                        const ab = await this.audioContext.decodeAudioData(arr);
+                        // De onde este áudio veio (30/09/2026): o próximo Salvar
+                        // reaproveita o arquivo em vez de subir tudo de novo.
+                        ab._audioPath = b.audio_path || undefined;
+                        ab._audioUrlDireto = b.audio_url_direct || undefined;
+                        buffers.push(ab);
                     }
                     if (buffers.some(b => !b)) {
                         // Clip sem áudio assinado seria descartado em silêncio e
