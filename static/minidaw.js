@@ -5787,7 +5787,7 @@ class MiniDAW {
             // e o Chrome recusava ("Must be handling a user gesture", 30/09/2026).
             let pasta = (!outraPasta && this._pastaProjeto) ? this._pastaProjeto : null;
             if (!pasta) {
-                pasta = await window.showDirectoryPicker({ id: 'locutores-projeto', mode: 'readwrite', startIn: 'documents' });
+                pasta = await window.showDirectoryPicker({ id: 'locutores-projeto', mode: 'readwrite', startIn: this._pastaGeral || 'documents' });
             }
             // Nome: na pasta vinculada, o do projeto aberto; pasta nova, pergunta
             // (vem preenchido com o nome da pasta — a pasta É o projeto).
@@ -5809,6 +5809,7 @@ class MiniDAW {
             if (existente && String(existente.name || '').trim() !== nome.trim()) {
                 const pai = pasta;
                 pasta = await this._subpastaDoProjeto(pai, nome);
+                await this._lembrarPastaGeral(pai);          // a pasta-mãe vira a pasta geral lembrada
                 ondeSalvou = `${pai.name}/${pasta.name}`;
             }
             const mesmaPasta = !!(this._pastaProjeto && await pasta.isSameEntry(this._pastaProjeto));
@@ -5852,18 +5853,143 @@ class MiniDAW {
         }
     }
 
+    // ── ABRIR DO PC com LISTA da pasta geral (30/09/2026) ────────────────
+    // Pergunta dele: "e quando tiver 5 spots dentro da pasta geral?". A pasta
+    // geral fica LEMBRADA no navegador (IndexedDB) e o Abrir do PC mostra a
+    // lista dos projetos dela — nome e data do último salvamento, mais recente
+    // primeiro — como os recentes do Samplitude. Pasta de UM projeto só continua
+    // abrindo direto.
     async abrirDoComputador() {
         if (!this._suportaPasta()) {
             alert('Abrir do computador funciona no Chrome ou no Edge, no computador.');
             return;
         }
         try {
-            const pasta = await window.showDirectoryPicker({ id: 'locutores-projeto', mode: 'readwrite', startIn: 'documents' });
-            const proj = await this._lerProjetoDaPasta(pasta);
-            if (!proj) {
-                alert(`A pasta "${pasta.name}" não tem projeto do Locutores IA (${ARQUIVO_PROJETO_LOCAL}).\nEscolha a pasta do projeto, não a pasta Audio.`);
-                return;
+            let pasta = null;
+            const geral = this._pastaGeral;
+            if (geral) {
+                // Pasta lembrada: a PERMISSÃO vem primeiro, dentro do clique (o
+                // navegador só pergunta dentro do gesto — mesma regra do seletor).
+                let ok = false;
+                try { ok = await this._permissaoDaPasta(geral); } catch (e) { ok = false; }
+                if (!ok) {
+                    await this._esquecerPastaGeral();
+                    this.showNotification('A pasta lembrada não ficou disponível. Clique em "Abrir do PC" de novo pra escolher a pasta.', 'warning');
+                    return;
+                }
+                pasta = geral;
             }
+            if (!pasta) {
+                pasta = await window.showDirectoryPicker({ id: 'locutores-projeto', mode: 'readwrite', startIn: 'documents' });
+            }
+            await this._abrirOuListarPasta(pasta);
+        } catch (e) {
+            if (e && e.name === 'AbortError') return;      // cancelou o seletor de pasta
+            this.showNotification('Erro ao abrir do computador: ' + e.message, 'error');
+        }
+    }
+
+    // Pasta de UM projeto → abre direto. Pasta com projetos nas subpastas (a
+    // pasta geral) → lembra e mostra a lista.
+    async _abrirOuListarPasta(pasta) {
+        let lista;
+        try {
+            lista = await this._projetosNaPasta(pasta);
+        } catch (e) {
+            if (pasta === this._pastaGeral) await this._esquecerPastaGeral();   // sumiu ou foi movida
+            throw new Error(`não consegui ler a pasta "${pasta.name}" (${e.message}). Clique de novo em "Abrir do PC" pra escolher outra.`);
+        }
+        const raiz = lista.find(x => x.naRaiz);
+        const subs = lista.filter(x => !x.naRaiz);
+        if (!subs.length && raiz) return this._abrirProjetoDaPasta(raiz.pasta, raiz.proj);
+        if (!lista.length) {
+            if (pasta === this._pastaGeral) await this._esquecerPastaGeral();
+            this.showNotification(`A pasta "${pasta.name}" não tem projeto do Locutores IA. Escolha a pasta geral dos spots ou a pasta de um projeto (não a pasta Audio).`, 'warning');
+            return;
+        }
+        await this._lembrarPastaGeral(pasta);
+        this._mostrarListaDoPC(pasta, lista);
+    }
+
+    // Projetos da pasta: o da raiz (se houver) + um por subpasta. Mais recente primeiro.
+    async _projetosNaPasta(pasta) {
+        const lista = [];
+        const raiz = await this._lerProjetoDaPasta(pasta);
+        if (raiz) lista.push({ proj: raiz, pasta, rotulo: pasta.name, naRaiz: true });
+        let vistas = 0;
+        for await (const [nome, h] of pasta.entries()) {
+            if (h.kind !== 'directory' || nome === 'Audio') continue;
+            if (++vistas > 300) break;                        // pasta enorme: não trava a tela
+            const proj = await this._lerProjetoDaPasta(h);
+            if (proj) lista.push({ proj, pasta: h, rotulo: nome, naRaiz: false });
+        }
+        lista.sort((a, b) => String(b.proj.salvo_em || '').localeCompare(String(a.proj.salvo_em || '')));
+        return lista;
+    }
+
+    // Lista na tela, no mesmo visual do "Meus Projetos". Tudo por createElement/
+    // textContent: nome de projeto e de pasta são DADO, nunca HTML.
+    _mostrarListaDoPC(pasta, lista) {
+        const velho = document.getElementById('modal-projetos-pc');
+        if (velho) velho.remove();
+        const el = (tag, css, texto) => {
+            const e = document.createElement(tag);
+            if (css) e.style.cssText = css;
+            if (texto != null) e.textContent = texto;
+            return e;
+        };
+        const modal = el('div', 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);' +
+            'display:flex;align-items:center;justify-content:center;padding:1rem;');
+        modal.id = 'modal-projetos-pc';
+        const caixa = el('div', 'background:#141a2e;border:1px solid #2a3350;border-radius:14px;' +
+            'max-width:min(980px,94vw);width:100%;padding:1.25rem;max-height:88vh;overflow:auto;');
+        const topo = el('div', 'display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap;');
+        const titulo = el('h5', 'margin:0;color:#e6e8f0;', `💽 Projetos no PC — ${pasta.name} (${lista.length})`);
+        const botoes = el('div', 'display:flex;gap:.4rem;');
+        const estiloBotao = 'background:#2a3350;color:#e6e8f0;border:none;border-radius:6px;padding:.35rem .7rem;cursor:pointer;';
+        const outra = el('button', estiloBotao, 'Escolher outra pasta');
+        const fecharBtn = el('button', estiloBotao, 'Fechar');
+        botoes.append(outra, fecharBtn);
+        topo.append(titulo, botoes);
+        caixa.append(topo);
+        const fechar = () => modal.remove();
+        for (const item of lista) {
+            const linha = el('div', 'display:flex;justify-content:space-between;align-items:center;gap:.5rem;' +
+                'background:#0e1424;border:1px solid #2a3350;border-radius:8px;padding:.6rem .8rem;margin-bottom:.5rem;');
+            const info = el('div', 'min-width:0;');
+            const nome = el('div', 'color:#e6e8f0;font-weight:600;white-space:normal;overflow-wrap:anywhere;line-height:1.3;');
+            nome.textContent = item.proj.name || item.rotulo;
+            const faixas = (item.proj.tracks || []).length;
+            const quando = item.proj.salvo_em ? this._dataHoraBrasil(item.proj.salvo_em) : 'sem data';
+            const detalhe = el('div', 'color:#8b93a7;font-size:.75rem;',
+                `${faixas} faixa(s) · salvo ${quando} · pasta: ${item.naRaiz ? '(raiz da pasta geral)' : item.rotulo}`);
+            info.append(nome, detalhe);
+            const abrir = el('button', 'background:#22c55e;color:#052e16;border:none;border-radius:6px;' +
+                'padding:.4rem .7rem;font-weight:600;cursor:pointer;flex-shrink:0;', 'Abrir');
+            abrir.onclick = () => { fechar(); this._abrirProjetoDaPasta(item.pasta, item.proj); };
+            linha.append(info, abrir);
+            caixa.append(linha);
+        }
+        modal.append(caixa);
+        document.body.appendChild(modal);
+        fecharBtn.onclick = fechar;
+        modal.onclick = (e) => { if (e.target === modal) fechar(); };
+        // Clique novo = gesto novo: o seletor do Windows pode abrir daqui.
+        outra.onclick = async () => {
+            fechar();
+            try {
+                const nova = await window.showDirectoryPicker({ id: 'locutores-projeto', mode: 'readwrite', startIn: pasta });
+                await this._abrirOuListarPasta(nova);
+            } catch (e) {
+                if (e && e.name === 'AbortError') return;
+                this.showNotification('Erro ao abrir do computador: ' + e.message, 'error');
+            }
+        };
+    }
+
+    // Abre UM projeto de uma pasta (da lista ou de uma pasta de projeto único).
+    async _abrirProjetoDaPasta(pasta, proj) {
+        try {
             if (this.tracks.some(t => t.audioBuffer)
                 && !confirm(`Abrir "${proj.name}" substitui o que está na bancada agora. Continuar?`)) return;
             this.showNotification(`Abrindo "${proj.name}" do computador...`, 'info');
@@ -5890,8 +6016,62 @@ class MiniDAW {
             this._arquivosLocais = mapa;
             this.showNotification(`Projeto "${proj.name}" aberto do computador com áudio e efeitos!`, 'success');
         } catch (e) {
-            if (e && e.name === 'AbortError') return;
             this.showNotification('Erro ao abrir do computador: ' + e.message, 'error');
+        }
+    }
+
+    // ── PASTA GERAL LEMBRADA (IndexedDB do navegador, 30/09/2026) ─────────
+    // O navegador guarda a "alça" da pasta; ao reabrir a página ele só pede um
+    // clique de permissão. Sem IndexedDB (aba anônima), vale só nesta sessão.
+    _bancoDePastas() {
+        return new Promise((ok, erro) => {
+            const req = indexedDB.open('locutores-ia', 1);
+            req.onupgradeneeded = () => req.result.createObjectStore('pastas');
+            req.onsuccess = () => ok(req.result);
+            req.onerror = () => erro(req.error);
+        });
+    }
+
+    async _lembrarPastaGeral(pasta) {
+        this._pastaGeral = pasta;
+        try {
+            const db = await this._bancoDePastas();
+            await new Promise((ok, erro) => {
+                const tx = db.transaction('pastas', 'readwrite');
+                tx.objectStore('pastas').put(pasta, 'pastaGeral');
+                tx.oncomplete = () => ok();
+                tx.onerror = () => erro(tx.error);
+            });
+            db.close();
+        } catch (e) { /* sem IndexedDB: fica só nesta sessão */ }
+    }
+
+    async _esquecerPastaGeral() {
+        this._pastaGeral = null;
+        try {
+            const db = await this._bancoDePastas();
+            await new Promise((ok) => {
+                const tx = db.transaction('pastas', 'readwrite');
+                tx.objectStore('pastas').delete('pastaGeral');
+                tx.oncomplete = () => ok();
+                tx.onerror = () => ok();
+            });
+            db.close();
+        } catch (e) { /* nada a esquecer */ }
+    }
+
+    async _carregarPastaGeral() {
+        if (!this._suportaPasta() || typeof indexedDB === 'undefined') return;
+        try {
+            const db = await this._bancoDePastas();
+            this._pastaGeral = await new Promise((ok, erro) => {
+                const r = db.transaction('pastas').objectStore('pastas').get('pastaGeral');
+                r.onsuccess = () => ok(r.result || null);
+                r.onerror = () => erro(r.error);
+            });
+            db.close();
+        } catch (e) {
+            this._pastaGeral = null;
         }
     }
 
@@ -6155,6 +6335,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // do projeto do Gerador (minidaw.html) checa window.minidaw. Sem esta
     // linha ele desistia em silêncio e o "Abrir na MiniDAW" nunca entregava.
     window.minidaw = minidaw;
+    minidaw._carregarPastaGeral();   // pasta geral dos projetos no PC, lembrada no navegador
 });
 
 // Global functions for onclick handlers

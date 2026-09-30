@@ -46,7 +46,7 @@ def test_botoes_na_tela_e_versao_nova():
     assert 'onclick="salvarNoComputador(event)"' in html and 'onclick="abrirDoComputador()"' in html
     # Botão com texto não pode herdar o quadrado de 40px do ícone (o texto quebrava em 3 linhas).
     assert 'class="control-btn com-texto" onclick="salvarNoComputador(event)"' in html and '.control-btn.com-texto {' in html
-    assert 'minidaw.js?v=76' in html
+    assert 'minidaw.js?v=77' in html
     js = _js()
     assert 'window.salvarNoComputador = (ev) => minidaw.salvarNoComputador(ev);' in js
     assert 'window.abrirDoComputador = () => minidaw.abrirDoComputador();' in js
@@ -60,7 +60,7 @@ def test_um_so_empacotamento_e_uma_so_montagem():
     assert 'await this._empacotarProjeto(comAudio, guardarNaPasta)' in _metodo(js, '    async salvarNoComputador(ev) {')
     assert js.count('    async _montarProjeto(proj, carregarAudio) {') == 1
     assert 'await this._montarProjeto(proj, ' in _metodo(js, '    async carregarProjetoSupabase(id) {')
-    assert 'await this._montarProjeto(proj, ' in _metodo(js, '    async abrirDoComputador() {')
+    assert 'await this._montarProjeto(proj, ' in _metodo(js, '    async _abrirProjetoDaPasta(pasta, proj) {')
 
 
 def test_salvar_no_computador_regras():
@@ -89,8 +89,10 @@ def test_salvar_no_computador_regras():
 
 def test_abrir_do_computador_regras():
     js = _js()
-    a = _metodo(js, '    async abrirDoComputador() {')
-    assert a.index('await this._lerProjetoDaPasta(pasta)') < a.index('this.clearAllTracks(true);') < a.index('await this._montarProjeto(proj, ')
+    # 30/09: abrir um projeto da pasta mora em _abrirProjetoDaPasta (a lista da pasta
+    # geral e a pasta de um projeto só usam a MESMA rotina).
+    a = _metodo(js, '    async _abrirProjetoDaPasta(pasta, proj) {')
+    assert a.index('confirm(') < a.index('this.clearAllTracks(true);') < a.index('await this._montarProjeto(proj, ')
     assert r'/^Audio\/[^\/\\]+$/.test(b.arquivo)' in a
     assert 'this.projetoId = null;' in a
     assert a.index('await this._montarProjeto(proj, ') < a.index('this._pastaProjeto = pasta;')
