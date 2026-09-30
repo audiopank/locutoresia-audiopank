@@ -147,6 +147,17 @@
             <p class="text-secondary mb-0">Já estamos com o seu pedido em mãos e vamos te chamar no contato que você deixou.</p>
             <div class="ref" id="pedidoRef"></div>
         </div>
+        <!-- PLANO B (30/09/2026): o sistema de pedidos caiu (Supabase bloqueado) e o
+             pedido não pode se perder. O cliente vê o WhatsApp com tudo já escrito. -->
+        <div id="planoBArea" class="success-box" style="display:none;">
+            <div class="check" style="background: rgba(37, 211, 102, 0.15); color: #25d366;"><i class="fab fa-whatsapp"></i></div>
+            <h4>Seu pedido está pronto pra enviar</h4>
+            <p class="text-secondary">Nosso sistema de pedidos está instável neste momento. Toque no botão abaixo e o pedido vai direto pro nosso WhatsApp, já escrito. É só enviar.</p>
+            <a id="planoBLink" class="btn btn-enviar w-100" href="#" target="_blank" rel="noopener">
+                <i class="fab fa-whatsapp me-2"></i>Enviar pedido pelo WhatsApp
+            </a>
+            <button type="button" class="btn btn-link mt-2" onclick="voltarAoFormulario()">Voltar e tentar de novo</button>
+        </div>
     </div>
 
 <script>
@@ -194,6 +205,50 @@
             planoSelecionado = el.dataset.key;
         }
 
+        // PLANO B (30/09/2026): se o SISTEMA falhar (banco fora do ar, resposta
+        // ilegível, rede caída), o pedido não se perde — vira mensagem pronta no
+        // WhatsApp. Erro de preenchimento (400) continua como aviso normal.
+        const WHATSAPP_PEDIDOS = '5585992262297';
+
+        // <texto-whatsapp>
+        function textoDoPedidoParaWhatsapp(d) {
+            const linhas = ['Olá! Quero fazer um pedido de locução.', ''];
+            const add = (rotulo, valor) => { if (valor) linhas.push(`${rotulo}: ${valor}`); };
+            add('Nome', d.nome);
+            add('WhatsApp', d.whatsapp);
+            add('E-mail', d.email);
+            add('Serviço', d.servico);
+            add('Estilo de voz', d.estilo);
+            add('Trilha de referência', d.trilha);
+            add('Prazo', d.prazo);
+            if (d.roteiro) {
+                // O link do WhatsApp não aguenta texto infinito: o resto vem na conversa.
+                const r = d.roteiro.length > 1500 ? d.roteiro.slice(0, 1500) + '… (continua)' : d.roteiro;
+                linhas.push('', 'Texto / roteiro:', r);
+            }
+            return linhas.join('\n');
+        }
+        // </texto-whatsapp>
+
+        function mostrarPlanoB(dados) {
+            document.getElementById('formArea').style.display = 'none';
+            document.getElementById('planoBArea').style.display = 'block';
+            // encodeURIComponent: o texto do cliente vira parâmetro, nunca HTML.
+            document.getElementById('planoBLink').href =
+                `https://wa.me/${WHATSAPP_PEDIDOS}?text=${encodeURIComponent(textoDoPedidoParaWhatsapp(dados))}`;
+        }
+
+        function voltarAoFormulario() {
+            document.getElementById('planoBArea').style.display = 'none';
+            document.getElementById('formArea').style.display = 'block';
+        }
+
+        function liberarBotaoEnviar() {
+            const btn = document.getElementById('enviarBtn');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>Enviar pedido';
+        }
+
         async function enviarPedido() {
             const nome = document.getElementById('clienteNome').value.trim();
             const whatsapp = document.getElementById('whatsapp').value.trim();
@@ -209,11 +264,22 @@
                 return;
             }
 
+            const cartao = document.querySelector('.plano-card.selected .p-nome');
+            const dados = {
+                nome, whatsapp, email,
+                servico: cartao ? cartao.textContent.trim() : '',
+                roteiro: document.getElementById('roteiro').value.trim(),
+                estilo: document.getElementById('estiloVoz').value.trim(),
+                trilha: document.getElementById('referenciaTrilha').value.trim(),
+                prazo: document.getElementById('prazo').value.trim()
+            };
+
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
 
+            let response;
             try {
-                const response = await fetch('/api/pedidos', {
+                response = await fetch('/api/pedidos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -221,26 +287,36 @@
                         whatsapp: whatsapp,
                         email: email,
                         plano: planoSelecionado || 'outro',
-                        roteiro: document.getElementById('roteiro').value.trim(),
-                        estilo_voz: document.getElementById('estiloVoz').value.trim(),
-                        referencia_trilha: document.getElementById('referenciaTrilha').value.trim(),
-                        prazo: document.getElementById('prazo').value.trim(),
+                        roteiro: dados.roteiro,
+                        estilo_voz: dados.estilo,
+                        referencia_trilha: dados.trilha,
+                        prazo: dados.prazo,
                         website: document.getElementById('website').value
                     })
                 });
-                const result = await response.json();
-                if (!result.success) {
-                    throw new Error(result.error || 'Falha ao enviar');
-                }
-                document.getElementById('formArea').style.display = 'none';
-                const box = document.getElementById('successArea');
-                box.style.display = 'block';
-                document.getElementById('pedidoRef').textContent = 'Protocolo: #' + result.pedido_ref;
-            } catch (error) {
-                alert(`Erro ao enviar pedido: ${error.message}`);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>Enviar pedido';
+            } catch (e) {
+                // Rede caiu no meio: o pedido segue pelo WhatsApp.
+                liberarBotaoEnviar();
+                mostrarPlanoB(dados);
+                return;
             }
+            let result = null;
+            try { result = await response.json(); } catch (e) { result = null; }
+            if (response.status >= 500 || !result) {
+                // O sistema falhou (não foi erro de preenchimento): WhatsApp.
+                liberarBotaoEnviar();
+                mostrarPlanoB(dados);
+                return;
+            }
+            if (!result.success) {
+                alert(`Erro ao enviar pedido: ${result.error || 'Falha ao enviar'}`);
+                liberarBotaoEnviar();
+                return;
+            }
+            document.getElementById('formArea').style.display = 'none';
+            const box = document.getElementById('successArea');
+            box.style.display = 'block';
+            document.getElementById('pedidoRef').textContent = 'Protocolo: #' + result.pedido_ref;
         }
 
         carregarPlanos();
