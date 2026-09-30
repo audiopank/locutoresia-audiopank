@@ -667,6 +667,10 @@
            da faixa pro canto da página. Os botões viraram Bootstrap normais,
            na fileira do cabeçalho (createTrackUI). */
 
+        /* Botões com TEXTO (Salvar no PC / Abrir do PC, 30/09/2026): o .control-btn é
+           quadrado de 40px pra ícone; estes crescem com o texto, sem quebrar linha. */
+        .control-btn.com-texto { width: auto; padding: 0 .75rem; gap: .4rem; white-space: nowrap; font-size: .85rem; }
+
         .project-controls {
             display: flex;
             gap: 0.5rem;
@@ -1092,10 +1096,10 @@
                     </button>
                     <!-- Salvar/Abrir NO COMPUTADOR (30/09/2026, modelo do Samplitude): o projeto
                          vira uma pasta com o .json + Audio/ em WAV. Não usa a nuvem. -->
-                    <button class="control-btn" onclick="salvarNoComputador()" title="Salvar no computador: o projeto vira uma pasta com o arquivo do projeto e os áudios em WAV (modelo do Samplitude). Não usa a nuvem. Chrome ou Edge.">
+                    <button class="control-btn com-texto" onclick="salvarNoComputador()" title="Salvar no computador: o projeto vira uma pasta com o arquivo do projeto e os áudios em WAV (modelo do Samplitude). Não usa a nuvem. Chrome ou Edge.">
                         <i class="fas fa-hard-drive"></i> Salvar no PC
                     </button>
-                    <button class="control-btn" onclick="abrirDoComputador()" title="Abrir do computador: escolha a pasta de um projeto salvo com &quot;Salvar no PC&quot;.">
+                    <button class="control-btn com-texto" onclick="abrirDoComputador()" title="Abrir do computador: escolha a pasta de um projeto salvo com &quot;Salvar no PC&quot;.">
                         <i class="fas fa-laptop-file"></i> Abrir do PC
                     </button>
                 </div>

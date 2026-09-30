@@ -44,6 +44,8 @@ def test_botoes_na_tela_e_versao_nova():
         s['admin'] = True
     html = c.get('/minidaw').get_data(as_text=True)
     assert 'onclick="salvarNoComputador()"' in html and 'onclick="abrirDoComputador()"' in html
+    # Botão com texto não pode herdar o quadrado de 40px do ícone (o texto quebrava em 3 linhas).
+    assert 'class="control-btn com-texto" onclick="salvarNoComputador()"' in html and '.control-btn.com-texto {' in html
     assert 'minidaw.js?v=74' in html
     js = _js()
     assert 'window.salvarNoComputador = () => minidaw.salvarNoComputador();' in js
