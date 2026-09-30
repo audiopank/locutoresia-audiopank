@@ -542,22 +542,14 @@
                     limiterNode.ratio.value = 1; // Bypass
                 }
 
-                // 6. Reverb
+                // 6. Reverb — MESMA sala (semente fixa) e MESMA quantidade do
+                // playback (29/09/2026). O retorno entra no trackGain, lá embaixo.
                 const reverbNode = offlineContext.createConvolver();
-                const sampleRateLocal = offlineContext.sampleRate;
-                const length = sampleRateLocal * 2;
-                const impulse = offlineContext.createBuffer(2, length, sampleRateLocal);
-                for (let channel = 0; channel < 2; channel++) {
-                    const channelData = impulse.getChannelData(channel);
-                    for (let j = 0; j < length; j++) {
-                        channelData[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, 2);
-                    }
-                }
-                reverbNode.buffer = impulse;
                 reverbNode.normalize = true;
+                reverbNode.buffer = criarImpulsoReverb(offlineContext);
 
                 const reverbGain = offlineContext.createGain();
-                reverbGain.gain.value = track.effects.reverb ? 0.3 : 0;
+                reverbGain.gain.value = wetReverbDaFaixa(track);
 
                 // 7. Delay — MESMOS valores do playback (280ms, feedback 0.28,
                 // mix 0.35). Se divergirem, o que se ouve na prévia não é o que
@@ -654,6 +646,51 @@
             if (aoProgredir) aoProgredir(90, 'Renderizando áudio...');
             return await offlineContext.startRendering();
         }
+    }
+
+    // ── REVERB: MESMA sala e MESMA quantidade no play e no arquivo (29/09/2026) ──
+    // Antes o play gerava a sala dele com Math.random e o export sorteava outra
+    // a cada render (dois exports do mesmo projeto nunca batiam, nem a soma dos
+    // stems com o mix), e a quantidade era 30% fixo nos dois. Agora: sala de
+    // semente fixa (ruído branco com decaimento, o mesmo desenho de sempre, mas
+    // reprodutível) e a quantidade vem da faixa — padrão 30%, então projeto
+    // antigo soa igual. Canal esquerdo e direito com sementes diferentes: a sala
+    // continua estéreo.
+    const REVERB_DURACAO_S = 2;
+    const REVERB_QUANTIDADE_PADRAO = 0.3;
+    function _aleatorioComSemente(semente) {           // mulberry32: rápido e reprodutível
+        let a = semente >>> 0;
+        return function () {
+            a = (a + 0x6D2B79F5) >>> 0;
+            let t = a;
+            t = Math.imul(t ^ (t >>> 15), t | 1);
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+    function criarImpulsoReverb(ctx) {
+        const sr = ctx.sampleRate;
+        const n = Math.floor(sr * REVERB_DURACAO_S);
+        const ir = ctx.createBuffer(2, n, sr);
+        for (let c = 0; c < 2; c++) {
+            const sorteio = _aleatorioComSemente(0x5EED + c * 0x9E3779B9);
+            const d = ir.getChannelData(c);
+            for (let i = 0; i < n; i++) d[i] = (sorteio() * 2 - 1) * Math.pow(1 - i / n, 2);
+        }
+        return ir;
+    }
+    // Quantidade escolhida na faixa (0..1), mesmo com o botão desligado — é o
+    // que o slider mostra. Campo ausente ou lixo = padrão; 0 é escolha válida.
+    function quantidadeReverbDaFaixa(track) {
+        const bruto = track ? track.reverbAmount : undefined;
+        if (bruto == null || bruto === '') return REVERB_QUANTIDADE_PADRAO;
+        const q = Number(bruto);
+        if (!Number.isFinite(q)) return REVERB_QUANTIDADE_PADRAO;
+        return Math.max(0, Math.min(1, q));
+    }
+    // O que de fato entra no som: botão desligado = 0.
+    function wetReverbDaFaixa(track) {
+        return (track && track.effects && track.effects.reverb) ? quantidadeReverbDaFaixa(track) : 0;
     }
 
     // ── VOLUME DO OBJETO (Volume do trecho, 28/09/2026) ──────────────────
@@ -1092,6 +1129,7 @@
     }
 
     global.MixEngine = {
+        REVERB_DURACAO_S, REVERB_QUANTIDADE_PADRAO, criarImpulsoReverb, quantidadeReverbDaFaixa, wetReverbDaFaixa,
         GANHO_OBJETO_MAX_DB, RAMPA_VOLUME_S, ganhoDbDoClip, dbParaLinear, volumeDoClip, agendarVolumeDoClip,
         XF_SEGMENTOS, crossfadesDoClip, agendarCrossfadeDoClip,
         renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,

@@ -591,6 +591,20 @@ class MiniDAW {
                                 </button>
                             ` : ''}
                         </div>
+                <div class="reverb-panel ${track.effects.reverb ? 'ativo' : ''}" id="reverbpanel_${track.id}">
+                    <div class="effect-label">
+                        Reverb — quantidade
+                        <strong id="reverbval_${track.id}">${Math.round(MixEngine.quantidadeReverbDaFaixa(track) * 100)}%</strong>
+                    </div>
+                    <input type="range" class="form-range" min="0" max="100" step="1"
+                           value="${Math.round(MixEngine.quantidadeReverbDaFaixa(track) * 100)}"
+                           oninput="minidaw.updateReverbAmount('${track.id}', this.value)"
+                           title="Quanto da sala entra junto com o som seco. Sobe = mais longe e mais ambiente.">
+                    <small>
+                        Voz de spot e podcast: 10 a 20%. Acima de 40% a voz afasta e embola
+                        na caixinha do celular. O arquivo exportado sai igual ao que você ouve.
+                    </small>
+                </div>
                 ${track.type === 'voice' ? `
                 <div class="gate-panel ${track.effects.gate ? 'ativo' : ''}" id="gatepanel_${track.id}">
                     <div class="effect-label">
@@ -797,13 +811,14 @@ class MiniDAW {
         limiterNode.attack.value = 0.001;
         limiterNode.release.value = 0.1;
 
-        // Reverb
+        // Reverb — MESMA sala do export (semente fixa, MixEngine) e quantidade
+        // da faixa (29/09/2026). O applyEffectStates lá embaixo confirma o wet.
         const reverbNode = this.audioContext.createConvolver();
-        this.createReverbImpulse(reverbNode);
         reverbNode.normalize = true;
+        reverbNode.buffer = MixEngine.criarImpulsoReverb(this.audioContext);
 
         const reverbGain = this.audioContext.createGain();
-        reverbGain.gain.value = 0.3;
+        reverbGain.gain.value = 0;      // quem abre é o _aplicarRetornos, só com o play rodando
 
         // Delay: 280ms com realimentação curta. Em spot isso é efeito de
         // destaque (chamada, assinatura), não ambiente — por isso tempo curto
@@ -834,7 +849,7 @@ class MiniDAW {
         panNode.pan.value = track.pan;
         
         // Connect nodes: HPF -> EQ -> Presence -> Compressor -> Limiter -> Analyser -> Gain -> Pan -> Master
-        // Reverb is parallel: Limiter -> Reverb -> ReverbGain -> Pan
+        // Reverb em paralelo: Limiter -> Reverb -> ReverbGain -> Gain (volume da faixa) — igual ao export
         hpfNode.connect(eqLowNode);
         eqLowNode.connect(eqNode);
         eqNode.connect(eqHighNode);
@@ -850,7 +865,11 @@ class MiniDAW {
         analyser.connect(gainNode);
         limiterNode.connect(reverbNode);
         reverbNode.connect(reverbGain);
-        reverbGain.connect(panNode);
+        // Retorno do reverb entra no gainNode (volume, ducking, fade final,
+        // automação e Mudo), IGUAL ao export (trackGain). Até 29/09/2026 ia
+        // direto pro pan: faixa a 49% com reverb soava diferente no arquivo, e
+        // o Mudo deixava o eco do reverb vazar na prévia.
+        reverbGain.connect(gainNode);
         // DELAY — existia como botão desde sempre, mas sem nó nenhum: clicar
         // só virava a flag `effects.delay`, que ninguém lia (nem o playback,
         // nem o export). Agora é um envio paralelo igual ao reverb, com
@@ -900,21 +919,44 @@ class MiniDAW {
         this.applyEffectStates(track);
     }
 
+    // A sala do reverb agora é a do motor (semente fixa), a MESMA do export.
     createReverbImpulse(convolver) {
-        // Create a simple reverb impulse response
-        const sampleRate = this.audioContext.sampleRate;
-        const length = sampleRate * 2; // 2 seconds
-        const impulse = this.audioContext.createBuffer(2, length, sampleRate);
-        
-        for (let channel = 0; channel < 2; channel++) {
-            const channelData = impulse.getChannelData(channel);
-            for (let i = 0; i < length; i++) {
-                // Exponential decay
-                channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
-            }
+        convolver.buffer = MixEngine.criarImpulsoReverb(this.audioContext);
+    }
+
+    // ── RETORNOS PARALELOS: reverb e delay (30/09/2026) ─────────────────
+    // O ConvolverNode (e o eco do delay) guarda até 2 s de cauda. Se o retorno
+    // ficasse aberto depois do Parar, essa cauda voltava a soar numa trilha que
+    // já tinha sumido no fade final, ou numa faixa fora do Solo — e o arquivo
+    // não tem isso (achado da revisão adversarial). Regra: retorno aberto SÓ com
+    // o play rodando. O playTrack abre, o stop fecha em ~20 ms (sem estalo).
+    _valoresDosRetornos(track) {
+        return {
+            reverb: MixEngine.wetReverbDaFaixa(track),
+            delay: track.effects.delay ? 0.12 : 0,       // mesmo 0.12 do export
+        };
+    }
+
+    _aplicarRetornos(track, nodes) {
+        const v = this.isPlaying ? this._valoresDosRetornos(track) : { reverb: 0, delay: 0 };
+        if (nodes.reverbGain) {
+            nodes.reverbGain.gain.cancelScheduledValues(0);
+            nodes.reverbGain.gain.value = v.reverb;
         }
-        
-        convolver.buffer = impulse;
+        if (nodes.delayMix) {
+            nodes.delayMix.gain.cancelScheduledValues(0);
+            nodes.delayMix.gain.value = v.delay;
+        }
+    }
+
+    _fecharRetornos(nodes) {
+        const agora = this.audioContext.currentTime;
+        for (const no of [nodes.reverbGain, nodes.delayMix]) {
+            if (!no) continue;
+            const g = no.gain;
+            g.cancelScheduledValues(0);
+            g.setTargetAtTime(0, agora, 0.004);
+        }
     }
 
     applyEffectStates(track) {
@@ -957,13 +999,9 @@ class MiniDAW {
             nodes.limiterNode.ratio.value = 1; // Bypass
         }
 
-        // Reverb
-        nodes.reverbGain.gain.value = track.effects.reverb ? 0.3 : 0;
-
-        // Delay (o botão existia sem nenhum efeito por trás até agora)
-        if (nodes.delayMix) {
-            nodes.delayMix.gain.value = track.effects.delay ? 0.12 : 0;
-        }
+        // Reverb e Delay (retornos paralelos): mesma conta do export, abertos só
+        // com o play rodando — ver _aplicarRetornos.
+        this._aplicarRetornos(track, nodes);
 
         // GATE — desligar tem que APAGAR a automação já agendada, senão a
         // faixa continua abrindo e fechando sozinha até a última marcação.
@@ -2498,7 +2536,7 @@ class MiniDAW {
         destino.gateSettings = Object.assign({}, origem.gateSettings || {});
         destino.deesserSettings = Object.assign({}, origem.deesserSettings || {});
         destino.compressorSettings = Object.assign({}, origem.compressorSettings || {});
-        if (origem.reverbAmount != null) destino.reverbAmount = origem.reverbAmount;
+        destino.reverbAmount = MixEngine.quantidadeReverbDaFaixa(origem);   // sempre: faixa no padrão (30%) também iguala
     }
 
     copiarEfeitosParaIguais(trackId) {
@@ -2773,6 +2811,11 @@ class MiniDAW {
         if (deesserPanel) {
             deesserPanel.classList.toggle('ativo', !!track.effects.deesser);
         }
+        // Quantidade do reverb: aparece com o botão Reverb ligado (toda faixa).
+        const reverbPanel = trackCard.querySelector('.reverb-panel');
+        if (reverbPanel) {
+            reverbPanel.classList.toggle('ativo', !!track.effects.reverb);
+        }
     }
 
     // Slider de força do de-esser. Aplica na hora pra dar pra ajustar ouvindo.
@@ -2855,17 +2898,19 @@ class MiniDAW {
         this._eqSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
+    // Slider "Reverb — quantidade" (0–100%). Aplica na hora pra ajustar
+    // ouvindo; a mesma quantidade vale no arquivo (MixEngine.wetReverbDaFaixa).
     updateReverbAmount(trackId, amount) {
         const track = this.tracks.find(t => t.id === trackId);
         if (!track) return;
-
-        track.reverbAmount = parseFloat(amount) / 100;
-
+        const pct = parseFloat(String(amount).replace(',', '.'));
+        track.reverbAmount = MixEngine.quantidadeReverbDaFaixa({ reverbAmount: Number.isFinite(pct) ? pct / 100 : null });
+        const rotulo = document.getElementById(`reverbval_${trackId}`);
+        if (rotulo) rotulo.textContent = Math.round(track.reverbAmount * 100) + '%';
         const nodes = this.trackNodes.get(trackId);
-        if (nodes && track.effects.reverb) {
-            nodes.reverbGain.gain.value = track.reverbAmount;
-        }
-        this.saveToLocalStorage();
+        if (nodes) this._aplicarRetornos(track, nodes);
+        clearTimeout(this._reverbSaveTimer);
+        this._reverbSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
     updateCompressor(trackId, param, value) {
@@ -3110,6 +3155,7 @@ class MiniDAW {
             nodes = this.trackNodes.get(track.id);
         }
         if (!nodes || !track.audioBuffer) return;
+        this._aplicarRetornos(track, nodes);       // reverb e delay abertos só durante o play
 
         // Base de tempo: o instante (no relógio do AudioContext) em que o t=0
         // do PROJETO aconteceu (ver comentário do agendarVolumeDaFaixa).
@@ -3206,13 +3252,17 @@ class MiniDAW {
         // Zera a base e limpa TODA agenda de ganho: sobra de automação de uma
         // sessão disparava na seguinte — era a fonte dos altos e baixos.
         this.playbackBase = null;
+        const haSolo = this.tracks.some(t => t.solo);
         this.tracks.forEach(t => {
             const n = this.trackNodes.get(t.id);
             if (!n) return;
             if (n.gainNode) {
                 n.gainNode.gain.cancelScheduledValues(0);
-                n.gainNode.gain.value = t.muted ? 0 : t.volume / 100;
+                // Mesma regra do aplicarVolumeAgora: Mudo OU fora do Solo = 0.
+                n.gainNode.gain.value = (t.muted || (haSolo && !t.solo)) ? 0 : t.volume / 100;
             }
+            // Corta a cauda do reverb e do delay (ver _fecharRetornos).
+            this._fecharRetornos(n);
             if (n.gateGain) {
                 n.gateGain.gain.cancelScheduledValues(0);
                 n.gateGain.gain.value = 1;
@@ -5539,6 +5589,7 @@ class MiniDAW {
                     effects: t.effects, eqSettings: t.eqSettings,
                     gateSettings: t.gateSettings,
                     deesserSettings: t.deesserSettings,
+                    reverbAmount: MixEngine.quantidadeReverbDaFaixa(t),
                     automacaoVolume: t.automacaoVolume,
                     buffers: [], clips: []
                 };
@@ -5700,6 +5751,8 @@ class MiniDAW {
                 track.eqSettings= td.eqSettings || track.eqSettings;
                 track.gateSettings = td.gateSettings || track.gateSettings;
                 track.deesserSettings = td.deesserSettings || track.deesserSettings;
+                // Quantidade do reverb (29/09/2026). Projeto antigo (sem o campo) = padrão 30%, como soava.
+                track.reverbAmount = (td.reverbAmount != null) ? MixEngine.quantidadeReverbDaFaixa(td) : undefined;
                 // Normaliza o formato -- cobre projetos salvos antes desta
                 // feature (campo ausente), e os salvos HOJE mais cedo antes
                 // do liga/desliga de verdade existir (formato antigo: array
