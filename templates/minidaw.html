@@ -1090,6 +1090,14 @@
                     <button class="control-btn" onclick="abrirMeusProjetos()" title="Meus Projetos — reabrir com áudio">
                         <i class="fas fa-folder-open"></i>
                     </button>
+                    <!-- Salvar/Abrir NO COMPUTADOR (30/09/2026, modelo do Samplitude): o projeto
+                         vira uma pasta com o .json + Audio/ em WAV. Não usa a nuvem. -->
+                    <button class="control-btn" onclick="salvarNoComputador()" title="Salvar no computador: o projeto vira uma pasta com o arquivo do projeto e os áudios em WAV (modelo do Samplitude). Não usa a nuvem. Chrome ou Edge.">
+                        <i class="fas fa-hard-drive"></i> Salvar no PC
+                    </button>
+                    <button class="control-btn" onclick="abrirDoComputador()" title="Abrir do computador: escolha a pasta de um projeto salvo com &quot;Salvar no PC&quot;.">
+                        <i class="fas fa-laptop-file"></i> Abrir do PC
+                    </button>
                 </div>
             </div>
         </div>
@@ -1315,7 +1323,7 @@
     <script src="/static/loudness.js?v=1"></script>
     <script src="/static/master-suite.js?v=8"></script>
     <script src="/static/time-stretch.js?v=2"></script>
-    <script src="/static/minidaw.js?v=73"></script>
+    <script src="/static/minidaw.js?v=74"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

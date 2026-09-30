@@ -27,11 +27,12 @@ def test_reabrir_marca_cada_audio_com_a_origem_no_storage():
 
 def test_salvar_reaproveita_e_so_sobe_audio_novo():
     js = _ler('static', 'minidaw.js')
-    bloco = js[js.index('const indicePorBuffer = new Map();'):js.index('td.clips.push({')]
-    # Reaproveitar vem ANTES de qualquer upload.
+    ini = js.index('    async salvarProjetoSupabase() {')
+    bloco = js[ini:js.index('\n    }\n', ini)]
+    # Reaproveitar vem ANTES de qualquer upload (guardarNaNuvem, 30/09/2026).
     assert bloco.index('if (c.buffer._audioPath) {') < bloco.index('await this._uploadAudioProjeto(wav)')
-    assert 'td.buffers.push({ audio_path: c.buffer._audioPath });' in bloco
-    assert 'td.buffers.push({ audio_url_direct: c.buffer._audioUrlDireto });' in bloco
+    assert 'return { audio_path: c.buffer._audioPath };' in bloco
+    assert 'return { audio_url_direct: c.buffer._audioUrlDireto };' in bloco
     # O que subiu agora fica marcado: o 2º Salvar da mesma sessão não reenvia.
     assert 'c.buffer._audioPath = caminho;' in bloco
 
@@ -71,4 +72,4 @@ def test_versao_nova_do_script_na_pagina():
     c = app.test_client()
     with c.session_transaction() as s:
         s['admin'] = True
-    assert 'minidaw.js?v=73' in c.get('/minidaw').get_data(as_text=True)
+    assert 'minidaw.js?v=74' in c.get('/minidaw').get_data(as_text=True)

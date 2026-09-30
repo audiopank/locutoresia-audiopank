@@ -63,4 +63,4 @@ def cliente():
 
 def test_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    assert 'mix-engine.js?v=18' in html and 'minidaw.js?v=73' in html
+    assert 'mix-engine.js?v=18' in html and 'minidaw.js?v=74' in html

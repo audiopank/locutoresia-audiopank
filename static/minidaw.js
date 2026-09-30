@@ -6,6 +6,9 @@ const MINIDAW_VERSAO = 45;
 console.log(`%c MiniDAW v${MINIDAW_VERSAO} carregada `,
             'background:#ec4899;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px');
 
+// Arquivo do projeto dentro da pasta (Salvar no PC, 30/09/2026).
+const ARQUIVO_PROJETO_LOCAL = 'projeto.locutores-ia.json';
+
 class MiniDAW {
     // Altura da pista na timeline (zoom vertical, botões + / − do cabeçalho).
     // PADRAO espelha o `height` de .clips-lane no CSS — mudar lá pede mudar aqui.
@@ -3384,6 +3387,9 @@ class MiniDAW {
         // do projeto anterior (abrir projeto passa por aqui ANTES de setar o id).
         this.projetoId = null;
         this.projetoNome = null;
+        // ...e a pasta do computador também (Salvar no PC, 30/09/2026).
+        this._pastaProjeto = null;
+        this._arquivosLocais = new WeakMap();
 
         // Show empty state
         const emptyState = document.getElementById('emptyState');
@@ -5572,6 +5578,54 @@ class MiniDAW {
                                            year: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
+    // ── EMPACOTAMENTO ÚNICO DO PROJETO (30/09/2026) ──────────────────────
+    // Nuvem (Salvar Projeto) e pasta do computador usam o MESMO empacotamento e a
+    // MESMA montagem na tela (_montarProjeto). Um segundo empacotador envelhece e
+    // passa a perder coisa — foi o que matou o .vip antigo (sem cortes, stretch,
+    // master). Só muda ONDE o áudio mora: `guardarAudio(c, t, i, idx)` devolve o
+    // descritor — {audio_path} na nuvem, {audio_url_direct} da Biblioteca,
+    // {arquivo} na pasta do computador.
+    async _empacotarProjeto(comAudio, guardarAudio) {
+        const tracks = [];
+        for (let i = 0; i < comAudio.length; i++) {
+            const t = comAudio[i];
+            const clips = this._clipsDaFaixa(t);
+            const td = {
+                name: t.name, type: t.type, sfx: !!t.sfx,
+                autoFade: t.autoFade !== false,
+                largura: MixEngine.larguraDaFaixa(t),     // trilha: 0..2; voz sempre 1
+                volume: t.volume, pan: t.pan,
+                fadeIn: t.fadeIn, fadeOut: t.fadeOut,
+                effects: t.effects, eqSettings: t.eqSettings,
+                gateSettings: t.gateSettings,
+                deesserSettings: t.deesserSettings,
+                reverbAmount: MixEngine.quantidadeReverbDaFaixa(t),
+                automacaoVolume: t.automacaoVolume,
+                buffers: [], clips: []
+            };
+            // Um arquivo por BUFFER DISTINTO (clips de um corte compartilham o
+            // arquivo — guardar por clip duplicaria áudio à toa).
+            const indicePorBuffer = new Map();
+            for (const c of clips) {
+                if (!indicePorBuffer.has(c.buffer)) {
+                    const idx = td.buffers.length;
+                    indicePorBuffer.set(c.buffer, idx);
+                    td.buffers.push(await guardarAudio(c, t, i, idx));
+                }
+                td.clips.push({
+                    buffer: indicePorBuffer.get(c.buffer),
+                    inicio: c.inicio, offset: c.offset, duracao: c.duracao,
+                    fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
+                    stretch: (c.stretch > 0) ? c.stretch : 1,       // Time Stretch aplicado (só informativo: o áudio salvo JÁ está esticado)
+                    ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined, // Volume do objeto (sem volume: campo nem vai)
+                    travado: ClipModel.estaTravado(c) || undefined    // Cadeado
+                });
+            }
+            tracks.push(td);
+        }
+        return tracks;
+    }
+
     async salvarProjetoSupabase() {
         const comAudio = this.tracks.filter(t => t.audioBuffer);
         if (comAudio.length === 0) {
@@ -5590,74 +5644,43 @@ class MiniDAW {
         let passo = 'início';
         try {
             this.showNotification('Salvando projeto (enviando áudios)...', 'info');
-            const tracks = [];
-            for (let i = 0; i < comAudio.length; i++) {
-                const t = comAudio[i];
-                const clips = this._clipsDaFaixa(t);
-                const td = {
-                    name: t.name, type: t.type, sfx: !!t.sfx,
-                    autoFade: t.autoFade !== false,
-                    largura: MixEngine.larguraDaFaixa(t),     // trilha: 0..2; voz sempre 1
-                    volume: t.volume, pan: t.pan,
-                    fadeIn: t.fadeIn, fadeOut: t.fadeOut,
-                    effects: t.effects, eqSettings: t.eqSettings,
-                    gateSettings: t.gateSettings,
-                    deesserSettings: t.deesserSettings,
-                    reverbAmount: MixEngine.quantidadeReverbDaFaixa(t),
-                    automacaoVolume: t.automacaoVolume,
-                    buffers: [], clips: []
-                };
-                // Um upload por BUFFER DISTINTO (clips de um corte compartilham
-                // o arquivo — subir por clip duplicaria áudio à toa).
-                const indicePorBuffer = new Map();
-                for (const c of clips) {
-                    if (!indicePorBuffer.has(c.buffer)) {
-                        const idx = td.buffers.length;
-                        indicePorBuffer.set(c.buffer, idx);
-                        const urlEstavel = t.audioUrl && /^https?:/i.test(t.audioUrl)
-                            && !/\/object\/sign\/|token=/i.test(t.audioUrl);   // signed URL de 1h NÃO é referência estável
-                        if (c.buffer._audioPath) {
-                            // Já está no Storage: veio de um projeto reaberto ou subiu num
-                            // Salvar anterior desta sessão. REAPROVEITA. Até 30/09/2026 todo
-                            // Salvar reenviava o WAV com nome novo e deixava o antigo órfão:
-                            // a pasta projetos/ chegou a 1,95 GB e o Supabase bloqueou.
-                            // (Nenhum recurso altera um áudio carregado — cortar, esticar,
-                            // encurtar e masterizar sempre criam um AudioBuffer novo.)
-                            passo = `reaproveitar áudio ${idx + 1} da faixa ${i + 1} (${t.name}) — já no Storage`;
-                            console.log('[projeto] ' + passo);
-                            td.buffers.push({ audio_path: c.buffer._audioPath });
-                        } else if (c.buffer._audioUrlDireto) {
-                            td.buffers.push({ audio_url_direct: c.buffer._audioUrlDireto });
-                        } else if (c.buffer === t.audioBuffer && urlEstavel && !c.buffer._esticado && !(c.stretch > 0 && c.stretch !== 1)) {
-                            // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
-                            // /object/public/...). NÃO reenvia — evita reupload de arquivo
-                            // grande (era o gargalo) e aponta direto pra URL pública.
-                            passo = `referenciar faixa ${i + 1} (${t.name}) — já no Storage`;
-                            console.log('[projeto] ' + passo);
-                            td.buffers.push({ audio_url_direct: t.audioUrl });
-                        } else {
-                            // Voz gerada / arquivo local (blob:) / clip solto — sobe o WAV.
-                            passo = `converter áudio ${idx + 1} da faixa ${i + 1} (${t.name}) para WAV`;
-                            console.log('[projeto] ' + passo);
-                            const wav = this.bufferToWav(c.buffer);
-                            passo = `enviar áudio ${idx + 1} da faixa ${i + 1} — ${(wav.size / 1024 / 1024).toFixed(1)}MB`;
-                            console.log('[projeto] ' + passo);
-                            const caminho = await this._uploadAudioProjeto(wav);
-                            c.buffer._audioPath = caminho;        // o próximo Salvar reaproveita
-                            td.buffers.push({ audio_path: caminho });
-                        }
-                    }
-                    td.clips.push({
-                        buffer: indicePorBuffer.get(c.buffer),
-                        inicio: c.inicio, offset: c.offset, duracao: c.duracao,
-                        fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
-                        stretch: (c.stretch > 0) ? c.stretch : 1,       // Time Stretch aplicado (só informativo: o áudio salvo JÁ está esticado)
-                        ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined, // Volume do objeto (sem volume: campo nem vai)
-                        travado: ClipModel.estaTravado(c) || undefined    // Cadeado
-                    });
+            // Onde o áudio mora NA NUVEM.
+            const guardarNaNuvem = async (c, t, i, idx) => {
+                const urlEstavel = t.audioUrl && /^https?:/i.test(t.audioUrl)
+                    && !/\/object\/sign\/|token=/i.test(t.audioUrl);   // signed URL de 1h NÃO é referência estável
+                if (c.buffer._audioPath) {
+                    // Já está no Storage: veio de um projeto reaberto ou subiu num
+                    // Salvar anterior desta sessão. REAPROVEITA. Até 30/09/2026 todo
+                    // Salvar reenviava o WAV com nome novo e deixava o antigo órfão:
+                    // a pasta projetos/ chegou a 1,95 GB e o Supabase bloqueou.
+                    // (Nenhum recurso altera um áudio carregado — cortar, esticar,
+                    // encurtar e masterizar sempre criam um AudioBuffer novo.)
+                    passo = `reaproveitar áudio ${idx + 1} da faixa ${i + 1} (${t.name}) — já no Storage`;
+                    console.log('[projeto] ' + passo);
+                    return { audio_path: c.buffer._audioPath };
                 }
-                tracks.push(td);
-            }
+                if (c.buffer._audioUrlDireto) {
+                    return { audio_url_direct: c.buffer._audioUrlDireto };
+                }
+                if (c.buffer === t.audioBuffer && urlEstavel && !c.buffer._esticado && !(c.stretch > 0 && c.stretch !== 1)) {
+                    // Já está no Storage com URL estável (ex.: trilha da Biblioteca,
+                    // /object/public/...). NÃO reenvia — evita reupload de arquivo
+                    // grande (era o gargalo) e aponta direto pra URL pública.
+                    passo = `referenciar faixa ${i + 1} (${t.name}) — já no Storage`;
+                    console.log('[projeto] ' + passo);
+                    return { audio_url_direct: t.audioUrl };
+                }
+                // Voz gerada / arquivo local (blob:) / clip solto — sobe o WAV.
+                passo = `converter áudio ${idx + 1} da faixa ${i + 1} (${t.name}) para WAV`;
+                console.log('[projeto] ' + passo);
+                const wav = this.bufferToWav(c.buffer);
+                passo = `enviar áudio ${idx + 1} da faixa ${i + 1} — ${(wav.size / 1024 / 1024).toFixed(1)}MB`;
+                console.log('[projeto] ' + passo);
+                const caminho = await this._uploadAudioProjeto(wav);
+                c.buffer._audioPath = caminho;        // o próximo Salvar reaproveita
+                return { audio_path: caminho };
+            };
+            const tracks = await this._empacotarProjeto(comAudio, guardarNaNuvem);
             passo = 'gravar o projeto no banco';
             console.log('[projeto] ' + passo);
             const body = { name: nome, tracks, marcadores: this.marcadores,
@@ -5685,7 +5708,157 @@ class MiniDAW {
         } catch (e) {
             console.error('[projeto] FALHOU em:', passo, e);
             // alert (não some) pra o erro não passar despercebido como antes.
-            alert(`Não consegui salvar o projeto.\nOnde parou: ${passo}\nErro: ${e.message}`);
+            alert(`Não consegui salvar o projeto.\nOnde parou: ${passo}\nErro: ${e.message}\n\nSe a nuvem estiver fora do ar, use "Salvar no PC".`);
+        }
+    }
+
+    // ── SALVAR / ABRIR NO COMPUTADOR (30/09/2026, modelo do Samplitude) ──────
+    // O projeto vira uma PASTA no computador: projeto.locutores-ia.json + Audio/
+    // com cada voz e trilha em WAV ("Copy file to project directory"). Não gasta
+    // nada da nuvem (o Supabase bloqueou por cota de arquivos em 30/09) e os WAVs
+    // abrem direto no Samplitude. File System Access API: Chrome ou Edge, no
+    // computador. Cada áudio é gravado UMA vez por pasta; salvar de novo só
+    // reescreve o .json (que vai por último: se algo falhar no meio, o projeto
+    // anterior da pasta continua inteiro).
+    _suportaPasta() {
+        return typeof window.showDirectoryPicker === 'function';
+    }
+
+    async _permissaoDaPasta(pasta) {
+        const opcoes = { mode: 'readwrite' };
+        if ((await pasta.queryPermission(opcoes)) === 'granted') return true;
+        return (await pasta.requestPermission(opcoes)) === 'granted';
+    }
+
+    async _lerProjetoDaPasta(pasta) {
+        try {
+            const fh = await pasta.getFileHandle(ARQUIVO_PROJETO_LOCAL);
+            const proj = JSON.parse(await (await fh.getFile()).text());
+            return (proj && proj.formato === 'locutores-ia-projeto') ? proj : null;
+        } catch (e) {
+            return null;     // pasta sem projeto do Locutores IA (ou .json ilegível)
+        }
+    }
+
+    // Nome legível (dá pra achar no Samplitude) + marca única: nunca reaproveita
+    // o nome de um arquivo que outro áudio da pasta ainda usa.
+    _nomeArquivoLocal(t) {
+        const base = String(t.name || 'faixa').replace(/[\\/:*?"<>|]+/g, ' ')
+            .replace(/\s+/g, ' ').trim().slice(0, 40) || 'faixa';
+        this._seqArquivoLocal = (this._seqArquivoLocal || 0) + 1;
+        return `${base} - ${Date.now().toString(36)}${this._seqArquivoLocal}.wav`;
+    }
+
+    async salvarNoComputador() {
+        if (!this._suportaPasta()) {
+            alert('Salvar no computador funciona no Chrome ou no Edge, no computador.');
+            return;
+        }
+        const comAudio = this.tracks.filter(t => t.audioBuffer);
+        if (comAudio.length === 0) {
+            this.showNotification('Adicione voz/trilha antes de salvar', 'warning');
+            return;
+        }
+        const nome = prompt('Nome do projeto:', this.projetoNome || 'Meu projeto');
+        if (!nome) return;
+        try {
+            // Mesma regra da nuvem (17/09): MESMO nome com pasta já vinculada = salva
+            // nela; nome novo = escolher a pasta do projeto novo.
+            let pasta = (this._pastaProjeto && nome.trim() === String(this.projetoNome || '').trim())
+                ? this._pastaProjeto : null;
+            if (!pasta) {
+                pasta = await window.showDirectoryPicker({ id: 'locutores-projeto', mode: 'readwrite', startIn: 'documents' });
+            }
+            if (!(await this._permissaoDaPasta(pasta))) {
+                this.showNotification('Sem permissão pra gravar nessa pasta', 'error');
+                return;
+            }
+            const mesmaPasta = !!(this._pastaProjeto && await pasta.isSameEntry(this._pastaProjeto));
+            // Pasta com OUTRO projeto dentro: pergunta antes de substituir.
+            const existente = await this._lerProjetoDaPasta(pasta);
+            if (existente && String(existente.name || '').trim() !== nome.trim()) {
+                if (!confirm(`A pasta "${pasta.name}" já tem o projeto "${existente.name}".\n\nSubstituir por "${nome}"?`)) return;
+            }
+            if (!mesmaPasta || !this._arquivosLocais) this._arquivosLocais = new WeakMap();   // pasta nova: grava todos os áudios nela
+            this.showNotification(`Salvando "${nome}" na pasta "${pasta.name}"...`, 'info');
+            const dirAudio = await pasta.getDirectoryHandle('Audio', { create: true });
+            let novos = 0;
+            // Onde o áudio mora NA PASTA: Audio/<nome>.wav, uma vez por pasta.
+            const guardarNaPasta = async (c, t) => {
+                const ja = this._arquivosLocais.get(c.buffer);
+                if (ja) return { arquivo: ja };
+                const nomeArquivo = this._nomeArquivoLocal(t);
+                const fh = await dirAudio.getFileHandle(nomeArquivo, { create: true });
+                const w = await fh.createWritable();
+                await w.write(this.bufferToWav(c.buffer));
+                await w.close();
+                const arquivo = `Audio/${nomeArquivo}`;
+                this._arquivosLocais.set(c.buffer, arquivo);
+                novos++;
+                return { arquivo };
+            };
+            const tracks = await this._empacotarProjeto(comAudio, guardarNaPasta);
+            const pacote = {
+                formato: 'locutores-ia-projeto', versao: 1,
+                name: nome, salvo_em: new Date().toISOString(),
+                tracks, marcadores: this.marcadores,
+                master: window.MasterSuite ? MasterSuite.estadoParaSalvar() : undefined
+            };
+            const fj = await pasta.getFileHandle(ARQUIVO_PROJETO_LOCAL, { create: true });
+            const wj = await fj.createWritable();
+            await wj.write(JSON.stringify(pacote, null, 2));
+            await wj.close();
+            this._pastaProjeto = pasta;
+            this.projetoNome = nome;
+            this.showNotification(`Projeto "${nome}" salvo no computador, pasta "${pasta.name}"`
+                + (novos ? ` (${novos} áudio${novos > 1 ? 's' : ''} gravado${novos > 1 ? 's' : ''})` : ' (só o projeto: os áudios já estavam lá)'), 'success');
+        } catch (e) {
+            if (e && e.name === 'AbortError') return;      // cancelou o seletor de pasta
+            console.error('[projeto no PC] falhou', e);
+            alert(`Não consegui salvar no computador.\nErro: ${e.message}`);
+        }
+    }
+
+    async abrirDoComputador() {
+        if (!this._suportaPasta()) {
+            alert('Abrir do computador funciona no Chrome ou no Edge, no computador.');
+            return;
+        }
+        try {
+            const pasta = await window.showDirectoryPicker({ id: 'locutores-projeto', mode: 'readwrite', startIn: 'documents' });
+            const proj = await this._lerProjetoDaPasta(pasta);
+            if (!proj) {
+                alert(`A pasta "${pasta.name}" não tem projeto do Locutores IA (${ARQUIVO_PROJETO_LOCAL}).\nEscolha a pasta do projeto, não a pasta Audio.`);
+                return;
+            }
+            if (this.tracks.some(t => t.audioBuffer)
+                && !confirm(`Abrir "${proj.name}" substitui o que está na bancada agora. Continuar?`)) return;
+            this.showNotification(`Abrindo "${proj.name}" do computador...`, 'info');
+            this.clearAllTracks(true);   // true = sem confirmação (já perguntou acima)
+            const mapa = new WeakMap();
+            await this._montarProjeto(proj, async (b) => {
+                // Só áudio de dentro da pasta Audio/ desta pasta de projeto.
+                if (!b || typeof b.arquivo !== 'string' || !/^Audio\/[^\/\\]+$/.test(b.arquivo)) return null;
+                try {
+                    const dir = await pasta.getDirectoryHandle('Audio');
+                    const fh = await dir.getFileHandle(b.arquivo.slice('Audio/'.length));
+                    const ab = await this.audioContext.decodeAudioData(await (await fh.getFile()).arrayBuffer());
+                    mapa.set(ab, b.arquivo);     // salvar de novo nesta pasta não regrava este áudio
+                    return ab;
+                } catch (e) {
+                    return null;
+                }
+            });
+            // Projeto da PASTA não é projeto da nuvem: o "Salvar Projeto" da nuvem
+            // cria um novo (nunca cai em cima de um de lá por engano).
+            this.projetoId = null;
+            this.projetoNome = proj.name;
+            this._pastaProjeto = pasta;
+            this._arquivosLocais = mapa;
+            this.showNotification(`Projeto "${proj.name}" aberto do computador com áudio e efeitos!`, 'success');
+        } catch (e) {
+            if (e && e.name === 'AbortError') return;
+            this.showNotification('Erro ao abrir do computador: ' + e.message, 'error');
         }
     }
 
@@ -5751,88 +5924,96 @@ class MiniDAW {
             const proj = d.project;
 
             this.clearAllTracks(true);   // true = sem confirmação
-            // Snapshots apontam pra faixas que não existem mais — Ctrl+Z
-            // depois de abrir projeto diria "Desfeito" sem fazer nada.
-            this.undoClips = [];
-            this.redoClips = [];
-            // Seleção e área de transferência são do projeto ANTERIOR: colar
-            // áudio de outro spot depois de abrir um projeto seria surpresa.
-            this.limparSelecao();
-            this.clipboardClip = null;
-            this.clipboardGrupo = null;
-            this.marcadores = this._normalizarMarcadores(proj.marcadores);
-            if (window.MasterSuite) MasterSuite.carregar(proj.master || null);   // sem master salvo = EQ zerado
-
-            for (const td of (proj.tracks || [])) {
-                this.addTrack(td.type || 'music');
-                const track = this.tracks[this.tracks.length - 1];
-                // Restaura SÓ os ajustes — NÃO o id (manter o id novo evita o
-                // descasamento de DOM que o load do .vip tinha).
-                track.name      = td.name ?? track.name;
-                track.sfx       = !!td.sfx;                 // a marca de efeito era salva mas não voltava
-                track.autoFade  = td.autoFade !== false;    // projeto antigo (sem o campo) = ligado
-                track.largura   = Number.isFinite(Number(td.largura)) ? Number(td.largura) : 1;   // projeto antigo = como veio
-                track.volume    = (td.volume    != null) ? td.volume    : 100;
-                track.pan       = (td.pan       != null) ? td.pan       : 0;
-                track.fadeIn    = (td.fadeIn    != null) ? td.fadeIn    : 0;
-                track.fadeOut   = (td.fadeOut   != null) ? td.fadeOut   : 0;
-                track.effects   = td.effects    || track.effects;
-                track.eqSettings= td.eqSettings || track.eqSettings;
-                track.gateSettings = td.gateSettings || track.gateSettings;
-                track.deesserSettings = td.deesserSettings || track.deesserSettings;
-                // Quantidade do reverb (29/09/2026). Projeto antigo (sem o campo) = padrão 30%, como soava.
-                track.reverbAmount = (td.reverbAmount != null) ? MixEngine.quantidadeReverbDaFaixa(td) : undefined;
-                // Normaliza o formato -- cobre projetos salvos antes desta
-                // feature (campo ausente), e os salvos HOJE mais cedo antes
-                // do liga/desliga de verdade existir (formato antigo: array
-                // puro, sem {ativo, pontos}).
-                track.automacaoVolume = this._normalizarAutomacaoVolume(td.automacaoVolume);
-                if (td.clips && td.clips.length && td.buffers) {
-                    // Projeto novo: baixa cada buffer e reconstrói os clips
-                    // nas posições exatas em que foram salvos.
-                    const buffers = [];
-                    for (const b of td.buffers) {
-                        if (!b.audio_url) { buffers.push(null); continue; }
-                        const resp = await fetch(b.audio_url);
-                        if (!resp.ok) { buffers.push(null); continue; }   // URL expirada/inválida — vira aviso abaixo, não EncodingError
-                        const arr = await resp.arrayBuffer();
-                        const ab = await this.audioContext.decodeAudioData(arr);
-                        // De onde este áudio veio (30/09/2026): o próximo Salvar
-                        // reaproveita o arquivo em vez de subir tudo de novo.
-                        ab._audioPath = b.audio_path || undefined;
-                        ab._audioUrlDireto = b.audio_url_direct || undefined;
-                        buffers.push(ab);
-                    }
-                    if (buffers.some(b => !b)) {
-                        // Clip sem áudio assinado seria descartado em silêncio e
-                        // um save em seguida tornaria a perda PERMANENTE — avisa.
-                        this.showNotification(`Atenção: parte do áudio de "${td.name}" não pôde ser baixada — NÃO salve por cima antes de conferir`, 'warning');
-                    }
-                    track.clips = td.clips
-                        .filter(c => buffers[c.buffer])
-                        .map(c => ({
-                            id: ClipModel.novoId(), buffer: buffers[c.buffer],
-                            inicio: c.inicio, offset: c.offset, duracao: c.duracao,
-                            fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
-                            stretch: (c.stretch > 0 && Math.abs(c.stretch - 1) > 1e-3) ? c.stretch : undefined,
-                            ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined,
-                            travado: ClipModel.estaTravado(c) || undefined
-                        }));
-                    this._sincronizarDerivados(track);
-                } else if (td.audio_url) {
-                    // Projeto antigo: 1 áudio por faixa → migração preguiçosa
-                    // vira 1 clip em 0:00 na primeira leitura. Nada quebra.
-                    await this.loadAudioFromUrl(td.audio_url, track.id, td.name);
-                }
-                this.updateTrackUI(track);
-            }
-            this.renderizarTimeline();
+            await this._montarProjeto(proj, async (b) => {
+                if (!b.audio_url) return null;
+                const resp = await fetch(b.audio_url);
+                if (!resp.ok) return null;   // URL expirada/inválida — vira aviso, não EncodingError
+                const arr = await resp.arrayBuffer();
+                const ab = await this.audioContext.decodeAudioData(arr);
+                // De onde este áudio veio (30/09/2026): o próximo Salvar
+                // reaproveita o arquivo em vez de subir tudo de novo.
+                ab._audioPath = b.audio_path || undefined;
+                ab._audioUrlDireto = b.audio_url_direct || undefined;
+                return ab;
+            });
             this.projetoId = proj.id;
             this.projetoNome = proj.name;
             this.showNotification(`Projeto "${proj.name}" aberto com áudio e efeitos!`, 'success');
         } catch (e) {
             this.showNotification('Erro ao abrir projeto: ' + e.message, 'error');
         }
+    }
+
+    // MONTAGEM ÚNICA na tela de um projeto empacotado por _empacotarProjeto — da
+    // nuvem ou da pasta do computador. Quem chama LIMPA a bancada antes
+    // (clearAllTracks) e vincula depois. `carregarAudio(b)` devolve o AudioBuffer
+    // daquele descritor, ou null.
+    async _montarProjeto(proj, carregarAudio) {
+        // Snapshots apontam pra faixas que não existem mais — Ctrl+Z
+        // depois de abrir projeto diria "Desfeito" sem fazer nada.
+        this.undoClips = [];
+        this.redoClips = [];
+        // Seleção e área de transferência são do projeto ANTERIOR: colar
+        // áudio de outro spot depois de abrir um projeto seria surpresa.
+        this.limparSelecao();
+        this.clipboardClip = null;
+        this.clipboardGrupo = null;
+        this.marcadores = this._normalizarMarcadores(proj.marcadores);
+        if (window.MasterSuite) MasterSuite.carregar(proj.master || null);   // sem master salvo = EQ zerado
+
+        for (const td of (proj.tracks || [])) {
+            this.addTrack(td.type || 'music');
+            const track = this.tracks[this.tracks.length - 1];
+            // Restaura SÓ os ajustes — NÃO o id (manter o id novo evita o
+            // descasamento de DOM que o load do .vip tinha).
+            track.name      = td.name ?? track.name;
+            track.sfx       = !!td.sfx;                 // a marca de efeito era salva mas não voltava
+            track.autoFade  = td.autoFade !== false;    // projeto antigo (sem o campo) = ligado
+            track.largura   = Number.isFinite(Number(td.largura)) ? Number(td.largura) : 1;   // projeto antigo = como veio
+            track.volume    = (td.volume    != null) ? td.volume    : 100;
+            track.pan       = (td.pan       != null) ? td.pan       : 0;
+            track.fadeIn    = (td.fadeIn    != null) ? td.fadeIn    : 0;
+            track.fadeOut   = (td.fadeOut   != null) ? td.fadeOut   : 0;
+            track.effects   = td.effects    || track.effects;
+            track.eqSettings= td.eqSettings || track.eqSettings;
+            track.gateSettings = td.gateSettings || track.gateSettings;
+            track.deesserSettings = td.deesserSettings || track.deesserSettings;
+            // Quantidade do reverb (29/09/2026). Projeto antigo (sem o campo) = padrão 30%, como soava.
+            track.reverbAmount = (td.reverbAmount != null) ? MixEngine.quantidadeReverbDaFaixa(td) : undefined;
+            // Normaliza o formato -- cobre projetos salvos antes desta
+            // feature (campo ausente), e os salvos HOJE mais cedo antes
+            // do liga/desliga de verdade existir (formato antigo: array
+            // puro, sem {ativo, pontos}).
+            track.automacaoVolume = this._normalizarAutomacaoVolume(td.automacaoVolume);
+            if (td.clips && td.clips.length && td.buffers) {
+                // Projeto novo: carrega cada buffer e reconstrói os clips
+                // nas posições exatas em que foram salvos.
+                const buffers = [];
+                for (const b of td.buffers) buffers.push(await carregarAudio(b));
+                if (buffers.some(b => !b)) {
+                    // Clip sem áudio seria descartado em silêncio e um save em
+                    // seguida tornaria a perda PERMANENTE — avisa.
+                    this.showNotification(`Atenção: parte do áudio de "${td.name}" não pôde ser carregada — NÃO salve por cima antes de conferir`, 'warning');
+                }
+                track.clips = td.clips
+                    .filter(c => buffers[c.buffer])
+                    .map(c => ({
+                        id: ClipModel.novoId(), buffer: buffers[c.buffer],
+                        inicio: c.inicio, offset: c.offset, duracao: c.duracao,
+                        fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
+                        stretch: (c.stretch > 0 && Math.abs(c.stretch - 1) > 1e-3) ? c.stretch : undefined,
+                        ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined,
+                        travado: ClipModel.estaTravado(c) || undefined
+                    }));
+                this._sincronizarDerivados(track);
+            } else if (td.audio_url) {
+                // Projeto antigo: 1 áudio por faixa → migração preguiçosa
+                // vira 1 clip em 0:00 na primeira leitura. Nada quebra.
+                await this.loadAudioFromUrl(td.audio_url, track.id, td.name);
+            }
+            this.updateTrackUI(track);
+        }
+        this.renderizarTimeline();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -6002,6 +6183,8 @@ window.loadVipProject = () => minidaw.loadVipProject();   // import .vip — man
 // Fluxo NOVO (Supabase): salvar/reabrir projeto com áudio de verdade.
 window.salvarProjetoSupabase = () => minidaw.salvarProjetoSupabase();
 window.abrirMeusProjetos = () => minidaw.abrirMeusProjetos();
+window.salvarNoComputador = () => minidaw.salvarNoComputador();
+window.abrirDoComputador = () => minidaw.abrirDoComputador();
 window.abrirBibliotecaModal = () => minidaw.abrirBibliotecaModal();
 
 // Efeitos de áudio

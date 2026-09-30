@@ -71,8 +71,9 @@ def test_copiar_e_colar_em_grupo_nas_mesmas_faixas():
     assert "if (item.stretch > 0) novo.stretch = item.stretch;" in cg                         # Time Stretch sobrevive à cópia
     # Menu "Colar aqui": faixa e tempo do clique direito, não do mouse (que está sobre o menu).
     assert "const destino = (alvo && alvo.trackId) ? this.tracks.find(t => t.id === alvo.trackId) : this._faixaSobOMouse();" in js
-    # Abrir projeto limpa grupo e clipboard de grupo.
-    assert "this.limparSelecao();\n            this.clipboardClip = null;\n            this.clipboardGrupo = null;" in js
+    # Abrir projeto (nuvem ou pasta do PC, montagem única desde 30/09) limpa grupo e clipboard de grupo.
+    montar = js[js.index('    async _montarProjeto(proj, carregarAudio) {'):]
+    assert "this.limparSelecao();\n        this.clipboardClip = null;\n        this.clipboardGrupo = null;" in montar
 
 
 @pytest.fixture(scope='module')
@@ -87,4 +88,4 @@ def cliente():
 
 def test_css_e_versao(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    assert '.menu-objeto {' in html and '.menu-objeto.aberto {' in html and 'minidaw.js?v=73' in html
+    assert '.menu-objeto {' in html and '.menu-objeto.aberto {' in html and 'minidaw.js?v=74' in html

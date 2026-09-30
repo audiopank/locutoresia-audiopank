@@ -27,7 +27,7 @@ def test_pagina_carrega_versoes_e_css_do_cadeado():
     with c.session_transaction() as s:
         s['admin'] = True
     html = c.get('/minidaw').get_data(as_text=True)
-    for t in ('clip-model.js?v=8', 'minidaw.js?v=73', '.clip-cadeado {', '.clip-cadeado.fechado {',
+    for t in ('clip-model.js?v=8', 'minidaw.js?v=74', '.clip-cadeado {', '.clip-cadeado.fechado {',
               '.clip-bloco.travado .clip-alca,'):
         assert t in html, t
 
