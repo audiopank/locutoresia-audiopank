@@ -5740,11 +5740,30 @@ class MiniDAW {
         }
     }
 
+    // Tira do nome o que o Windows não aceita em arquivo/pasta.
+    _limparNomeDeArquivo(texto, max, reserva) {
+        return String(texto || '').replace(/[\\/:*?"<>|]+/g, ' ')
+            .replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, max) || reserva;
+    }
+
+    // Subpasta com o nome do projeto dentro de `pai`. Se já existir uma com OUTRO
+    // projeto dentro, usa "nome (2)", "nome (3)"... — nunca escreve em cima de
+    // outro projeto. A mesma subpasta com o MESMO projeto é reaproveitada.
+    async _subpastaDoProjeto(pai, nome) {
+        const base = this._limparNomeDeArquivo(nome, 60, 'Projeto');
+        for (let n = 1; n <= 50; n++) {
+            const nomePasta = n === 1 ? base : `${base} (${n})`;
+            const sub = await pai.getDirectoryHandle(nomePasta, { create: true });
+            const dentro = await this._lerProjetoDaPasta(sub);
+            if (!dentro || String(dentro.name || '').trim() === String(nome).trim()) return sub;
+        }
+        throw new Error('Não achei nome livre pra subpasta do projeto');
+    }
+
     // Nome legível (dá pra achar no Samplitude) + marca única: nunca reaproveita
     // o nome de um arquivo que outro áudio da pasta ainda usa.
     _nomeArquivoLocal(t) {
-        const base = String(t.name || 'faixa').replace(/[\\/:*?"<>|]+/g, ' ')
-            .replace(/\s+/g, ' ').trim().slice(0, 40) || 'faixa';
+        const base = this._limparNomeDeArquivo(t.name, 40, 'faixa');
         this._seqArquivoLocal = (this._seqArquivoLocal || 0) + 1;
         return `${base} - ${Date.now().toString(36)}${this._seqArquivoLocal}.wav`;
     }
@@ -5780,14 +5799,21 @@ class MiniDAW {
                 this.showNotification('Sem permissão pra gravar nessa pasta', 'error');
                 return;
             }
-            const mesmaPasta = !!(this._pastaProjeto && await pasta.isSameEntry(this._pastaProjeto));
-            // Pasta com OUTRO projeto dentro: pergunta antes de substituir.
+            // Pasta com OUTRO projeto dentro (ex.: a pasta geral "SPOTS ... TODOS"):
+            // NUNCA substitui — cria uma subpasta com o nome deste projeto. Uma pasta
+            // por projeto, como no Samplitude (30/09/2026: ele escolheu a pasta geral
+            // e o próximo spot perguntaria "substituir?" — um OK distraído apagava o
+            // projeto anterior).
+            let ondeSalvou = pasta.name;
             const existente = await this._lerProjetoDaPasta(pasta);
             if (existente && String(existente.name || '').trim() !== nome.trim()) {
-                if (!confirm(`A pasta "${pasta.name}" já tem o projeto "${existente.name}".\n\nSubstituir por "${nome}"?`)) return;
+                const pai = pasta;
+                pasta = await this._subpastaDoProjeto(pai, nome);
+                ondeSalvou = `${pai.name}/${pasta.name}`;
             }
+            const mesmaPasta = !!(this._pastaProjeto && await pasta.isSameEntry(this._pastaProjeto));
             if (!mesmaPasta || !this._arquivosLocais) this._arquivosLocais = new WeakMap();   // pasta nova: grava todos os áudios nela
-            this.showNotification(`Salvando "${nome}" na pasta "${pasta.name}"...`, 'info');
+            this.showNotification(`Salvando "${nome}" em "${ondeSalvou}"...`, 'info');
             const dirAudio = await pasta.getDirectoryHandle('Audio', { create: true });
             let novos = 0;
             // Onde o áudio mora NA PASTA: Audio/<nome>.wav, uma vez por pasta.
@@ -5817,7 +5843,7 @@ class MiniDAW {
             await wj.close();
             this._pastaProjeto = pasta;
             this.projetoNome = nome;
-            this.showNotification(`Projeto "${nome}" salvo no computador, pasta "${pasta.name}"`
+            this.showNotification(`Projeto "${nome}" salvo no computador, em "${ondeSalvou}"`
                 + (novos ? ` (${novos} áudio${novos > 1 ? 's' : ''} gravado${novos > 1 ? 's' : ''})` : ' (só o projeto: os áudios já estavam lá)'), 'success');
         } catch (e) {
             if (e && e.name === 'AbortError') return;      // cancelou o seletor de pasta

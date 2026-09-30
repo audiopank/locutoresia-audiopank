@@ -71,6 +71,6 @@ def cliente():
 def test_botao_e_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     assert 'id="msMono"' in html and 'MONO de checagem' in html
-    assert 'mix-engine.js?v=18' in html and 'master-suite.js?v=8' in html and 'minidaw.js?v=75' in html
+    assert 'mix-engine.js?v=18' in html and 'master-suite.js?v=8' in html and 'minidaw.js?v=76' in html
     for pagina in ('/gerador', '/narrativa'):
         assert 'mix-engine.js?v=18' in cliente.get(pagina).get_data(as_text=True), pagina
