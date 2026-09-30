@@ -43,12 +43,12 @@ def test_botoes_na_tela_e_versao_nova():
     with c.session_transaction() as s:
         s['admin'] = True
     html = c.get('/minidaw').get_data(as_text=True)
-    assert 'onclick="salvarNoComputador()"' in html and 'onclick="abrirDoComputador()"' in html
+    assert 'onclick="salvarNoComputador(event)"' in html and 'onclick="abrirDoComputador()"' in html
     # Botão com texto não pode herdar o quadrado de 40px do ícone (o texto quebrava em 3 linhas).
-    assert 'class="control-btn com-texto" onclick="salvarNoComputador()"' in html and '.control-btn.com-texto {' in html
-    assert 'minidaw.js?v=74' in html
+    assert 'class="control-btn com-texto" onclick="salvarNoComputador(event)"' in html and '.control-btn.com-texto {' in html
+    assert 'minidaw.js?v=75' in html
     js = _js()
-    assert 'window.salvarNoComputador = () => minidaw.salvarNoComputador();' in js
+    assert 'window.salvarNoComputador = (ev) => minidaw.salvarNoComputador(ev);' in js
     assert 'window.abrirDoComputador = () => minidaw.abrirDoComputador();' in js
 
 
@@ -57,7 +57,7 @@ def test_um_so_empacotamento_e_uma_so_montagem():
     assert js.count('    async _empacotarProjeto(comAudio, guardarAudio) {') == 1
     assert 'td.buffers.push(await guardarAudio(c, t, i, idx));' in js
     assert 'await this._empacotarProjeto(comAudio, guardarNaNuvem)' in _metodo(js, '    async salvarProjetoSupabase() {')
-    assert 'await this._empacotarProjeto(comAudio, guardarNaPasta)' in _metodo(js, '    async salvarNoComputador() {')
+    assert 'await this._empacotarProjeto(comAudio, guardarNaPasta)' in _metodo(js, '    async salvarNoComputador(ev) {')
     assert js.count('    async _montarProjeto(proj, carregarAudio) {') == 1
     assert 'await this._montarProjeto(proj, ' in _metodo(js, '    async carregarProjetoSupabase(id) {')
     assert 'await this._montarProjeto(proj, ' in _metodo(js, '    async abrirDoComputador() {')
@@ -65,10 +65,14 @@ def test_um_so_empacotamento_e_uma_so_montagem():
 
 def test_salvar_no_computador_regras():
     js = _js()
-    s = _metodo(js, '    async salvarNoComputador() {')
+    s = _metodo(js, '    async salvarNoComputador(ev) {')
     assert 'if (!this._suportaPasta()) {' in s
-    assert "nome.trim() === String(this.projetoNome || '').trim()" in s            # mesmo nome = mesma pasta
-    assert 'await window.showDirectoryPicker(' in s
+    # 30/09: o navegador só abre o seletor DENTRO do clique. Nenhum prompt/confirm
+    # pode vir antes dele ("Must be handling a user gesture to show a file picker").
+    assert s.index('await window.showDirectoryPicker(') < s.index('prompt(')
+    assert s.index('await window.showDirectoryPicker(') < s.index('confirm(')
+    assert '(!outraPasta && this._pastaProjeto) ? this._pastaProjeto : null' in s   # pasta vinculada = salva direto
+    assert 'const outraPasta = !!(ev && ev.shiftKey);' in s                          # Shift+clique = outra pasta
     assert 'await this._permissaoDaPasta(pasta)' in s
     assert 'já tem o projeto' in s and 'confirm(' in s                             # pasta com outro projeto
     assert 'isSameEntry' in s

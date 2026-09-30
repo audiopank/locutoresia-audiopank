@@ -5749,7 +5749,7 @@ class MiniDAW {
         return `${base} - ${Date.now().toString(36)}${this._seqArquivoLocal}.wav`;
     }
 
-    async salvarNoComputador() {
+    async salvarNoComputador(ev) {
         if (!this._suportaPasta()) {
             alert('Salvar no computador funciona no Chrome ou no Edge, no computador.');
             return;
@@ -5759,16 +5759,23 @@ class MiniDAW {
             this.showNotification('Adicione voz/trilha antes de salvar', 'warning');
             return;
         }
-        const nome = prompt('Nome do projeto:', this.projetoNome || 'Meu projeto');
-        if (!nome) return;
+        // Shift+clique = salvar em OUTRA pasta (a pasta vinculada fica como estava).
+        const outraPasta = !!(ev && ev.shiftKey);
         try {
-            // Mesma regra da nuvem (17/09): MESMO nome com pasta já vinculada = salva
-            // nela; nome novo = escolher a pasta do projeto novo.
-            let pasta = (this._pastaProjeto && nome.trim() === String(this.projetoNome || '').trim())
-                ? this._pastaProjeto : null;
+            // Com pasta já escolhida nesta sessão: salva direto nela (Ctrl+S do
+            // Samplitude). Sem pasta: o SELETOR ABRE PRIMEIRO — o navegador só abre
+            // a janela dentro do clique; com o prompt do nome antes, o gesto expirava
+            // e o Chrome recusava ("Must be handling a user gesture", 30/09/2026).
+            let pasta = (!outraPasta && this._pastaProjeto) ? this._pastaProjeto : null;
             if (!pasta) {
                 pasta = await window.showDirectoryPicker({ id: 'locutores-projeto', mode: 'readwrite', startIn: 'documents' });
             }
+            // Nome: na pasta vinculada, o do projeto aberto; pasta nova, pergunta
+            // (vem preenchido com o nome da pasta — a pasta É o projeto).
+            const nome = (pasta === this._pastaProjeto && this.projetoNome)
+                ? this.projetoNome
+                : prompt('Nome do projeto:', this.projetoNome || pasta.name);
+            if (!nome) return;
             if (!(await this._permissaoDaPasta(pasta))) {
                 this.showNotification('Sem permissão pra gravar nessa pasta', 'error');
                 return;
@@ -6183,7 +6190,7 @@ window.loadVipProject = () => minidaw.loadVipProject();   // import .vip — man
 // Fluxo NOVO (Supabase): salvar/reabrir projeto com áudio de verdade.
 window.salvarProjetoSupabase = () => minidaw.salvarProjetoSupabase();
 window.abrirMeusProjetos = () => minidaw.abrirMeusProjetos();
-window.salvarNoComputador = () => minidaw.salvarNoComputador();
+window.salvarNoComputador = (ev) => minidaw.salvarNoComputador(ev);
 window.abrirDoComputador = () => minidaw.abrirDoComputador();
 window.abrirBibliotecaModal = () => minidaw.abrirBibliotecaModal();
 
