@@ -559,7 +559,7 @@
                 const delayFeedback = offlineContext.createGain();
                 delayFeedback.gain.value = 0.06;
                 const delayMix = offlineContext.createGain();
-                delayMix.gain.value = track.effects.delay ? 0.12 : 0;
+                delayMix.gain.value = wetDelayDaFaixa(track);        // mesma conta do play (30/09/2026)
 
                 // GATE — nó próprio, antes do volume. Não dá pra usar o
                 // trackGain: ele já carrega volume, fades e ducking, e as duas
@@ -691,6 +691,22 @@
     // O que de fato entra no som: botão desligado = 0.
     function wetReverbDaFaixa(track) {
         return (track && track.effects && track.effects.reverb) ? quantidadeReverbDaFaixa(track) : 0;
+    }
+
+    // ── DELAY: quantidade vem da faixa (30/09/2026) ──────────────────────
+    // O delay (280 ms, realimentação 0,06) tinha 12% fixo e "espalhava muito"
+    // no spot (ouvido dele). Mesma conta no play e no arquivo. Padrão 12% =
+    // projeto antigo soa igual; faixa NOVA nasce com 5% (addTrack). Limite 0..50%.
+    const DELAY_QUANTIDADE_PADRAO = 0.12;
+    function quantidadeDelayDaFaixa(track) {
+        const bruto = track ? track.delayAmount : undefined;
+        if (bruto == null || bruto === '') return DELAY_QUANTIDADE_PADRAO;
+        const q = Number(bruto);
+        if (!Number.isFinite(q)) return DELAY_QUANTIDADE_PADRAO;
+        return Math.max(0, Math.min(0.5, q));
+    }
+    function wetDelayDaFaixa(track) {
+        return (track && track.effects && track.effects.delay) ? quantidadeDelayDaFaixa(track) : 0;
     }
 
     // ── VOLUME DO OBJETO (Volume do trecho, 28/09/2026) ──────────────────
@@ -1130,6 +1146,7 @@
 
     global.MixEngine = {
         REVERB_DURACAO_S, REVERB_QUANTIDADE_PADRAO, criarImpulsoReverb, quantidadeReverbDaFaixa, wetReverbDaFaixa,
+        DELAY_QUANTIDADE_PADRAO, quantidadeDelayDaFaixa, wetDelayDaFaixa,
         GANHO_OBJETO_MAX_DB, RAMPA_VOLUME_S, ganhoDbDoClip, dbParaLinear, volumeDoClip, agendarVolumeDoClip,
         XF_SEGMENTOS, crossfadesDoClip, agendarCrossfadeDoClip,
         renderizarMix, faixasAudiveis, masterizarBuffer, paramsLimiterMaster, bufferToWav, bufferToMp3,

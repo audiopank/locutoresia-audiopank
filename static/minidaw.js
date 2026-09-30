@@ -322,6 +322,11 @@ class MiniDAW {
             // De-esser (Suíte v2 D1): força 1-10 — sobe = tira mais "sss";
             // passou do ponto, a voz fica com língua presa. Acha-se de ouvido.
             deesserSettings: { forca: 5 },
+            // Quantidade dos envios (30/09/2026, ouvido dele): reverb 8% é o que soa
+            // bem em spot de rádio; delay discreto. Projeto antigo sem esses campos
+            // continua nos 30% / 12% de antes (padrões do MixEngine).
+            reverbAmount: 0.08,
+            delayAmount: 0.05,
             // Pontos de automação de volume manual: [{id, tempo, volume}].
             // Enquanto tiver pelo menos 1 ponto, SUBSTITUI o Ducking nesta
             // trilha (ver agendarVolumeDaFaixa). Vazio = comportamento de
@@ -606,6 +611,20 @@ class MiniDAW {
                     <small>
                         Voz de spot e podcast: 10 a 20%. Acima de 40% a voz afasta e embola
                         na caixinha do celular. O arquivo exportado sai igual ao que você ouve.
+                    </small>
+                </div>
+                <div class="delay-panel ${track.effects.delay ? 'ativo' : ''}" id="delaypanel_${track.id}">
+                    <div class="effect-label">
+                        Delay — quantidade
+                        <strong id="delayval_${track.id}">${Math.round(MixEngine.quantidadeDelayDaFaixa(track) * 100)}%</strong>
+                    </div>
+                    <input type="range" class="form-range" min="0" max="50" step="1"
+                           value="${Math.round(MixEngine.quantidadeDelayDaFaixa(track) * 100)}"
+                           oninput="minidaw.updateDelayAmount('${track.id}', this.value)"
+                           title="Quanto do eco (280 ms) entra junto com o som seco. Sobe = mais repetição.">
+                    <small>
+                        Delay é efeito de destaque (chamada, assinatura), não ambiente. Spot: 3 a 8%.
+                        Acima de 15% as repetições espalham e embolam a fala.
                     </small>
                 </div>
                 ${track.type === 'voice' ? `
@@ -936,7 +955,7 @@ class MiniDAW {
     _valoresDosRetornos(track) {
         return {
             reverb: MixEngine.wetReverbDaFaixa(track),
-            delay: track.effects.delay ? 0.12 : 0,       // mesmo 0.12 do export
+            delay: MixEngine.wetDelayDaFaixa(track),      // mesma conta do export
         };
     }
 
@@ -2540,6 +2559,7 @@ class MiniDAW {
         destino.deesserSettings = Object.assign({}, origem.deesserSettings || {});
         destino.compressorSettings = Object.assign({}, origem.compressorSettings || {});
         destino.reverbAmount = MixEngine.quantidadeReverbDaFaixa(origem);   // sempre: faixa no padrão (30%) também iguala
+        destino.delayAmount = MixEngine.quantidadeDelayDaFaixa(origem);
     }
 
     copiarEfeitosParaIguais(trackId) {
@@ -2819,6 +2839,10 @@ class MiniDAW {
         if (reverbPanel) {
             reverbPanel.classList.toggle('ativo', !!track.effects.reverb);
         }
+        const delayPanel = trackCard.querySelector('.delay-panel');
+        if (delayPanel) {
+            delayPanel.classList.toggle('ativo', !!track.effects.delay);
+        }
     }
 
     // Slider de força do de-esser. Aplica na hora pra dar pra ajustar ouvindo.
@@ -2914,6 +2938,20 @@ class MiniDAW {
         if (nodes) this._aplicarRetornos(track, nodes);
         clearTimeout(this._reverbSaveTimer);
         this._reverbSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
+    }
+
+    // Slider "Delay — quantidade" (0–50%). Mesma conta no play e no arquivo.
+    updateDelayAmount(trackId, amount) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const pct = parseFloat(String(amount).replace(',', '.'));
+        track.delayAmount = MixEngine.quantidadeDelayDaFaixa({ delayAmount: Number.isFinite(pct) ? pct / 100 : null });
+        const rotulo = document.getElementById(`delayval_${trackId}`);
+        if (rotulo) rotulo.textContent = Math.round(track.delayAmount * 100) + '%';
+        const nodes = this.trackNodes.get(trackId);
+        if (nodes) this._aplicarRetornos(track, nodes);
+        clearTimeout(this._delaySaveTimer);
+        this._delaySaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
     updateCompressor(trackId, param, value) {
@@ -5600,6 +5638,7 @@ class MiniDAW {
                 gateSettings: t.gateSettings,
                 deesserSettings: t.deesserSettings,
                 reverbAmount: MixEngine.quantidadeReverbDaFaixa(t),
+                delayAmount: MixEngine.quantidadeDelayDaFaixa(t),
                 automacaoVolume: t.automacaoVolume,
                 buffers: [], clips: []
             };
@@ -6193,6 +6232,7 @@ class MiniDAW {
             track.deesserSettings = td.deesserSettings || track.deesserSettings;
             // Quantidade do reverb (29/09/2026). Projeto antigo (sem o campo) = padrão 30%, como soava.
             track.reverbAmount = (td.reverbAmount != null) ? MixEngine.quantidadeReverbDaFaixa(td) : undefined;
+            track.delayAmount = (td.delayAmount != null) ? MixEngine.quantidadeDelayDaFaixa(td) : undefined;   // antigo = 12%, como soava
             // Normaliza o formato -- cobre projetos salvos antes desta
             // feature (campo ausente), e os salvos HOJE mais cedo antes
             // do liga/desliga de verdade existir (formato antigo: array
@@ -6403,6 +6443,7 @@ window.abrirBibliotecaModal = () => minidaw.abrirBibliotecaModal();
 
 // Efeitos de áudio
 window.updateReverbAmount = (id, amount) => minidaw.updateReverbAmount(id, amount);
+window.updateDelayAmount = (id, amount) => minidaw.updateDelayAmount(id, amount);
 window.updateCompressor = (id, param, value) => minidaw.updateCompressor(id, param, value);
 
 // ⚡ Incorporar Receita da IA (VoxCraft fase 3): pede a receita de mixagem pro

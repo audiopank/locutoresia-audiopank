@@ -65,10 +65,10 @@ def test_quantidade_viaja_no_projeto():
 def test_paginas_carregam_as_versoes_novas_e_o_css_do_painel():
     c = _cliente()
     html = c.get('/minidaw').get_data(as_text=True)
-    for t in ('mix-engine.js?v=18', 'minidaw.js?v=77', '.reverb-panel.ativo', '.track-card.compacta .reverb-panel'):
+    for t in ('mix-engine.js?v=19', 'minidaw.js?v=78', '.reverb-panel.ativo', '.track-card.compacta .reverb-panel'):
         assert t in html, t
     for pagina in ('/gerador', '/narrativa'):
-        assert 'mix-engine.js?v=18' in c.get(pagina).get_data(as_text=True), pagina
+        assert 'mix-engine.js?v=19' in c.get(pagina).get_data(as_text=True), pagina
 
 
 def test_retornos_so_abertos_com_o_play_rodando():
