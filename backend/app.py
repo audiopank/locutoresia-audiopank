@@ -6745,7 +6745,9 @@ def api_receitas_publicar():
             return jsonify({"success": False, "error": "Foto grande demais (limite ~3,5MB)."}), 400
     try:
         media = [newpost_feed.subir_imagem(texto.split('\n', 1)[0][:60], dados, conta='receitas')] if dados else []
-        r = newpost_feed.publicar(texto, conta='receitas', tags=rdd.hashtags_do_texto(texto),
+        # tags=[]: o feed desenha o array como etiquetas azuis e as hashtags saíam 2x
+        # (1º post real, 01/10). Ficam só no texto — é dele que o feed indexa hashtag.
+        r = newpost_feed.publicar(texto, conta='receitas', tags=[],
                                   media_urls=media or None, media_types=['image'] if media else None,
                                   chave=rdd.normalizar_link(link) or texto)
     except Exception as e:

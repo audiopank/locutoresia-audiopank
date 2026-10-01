@@ -272,16 +272,6 @@ def montar_legenda(emoji, titulo, resumo, link, extras=()):
     return f'{corpo}\n\nFonte: Receiteria\n{link}\n\n' + ' '.join('#' + t for t in tags)
 
 
-def hashtags_do_texto(texto):
-    """Hashtags do texto final (o que o produtor deixou) → `tags` do post, sem repetir."""
-    vistas, tags = set(), []
-    for t in re.findall(r'#(\w+)', texto or ''):
-        if t.lower() not in vistas:
-            vistas.add(t.lower())
-            tags.append(t)
-    return tags[:10]
-
-
 def _resumo_sem_ia(trecho):
     """Até 3 frases da descrição do site (o produtor revisa antes de publicar)."""
     frases = re.split(r'(?<=[.!?])\s+', (trecho or '').strip())

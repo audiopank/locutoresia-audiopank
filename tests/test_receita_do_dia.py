@@ -205,8 +205,6 @@ def test_legenda_no_formato_da_casa():
     assert t == ('🥕 Bolo de cenoura fofinho\n\nMassa fofinha. Cobertura de chocolate.\n\n'
                  'Fonte: Receiteria\nhttps://www.receiteria.com.br/receita-de-bolo-de-cenoura/\n\n'
                  '#ReceitasFavoritas #receitas #NewPostIA #Culinária #Dicas #BoloDeCenoura #Cafédatarde')
-    assert rdd.hashtags_do_texto(t + ' #receitas #Novo') == [
-        'ReceitasFavoritas', 'receitas', 'NewPostIA', 'Culinária', 'Dicas', 'BoloDeCenoura', 'Cafédatarde', 'Novo']
     # Sem descrição nenhuma, o post não fica com parágrafo vazio.
     assert rdd.montar_legenda('🍽️', 'Wrap', '', 'L').startswith('🍽️ Wrap\n\nFonte: Receiteria\nL\n\n#')
 
@@ -377,7 +375,9 @@ def test_publicar_sobe_a_foto_e_publica_na_conta_receitas(monkeypatch):
     conteudo, kw = chamadas['post']
     assert conteudo == texto and kw['conta'] == 'receitas'
     assert kw['media_urls'] == ['https://feed.exemplo/post-media/u/1-bolo.jpg'] and kw['media_types'] == ['image']
-    assert kw['tags'] == ['ReceitasFavoritas', 'receitas']
+    # 01/10, 1º post real: as hashtags saíam 2x (no texto e nas etiquetas azuis, que o
+    # feed desenha a partir do array `tags`). Fica só o texto — é dele que o feed indexa.
+    assert kw['tags'] == []
     assert kw['chave'] == 'https://receiteria.com.br/bolo'                    # a mesma receita não sai 2x
 
 
