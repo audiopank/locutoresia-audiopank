@@ -6654,24 +6654,19 @@ def receita_do_dia_page():
     return render_template('receita_do_dia.html')
 
 
-@app.route('/api/receitas/sugestoes')
+@app.route('/api/receitas/sugestoes', methods=['POST'])
 def api_receitas_sugestoes():
-    """Receitas pra escolher: a página 1 do RSS (mais novas) + uma sorteada do
-    arquivo; `?outras=1` traz só uma sorteada. Já publicadas, sensíveis, Copa e
-    fora de época voltam em `escondidas`, com o motivo."""
-    import random
+    """Filtra as receitas que o NAVEGADOR buscou na API da Receiteria (o Cloudflare
+    deles barra a Vercel — 403 no 1º uso, 01/10/2026). Já publicadas, sensíveis,
+    Copa e fora de época voltam em `escondidas`, com o motivo."""
     from core import newpost_feed
     from core import receita_do_dia as rdd
-    sorteada = random.randint(2, rdd.PAGINA_MAX)
-    paginas = [sorteada] if request.args.get('outras') else [1, sorteada]
-    itens, falha = [], ''
-    for p in paginas:
-        try:
-            itens += rdd.baixar_pagina(p)
-        except Exception as e:
-            falha = str(e)[:150]
+    brutos = (request.get_json() or {}).get('itens')
+    if not isinstance(brutos, list) or not brutos:
+        return jsonify({"success": False, "error": "Nenhuma receita recebida da Receiteria."}), 400
+    itens = [i for i in (rdd.item_da_api(o) for o in brutos[:40]) if i]
     if not itens:
-        return jsonify({"success": False, "error": f"A Receiteria não respondeu: {falha}"}), 502
+        return jsonify({"success": False, "error": "As receitas recebidas vieram num formato inesperado."}), 400
     conta_ok = newpost_feed.conta_configurada('receitas')
     # As de antes desta tela (link curto, lista fixa) + as que o perfil tem com link completo.
     publicados, aviso = set(rdd.publicadas_antigas()), ''
@@ -6681,27 +6676,19 @@ def api_receitas_sugestoes():
                 newpost_feed.conteudos_da_conta('receitas', contem='receiteria.com.br'))
         except Exception as e:
             aviso = f'Não consegui conferir o que já foi publicado ({str(e)[:100]}). Confira antes de publicar.'
-    return jsonify({"success": True, "paginas": paginas, "conta_ok": conta_ok, "aviso": aviso,
+    return jsonify({"success": True, "conta_ok": conta_ok, "aviso": aviso,
                     **rdd.sugestoes(itens, publicados)})
 
 
 @app.route('/api/receitas/preparar', methods=['POST'])
 def api_receitas_preparar():
-    """Texto do post pronto pra revisão (IA; sem IA, o próprio trecho do RSS)."""
+    """Texto do post pronto pra revisão. A receita chega da tela já com descrição,
+    ingredientes, tempo e rendimento (vindos da API da Receiteria pelo navegador)
+    — o chão da IA pra não inventar. Sem IA, o texto é a descrição do site."""
     from core import receita_do_dia as rdd
-    data = request.get_json() or {}
-    link = str(data.get('link') or '').strip()
-    if not link.startswith(rdd.PREFIXO_LINK):
+    item = rdd.item_escolhido(request.get_json() or {})
+    if not item:
         return jsonify({"success": False, "error": "Link de receita inválido."}), 400
-    item = {'titulo': str(data.get('titulo') or '')[:200], 'link': link,
-            'resumo': str(data.get('resumo') or '')[:800],
-            'categorias': [str(c)[:60] for c in (data.get('categorias') or [])][:12]}
-    # Descrição, ingredientes, tempo e rendimento da página da receita: o chão
-    # da IA pra não inventar. Página fora do ar = IA só com título e categorias.
-    try:
-        item.update(rdd.detalhes_da_receita(link))
-    except Exception as e:
-        print(f"[receitas/preparar] página da receita indisponível: {e}")
     return jsonify({"success": True, **rdd.preparar_texto(item)})
 
 

@@ -6,16 +6,13 @@ princípio: nada sai sozinho. A tela /receita-do-dia sugere receitas, a IA
 prepara texto e foto, e o produtor revisa e clica Publicar ("tudo tem que
 passar pela nossa mão" — decisão dele, 01/10/2026).
 
-Fonte: RSS oficial da Receiteria, só de RECEITAS (`/feed/?post_type=receita`).
-O feed principal (`/feed/`) traz matérias e listas ("32 receitas para a
-primavera") e o site posta pouco nele; o de receitas tem várias por dia, e o
-WordPress pagina o arquivo inteiro (`&paged=N`, a página 150 ainda é dez/2025)
-— por isso a sugestão sorteia uma página antiga além da primeira.
-
-O item do feed de receitas não traz resumo (só "O post X apareceu primeiro
-em Receiteria"). Quando o produtor escolhe uma, a página da receita é lida UMA
-vez: descrição do próprio site, ingredientes, tempo e rendimento (JSON-LD) —
-é o chão da IA pra escrever sem inventar.
+QUEM BUSCA AS RECEITAS É O NAVEGADOR DO PRODUTOR, não o servidor: o Cloudflare
+da Receiteria barra IP de datacenter (Vercel deu 403 no 1º uso, 01/10/2026; a
+Base44 sofria o mesmo), mas a API do WordPress deles libera CORS pro nosso
+domínio e aceita o IP de casa. A tela lê
+`https://www.receiteria.com.br/wp-json/wp/v2/receita` (13 mil receitas, com
+descrição, ingredientes, tempo e rendimento) e manda os objetos pra cá: o
+servidor normaliza (`item_da_api`), filtra e escreve — nunca fala com a Receiteria.
 
 Direito autoral: resumo próprio + "Fonte: Receiteria" + link. A FOTO nunca é
 copiada do site: ou é gerada por IA, ou é do computador do produtor.
@@ -27,39 +24,20 @@ import os
 import re
 import time
 import unicodedata
-import xml.etree.ElementTree as ET
 from datetime import date, timedelta
-from email.utils import parsedate_to_datetime
-
-import requests
 
 from core.newpost_feed import TAGS_POR_CONTA
 
-FEED_RECEITERIA = 'https://www.receiteria.com.br/feed/?post_type=receita'
 PREFIXO_LINK = 'https://www.receiteria.com.br/'
-PAGINA_MAX = 150                     # conferido em 01/10/2026: a página 150 ainda traz 10 receitas
-ARQUIVO_ANTIGAS = os.path.join(os.path.dirname(__file__), 'receitas_publicadas_antigas.txt')
-RE_RESUMO_VAZIO = re.compile(r'^O post .* apareceu primeiro em ', re.S)
 HASHTAGS_FIXAS = TAGS_POR_CONTA['receitas']
 MODELO_TEXTO = 'gemini-2.5-flash'
 MODELO_FOTO = 'gemini-2.5-flash-image'
-# A Receiteria barra robô sem cara de navegador (na Base44 dava 403).
-UA = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                    '(KHTML, like Gecko) Chrome/128.0 Safari/537.36'}
+ARQUIVO_ANTIGAS = os.path.join(os.path.dirname(__file__), 'receitas_publicadas_antigas.txt')
 
 
 def _sem_acento(texto):
     t = unicodedata.normalize('NFKD', str(texto or ''))
     return ''.join(c for c in t if not unicodedata.combining(c)).lower()
-
-
-def _texto_limpo(html_cru, limite=600):
-    """Descrição do RSS (HTML) → texto corrido, sem tags, cortado em `limite`."""
-    t = re.sub(r'<[^>]+>', ' ', html_cru or '')
-    t = re.sub(r'\s+', ' ', html.unescape(t)).strip()
-    if len(t) > limite:
-        t = t[:limite].rsplit(' ', 1)[0] + '…'
-    return t
 
 
 def normalizar_link(link):
@@ -69,101 +47,85 @@ def normalizar_link(link):
     return u.rstrip('/')
 
 
-# ── RSS ─────────────────────────────────────────────────────────────────────
-
-def ler_feed(xml_bytes):
-    """XML do RSS → [{titulo, link, resumo, categorias, data}] (data ISO ou '')."""
-    raiz = ET.fromstring(xml_bytes)
-    itens = []
-    for it in raiz.findall('./channel/item'):
-        titulo = (it.findtext('title') or '').strip()
-        link = (it.findtext('link') or '').strip()
-        if not titulo or not link.startswith(PREFIXO_LINK):
-            continue
-        try:
-            data = parsedate_to_datetime(it.findtext('pubDate') or '').date().isoformat()
-        except (TypeError, ValueError):
-            data = ''
-        resumo = _texto_limpo(it.findtext('description'))
-        itens.append({
-            'titulo': titulo,
-            'link': link,
-            'resumo': '' if RE_RESUMO_VAZIO.match(resumo) else resumo,
-            'categorias': [c.text.strip() for c in it.findall('category') if c.text and c.text.strip()],
-            'data': data,
-        })
-    return itens
+def _txt(valor, limite):
+    return html.unescape(str(valor or '')).strip()[:limite]
 
 
-def baixar_pagina(pagina=1):
-    """Uma página do RSS (10 receitas). Página 1 = as mais novas."""
-    pagina = int(pagina)
-    url = FEED_RECEITERIA if pagina <= 1 else f'{FEED_RECEITERIA}&paged={pagina}'
-    r = requests.get(url, headers=UA, timeout=15)
-    r.raise_for_status()
-    return ler_feed(r.content)
+# ── receita vinda da API (pelo navegador) ───────────────────────────────────
 
-
-# ── página da receita (só da escolhida) ─────────────────────────────────────
-
-def _duracao(iso):
-    """'PT1H20M' → '1h20'; 'PT20M' → '20 min'; formato estranho → ''."""
-    m = re.fullmatch(r'P(?:T)?(?:(\d+)H)?(?:(\d+)M)?(?:\d+S)?', str(iso or '').strip().upper())
-    if not m or not (m.group(1) or m.group(2)):
+def _duracao(minutos):
+    """20 → '20 min'; 80 → '1h20'; 60 → '1h'; 0/inválido → ''."""
+    try:
+        m = int(float(minutos or 0))
+    except (TypeError, ValueError):
         return ''
-    h, mi = int(m.group(1) or 0), int(m.group(2) or 0)
-    if h:
-        return f'{h}h{mi:02d}' if mi else f'{h}h'
-    return f'{mi} min'
+    if m <= 0:
+        return ''
+    h, mi = divmod(m, 60)
+    if not h:
+        return f'{mi} min'
+    return f'{h}h{mi:02d}' if mi else f'{h}h'
 
 
-def _receitas_do_jsonld(no):
-    """Acha os objetos @type Recipe num JSON-LD (solto, em lista ou em @graph)."""
-    if isinstance(no, list):
-        for x in no:
-            yield from _receitas_do_jsonld(x)
-    elif isinstance(no, dict):
-        tipo = no.get('@type')
-        if tipo == 'Recipe' or (isinstance(tipo, list) and 'Recipe' in tipo):
-            yield no
-        for x in (no.get('@graph') or []):
-            yield from _receitas_do_jsonld(x)
+def item_da_api(obj):
+    """Objeto da API do WordPress da Receiteria → item da tela; None se não servir.
+
+    Campos pedidos pela tela: id, date, link, title, class_list,
+    yoast_head_json.description, acf.tempo, acf.rendimento, acf.ingredientes01-03.
+    Tudo vem do navegador, então tudo é cortado no tamanho aqui.
+    """
+    if not isinstance(obj, dict):
+        return None
+    link = str(obj.get('link') or '').strip()
+    titulo = _txt((obj.get('title') or {}).get('rendered') if isinstance(obj.get('title'), dict) else '', 200)
+    if not titulo or not link.startswith(PREFIXO_LINK):
+        return None
+    acf = obj.get('acf') if isinstance(obj.get('acf'), dict) else {}
+    ingredientes = []
+    for chave in ('ingredientes01', 'ingredientes02', 'ingredientes03'):
+        for linha in (acf.get(chave) or []):
+            texto = _txt(linha.get('ingrediente'), 120) if isinstance(linha, dict) else ''
+            if texto:
+                ingredientes.append(texto)
+    # Etiquetas do WordPress em class_list: "category-bolos", "tag-festa-junina"…
+    categorias = []
+    for c in (obj.get('class_list') or []):
+        m = re.match(r'(?:category|tag)-([a-z0-9-]+)$', str(c))
+        if m:
+            categorias.append(m.group(1).replace('-', ' '))
+    yoast = obj.get('yoast_head_json') if isinstance(obj.get('yoast_head_json'), dict) else {}
+    return {
+        'titulo': titulo,
+        'link': link[:300],
+        'data': str(obj.get('date') or '')[:10],
+        'categorias': categorias[:15],
+        'descricao': _txt(yoast.get('description'), 600),
+        'ingredientes': ingredientes[:25],
+        'tempo': _duracao(acf.get('tempo')),
+        'rendimento': _txt(acf.get('rendimento'), 60),
+    }
 
 
-def ler_pagina_receita(html_texto):
-    """HTML da receita → {descricao, ingredientes, tempo, rendimento} (campo ausente = vazio)."""
-    t = html_texto or ''
-    m = re.search(r'<meta[^>]+(?:property|name)=["\'](?:og:)?description["\'][^>]*content=["\']([^"\']*)', t)
-    det = {'descricao': html.unescape(m.group(1)).strip() if m else '',
-           'ingredientes': [], 'tempo': '', 'rendimento': ''}
-    for bloco in re.findall(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>', t, re.S | re.I):
-        try:
-            dados = json.loads(bloco)
-        except ValueError:
-            continue
-        for rec in _receitas_do_jsonld(dados):
-            det['ingredientes'] = [html.unescape(str(i)).strip() for i in (rec.get('recipeIngredient') or [])][:20]
-            det['tempo'] = _duracao(rec.get('totalTime'))
-            rend = rec.get('recipeYield')
-            det['rendimento'] = str(rend[0] if isinstance(rend, list) and rend else (rend or '')).strip()
-            if not det['descricao']:
-                det['descricao'] = html.unescape(str(rec.get('description') or '')).strip()
-            return det
-    return det
+def item_escolhido(data):
+    """Item que a tela devolve no "Preparar" (já normalizado antes) — confere e corta de novo."""
+    data = data if isinstance(data, dict) else {}
+    link = str(data.get('link') or '').strip()
+    if not link.startswith(PREFIXO_LINK):
+        return None
 
+    def _lista(v, n, lim):
+        return [_txt(x, lim) for x in (v if isinstance(v, list) else [])[:n] if _txt(x, lim)]
 
-def detalhes_da_receita(link):
-    """Lê a página da receita escolhida (1 requisição). Levanta exceção se falhar."""
-    if not str(link or '').startswith(PREFIXO_LINK):
-        raise ValueError('link fora da Receiteria')
-    r = requests.get(link, headers=UA, timeout=15)
-    r.raise_for_status()
-    return ler_pagina_receita(r.text)
+    return {'titulo': _txt(data.get('titulo'), 200), 'link': link[:300],
+            'categorias': _lista(data.get('categorias'), 15, 60),
+            'descricao': _txt(data.get('descricao'), 600),
+            'ingredientes': _lista(data.get('ingredientes'), 25, 120),
+            'tempo': _txt(data.get('tempo'), 20), 'rendimento': _txt(data.get('rendimento'), 60)}
 
 
 # ── filtros ─────────────────────────────────────────────────────────────────
 
-# Época fixa: (nome, padrão sobre título + categorias SEM acento, início, fim) em (mês, dia).
+# Época fixa: (nome, padrão sobre título + etiquetas SEM acento, início, fim) em (mês, dia).
 # Fora da janela a receita fica escondida — a Base44 postou ceia de Natal em 1º/10.
 EPOCAS_FIXAS = [
     ('Natal/Ano Novo', r'\bnatal\w*|\bceia\b|\bpanetone|\bchocotone|\brabanada|\bano novo\b|\breveillon',
@@ -206,7 +168,7 @@ def fora_de_epoca(item, hoje=None, com_categorias=True):
     """Nome da época quando a receita é de outra época do ano; '' quando serve hoje.
 
     `com_categorias=False` olha só o título: etiqueta sozinha é sinal fraco (o
-    "Bolo de creme de milho" tem "Festa Junina" entre 10 etiquetas e é do ano todo).
+    "Bolo de creme de milho" tem "festa junina" entre as etiquetas e é do ano todo).
     """
     hoje = hoje or date.today()
     partes = [item.get('titulo') or ''] + (list(item.get('categorias') or []) if com_categorias else [])
@@ -229,10 +191,10 @@ def fora_de_epoca(item, hoje=None, com_categorias=True):
 def motivo_bloqueio(item):
     """Conteúdo que nunca entra: Copa do Mundo (regra da casa) ou sensível (core/content_filter)."""
     from core.content_filter import blocked_reason
-    titulo, resumo = item.get('titulo') or '', item.get('resumo') or ''
-    if RE_COPA.search(_sem_acento(titulo + ' ' + resumo)):
+    titulo, descricao = item.get('titulo') or '', item.get('descricao') or ''
+    if RE_COPA.search(_sem_acento(titulo + ' ' + descricao)):
         return 'Copa do Mundo'
-    termo = blocked_reason(titulo, resumo)
+    termo = blocked_reason(titulo, descricao)
     if termo:
         return 'conteúdo sensível (' + re.sub(r'\\[bw]\*?|[\\*?]', '', termo) + ')'
     return ''
@@ -321,7 +283,7 @@ def hashtags_do_texto(texto):
 
 
 def _resumo_sem_ia(trecho):
-    """Até 3 frases do próprio trecho do RSS (o produtor revisa antes de publicar)."""
+    """Até 3 frases da descrição do site (o produtor revisa antes de publicar)."""
     frases = re.split(r'(?<=[.!?])\s+', (trecho or '').strip())
     return ' '.join(frases[:3]).strip()
 
@@ -332,8 +294,8 @@ def _prompt_texto(item):
 Abaixo está uma receita da Receiteria. Escreva o post a partir SÓ destas informações.
 
 Título original: {item.get('titulo', '')}
-Categorias: {', '.join((item.get('categorias') or [])[:12])}
-Descrição do site: {item.get('descricao') or item.get('resumo') or '(não informada)'}
+Etiquetas: {', '.join((item.get('categorias') or [])[:12])}
+Descrição do site: {item.get('descricao') or '(não informada)'}
 Ingredientes: {ingredientes}
 Tempo total: {item.get('tempo') or '(não informado)'}
 Rendimento: {item.get('rendimento') or '(não informado)'}
@@ -348,14 +310,14 @@ Devolva SOMENTE um JSON válido (sem markdown):
 }}
 Regras: português do Brasil; pode citar 2 ou 3 ingredientes principais e o tempo, se informados;
 NÃO invente ingredientes, quantidades, tempos ou números que não estão acima; NÃO copie a lista de ingredientes;
-NÃO prometa benefício de saúde (nada de "cura", "emagrece", "detox", "previne doença"); sem sensacionalismo."""
+NÃO cite marcas; NÃO prometa benefício de saúde (nada de "cura", "emagrece", "detox", "previne doença"); sem sensacionalismo."""
 
 
 def preparar_texto(item):
     """Texto pronto pra revisão: {'texto', 'prompt_imagem', 'via_ia'}.
 
-    Sem IA (sem chave, cota, erro) cai num texto montado do próprio trecho do
-    RSS — a tela avisa e o produtor ajusta à mão. Nunca levanta exceção.
+    Sem IA (sem chave, cota, erro) cai na descrição do próprio site — a tela
+    avisa e o produtor ajusta à mão. Nunca levanta exceção.
     """
     dados = {}
     api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_AI_STUDIO_API_KEY')
@@ -383,7 +345,7 @@ def preparar_texto(item):
         dados = {}
     resumo_ia = str(dados.get('resumo') or '').strip()
     titulo = str(dados.get('titulo') or item.get('titulo') or '').strip()[:120]
-    resumo = resumo_ia or _resumo_sem_ia(item.get('descricao') or item.get('resumo'))
+    resumo = resumo_ia or _resumo_sem_ia(item.get('descricao'))
     extras = dados.get('hashtags') if isinstance(dados.get('hashtags'), list) else []
     texto = montar_legenda(dados.get('emoji') or '🍽️', titulo, resumo, item.get('link', ''), extras[:2])
     prompt_imagem = str(dados.get('prompt_imagem') or item.get('titulo') or '').strip()[:300]
