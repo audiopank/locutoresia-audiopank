@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Receita do dia — Receitas Favoritas | Locutores IA</title>
+    <!-- RECEITA DO DIA (01/10/2026): substitui a automação da Base44 no perfil
+         "Receitas Favoritas Grandes Dicas" da NewPost-IA. Nada é publicado
+         sozinho — a tela sugere, a IA prepara e o produtor revisa e publica.
+         Lógica em core/receita_do_dia.py; rotas /api/receitas/* em backend/app.py. -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        :root {
+            --primary: #6366f1; --bg: #0f172a; --card: #1e293b; --txt: #f1f5f9; --txt2: #94a3b8;
+            --border: #334155; --ok: #22c55e; --atencao: #f59e0b; --erro: #ef4444;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--txt); line-height: 1.6; }
+        main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+        header a { color: var(--txt2); text-decoration: none; }
+        h1 { font-size: 1.5rem; }
+        h2 { font-size: 1.1rem; margin: 26px 0 12px; }
+        .sub { color: var(--txt2); font-size: .9rem; }
+        .aviso { padding: 12px 14px; border-radius: 10px; margin: 12px 0; background: var(--card); border-left: 4px solid var(--primary); }
+        .aviso.ok { border-color: var(--ok); }
+        .aviso.atencao { border-color: var(--atencao); }
+        .aviso.erro { border-color: var(--erro); }
+        .cartao { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+        .cartao h3 { font-size: 1rem; margin-bottom: 2px; }
+        .cartao .meta { color: var(--txt2); font-size: .8rem; margin-bottom: 6px; }
+        .cartao p { font-size: .9rem; color: #cbd5e1; }
+        .acoes { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 10px; flex-wrap: wrap; }
+        .acoes a { color: #a5b4fc; font-size: .9rem; }
+        .btn { background: var(--primary); color: #fff; border: 0; border-radius: 999px; padding: 9px 18px; font-weight: 700; cursor: pointer; font-size: .9rem; }
+        .btn.sec { background: transparent; border: 1px solid var(--border); color: var(--txt); }
+        .btn:disabled { opacity: .5; cursor: wait; }
+        textarea { width: 100%; min-height: 260px; background: var(--card); color: var(--txt); border: 1px solid var(--border); border-radius: 10px; padding: 12px; font: inherit; font-size: .95rem; }
+        .linha { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+        #previa { max-width: 100%; max-height: 420px; border-radius: 12px; display: block; margin-top: 10px; }
+        details { margin-top: 10px; color: var(--txt2); font-size: .85rem; }
+        details li { margin-left: 18px; }
+        .publicar { margin-top: 22px; font-size: 1rem; padding: 12px 26px; background: var(--ok); }
+    </style>
+</head>
+<body>
+<main>
+    <header>
+        <div>
+            <h1>🍲 Receita do dia</h1>
+            <div class="sub">Perfil <strong>Receitas Favoritas Grandes Dicas</strong> · fonte Receiteria · <span id="statusConta">conferindo o perfil…</span></div>
+        </div>
+        <a href="/"><i class="fas fa-arrow-left"></i> Início</a>
+    </header>
+
+    <div id="aviso" class="aviso" hidden></div>
+
+    <h2>1. Escolha a receita</h2>
+    <div class="linha">
+        <button type="button" id="btnOutras" class="btn sec"><i class="fas fa-rotate"></i> Outras sugestões</button>
+        <span class="sub">Já saem de fora as publicadas, as de outra época do ano e as com conteúdo sensível.</span>
+    </div>
+    <div id="listaSugestoes"></div>
+    <details>
+        <summary id="escondidasResumo">escondidas</summary>
+        <ul id="escondidasLista"></ul>
+    </details>
+
+    <section id="etapaRevisar" hidden>
+        <h2>2. Revise o texto — <span id="receitaEscolhida"></span></h2>
+        <textarea id="texto" spellcheck="true"></textarea>
+        <div class="sub" id="contador"></div>
+
+        <h2>3. Foto</h2>
+        <div class="linha">
+            <button type="button" id="btnFotoIA" class="btn sec">✨ Gerar foto com IA</button>
+            <button type="button" id="btnFotoPC" class="btn sec">💻 Foto do computador</button>
+            <button type="button" id="btnSemFoto" class="btn sec">Sem foto</button>
+            <input type="file" id="inputFoto" accept="image/*" hidden>
+        </div>
+        <div class="sub" id="fotoStatus">Sem foto (o post sai só com texto).</div>
+        <img id="previa" alt="Prévia da foto do post" hidden>
+
+        <button type="button" id="btnPublicar" class="btn publicar">📤 Publicar no feed</button>
+    </section>
+</main>
+<script src="/static/receita-do-dia.js?v=1"></script>
+</body>
+</html>

@@ -22,6 +22,8 @@ Configuração (só por variável de ambiente — senha nunca entra no código):
     NEWPOST_FEED_SENHA_LOCUTORES
     NEWPOST_FEED_EMAIL_VIDA     opcional: programa "Vida Saudável" (podcast diário)
     NEWPOST_FEED_SENHA_VIDA
+    NEWPOST_FEED_EMAIL_RECEITAS   opcional: perfil "Receitas Favoritas" (Receita do dia)
+    NEWPOST_FEED_SENHA_RECEITAS
 
 Sem fallback de URL de propósito: URL morta escondida como fallback foi o que
 deixou a integração quebrada em silêncio quando o projeto antigo desligou.
@@ -51,6 +53,9 @@ CONTAS = {
     # Perfil "Achadinhos da NewPost-IA" (achadinhos@gmail.com) — comunidade de
     # ofertas; assina os áudios pra vídeo do Achadinhos (pedido de 23/09/2026).
     'achadinhos': ('NEWPOST_FEED_EMAIL_ACHADINHOS', 'NEWPOST_FEED_SENHA_ACHADINHOS'),
+    # Perfil "Receitas Favoritas Grandes Dicas" (receitas@gmail.com, da casa) —
+    # assina a Receita do dia (/receita-do-dia), que substitui a Base44 (01/10/2026).
+    'receitas': ('NEWPOST_FEED_EMAIL_RECEITAS', 'NEWPOST_FEED_SENHA_RECEITAS'),
 }
 
 # ── Tags e série por conta (Gerador → feed) ─────────────────────────────────
@@ -63,6 +68,7 @@ TAGS_PADRAO = ['LocutoresIA', 'Spot']
 TAGS_POR_CONTA = {
     'vida': ['VidaSaudavel', 'Podcast', 'Saúde'],
     'achadinhos': ['Achadinhos', 'Ofertas'],
+    'receitas': ['ReceitasFavoritas', 'receitas', 'NewPostIA', 'Culinária', 'Dicas'],
 }
 
 # Programa por conta = série na NewPost-IA (tabela `series`; o post leva
@@ -496,6 +502,46 @@ def subir_audio(nome, dados, conta='principal'):
     if not r.ok:
         raise RuntimeError(f'upload do áudio falhou ({r.status_code}): {(r.text or "")[:160]}')
     return f"{url}/storage/v1/object/public/post-audio/{caminho}"
+
+
+def subir_imagem(nome, dados, conta='principal', mime='image/jpeg'):
+    """Sobe uma FOTO pro storage do feed (bucket `post-media`, o mesmo do upload de
+    mídia do próprio site — MediaUploadModal.tsx) e devolve a URL pública.
+
+    Caminho no padrão do site: `<user_id>/<timestamp>-<slug>.<ext>`.
+    Levanta exceção com mensagem clara em falha — quem chama decide a tela.
+    """
+    s = sessao(conta)
+    url, anon = _cfg()
+    ext = 'png' if mime == 'image/png' else 'jpg'
+    caminho = f"{s['user_id']}/{int(time.time())}-{_slug_ascii(nome)}.{ext}"
+    r = requests.post(f"{url}/storage/v1/object/post-media/{caminho}",
+                      headers={'apikey': anon,
+                               'Authorization': f"Bearer {s['access_token']}",
+                               'Content-Type': mime},
+                      data=dados, timeout=60)
+    if not r.ok:
+        raise RuntimeError(f'upload da imagem falhou ({r.status_code}): {(r.text or "")[:160]}')
+    return f"{url}/storage/v1/object/public/post-media/{caminho}"
+
+
+def conteudos_da_conta(conta, contem='', limite=1000):
+    """`content` dos posts da PRÓPRIA conta (logado), do mais novo pro mais antigo.
+
+    `contem` filtra por trecho (ILIKE). Serve pra saber o que já foi publicado
+    (ex.: links da Receiteria). Levanta exceção se o feed não responder.
+    """
+    s = sessao(conta)
+    url, anon = _cfg()
+    params = {'select': 'content', 'author_id': f"eq.{s['user_id']}",
+              'order': 'created_at.desc', 'limit': str(int(limite))}
+    if contem:
+        params['content'] = f'ilike.*{contem}*'
+    r = requests.get(f'{url}/rest/v1/posts',
+                     headers={'apikey': anon, 'Authorization': f"Bearer {s['access_token']}"},
+                     params=params, timeout=20)
+    r.raise_for_status()
+    return [l.get('content') or '' for l in (r.json() or [])]
 
 
 def apagar(post_id, conta='principal'):

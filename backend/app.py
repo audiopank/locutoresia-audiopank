@@ -6631,6 +6631,144 @@ def api_gerador_publicar_feed():
         return jsonify({"success": False, "error": str(e)[:200]}), 500
 
 
+# ── Receita do dia (01/10/2026) ──────────────────────────────────────────────
+# Substitui a Base44 no perfil "Receitas Favoritas Grandes Dicas" da NewPost-IA.
+# NADA sai sozinho ("tudo tem que passar pela nossa mão"): a tela sugere
+# receitas da Receiteria, a IA prepara texto e foto, o PRODUTOR revisa e
+# clica Publicar. Rotas privadas (portão) — não entram em ROTAS_PUBLICAS.
+# Lógica em core/receita_do_dia.py.
+
+def _receitas_sem_credenciais():
+    """Resposta 400 quando falta a conta 'receitas' — nunca publica como outro perfil."""
+    from core import newpost_feed
+    if newpost_feed.conta_configurada('receitas'):
+        return None
+    faltam = [v for v in newpost_feed.CONTAS['receitas'] if not os.getenv(v, '').strip()]
+    return jsonify({"success": False,
+                    "error": f"Conta 'receitas' sem credenciais no ambiente: falta {' e '.join(faltam)}. "
+                             "Confira o nome exato na Vercel (ambiente Production) e faça Redeploy."}), 400
+
+
+@app.route('/receita-do-dia')
+def receita_do_dia_page():
+    return render_template('receita_do_dia.html')
+
+
+@app.route('/api/receitas/sugestoes')
+def api_receitas_sugestoes():
+    """Receitas pra escolher: a página 1 do RSS (mais novas) + uma sorteada do
+    arquivo; `?outras=1` traz só uma sorteada. Já publicadas, sensíveis, Copa e
+    fora de época voltam em `escondidas`, com o motivo."""
+    import random
+    from core import newpost_feed
+    from core import receita_do_dia as rdd
+    sorteada = random.randint(2, rdd.PAGINA_MAX)
+    paginas = [sorteada] if request.args.get('outras') else [1, sorteada]
+    itens, falha = [], ''
+    for p in paginas:
+        try:
+            itens += rdd.baixar_pagina(p)
+        except Exception as e:
+            falha = str(e)[:150]
+    if not itens:
+        return jsonify({"success": False, "error": f"A Receiteria não respondeu: {falha}"}), 502
+    conta_ok = newpost_feed.conta_configurada('receitas')
+    # As de antes desta tela (link curto, lista fixa) + as que o perfil tem com link completo.
+    publicados, aviso = set(rdd.publicadas_antigas()), ''
+    if conta_ok:
+        try:
+            publicados |= rdd.links_publicados(
+                newpost_feed.conteudos_da_conta('receitas', contem='receiteria.com.br'))
+        except Exception as e:
+            aviso = f'Não consegui conferir o que já foi publicado ({str(e)[:100]}). Confira antes de publicar.'
+    return jsonify({"success": True, "paginas": paginas, "conta_ok": conta_ok, "aviso": aviso,
+                    **rdd.sugestoes(itens, publicados)})
+
+
+@app.route('/api/receitas/preparar', methods=['POST'])
+def api_receitas_preparar():
+    """Texto do post pronto pra revisão (IA; sem IA, o próprio trecho do RSS)."""
+    from core import receita_do_dia as rdd
+    data = request.get_json() or {}
+    link = str(data.get('link') or '').strip()
+    if not link.startswith(rdd.PREFIXO_LINK):
+        return jsonify({"success": False, "error": "Link de receita inválido."}), 400
+    item = {'titulo': str(data.get('titulo') or '')[:200], 'link': link,
+            'resumo': str(data.get('resumo') or '')[:800],
+            'categorias': [str(c)[:60] for c in (data.get('categorias') or [])][:12]}
+    # Descrição, ingredientes, tempo e rendimento da página da receita: o chão
+    # da IA pra não inventar. Página fora do ar = IA só com título e categorias.
+    try:
+        item.update(rdd.detalhes_da_receita(link))
+    except Exception as e:
+        print(f"[receitas/preparar] página da receita indisponível: {e}")
+    return jsonify({"success": True, **rdd.preparar_texto(item)})
+
+
+@app.route('/api/receitas/foto-ia', methods=['POST'])
+def api_receitas_foto_ia():
+    """Foto do prato pelo Gemini (só com o faturamento ligado — a cota grátis é zero)."""
+    import base64 as _b64
+    from core import receita_do_dia as rdd
+    data = request.get_json() or {}
+    try:
+        dados, mime = rdd.gerar_foto(str(data.get('prompt') or '')[:300])
+    except rdd.FotoSemFaturamento as e:
+        return jsonify({"success": False, "sem_faturamento": True, "error": str(e)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)[:200]})
+    return jsonify({"success": True, "mime": mime, "imagem_base64": _b64.b64encode(dados).decode()})
+
+
+@app.route('/api/receitas/publicar', methods=['POST'])
+def api_receitas_publicar():
+    """Publica a receita REVISADA no perfil Receitas Favoritas — só por clique do produtor.
+
+    Foto opcional, sempre em JPEG (a tela converte). A chave do post é o link
+    normalizado da receita: a mesma receita não sai duas vezes (`already`).
+    """
+    import base64 as _b64
+    from core import newpost_feed
+    from core import receita_do_dia as rdd
+    falta = _receitas_sem_credenciais()
+    if falta:
+        return falta
+    data = request.get_json() or {}
+    texto = str(data.get('texto') or '').strip()
+    link = str(data.get('link') or '').strip()
+    if not texto:
+        return jsonify({"success": False, "error": "Texto vazio."}), 400
+    if len(texto) > 2200:
+        return jsonify({"success": False, "error": "Texto longo demais (máx. 2.200 caracteres)."}), 400
+    foto = str(data.get('imagem_base64') or '')
+    if ',' in foto[:80]:
+        foto = foto.split(',', 1)[1]          # tira o prefixo data:...;base64,
+    dados = b''
+    if foto:
+        try:
+            dados = _b64.b64decode(foto)
+        except Exception:
+            return jsonify({"success": False, "error": "Foto inválida (base64)."}), 400
+        if not dados.startswith(b'\xff\xd8\xff'):
+            return jsonify({"success": False, "error": "A foto precisa chegar em JPEG."}), 400
+        if len(dados) > 3_500_000:
+            return jsonify({"success": False, "error": "Foto grande demais (limite ~3,5MB)."}), 400
+    try:
+        media = [newpost_feed.subir_imagem(texto.split('\n', 1)[0][:60], dados, conta='receitas')] if dados else []
+        r = newpost_feed.publicar(texto, conta='receitas', tags=rdd.hashtags_do_texto(texto),
+                                  media_urls=media or None, media_types=['image'] if media else None,
+                                  chave=rdd.normalizar_link(link) or texto)
+    except Exception as e:
+        print(f"[receitas/publicar] erro: {e}")
+        return jsonify({"success": False, "error": str(e)[:200]}), 500
+    if r.get('success'):
+        return jsonify({"success": True, "post_id": r.get('post_id'), "imagem_url": media[0] if media else None})
+    if r.get('already'):
+        return jsonify({"success": False, "already": True,
+                        "error": "Essa receita já foi publicada antes no perfil."})
+    return jsonify({"success": False, "error": r.get('error', 'falha ao publicar')})
+
+
 # Publieditorial/oferta de varejo tem cara própria — e anúncio no feed é espaço
 # PAGO (decisão do produtor, 31/08/2026: "pra entrar esse tipo de post, eles
 # precisam nos pagar"). A regra marca "revisar", não "rejeitar": falso positivo
