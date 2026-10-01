@@ -44,6 +44,9 @@
     // Valor do select quando a trilha do cliente decodificou mas NÃO ficou
     // guardada (Storage/catálogo falhou): vive só nesta aba, sem file_url.
     const TRILHA_LOCAL = 'local';
+    // Trilha do MEU COMPUTADOR (01/10/2026): arquivo do HD direto no spot, sem
+    // nuvem. Valores próprios: 'pc' abre o seletor; TRILHA_PC é a escolhida.
+    const TRILHA_PC = '__pc__';
 
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -382,10 +385,19 @@
             '<option value="auto" selected>Deixar a IA escolher</option>' +
             '<option value="nenhuma">Sem trilha (locução seca)</option>' +
             '<option value="upload">📤 Subir trilha do cliente...</option>' +
+            '<option value="pc">💻 Trilha do meu computador...</option>' +
             (doAcervo.length
                 ? `<optgroup label="Acervo">${doAcervo.map(opt).join('')}</optgroup>` : '') +
             (doCliente.length
                 ? `<optgroup label="Trilhas de clientes">${doCliente.map(opt).join('')}</optgroup>` : '');
+
+        // A trilha do computador já escolhida sobrevive ao recarregar o catálogo.
+        if (estado.trilhaPC) {
+            const o = document.createElement('option');
+            o.value = TRILHA_PC;
+            o.textContent = '💻 ' + estado.trilhaPC.name + ' (do computador)';
+            sel.insertBefore(o, sel.options[4] || null);
+        }
 
         // Depois de um upload, o catálogo recarrega e a trilha nova já fica ativa.
         if (selecionarId != null) sel.value = String(selecionarId);
@@ -1332,6 +1344,12 @@
                 } else if (escolha === 'upload') {
                     // Abriu o seletor de arquivo mas nenhum upload se concluiu.
                     avisar('Nenhuma trilha foi subida — seguindo com locução seca. Suba o arquivo antes de gerar.', 'atencao');
+                } else if (escolha === TRILHA_PC && estado.trilhaPC) {
+                    // Arquivo do HD (01/10/2026): o buffer já está em mãos, sem nuvem.
+                    estado.trilha = { id: TRILHA_PC, name: estado.trilhaPC.name, file_url: null };
+                    estado.trilhaBuffer = estado.trilhaPC.buffer;
+                } else if (escolha === 'pc') {
+                    avisar('Nenhum arquivo do computador foi escolhido — seguindo com locução seca.', 'atencao');
                 } else if (estado.trilhaCliente && String(estado.trilhaCliente.id) === escolha) {
                     // Trilha do cliente subida NESTA aba: o buffer já está em
                     // mãos — não baixa de volta do Storage. Cobre também a
@@ -1663,6 +1681,10 @@
                         receita: estado.receita || null,
                         roteiro: (estado.roteiro || '').slice(0, 900)
                     }));
+                    if (estado.trilhaBuffer && !(estado.trilha && estado.trilha.file_url)) {
+                        avisar('💻 A trilha do computador não vai junto pra MiniDAW: lá, adicione o mesmo arquivo '
+                               + 'pelo "Escolher Arquivos" (a voz vai).', 'atencao');
+                    }
                     if (aba) { aba.location = '/minidaw'; } else { window.open('/minidaw', '_blank'); }
                 } catch (e) {
                     if (aba) aba.close();
@@ -1679,10 +1701,49 @@
         const inputTrilha = document.getElementById('inputTrilhaCliente');
         let trilhaAnterior = selTrilha.value;   // pra voltar se cancelar o seletor
 
+        // ── Trilha do MEU COMPUTADOR (01/10/2026) ────────────────────────
+        // Com o Supabase bloqueado a Biblioteca sumiu e o Vida Saudável ep.16 saiu
+        // só com a voz. Esta opção lê um arquivo do HD e usa no spot da vez: NÃO
+        // sobe pra nuvem, NÃO entra no catálogo, NÃO é "trilha de cliente".
+        const inputTrilhaPC = document.getElementById('inputTrilhaPC');
+
         selTrilha.addEventListener('change', () => {
+            if (selTrilha.value === 'pc') {
+                inputTrilhaPC.value = '';    // permite escolher o MESMO arquivo de novo
+                inputTrilhaPC.click();
+                return;
+            }
             if (selTrilha.value !== 'upload') { trilhaAnterior = selTrilha.value; return; }
             inputTrilha.value = '';   // permite escolher o MESMO arquivo de novo
             inputTrilha.click();
+        });
+
+        inputTrilhaPC.addEventListener('cancel', () => { selTrilha.value = trilhaAnterior; });
+
+        inputTrilhaPC.addEventListener('change', async () => {
+            const file = inputTrilhaPC.files && inputTrilhaPC.files[0];
+            if (!file) { selTrilha.value = trilhaAnterior; return; }
+            let buffer;
+            try {
+                buffer = await ctx.decodeAudioData(await file.arrayBuffer());
+            } catch (e) {
+                avisar('Não consegui ler esse áudio — confira se o arquivo toca no seu computador. Prefira MP3 ou WAV.', 'atencao');
+                selTrilha.value = trilhaAnterior;
+                return;
+            }
+            const nome = (file.name || 'trilha').replace(/\.[^.]+$/, '');
+            estado.trilhaPC = { id: TRILHA_PC, name: nome, buffer };
+            let o = selTrilha.querySelector('option[value="' + TRILHA_PC + '"]');
+            if (!o) {
+                o = document.createElement('option');
+                o.value = TRILHA_PC;
+                selTrilha.insertBefore(o, selTrilha.options[4] || null);
+            }
+            o.textContent = '💻 ' + nome + ' (do computador)';
+            selTrilha.value = TRILHA_PC;
+            trilhaAnterior = TRILHA_PC;
+            avisar('💻 Trilha "' + nome + '" pronta pra este spot (' + Math.round(buffer.duration)
+                   + ' s). Ela não vai pra nuvem: fica só nesta aba.', 'ok');
         });
 
         // Chrome dispara 'cancel' (não 'change') quando o produtor fecha o

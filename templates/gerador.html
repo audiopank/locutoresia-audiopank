@@ -381,10 +381,14 @@
                         "Deixar a IA escolher" segue sendo o padrão. "Subir trilha do
                         cliente" guarda o jingle dele pra este e pros próximos spots —
                         e a IA nunca usa trilha de um cliente no anúncio de outro.
+                        "Trilha do meu computador" usa um arquivo do seu HD só neste
+                        spot, sem passar pela nuvem.
                     </div>
                     <!-- Seletor de arquivo da trilha do cliente: disparado via JS
                          quando o select cai em "upload". Fica fora do fluxo visual. -->
                     <input type="file" id="inputTrilhaCliente" accept="audio/*" style="display:none">
+                    <!-- Trilha do meu computador (01/10/2026): arquivo do HD direto no spot, sem nuvem. -->
+                    <input type="file" id="inputTrilhaPC" accept="audio/*" style="display:none">
 
                     <label class="form-label" for="inputNome">Nome do áudio</label>
                     <input id="inputNome" type="text" class="form-control" placeholder="spot-padaria-do-ze">
@@ -482,7 +486,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=19"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=28"></script>
+    <script src="/static/gerador.js?v=29"></script>
     <!-- VoxCraft: acima da barra fixa do resultado (#barraResultado). -->
     <style>.voxcraft-widget { bottom: 150px; }</style>
     {% include '_voxcraft_widget.html' %}
