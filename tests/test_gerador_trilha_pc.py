@@ -22,7 +22,7 @@ def _ler(*partes):
 def test_tela_tem_o_seletor_de_arquivo_e_a_versao_nova():
     html = _ler('templates', 'gerador.html')
     assert '<input type="file" id="inputTrilhaPC" accept="audio/*" style="display:none">' in html
-    assert 'gerador.js?v=29' in html
+    assert 'gerador.js?v=30' in html
 
 
 def test_opcao_no_select_e_valores_proprios():
@@ -36,11 +36,25 @@ def test_opcao_no_select_e_valores_proprios():
 def test_escolher_arquivo_nao_sobe_pra_nuvem():
     js = _ler('static', 'gerador.js')
     assert "if (selTrilha.value === 'pc') {" in js
-    ini = js.index("inputTrilhaPC.addEventListener('change', async () => {")
-    bloco = js[ini:js.index('\n        });\n', ini)]
+    ini = js.index('        async function usarTrilhaPC(file) {')
+    bloco = js[ini:js.index('\n        }\n', ini)]
     assert 'decodeAudioData' in bloco
     assert 'subirTrilhaCliente' not in bloco and 'fetch(' not in bloco        # nada vai pra nuvem
     assert 'estado.trilhaPC = { id: TRILHA_PC, name: nome, buffer };' in bloco
+    assert 'await usarTrilhaPC(file);' in js                                   # seletor comum usa a mesma rotina
+
+
+def test_seletor_lembra_a_pasta_por_programa():
+    """01/10: ele quer a janela já na pasta de trilhas de saúde no Vida Saudável.
+    O `id` do showOpenFilePicker faz o Chrome/Edge lembrar a última pasta, um por programa."""
+    js = _ler('static', 'gerador.js')
+    ini = js.index('        async function abrirTrilhaPC() {')
+    bloco = js[ini:js.index('\n        }\n', ini)]
+    assert "const id = ('trilhas-' + (prog ? prog.id : 'spots'))" in bloco
+    assert 'await window.showOpenFilePicker({' in bloco and 'id, startIn:' in bloco
+    assert "if (typeof window.showOpenFilePicker !== 'function') {" in bloco   # sem o recurso: seletor comum
+    assert 'await usarTrilhaPC(await fh.getFile());' in bloco
+    assert "if (e && e.name === 'AbortError') return;" in bloco
 
 
 def test_gerar_usa_o_buffer_do_computador_sem_aviso_de_cliente():

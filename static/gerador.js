@@ -1709,8 +1709,7 @@
 
         selTrilha.addEventListener('change', () => {
             if (selTrilha.value === 'pc') {
-                inputTrilhaPC.value = '';    // permite escolher o MESMO arquivo de novo
-                inputTrilhaPC.click();
+                abrirTrilhaPC();
                 return;
             }
             if (selTrilha.value !== 'upload') { trilhaAnterior = selTrilha.value; return; }
@@ -1723,6 +1722,11 @@
         inputTrilhaPC.addEventListener('change', async () => {
             const file = inputTrilhaPC.files && inputTrilhaPC.files[0];
             if (!file) { selTrilha.value = trilhaAnterior; return; }
+            await usarTrilhaPC(file);
+        });
+
+        // Lê o arquivo escolhido e deixa pronto pro spot da vez — sem nuvem.
+        async function usarTrilhaPC(file) {
             let buffer;
             try {
                 buffer = await ctx.decodeAudioData(await file.arrayBuffer());
@@ -1744,7 +1748,32 @@
             trilhaAnterior = TRILHA_PC;
             avisar('💻 Trilha "' + nome + '" pronta pra este spot (' + Math.round(buffer.duration)
                    + ' s). Ela não vai pra nuvem: fica só nesta aba.', 'ok');
-        });
+        }
+
+        // Seletor que LEMBRA A PASTA por programa (01/10/2026, pedido dele): o
+        // Vida Saudável abre direto na pasta de trilhas de saúde que ele usou da
+        // última vez; spot avulso lembra a sua. É o `id` do showOpenFilePicker
+        // (Chrome/Edge). Navegador sem ele cai no seletor comum (que não lembra).
+        async function abrirTrilhaPC() {
+            if (typeof window.showOpenFilePicker !== 'function') {
+                inputTrilhaPC.value = '';    // permite escolher o MESMO arquivo de novo
+                inputTrilhaPC.click();
+                return;
+            }
+            const prog = programaAtual();
+            const id = ('trilhas-' + (prog ? prog.id : 'spots')).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+            try {
+                const [fh] = await window.showOpenFilePicker({
+                    id, startIn: 'music', multiple: false,
+                    types: [{ description: 'Áudio', accept: { 'audio/*': ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.opus'] } }]
+                });
+                await usarTrilhaPC(await fh.getFile());
+            } catch (e) {
+                selTrilha.value = trilhaAnterior;
+                if (e && e.name === 'AbortError') return;    // fechou a janela sem escolher
+                avisar('Não consegui abrir o seletor de arquivo (' + e.message + ').', 'atencao');
+            }
+        }
 
         // Chrome dispara 'cancel' (não 'change') quando o produtor fecha o
         // seletor sem escolher arquivo. Sem isto, o select ficava travado em

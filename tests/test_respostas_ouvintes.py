@@ -71,7 +71,7 @@ def test_transcrever_so_aceita_audio_do_proprio_feed(cliente):
 
 def test_tela_tem_o_painel_e_nao_injeta_html_de_terceiros(cliente):
     html = cliente.get('/gerador').get_data(as_text=True)
-    for t in ('id="btnRespostas"', 'id="badgeRespostas"', 'id="listaRespostas"', '.resposta-item {', 'gerador.js?v=29'):
+    for t in ('id="btnRespostas"', 'id="badgeRespostas"', 'id="listaRespostas"', '.resposta-item {', 'gerador.js?v=30'):
         assert t in html, t
     js = _ler('static', 'gerador.js')
     for marca in ("programa: (document.getElementById('selectPrograma') || {}).value || ''",
