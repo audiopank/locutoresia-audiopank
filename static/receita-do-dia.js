@@ -115,7 +115,9 @@
         $('btnOutras').disabled = false;
         lista.textContent = '';
         if (!d.success) { avisar(d.error || 'Falha ao filtrar as receitas.', 'erro'); return; }
-        $('statusConta').textContent = d.conta_ok ? '✅ perfil conectado' : '⚠️ conta "receitas" sem credenciais: publicar vai falhar';
+        $('statusConta').textContent = d.conta_ok
+            ? '✅ perfil conectado'
+            : '⚠️ falta na Vercel: ' + ((d.faltam || []).join(' e ') || 'credenciais da conta "receitas"') + ' — publicar vai falhar';
         avisar(d.aviso || '', 'atencao');
         (d.itens || []).forEach((it) => lista.appendChild(cartao(it)));
         if (!(d.itens || []).length) lista.textContent = 'Nenhuma receita nova nesta rodada — clique em "Outras sugestões".';
@@ -208,9 +210,19 @@
         }
     }
 
+    // Resultado do Publicar AO LADO do botão: no 1º uso o erro saiu só no topo da
+    // página, longe da vista, e pareceu que o clique não tinha feito nada.
+    function mostrarResultado(msg, tipo) {
+        const el = $('resultadoPublicar');
+        el.textContent = msg || '';
+        el.className = 'aviso ' + (tipo || '');
+        el.hidden = !msg;
+    }
+
     async function publicar() {
         const texto = $('texto').value.trim();
-        if (!estado.item || !texto) { avisar('Escolha uma receita e confira o texto antes.', 'atencao'); return; }
+        mostrarResultado('');
+        if (!estado.item || !texto) { mostrarResultado('Escolha uma receita e confira o texto antes.', 'atencao'); return; }
         if (!confirm('Publicar agora no perfil "Receitas Favoritas Grandes Dicas"' + (estado.foto ? ' com a foto?' : ' SEM foto?'))) return;
         const b = $('btnPublicar');
         b.disabled = true;
@@ -224,8 +236,9 @@
             estado.foto = null;
             await carregar(false);
             avisar('✅ Publicado no feed! Confira no perfil Receitas Favoritas em newpostia.app.', 'ok');
+            $('aviso').scrollIntoView({ behavior: 'smooth' });
         } else {
-            avisar((d.already ? '🔁 ' : '⚠️ ') + (d.error || 'Falha ao publicar.'), d.already ? 'atencao' : 'erro');
+            mostrarResultado((d.already ? '🔁 ' : '⚠️ ') + (d.error || 'Falha ao publicar.'), d.already ? 'atencao' : 'erro');
         }
     }
 

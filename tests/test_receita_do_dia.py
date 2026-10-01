@@ -292,7 +292,7 @@ def test_pagina_e_rotas_sao_privadas(monkeypatch):
     assert anonimo.post('/api/receitas/publicar', json={}).status_code == 401
     assert anonimo.post('/api/receitas/sugestoes', json={'itens': [WRAP]}).status_code == 401
     r = _cliente().get('/receita-do-dia')
-    assert r.status_code == 200 and b'receita-do-dia.js?v=2' in r.data
+    assert r.status_code == 200 and b'receita-do-dia.js?v=3' in r.data
 
 
 def test_sugestoes_filtram_o_que_o_navegador_trouxe(monkeypatch):
@@ -311,6 +311,20 @@ def test_sugestoes_filtram_o_que_o_navegador_trouxe(monkeypatch):
     assert motivos['Bolo de creme de milho'] == 'já publicada'
     # O panetone depende do dia em que o teste roda (época de Natal = aparece); nada mais aparece.
     assert all(i['titulo'] == 'Panetone salgado simples' for i in d['itens'])
+
+
+def test_sugestoes_dizem_qual_variavel_falta_no_ambiente(monkeypatch):
+    """01/10, 1º uso real: "conta 'receitas' sem credenciais" sem dizer qual — e o erro do
+    Publicar aparecia no topo da página, longe do botão. A tela tem que dizer o NOME."""
+    monkeypatch.setenv('NEWPOST_FEED_EMAIL_RECEITAS', 'receitas@exemplo.com')
+    monkeypatch.delenv('NEWPOST_FEED_SENHA_RECEITAS', raising=False)
+    d = _cliente().post('/api/receitas/sugestoes', json={'itens': [WRAP]}).get_json()
+    assert d['conta_ok'] is False and d['faltam'] == ['NEWPOST_FEED_SENHA_RECEITAS']
+    js = _ler('static', 'receita-do-dia.js')
+    assert "(d.faltam || []).join(' e ')" in js
+    assert "mostrarResultado(" in js                                # erro do Publicar ao lado do botão
+    html = _ler('templates', 'receita_do_dia.html')
+    assert '<div id="resultadoPublicar" class="aviso" hidden></div>' in html
 
 
 def test_sugestoes_recusam_lista_vazia_ou_estranha():

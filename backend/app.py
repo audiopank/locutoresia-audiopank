@@ -6676,7 +6676,10 @@ def api_receitas_sugestoes():
                 newpost_feed.conteudos_da_conta('receitas', contem='receiteria.com.br'))
         except Exception as e:
             aviso = f'Não consegui conferir o que já foi publicado ({str(e)[:100]}). Confira antes de publicar.'
-    return jsonify({"success": True, "conta_ok": conta_ok, "aviso": aviso,
+    # NOME das variáveis que faltam (nunca o valor): no 1º uso a tela só dizia
+    # "sem credenciais" e ele não tinha como saber qual conferir na Vercel.
+    faltam = [] if conta_ok else [v for v in newpost_feed.CONTAS['receitas'] if not os.getenv(v, '').strip()]
+    return jsonify({"success": True, "conta_ok": conta_ok, "faltam": faltam, "aviso": aviso,
                     **rdd.sugestoes(itens, publicados)})
 
 
