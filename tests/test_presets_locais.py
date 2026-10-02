@@ -54,7 +54,7 @@ def test_post_e_delete_com_banco_fora_nao_regravam_a_nuvem(monkeypatch):
 
 def test_master_usa_o_navegador_e_a_nuvem_so_como_bonus():
     html = _ler('templates', 'minidaw.html')
-    assert html.index('/static/presets-locais.js?v=1') < html.index('/static/master-suite.js?v=9')
+    assert html.index('/static/presets-locais.js?v=2') < html.index('/static/master-suite.js?v=10')
     assert 'id="msPresetsExportar"' in html and 'id="msPresetsImportar"' in html
     suite = _ler('static', 'master-suite.js')
     assert 'PresetsLocais.ler(localStorage)' in suite
@@ -81,4 +81,17 @@ def test_faixa_tem_presets_com_os_mesmos_efeitos_do_copiar():
     assert 'o.textContent = p.nome;' in js                                    # nome nunca vira HTML
     assert 'id="presetfaixa_${track.id}"' in js
     html = _ler('templates', 'minidaw.html')
-    assert 'minidaw.js?v=79' in html
+    assert 'minidaw.js?v=80' in html
+
+
+def test_resumo_dos_presets_de_faixa_e_aviso_do_importar_que_se_explica():
+    """02/10: importou o preset de VOZ com o projeto vazio, viu '0 novo, 0 atualizado' e achou
+    que não importava — preset de faixa mora no cartão da faixa. Agora a barra do master mostra
+    quantos existem e o aviso diz o que tinha no arquivo e o que já estava guardado."""
+    html = _ler('templates', 'minidaw.html')
+    assert 'id="msPresetsFaixaResumo"' in html
+    suite = _ler('static', 'master-suite.js')
+    assert 'function desenharResumoFaixas()' in suite
+    assert "já estava(m) guardado(s) aqui" in suite and 'r.noArquivo.faixa' in suite
+    js = _ler('static', 'minidaw.js')
+    assert 'MasterSuite.desenharResumoFaixas()' in js

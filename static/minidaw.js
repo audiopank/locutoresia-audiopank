@@ -2617,6 +2617,7 @@ class MiniDAW {
 
     atualizarSeletoresPresetFaixa() {
         for (const t of this.tracks) this._preencherPresetsFaixa(t);
+        if (window.MasterSuite && typeof MasterSuite.desenharResumoFaixas === 'function') MasterSuite.desenharResumoFaixas();
     }
 
     guardarPresetFaixa(trackId) {

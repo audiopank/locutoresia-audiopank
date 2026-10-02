@@ -72,6 +72,11 @@ test('exportar e importar (backup / outra máquina)', () => {
     const r = P.importar(P.vazio(), texto);
     assert.equal(r.novos, 2);
     assert.deepEqual(P.lista(r.banco, 'faixa').map(p => p.efeitos.e), [1]);
+    // 02/10: ele importou o arquivo que acabara de exportar e viu "0 novo, 0 atualizado"
+    // — parecia que não funcionou. Agora diz o que tinha no arquivo e o que já estava aqui.
+    const deNovo = P.importar(r.banco, texto);
+    assert.deepEqual([deNovo.novos, deNovo.atualizados, deNovo.iguais], [0, 0, 2]);
+    assert.deepEqual(deNovo.noArquivo, { master: 1, faixa: 1 });
     assert.throws(() => P.importar(P.vazio(), '{"qualquer":1}'), /não é um arquivo de presets/);
     assert.throws(() => P.importar(P.vazio(), 'lixo'), /não é um arquivo de presets/);
 });

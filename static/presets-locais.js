@@ -131,9 +131,11 @@
         if (!obj || obj.formato !== FORMATO) throw new Error('Esse arquivo não é um arquivo de presets da Locutores IA');
         const b = normalizar(banco);
         let novos = 0, atualizados = 0;
+        const noArquivo = { master: 0, faixa: 0 };
         for (const tipo of TIPOS) {
             const antes = new Map(b[tipo].map(p => [chaveNome(p.nome), p.salvo_em]));
             const externos = (Array.isArray(obj[tipo]) ? obj[tipo] : []).filter(valido);
+            noArquivo[tipo] = externos.length;
             // Importar é decisão explícita: o que vem do arquivo desfaz exclusões antigas.
             for (const p of externos) delete b.apagados[tipo][chaveNome(p.nome)];
             b[tipo] = mesclar(b, tipo, externos);
@@ -143,7 +145,9 @@
                 else if (antes.get(k) !== p.salvo_em) atualizados++;
             }
         }
-        return { banco: b, novos, atualizados };
+        // iguais = os do arquivo que já estavam guardados aqui, sem mudança.
+        const iguais = noArquivo.master + noArquivo.faixa - novos - atualizados;
+        return { banco: b, novos, atualizados, iguais: Math.max(0, iguais), noArquivo };
     }
 
     const PresetsLocais = { CHAVE, CHAVE_ANTIGA_MASTER, vazio, lista, guardar, apagar, mesclar, ler, gravar,

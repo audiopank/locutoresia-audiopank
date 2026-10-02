@@ -575,6 +575,20 @@
         if (atual && presets.lista.some(p => p.nome === atual)) sel.value = atual;
         const ba = $('msPresetsApagar');
         if (ba) ba.disabled = !sel.value;
+        desenharResumoFaixas();
+    }
+    // 02/10: ele importou um preset de VOZ com o projeto vazio e achou que não
+    // tinha importado — preset de faixa aparece no cartão de cada faixa, não
+    // aqui. Esta linha mostra que eles existem mesmo sem faixa aberta.
+    function desenharResumoFaixas() {
+        const el = $('msPresetsFaixaResumo');
+        if (!el) return;
+        const banco = lerBanco();
+        const voz = PresetsLocais.lista(banco, 'faixa', 'voice').length;
+        const trilha = PresetsLocais.lista(banco, 'faixa', 'music').length;
+        el.textContent = (voz + trilha)
+            ? `Presets de faixa guardados: ${voz} de voz, ${trilha} de trilha — aparecem na lista "Presets…" do cartão de cada faixa.`
+            : 'Presets de faixa: nenhum ainda — no cartão da faixa, use "Guardar preset".';
     }
     async function carregarPresets() {
         presets.lista = PresetsLocais.lista(lerBanco(), 'master');
@@ -661,7 +675,15 @@
             gravarBanco(r.banco);
             desenharPresets();
             if (daw && typeof daw.atualizarSeletoresPresetFaixa === 'function') daw.atualizarSeletoresPresetFaixa();
-            avisar(`Presets importados: ${r.novos} novo(s), ${r.atualizados} atualizado(s).`, 'success');
+            const tinha = r.noArquivo.master + r.noArquivo.faixa;
+            const partes = [];
+            if (r.novos) partes.push(`${r.novos} novo(s)`);
+            if (r.atualizados) partes.push(`${r.atualizados} atualizado(s)`);
+            if (r.iguais) partes.push(`${r.iguais} já estava(m) guardado(s) aqui`);
+            avisar(`Arquivo com ${tinha} preset(s) (${r.noArquivo.master} de master, ${r.noArquivo.faixa} de faixa): `
+                   + (partes.join(', ') || 'nada pra trazer') + '.'
+                   + (r.noArquivo.faixa ? ' Os de faixa aparecem na lista "Presets…" do cartão de cada faixa.' : ''),
+                   'success');
         } catch (e) {
             avisar('Não consegui importar: ' + e.message, 'error');
         }
@@ -871,6 +893,6 @@
         instalar, ligar, desligar, medirArquivo, BANDAS_HZ, DESTINOS,
         estadoParaSalvar, carregar, eqParaRender,
         limiterParaRender, loudnessAtivo, masterizarParaAlvo, garantirTeto, medirMix,
-        multimaxParaRender, carregarPresets, aplicarPresetSalvo
+        multimaxParaRender, carregarPresets, aplicarPresetSalvo, desenharResumoFaixas
     };
 })(window);

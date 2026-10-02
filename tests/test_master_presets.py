@@ -67,7 +67,7 @@ def test_guardar_listar_substituir_e_apagar(cliente):
 
 def test_tela_e_suite():
     html = _ler('templates', 'minidaw.html')
-    for t in ('id="msPresetsSel"', 'id="msPresetsGuardar"', 'id="msPresetsApagar"', '.ms-presets {', 'master-suite.js?v=9'):
+    for t in ('id="msPresetsSel"', 'id="msPresetsGuardar"', 'id="msPresetsApagar"', '.ms-presets {', 'master-suite.js?v=10'):
         assert t in html, t
     suite = _ler('static', 'master-suite.js')
     assert "fetch('/api/master-presets')" in suite and "method: 'POST'" in suite and "method: 'DELETE'" in suite
