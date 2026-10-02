@@ -210,6 +210,75 @@
         }
     }
 
+    // FOTO POR URL (02/10/2026): o produtor cola o endereço da imagem. 1º o NOSSO
+    // servidor baixa (o navegador não lê imagem de outro site sem CORS); se o site
+    // barrar o servidor, plano B: o proxy público de imagens wsrv.nl, que devolve a
+    // foto já em JPEG e liberada pro navegador. Os dois falharam → a tela diz o que
+    // fazer (salvar a imagem e usar "Foto do computador"). Nunca finge que deu certo.
+    function blobParaDataUrl(blob) {
+        return new Promise((ok, falha) => {
+            const leitor = new FileReader();
+            leitor.onload = () => ok(String(leitor.result || ''));
+            leitor.onerror = () => falha(leitor.error);
+            leitor.readAsDataURL(blob);
+        });
+    }
+
+    async function fotoPeloProxyPublico(url) {
+        const semEsquema = url.replace(/^https?:\/\//i, '');
+        const r = await fetch('https://wsrv.nl/?url=' + encodeURIComponent(semEsquema) + '&w=' + LADO_MAX + '&h=' + LADO_MAX
+                              + '&fit=inside&output=jpg&q=85', { credentials: 'omit' });
+        if (!r.ok) throw new Error('o proxy respondeu ' + r.status);
+        const blob = await r.blob();
+        if (!/^image\//.test(blob.type)) throw new Error('não veio imagem');
+        return blobParaDataUrl(blob);
+    }
+
+    function creditarFonte(url) {
+        let host = '';
+        try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return; }
+        const t = $('texto');
+        const linha = '📷 Foto: ' + host;
+        if (host && !t.value.includes(linha)) {
+            t.value = t.value.replace(/\s+$/, '') + '\n\n' + linha;
+            contar();
+        }
+    }
+
+    async function fotoURL() {
+        if (!estado.item) return;
+        const url = $('inputURL').value.trim();
+        if (!/^https?:\/\/\S+$/i.test(url)) {
+            $('fotoStatus').textContent = '⚠️ Cole um endereço que comece com https:// (clique direito na imagem → Copiar endereço da imagem).';
+            return;
+        }
+        const b = $('btnUsarURL');
+        b.disabled = true;
+        $('fotoStatus').textContent = 'Buscando a foto…';
+        let dataUrl = '';
+        let motivo = '';
+        const d = await api('/api/receitas/foto-url', { url });
+        if (d.success) {
+            dataUrl = 'data:' + d.mime + ';base64,' + d.imagem_base64;
+        } else if (d.bloqueado) {
+            try { dataUrl = await fotoPeloProxyPublico(url); } catch (e) { motivo = d.error + ' O plano B também falhou (' + e.message + ').'; }
+        } else {
+            motivo = d.error || 'Não consegui usar essa imagem.';
+        }
+        b.disabled = false;
+        if (!dataUrl) {
+            $('fotoStatus').textContent = '⚠️ ' + motivo + ' Salve a imagem no computador ("Salvar imagem como…") e use "Foto do computador".';
+            return;
+        }
+        try {
+            estado.foto = await paraJpeg(dataUrl);
+            mostrarFoto(estado.foto);
+            creditarFonte(url);
+        } catch (e) {
+            $('fotoStatus').textContent = '⚠️ Baixei, mas não consegui abrir essa imagem. Salve no computador e use "Foto do computador".';
+        }
+    }
+
     // Resultado do Publicar AO LADO do botão: no 1º uso o erro saiu só no topo da
     // página, longe da vista, e pareceu que o clique não tinha feito nada.
     function mostrarResultado(msg, tipo) {
@@ -249,6 +318,14 @@
         $('btnFotoPC').addEventListener('click', () => { $('inputFoto').value = ''; $('inputFoto').click(); });
         $('inputFoto').addEventListener('change', fotoPC);
         $('btnSemFoto').addEventListener('click', () => { estado.foto = null; mostrarFoto(null); });
+        $('btnFotoURL').addEventListener('click', () => {
+            const abrir = $('linhaURL').hidden;
+            $('linhaURL').hidden = !abrir;
+            $('dicaURL').hidden = !abrir;
+            if (abrir) $('inputURL').focus();
+        });
+        $('btnUsarURL').addEventListener('click', fotoURL);
+        $('inputURL').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fotoURL(); } });
         $('btnPublicar').addEventListener('click', publicar);
         carregar(false);
     });

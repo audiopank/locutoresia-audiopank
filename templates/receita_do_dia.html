@@ -77,9 +77,17 @@
         <div class="linha">
             <button type="button" id="btnFotoIA" class="btn sec">✨ Gerar foto com IA</button>
             <button type="button" id="btnFotoPC" class="btn sec">💻 Foto do computador</button>
+            <button type="button" id="btnFotoURL" class="btn sec">🔗 Foto por URL</button>
             <button type="button" id="btnSemFoto" class="btn sec">Sem foto</button>
             <input type="file" id="inputFoto" accept="image/*" hidden>
         </div>
+        <!-- Foto por endereço (02/10/2026): clique direito na imagem → "Copiar endereço da imagem" → cole aqui. -->
+        <div class="linha" id="linhaURL" hidden>
+            <input type="url" id="inputURL" placeholder="https://… (clique direito na imagem → Copiar endereço da imagem)"
+                   style="flex:1; min-width:240px; background: var(--card); color: var(--txt); border: 1px solid var(--border); border-radius: 999px; padding: 9px 14px; font: inherit;">
+            <button type="button" id="btnUsarURL" class="btn">Usar esta foto</button>
+        </div>
+        <div class="sub" id="dicaURL" hidden>Foto de outro site tem dono: use só o que você pode publicar. Ao usar, o crédito com o site de origem entra no fim do texto (pode editar).</div>
         <div class="sub" id="fotoStatus">Sem foto (o post sai só com texto).</div>
         <img id="previa" alt="Prévia da foto do post" hidden>
 
@@ -87,6 +95,6 @@
         <div id="resultadoPublicar" class="aviso" hidden></div>
     </section>
 </main>
-<script src="/static/receita-do-dia.js?v=3"></script>
+<script src="/static/receita-do-dia.js?v=4"></script>
 </body>
 </html>

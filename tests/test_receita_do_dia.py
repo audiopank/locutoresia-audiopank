@@ -290,7 +290,7 @@ def test_pagina_e_rotas_sao_privadas(monkeypatch):
     assert anonimo.post('/api/receitas/publicar', json={}).status_code == 401
     assert anonimo.post('/api/receitas/sugestoes', json={'itens': [WRAP]}).status_code == 401
     r = _cliente().get('/receita-do-dia')
-    assert r.status_code == 200 and b'receita-do-dia.js?v=3' in r.data
+    assert r.status_code == 200 and b'receita-do-dia.js?v=4' in r.data
 
 
 def test_sugestoes_filtram_o_que_o_navegador_trouxe(monkeypatch):
@@ -409,3 +409,67 @@ def test_tela_busca_pelo_navegador_usa_textcontent_e_menu_tem_o_link():
     assert "if (!confirm(" in js                                   # publicar é mão humana
     html = _ler('templates', 'index.html')
     assert '<a href="/receita-do-dia" class="menu-item badge-new"' in html
+
+
+# ── foto por URL (02/10/2026) ────────────────────────────────────────────────
+
+class _RespImg:
+    def __init__(self, status=200, tipo='image/jpeg', dados=JPEG):
+        self.status_code = status
+        self.headers = {'Content-Type': tipo}
+        self._dados = dados
+
+    def iter_content(self, n):
+        yield self._dados
+
+
+def test_foto_url_baixa_e_devolve_base64(monkeypatch):
+    """Ele colou o endereço da foto da Receiteria: o servidor baixa e a tela vira JPEG."""
+    import requests
+    from backend import app as modulo
+    monkeypatch.setattr(modulo, '_url_de_imagem_publica', lambda u: True)
+    monkeypatch.setattr(requests, 'get', lambda *a, **k: _RespImg())
+    d = _cliente().post('/api/receitas/foto-url',
+                        json={'url': 'https://www.receiteria.com.br/wp-content/uploads/bolo.jpg'}).get_json()
+    assert d['success'] and d['mime'] == 'image/jpeg'
+    assert base64.b64decode(d['imagem_base64']) == JPEG
+
+
+def test_foto_url_site_barrou_o_servidor_vira_plano_b(monkeypatch):
+    """Cloudflare barra a Vercel → `bloqueado` (a tela tenta o proxy público no navegador)."""
+    import requests
+    from backend import app as modulo
+    monkeypatch.setattr(modulo, '_url_de_imagem_publica', lambda u: True)
+    monkeypatch.setattr(requests, 'get', lambda *a, **k: _RespImg(status=403))
+    d = _cliente().post('/api/receitas/foto-url', json={'url': 'https://www.receiteria.com.br/x.jpg'}).get_json()
+    assert d['success'] is False and d['bloqueado'] is True and '403' in d['error']
+
+
+def test_foto_url_recusa_o_que_nao_e_imagem(monkeypatch):
+    import requests
+    from backend import app as modulo
+    monkeypatch.setattr(modulo, '_url_de_imagem_publica', lambda u: True)
+    monkeypatch.setattr(requests, 'get', lambda *a, **k: _RespImg(tipo='text/html', dados=b'<html>'))
+    d = _cliente().post('/api/receitas/foto-url', json={'url': 'https://www.receiteria.com.br/receita/x/'}).get_json()
+    assert d['success'] is False and 'não é de uma imagem' in d['error']
+
+
+def test_foto_url_recusa_endereco_interno():
+    """O servidor baixa o que foi colado: localhost/rede privada/metadados são recusados (SSRF)."""
+    from backend import app as modulo
+    assert modulo._url_de_imagem_publica('http://127.0.0.1/x.jpg') is False
+    assert modulo._url_de_imagem_publica('http://169.254.169.254/latest/meta-data') is False
+    assert modulo._url_de_imagem_publica('http://10.0.0.5/x.jpg') is False
+    assert modulo._url_de_imagem_publica('file:///etc/passwd') is False
+    assert modulo._url_de_imagem_publica('ftp://exemplo.com/x.jpg') is False
+    d = _cliente().post('/api/receitas/foto-url', json={'url': 'http://localhost/x.jpg'}).get_json()
+    assert d['success'] is False and 'inválido' in d['error']
+
+
+def test_tela_tem_foto_por_url_com_credito_e_plano_b():
+    html = _ler('templates', 'receita_do_dia.html')
+    assert 'id="btnFotoURL"' in html and 'id="inputURL"' in html and 'id="btnUsarURL"' in html
+    js = _ler('static', 'receita-do-dia.js')
+    assert "api('/api/receitas/foto-url'" in js
+    assert 'wsrv.nl' in js                                  # plano B quando o site barra o servidor
+    assert "'📷 Foto: '" in js                              # crédito do site de origem no texto

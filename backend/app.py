@@ -6710,6 +6710,63 @@ def api_receitas_foto_ia():
     return jsonify({"success": True, "mime": mime, "imagem_base64": _b64.b64encode(dados).decode()})
 
 
+def _url_de_imagem_publica(url):
+    """Só http(s) e só host PÚBLICO: o servidor baixa o que o produtor colou, então
+    endereço interno (localhost, rede privada, metadados da nuvem) é recusado (SSRF)."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+    p = urlparse(url)
+    if p.scheme not in ('http', 'https') or not p.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(p.hostname, p.port or (443 if p.scheme == 'https' else 80))
+    except Exception:
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return False
+    return True
+
+
+@app.route('/api/receitas/foto-url', methods=['POST'])
+def api_receitas_foto_url():
+    """Baixa a foto de um ENDEREÇO colado pelo produtor (02/10/2026) e devolve em
+    base64 pra tela converter em JPEG — o navegador sozinho não lê imagem de outro
+    site sem permissão (CORS). Se o site barrar o servidor (o Cloudflare da
+    Receiteria já barrou a Vercel uma vez), a tela tenta o plano B no navegador."""
+    import base64 as _b64
+    import requests as _rq
+    url = str((request.get_json() or {}).get('url') or '').strip()
+    if not url or len(url) > 2000:
+        return jsonify({"success": False, "error": "Cole o endereço da imagem."}), 400
+    if not _url_de_imagem_publica(url):
+        return jsonify({"success": False, "error": "Endereço inválido: use um link https de imagem pública."}), 400
+    try:
+        r = _rq.get(url, timeout=15, stream=True, allow_redirects=False, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
+            'Accept': 'image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8',
+        })
+    except Exception as e:
+        return jsonify({"success": False, "bloqueado": True, "error": f"Não consegui baixar a imagem ({str(e)[:80]})."})
+    if r.status_code in (301, 302, 303, 307, 308):
+        return jsonify({"success": False, "bloqueado": True, "error": "O endereço redireciona pra outro lugar."})
+    if r.status_code != 200:
+        return jsonify({"success": False, "bloqueado": True, "error": f"O site respondeu {r.status_code} ao servidor."})
+    tipo = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+    if not tipo.startswith('image/'):
+        return jsonify({"success": False, "error": "Esse endereço não é de uma imagem (abra a imagem e copie o endereço DELA)."})
+    dados, limite = b'', 8_000_000
+    for pedaco in r.iter_content(64 * 1024):
+        dados += pedaco
+        if len(dados) > limite:
+            return jsonify({"success": False, "error": "Imagem grande demais (mais de 8MB)."})
+    if not dados:
+        return jsonify({"success": False, "error": "A imagem veio vazia."})
+    return jsonify({"success": True, "mime": tipo, "imagem_base64": _b64.b64encode(dados).decode()})
+
+
 @app.route('/api/receitas/publicar', methods=['POST'])
 def api_receitas_publicar():
     """Publica a receita REVISADA no perfil Receitas Favoritas — só por clique do produtor.
