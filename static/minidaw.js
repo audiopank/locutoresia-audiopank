@@ -557,6 +557,17 @@ class MiniDAW {
                                     title="Aplica os efeitos DESTA faixa em todas as outras do mesmo tipo (voz para vozes, trilha para trilhas). Serve quando a faixa de destino já tinha objeto — faixa vazia herda sozinha ao receber um clip.">
                                 <i class="fas fa-clone"></i> Copiar Efeitos
                             </button>
+                            <button class="effect-btn" onclick="minidaw.guardarPresetFaixa('${track.id}')"
+                                    title="Guarda os efeitos DESTA faixa como preset com nome (EQ, gate, de-esser, compressor, reverb, delay) — vale em qualquer projeto. Volume, pan e fades não vão: são dosagem da pista.">
+                                <i class="fas fa-bookmark"></i> Guardar preset
+                            </button>
+                            <select class="effect-btn preset-faixa-sel" id="presetfaixa_${track.id}" style="max-width: 170px;"
+                                    onchange="minidaw.aplicarPresetFaixa('${track.id}', this.value)"
+                                    title="Aplica um preset seu nesta faixa (só aparecem os do mesmo tipo: voz ou trilha)"></select>
+                            <button class="effect-btn" onclick="minidaw.apagarPresetFaixa('${track.id}')"
+                                    title="Apaga o preset escolhido na lista ao lado (as faixas que já usam continuam com os efeitos)">
+                                <i class="fas fa-trash"></i>
+                            </button>
                             <div class="ms-2 border-start border-secondary px-2"></div>
                             <button class="effect-btn ${track.effects.reverb ? 'active' : ''}" 
                                     onclick="minidaw.toggleEffect('${track.id}', 'reverb')">
@@ -699,6 +710,7 @@ class MiniDAW {
         `;
         
         container.appendChild(trackCard);
+        this._preencherPresetsFaixa(track);
 
         if (track.audioUrl) {
             this.drawWaveform(track);
@@ -2560,6 +2572,110 @@ class MiniDAW {
         destino.compressorSettings = Object.assign({}, origem.compressorSettings || {});
         destino.reverbAmount = MixEngine.quantidadeReverbDaFaixa(origem);   // sempre: faixa no padrão (30%) também iguala
         destino.delayAmount = MixEngine.quantidadeDelayDaFaixa(origem);
+    }
+
+    // ── PRESETS POR FAIXA (02/10/2026) ───────────────────────────────────
+    // "Abro a voz do Charon e aplico meu preset de voz": a mesma cadeia que o
+    // "Copiar Efeitos" leva (effects, EQ, gate, de-esser, compressor, reverb,
+    // delay), com nome, guardada NO NAVEGADOR (static/presets-locais.js) — vale
+    // em qualquer projeto, sem depender do Supabase. Volume/pan/fades ficam de
+    // fora: são dosagem da pista. A lista mostra só os do mesmo tipo da faixa.
+    _efeitosParaPreset(track) {
+        return JSON.parse(JSON.stringify({
+            effects: track.effects || {},
+            eqSettings: track.eqSettings || {},
+            gateSettings: track.gateSettings || {},
+            deesserSettings: track.deesserSettings || {},
+            compressorSettings: track.compressorSettings || {},
+            reverbAmount: MixEngine.quantidadeReverbDaFaixa(track),
+            delayAmount: MixEngine.quantidadeDelayDaFaixa(track)
+        }));
+    }
+
+    _bancoPresets() {
+        try { return PresetsLocais.ler(localStorage); } catch (e) { return PresetsLocais.vazio(); }
+    }
+
+    _preencherPresetsFaixa(track) {
+        const sel = document.getElementById(`presetfaixa_${track.id}`);
+        if (!sel || typeof PresetsLocais === 'undefined') return;
+        const banco = this._bancoPresets();
+        const lista = PresetsLocais.lista(banco, 'faixa', track.type);
+        sel.textContent = '';
+        const o0 = document.createElement('option');
+        o0.value = '';
+        o0.textContent = lista.length ? 'Presets…' : 'Sem presets';
+        sel.appendChild(o0);
+        for (const p of lista) {
+            const o = document.createElement('option');
+            o.value = p.nome;
+            o.textContent = p.nome;
+            sel.appendChild(o);
+        }
+        if (track.presetFaixa && lista.some(p => p.nome === track.presetFaixa)) sel.value = track.presetFaixa;
+    }
+
+    atualizarSeletoresPresetFaixa() {
+        for (const t of this.tracks) this._preencherPresetsFaixa(t);
+    }
+
+    guardarPresetFaixa(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const rotulo = track.type === 'voice' ? 'voz' : 'trilha';
+        const exemplo = track.type === 'voice' ? 'Voz Charon spot' : 'Trilha de fundo';
+        const nome = prompt(`Nome do preset de ${rotulo} (ex.: ${exemplo}). Mesmo nome = substitui.`, track.presetFaixa || '');
+        if (nome == null || !String(nome).trim()) return;
+        let r;
+        try {
+            r = PresetsLocais.guardar(this._bancoPresets(), 'faixa',
+                                      { nome: String(nome).trim(), tipoFaixa: track.type, efeitos: this._efeitosParaPreset(track) });
+        } catch (e) {
+            this.showNotification('Não consegui guardar o preset: ' + e.message, 'error');
+            return;
+        }
+        let gravou = false;
+        try { gravou = PresetsLocais.gravar(localStorage, r.banco); } catch (e) { gravou = false; }
+        if (!gravou) {
+            this.showNotification('O navegador recusou guardar (memória cheia ou modo anônimo).', 'error');
+            return;
+        }
+        track.presetFaixa = String(nome).trim().slice(0, 40);
+        this.atualizarSeletoresPresetFaixa();
+        this.showNotification(`Preset "${track.presetFaixa}" ${r.substituiu ? 'atualizado' : 'guardado'} — aparece em toda faixa de ${rotulo}, em qualquer projeto.`, 'success');
+    }
+
+    aplicarPresetFaixa(trackId, nome) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !nome) return;
+        const p = PresetsLocais.lista(this._bancoPresets(), 'faixa', track.type).find(x => x.nome === nome);
+        if (!p) return;
+        const e = p.efeitos || {};
+        track.effects = Object.assign({}, track.effects, e.effects || {});
+        track.eqSettings = Object.assign({}, e.eqSettings || {});
+        track.gateSettings = Object.assign({}, e.gateSettings || {});
+        track.deesserSettings = Object.assign({}, e.deesserSettings || {});
+        track.compressorSettings = Object.assign({}, e.compressorSettings || {});
+        if (typeof e.reverbAmount === 'number') track.reverbAmount = e.reverbAmount;
+        if (typeof e.delayAmount === 'number') track.delayAmount = e.delayAmount;
+        track.presetFaixa = p.nome;
+        this.updateTrackUI(track);   // recria o card já reaplicando efeitos e sliders
+        this.saveToLocalStorage();
+        this.showNotification(`Preset "${p.nome}" aplicado em "${track.name}" — volume, pan e fades ficaram como estavam.`, 'success');
+    }
+
+    apagarPresetFaixa(trackId) {
+        const sel = document.getElementById(`presetfaixa_${trackId}`);
+        const nome = sel && sel.value;
+        if (!nome) {
+            this.showNotification('Escolha na lista ao lado o preset que quer apagar.', 'info');
+            return;
+        }
+        if (!confirm(`Apagar o preset "${nome}"? As faixas que já usam continuam com os efeitos.`)) return;
+        try { PresetsLocais.gravar(localStorage, PresetsLocais.apagar(this._bancoPresets(), 'faixa', nome)); } catch (e) { /* nada */ }
+        for (const t of this.tracks) if (t.presetFaixa === nome) t.presetFaixa = null;
+        this.atualizarSeletoresPresetFaixa();
+        this.showNotification(`Preset "${nome}" apagado.`, 'info');
     }
 
     copiarEfeitosParaIguais(trackId) {

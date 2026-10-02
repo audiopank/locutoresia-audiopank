@@ -1212,11 +1212,14 @@
             <!-- MEUS PRESETS DO MASTER (23/09/2026): o ajuste aprovado (EQ + MultiMax +
                  limiter) com nome, guardado no Supabase, pra aplicar em qualquer
                  projeto com um clique — "temos Crato toda semana". -->
-            <div class="ms-presets" title="Meus presets do master: guarde o ajuste atual (EQ, MultiMax e destino) com um nome e aplique em qualquer projeto com um clique. Fica no Supabase, vale em qualquer máquina.">
+            <div class="ms-presets" title="Meus presets do master: guarde o ajuste atual (EQ, MultiMax e destino) com um nome e aplique em qualquer projeto com um clique. Fica guardado neste navegador (e na nuvem quando ela estiver no ar); "Exportar" leva num arquivo.">
                 <span class="ms-titulo"><i class="fas fa-bookmark me-1"></i>Meus presets</span>
                 <select class="form-select form-select-sm ms-select" id="msPresetsSel"><option value="">— carregando… —</option></select>
                 <button type="button" class="ms-btn" id="msPresetsGuardar" title="Guarda o master atual como preset (mesmo nome = substitui)"><i class="fas fa-floppy-disk me-1"></i>Guardar atual…</button>
                 <button type="button" class="ms-btn" id="msPresetsApagar" title="Apaga o preset selecionado" disabled><i class="fas fa-trash"></i></button>
+                <button type="button" class="ms-btn" id="msPresetsExportar" title="Baixa um arquivo com TODOS os seus presets (master e faixas) — backup e pra levar pra outro computador"><i class="fas fa-file-export me-1"></i>Exportar</button>
+                <button type="button" class="ms-btn" id="msPresetsImportar" title="Traz presets de um arquivo exportado (soma aos que já tem; mesmo nome = fica o mais novo)"><i class="fas fa-file-import me-1"></i>Importar</button>
+                <input type="file" id="msPresetsArquivo" accept=".json,application/json" hidden>
             </div>
             <div class="ms-corpo">
                 <!-- Módulo B: EQ master de 4 bandas. Os pontos são a resposta REAL dos
@@ -1326,9 +1329,10 @@
     <script src="/static/mix-engine.js?v=19"></script>
     <script src="/static/clip-model.js?v=8"></script>
     <script src="/static/loudness.js?v=1"></script>
-    <script src="/static/master-suite.js?v=8"></script>
+    <script src="/static/presets-locais.js?v=1"></script>
+    <script src="/static/master-suite.js?v=9"></script>
     <script src="/static/time-stretch.js?v=2"></script>
-    <script src="/static/minidaw.js?v=78"></script>
+    <script src="/static/minidaw.js?v=79"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>

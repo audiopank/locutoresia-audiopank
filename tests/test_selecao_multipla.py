@@ -88,4 +88,4 @@ def cliente():
 
 def test_css_e_versao(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    assert '.menu-objeto {' in html and '.menu-objeto.aberto {' in html and 'minidaw.js?v=78' in html
+    assert '.menu-objeto {' in html and '.menu-objeto.aberto {' in html and 'minidaw.js?v=79' in html

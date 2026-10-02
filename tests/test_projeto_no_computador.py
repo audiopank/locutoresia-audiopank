@@ -46,7 +46,7 @@ def test_botoes_na_tela_e_versao_nova():
     assert 'onclick="salvarNoComputador(event)"' in html and 'onclick="abrirDoComputador()"' in html
     # Botão com texto não pode herdar o quadrado de 40px do ícone (o texto quebrava em 3 linhas).
     assert 'class="control-btn com-texto" onclick="salvarNoComputador(event)"' in html and '.control-btn.com-texto {' in html
-    assert 'minidaw.js?v=78' in html
+    assert 'minidaw.js?v=79' in html
     js = _js()
     assert 'window.salvarNoComputador = (ev) => minidaw.salvarNoComputador(ev);' in js
     assert 'window.abrirDoComputador = () => minidaw.abrirDoComputador();' in js

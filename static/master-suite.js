@@ -318,6 +318,14 @@
         if (bg) bg.onclick = guardarPresetAtual;
         const bap = $('msPresetsApagar');
         if (bap) bap.onclick = apagarPresetSelecionado;
+        const bex = $('msPresetsExportar');
+        if (bex) bex.onclick = exportarPresets;
+        const bim = $('msPresetsImportar');
+        const inp = $('msPresetsArquivo');
+        if (bim && inp) {
+            bim.onclick = () => { inp.value = ''; inp.click(); };
+            inp.onchange = () => importarPresets(inp.files && inp.files[0]);
+        }
         carregarPresets();
         const rmb = $('msMbReset');
         if (rmb) rmb.onclick = () => { mb.ganhos = [0, 0, 0]; mb.preset = 'loud2'; aplicarMultimax(); salvar(); };
@@ -533,13 +541,24 @@
     }
     function multimaxParaRender() { return paramsMultimaxAtual(); }
 
-    // ── E. MEUS PRESETS DO MASTER (23/09/2026) ──────────────────────────
+    // ── E. MEUS PRESETS DO MASTER (23/09/2026; no navegador desde 02/10/2026) ──
     // "Temos Crato toda semana": o master inteiro (EQ + MultiMax + limiter)
-    // vira preset com nome, guardado no Supabase (app_config) via
-    // /api/master-presets — vale em qualquer projeto e em qualquer máquina.
-    // Cópia em localStorage só pra listar quando a rede falha.
+    // vira preset com nome e vale em qualquer projeto. A FONTE DA VERDADE é o
+    // navegador (static/presets-locais.js): em 02/10/2026, com o Supabase
+    // bloqueado, a nuvem respondia "lista vazia", a tela apagou a cópia local e
+    // nada novo guardava. A nuvem (/api/master-presets) virou bônus: o que ela
+    // devolve é mesclado; guardar/apagar tentam lá também, sem travar aqui.
     const presets = { lista: [] };
     function avisar(msg, tipo) { if (daw && typeof daw.showNotification === 'function') daw.showNotification(msg, tipo || 'info'); }
+    function lerBanco() {
+        try { return PresetsLocais.ler(localStorage); } catch (e) { return PresetsLocais.vazio(); }
+    }
+    function gravarBanco(banco) {
+        let ok = false;
+        try { ok = PresetsLocais.gravar(localStorage, banco); } catch (e) { ok = false; }
+        presets.lista = PresetsLocais.lista(banco, 'master');
+        return ok;
+    }
     function desenharPresets() {
         const sel = $('msPresetsSel');
         if (!sel) return;
@@ -558,20 +577,19 @@
         if (ba) ba.disabled = !sel.value;
     }
     async function carregarPresets() {
+        presets.lista = PresetsLocais.lista(lerBanco(), 'master');
+        desenharPresets();
         try {
             const r = await fetch('/api/master-presets');
             const d = await r.json();
-            if (d && d.success) {
-                presets.lista = d.presets || [];
-                try { localStorage.setItem('minidaw_master_presets', JSON.stringify(presets.lista)); } catch (e) { /* sem espaço */ }
-            } else {
-                throw new Error((d && d.error) || 'falha');
-            }
+            if (!d || !d.success) throw new Error((d && d.error) || 'falha');
+            const banco = lerBanco();
+            banco.master = PresetsLocais.mesclar(banco, 'master', d.presets);
+            gravarBanco(banco);
+            desenharPresets();
         } catch (e) {
-            try { presets.lista = JSON.parse(localStorage.getItem('minidaw_master_presets') || '[]'); } catch (e2) { presets.lista = []; }
-            console.warn('[master] presets: usando a cópia local —', e.message);
+            console.warn('[master] nuvem dos presets fora — usando os do navegador:', e.message);
         }
-        desenharPresets();
     }
     function aplicarPresetSalvo(nome) {
         const p = presets.lista.find(x => x.nome === nome);
@@ -585,38 +603,67 @@
         const sugestao = (sel && sel.value) || '';
         const nome = prompt('Nome do preset (ex.: Rádio Crato). Mesmo nome = substitui.', sugestao);
         if (nome == null || !String(nome).trim()) return;
+        let r;
         try {
-            const r = await fetch('/api/master-presets', {
+            r = PresetsLocais.guardar(lerBanco(), 'master', { nome: String(nome).trim(), master: estadoParaSalvar() });
+        } catch (e) {
+            avisar('Não consegui guardar o preset: ' + e.message, 'error');
+            return;
+        }
+        if (!gravarBanco(r.banco)) {
+            avisar('O navegador recusou guardar (memória cheia ou modo anônimo). Use "Exportar" pra levar num arquivo.', 'error');
+        }
+        desenharPresets();
+        if (sel) { sel.value = String(nome).trim(); desenharPresets(); }
+        let naNuvem = false;
+        try {
+            const resp = await fetch('/api/master-presets', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ nome: String(nome).trim(), master: estadoParaSalvar() })
             });
-            const d = await r.json();
-            if (!d.success) throw new Error(d.error || 'falha ao guardar');
-            presets.lista = d.presets || [];
-            try { localStorage.setItem('minidaw_master_presets', JSON.stringify(presets.lista)); } catch (e) { /* sem espaço */ }
-            desenharPresets();
-            if (sel) { sel.value = String(nome).trim(); desenharPresets(); }
-            avisar(`Preset "${String(nome).trim()}" ${d.substituiu ? 'atualizado' : 'guardado'} — disponível em qualquer projeto.`, 'success');
-        } catch (e) {
-            avisar('Não consegui guardar o preset: ' + e.message, 'error');
-        }
+            const d = await resp.json();
+            naNuvem = !!(d && d.success);
+        } catch (e) { naNuvem = false; }
+        avisar(`Preset "${String(nome).trim()}" ${r.substituiu ? 'atualizado' : 'guardado'} neste computador`
+               + (naNuvem ? ' e na nuvem.' : ' — vale em qualquer projeto aqui. (A nuvem está fora; use "Exportar" pra ter cópia.)'),
+               'success');
     }
     async function apagarPresetSelecionado() {
         const sel = $('msPresetsSel');
         const nome = sel && sel.value;
         if (!nome) return;
         if (!confirm(`Apagar o preset "${nome}"? O master atual continua como está.`)) return;
+        gravarBanco(PresetsLocais.apagar(lerBanco(), 'master', nome));
+        if (sel) sel.value = '';
+        desenharPresets();
+        try { await fetch('/api/master-presets/' + encodeURIComponent(nome), { method: 'DELETE' }); } catch (e) { /* nuvem fora */ }
+        avisar(`Preset "${nome}" apagado.`, 'info');
+    }
+    // Arquivo .json com TODOS os presets (master + faixas): backup e outra máquina.
+    function exportarPresets() {
+        const banco = lerBanco();
+        const total = banco.master.length + banco.faixa.length;
+        if (!total) { avisar('Nenhum preset pra exportar ainda.', 'info'); return; }
+        const blob = new Blob([PresetsLocais.exportar(banco)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'presets-locutores-ia-' + new Date().toISOString().slice(0, 10) + '.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        avisar(`${total} preset(s) exportado(s) — guarde o arquivo junto dos projetos.`, 'success');
+    }
+    async function importarPresets(file) {
+        if (!file) return;
         try {
-            const r = await fetch('/api/master-presets/' + encodeURIComponent(nome), { method: 'DELETE' });
-            const d = await r.json();
-            if (!d.success) throw new Error(d.error || 'falha ao apagar');
-            presets.lista = d.presets || [];
-            try { localStorage.setItem('minidaw_master_presets', JSON.stringify(presets.lista)); } catch (e) { /* sem espaço */ }
-            if (sel) sel.value = '';
+            const texto = await file.text();
+            const banco = lerBanco();
+            const r = PresetsLocais.importar(banco, texto);
+            gravarBanco(r.banco);
             desenharPresets();
-            avisar(`Preset "${nome}" apagado.`, 'info');
+            if (daw && typeof daw.atualizarSeletoresPresetFaixa === 'function') daw.atualizarSeletoresPresetFaixa();
+            avisar(`Presets importados: ${r.novos} novo(s), ${r.atualizados} atualizado(s).`, 'success');
         } catch (e) {
-            avisar('Não consegui apagar o preset: ' + e.message, 'error');
+            avisar('Não consegui importar: ' + e.message, 'error');
         }
     }
 

@@ -91,7 +91,7 @@ def cliente():
 def test_painel_do_limiter_e_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('id="msLimBotao"', 'id="msDestino"', 'id="msLimInfo"', 'id="msGrBarra"', 'id="msGr"', 'id="msOtimizarLufs"',
-              '.ms-lim {', 'mix-engine.js?v=19', 'master-suite.js?v=8', 'minidaw.js?v=78'):
+              '.ms-lim {', 'mix-engine.js?v=19', 'master-suite.js?v=9', 'minidaw.js?v=79'):
         assert t in html, t
 
 

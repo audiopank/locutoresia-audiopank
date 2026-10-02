@@ -10094,15 +10094,25 @@ MASTER_PRESETS_CHAVE = 'master_presets'
 MASTER_PRESETS_MAX = 30
 
 
+class MasterPresetsIndisponivel(Exception):
+    """O banco não respondeu. NUNCA vira "lista vazia": em 02/10/2026 (ykswh em 402)
+    o GET dizia success + [] e a tela apagou a cópia local dos presets dele."""
+
+
 def _ler_master_presets():
     try:
         r = supabase_manager.newpost_manager_client.table('app_config') \
             .select('valor').eq('chave', MASTER_PRESETS_CHAVE).limit(1).execute()
-        lista = r.data[0].get('valor') if r.data else None
-        return [p for p in (lista or []) if isinstance(p, dict) and p.get('nome')]
     except Exception as e:
         print(f"master_presets indisponível: {e}")
-        return []
+        raise MasterPresetsIndisponivel(str(e)[:160])
+    lista = r.data[0].get('valor') if r.data else None
+    return [p for p in (lista or []) if isinstance(p, dict) and p.get('nome')]
+
+
+def _master_presets_fora(e):
+    return jsonify({'success': False, 'indisponivel': True,
+                    'error': f'Banco dos presets fora do ar ({e})'}), 503
 
 
 def _gravar_master_presets(lista):
@@ -10115,8 +10125,11 @@ def _gravar_master_presets(lista):
 @app.route('/api/master-presets', methods=['GET'])
 def listar_master_presets():
     if not supabase_manager or not supabase_manager.newpost_manager_client:
-        return jsonify({'success': False, 'error': 'Supabase não configurado', 'presets': []}), 500
-    return jsonify({'success': True, 'presets': _ler_master_presets()})
+        return jsonify({'success': False, 'error': 'Supabase não configurado'}), 500
+    try:
+        return jsonify({'success': True, 'presets': _ler_master_presets()})
+    except MasterPresetsIndisponivel as e:
+        return _master_presets_fora(e)
 
 
 @app.route('/api/master-presets', methods=['POST'])
@@ -10132,14 +10145,17 @@ def salvar_master_preset():
     if not master:
         return jsonify({'success': False, 'error': 'Master inválido'}), 400
     try:
-        lista = [p for p in _ler_master_presets() if p.get('nome', '').lower() != nome.lower()]
-        substituiu = len(lista) != len(_ler_master_presets())
+        atuais = _ler_master_presets()
+        lista = [p for p in atuais if p.get('nome', '').lower() != nome.lower()]
+        substituiu = len(lista) != len(atuais)
         if len(lista) >= MASTER_PRESETS_MAX:
             return jsonify({'success': False, 'error': f'Limite de {MASTER_PRESETS_MAX} presets — apague algum'}), 400
         lista.append({'nome': nome, 'master': master, 'salvo_em': datetime.now(timezone.utc).isoformat()})
         lista.sort(key=lambda p: p['nome'].lower())
         _gravar_master_presets(lista)
         return jsonify({'success': True, 'presets': lista, 'substituiu': substituiu})
+    except MasterPresetsIndisponivel as e:
+        return _master_presets_fora(e)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -10155,6 +10171,8 @@ def apagar_master_preset(nome):
             return jsonify({'success': False, 'error': 'Preset não encontrado'}), 404
         _gravar_master_presets(lista)
         return jsonify({'success': True, 'presets': lista})
+    except MasterPresetsIndisponivel as e:
+        return _master_presets_fora(e)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

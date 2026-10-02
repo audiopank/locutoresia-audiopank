@@ -67,11 +67,11 @@ def test_guardar_listar_substituir_e_apagar(cliente):
 
 def test_tela_e_suite():
     html = _ler('templates', 'minidaw.html')
-    for t in ('id="msPresetsSel"', 'id="msPresetsGuardar"', 'id="msPresetsApagar"', '.ms-presets {', 'master-suite.js?v=8'):
+    for t in ('id="msPresetsSel"', 'id="msPresetsGuardar"', 'id="msPresetsApagar"', '.ms-presets {', 'master-suite.js?v=9'):
         assert t in html, t
     suite = _ler('static', 'master-suite.js')
     assert "fetch('/api/master-presets')" in suite and "method: 'POST'" in suite and "method: 'DELETE'" in suite
     assert "carregar(p.master || null);\n        salvar();" in suite                 # aplicar = carregar o master + salvar no rascunho
     assert "body: JSON.stringify({ nome: String(nome).trim(), master: estadoParaSalvar() })" in suite
-    assert "localStorage.getItem('minidaw_master_presets')" in suite                   # cópia local quando a rede falha
+    assert "PresetsLocais.ler(localStorage)" in suite                                   # navegador é a fonte da verdade (02/10)
     assert "carregarPresets();" in suite
