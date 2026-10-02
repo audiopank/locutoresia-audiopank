@@ -9630,7 +9630,16 @@ def api_fetch_news():
         # Usa a função fetch_news_from_rss já existente no app.py (que já lida com HAS_FEEDPARSER)
         news_entries = fetch_news_from_rss(category, limit=6)
         news_list = []
-        
+        escondidas = 0
+        # Filtro de conteúdo sensível JÁ NA LISTA (02/10/2026): antes só valia na hora
+        # de publicar, e notícia policial aparecia pra ele escolher. Fail-open aqui
+        # de propósito: o portão do publish continua fail-closed.
+        try:
+            from core.content_filter import blocked_reason as _bloqueio
+        except Exception as filtro_err:
+            print(f"[filtro] indisponível na lista da Busca Notícias: {filtro_err}")
+            _bloqueio = lambda *t: ''
+
         for entry in news_entries:
             if isinstance(entry, dict):
                 titulo = entry.get('title', f'Notícia sobre {category}')
@@ -9651,6 +9660,9 @@ def api_fetch_news():
             resumo_limpo = strip_html(resumo).strip()
             if len(resumo_limpo) > 600:
                 resumo_limpo = resumo_limpo[:600].rsplit(' ', 1)[0] + '…'
+            if _bloqueio(titulo_limpo, resumo_limpo):
+                escondidas += 1
+                continue
             news_list.append({
                 "titulo": titulo_limpo,
                 "resumo": resumo_limpo,
@@ -9661,7 +9673,8 @@ def api_fetch_news():
         return jsonify({
             "success": True,
             "data": {
-                "noticias": news_list
+                "noticias": news_list,
+                "escondidas": escondidas
             }
         })
     except Exception as e:

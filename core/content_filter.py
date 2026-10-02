@@ -58,6 +58,21 @@ SENSITIVE_PATTERNS = [
     r"\btortur\w*", r"\bestrangul\w*", r"\benforcad\w*", r"\bdegol\w*",
     r"\bdecapit\w*", r"\besquartej\w*",
     r"\blinchad\w*", r"\blinchament\w*",
+    # Polícia / prisão (02/10/2026 — "Homem é preso com armas e 285 munições após
+    # denúncia de caça ilegal" apareceu na Busca Notícias; ele não quer esse tipo
+    # no feed). Nada de "prisao" nem "apreensao" soltos: "prisão de ventre" (saúde)
+    # e "com apreensão" (= preocupação) são notícias comuns.
+    r"\bpres[oa]s?\b",                 # é preso / presa em flagrante / presos
+    r"\bdetid[oa]s?\b",
+    r"\bprend(e|em|eu|eram|ido|ida)\b",
+    r"\bflagrante\b",
+    r"\bprisao (preventiva|temporaria|domiciliar|em flagrante)\b",
+    r"\bmandado de prisao\b",
+    r"\barmas? de fogo\b", r"\bcom armas?\b", r"\bportando arma\w*",
+    r"\bmunicao\b", r"\bmunicoes\b",
+    r"\bapreend\w*", r"\bapreensao de\b",
+    r"\bforagid\w*", r"\brecapturad\w*",
+    r"\bcaca ilegal\b",
     # Outros conteúdos pesados
     r"\bsuicid\w*", r"\boverdose\b", r"\bcadaver\w*", r"\bcorpo encontrado\b",
     r"\btrafic\w*",            # tráfico
