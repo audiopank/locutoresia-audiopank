@@ -6757,11 +6757,14 @@ def api_receitas_foto_url():
     tipo = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
     if not tipo.startswith('image/'):
         return jsonify({"success": False, "error": "Esse endereço não é de uma imagem (abra a imagem e copie o endereço DELA)."})
-    dados, limite = b'', 8_000_000
+    # 3MB: a Vercel corta resposta acima de ~4,5MB e o base64 engorda 1/3. Acima
+    # disso vai pro plano B (`bloqueado`), que entrega a foto já reduzida a 1080 px.
+    dados, limite = b'', 3_000_000
     for pedaco in r.iter_content(64 * 1024):
         dados += pedaco
         if len(dados) > limite:
-            return jsonify({"success": False, "error": "Imagem grande demais (mais de 8MB)."})
+            return jsonify({"success": False, "bloqueado": True,
+                            "error": "Imagem grande demais pro servidor (mais de 3MB)."})
     if not dados:
         return jsonify({"success": False, "error": "A imagem veio vazia."})
     return jsonify({"success": True, "mime": tipo, "imagem_base64": _b64.b64encode(dados).decode()})

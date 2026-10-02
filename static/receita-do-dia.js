@@ -36,7 +36,7 @@
             return { success: false, error: 'Sem conexão com o servidor.' };
         }
         let d;
-        try { d = await r.json(); } catch (e) { d = { success: false, error: 'Resposta ilegível do servidor (' + r.status + ').' }; }
+        try { d = await r.json(); } catch (e) { d = { success: false, ilegivel: true, error: 'Resposta ilegível do servidor (' + r.status + ').' }; }
         if (r.status === 401) d.error = 'Sessão expirada — entre de novo.';
         return d;
     }
@@ -260,7 +260,7 @@
         const d = await api('/api/receitas/foto-url', { url });
         if (d.success) {
             dataUrl = 'data:' + d.mime + ';base64,' + d.imagem_base64;
-        } else if (d.bloqueado) {
+        } else if (d.bloqueado || d.ilegivel) {      // ilegível = ex.: 500 da Vercel
             try { dataUrl = await fotoPeloProxyPublico(url); } catch (e) { motivo = d.error + ' O plano B também falhou (' + e.message + ').'; }
         } else {
             motivo = d.error || 'Não consegui usar essa imagem.';

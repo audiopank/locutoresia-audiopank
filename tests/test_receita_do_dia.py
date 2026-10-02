@@ -290,7 +290,7 @@ def test_pagina_e_rotas_sao_privadas(monkeypatch):
     assert anonimo.post('/api/receitas/publicar', json={}).status_code == 401
     assert anonimo.post('/api/receitas/sugestoes', json={'itens': [WRAP]}).status_code == 401
     r = _cliente().get('/receita-do-dia')
-    assert r.status_code == 200 and b'receita-do-dia.js?v=4' in r.data
+    assert r.status_code == 200 and b'receita-do-dia.js?v=5' in r.data
 
 
 def test_sugestoes_filtram_o_que_o_navegador_trouxe(monkeypatch):
@@ -443,6 +443,23 @@ def test_foto_url_site_barrou_o_servidor_vira_plano_b(monkeypatch):
     monkeypatch.setattr(requests, 'get', lambda *a, **k: _RespImg(status=403))
     d = _cliente().post('/api/receitas/foto-url', json={'url': 'https://www.receiteria.com.br/x.jpg'}).get_json()
     assert d['success'] is False and d['bloqueado'] is True and '403' in d['error']
+
+
+def test_foto_url_grande_vai_pro_plano_b_em_vez_de_estourar_a_vercel(monkeypatch):
+    """A Vercel corta resposta acima de ~4,5MB e base64 engorda 1/3: foto acima de 3MB
+    estouraria com um 500 ilegível, sem plano B. Agora o servidor desiste em 3MB e marca
+    `bloqueado` — o proxy público entrega a foto já reduzida a 1080 px."""
+    import requests
+    from backend import app as modulo
+    monkeypatch.setattr(modulo, '_url_de_imagem_publica', lambda u: True)
+    grande = b'\xff\xd8\xff\xe0' + b'0' * 3_100_000
+    monkeypatch.setattr(requests, 'get', lambda *a, **k: _RespImg(dados=grande))
+    d = _cliente().post('/api/receitas/foto-url', json={'url': 'https://www.receiteria.com.br/grande.jpg'}).get_json()
+    assert d['success'] is False and d['bloqueado'] is True and 'grande' in d['error']
+    js = _ler('static', 'receita-do-dia.js')
+    # Resposta ilegível do servidor (ex.: 500 da Vercel) também tenta o plano B.
+    assert "} else if (d.bloqueado || d.ilegivel) {" in js
+    assert "ilegivel: true" in js
 
 
 def test_foto_url_recusa_o_que_nao_e_imagem(monkeypatch):
