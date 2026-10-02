@@ -9811,22 +9811,37 @@ def api_publish_to_newpost():
                             "error": f"Bloqueado pelo filtro de conteúdo sensível (padrão: {motivo_bloqueio}). "
                                      f"Esta notícia não vai para o feed."}), 200
 
-        # Publica DIRETO no FEED público como "Futuro em Pauta" — conta própria,
-        # COM LOGIN: desde 31/08/2026 (NewPost-IA fora da Lovable) a RLS barra
-        # anônimo e a tabela não tem mais source_url/category. O link real da
-        # notícia vira a chave de idempotência (o mesmo artigo não posta 2x) e
-        # vai no fim do texto pro leitor chegar na fonte.
+        # Publica DIRETO no FEED público — conta própria, COM LOGIN: desde
+        # 31/08/2026 (NewPost-IA fora da Lovable) a RLS barra anônimo e a tabela
+        # não tem mais source_url/category. O link real da notícia vira a chave
+        # de idempotência (o mesmo artigo não posta 2x no mesmo perfil) e vai no
+        # fim do texto pro leitor chegar na fonte.
+        # Perfil escolhido na tela (02/10/2026): Futuro em Pauta (padrão) ou
+        # MÍDIA DIGITAL — este substitui a publicação automática da Base44.
         from core import newpost_feed
+        perfis = {'futuro': ('Futuro em Pauta', ["Notícias", "FuturoEmPauta"]),
+                  'midia': ('MÍDIA DIGITAL', ["Notícias", "MídiaDigital"])}
+        conta = str(data.get('conta') or 'futuro')
+        if conta not in perfis:
+            return jsonify({"success": False, "error": "Perfil inválido."}), 400
+        nome_perfil, tags_padrao = perfis[conta]
+        # MÍDIA DIGITAL sem credenciais próprias cairia CALADO na conta principal
+        # (newpost_feed._credenciais): recusa e diz o NOME da variável que falta.
+        if conta == 'midia' and not newpost_feed.conta_configurada('midia'):
+            faltam = [v for v in newpost_feed.CONTAS['midia'] if not os.getenv(v, '').strip()]
+            return jsonify({"success": False,
+                            "error": f"Perfil MÍDIA DIGITAL sem credenciais: falta {' e '.join(faltam)} "
+                                     "(Vercel, ambiente Production, e Redeploy)."}), 400
         conteudo = strip_html(content or title).strip()
         tem_link = link.lower().startswith('http')
         texto = newpost_feed.montar_conteudo('', conteudo, link if tem_link else '')
-        r = newpost_feed.publicar(texto, conta='futuro',
-                                  tags=data.get('tags') or ["Notícias", "FuturoEmPauta"],
+        r = newpost_feed.publicar(texto, conta=conta,
+                                  tags=data.get('tags') or tags_padrao,
                                   chave=link if tem_link else None)
 
         if r.get('success'):
-            return jsonify({"success": True, "message": "Publicado no feed como Futuro em Pauta",
-                            "post_id": r.get('post_id'), "author": "Futuro em Pauta"})
+            return jsonify({"success": True, "message": f"Publicado no feed como {nome_perfil}",
+                            "post_id": r.get('post_id'), "author": nome_perfil})
         if r.get('already'):
             # mesmo link/conteudo = esse ARTIGO ja foi publicado antes. Nao e erro.
             return jsonify({"success": False, "already": True,

@@ -24,6 +24,8 @@ Configuração (só por variável de ambiente — senha nunca entra no código):
     NEWPOST_FEED_SENHA_VIDA
     NEWPOST_FEED_EMAIL_RECEITAS   opcional: perfil "Receitas Favoritas" (Receita do dia)
     NEWPOST_FEED_SENHA_RECEITAS
+    NEWPOST_FEED_EMAIL_MIDIA      opcional: perfil "MÍDIA DIGITAL" (Busca Notícias)
+    NEWPOST_FEED_SENHA_MIDIA
 
 Sem fallback de URL de propósito: URL morta escondida como fallback foi o que
 deixou a integração quebrada em silêncio quando o projeto antigo desligou.
@@ -56,6 +58,9 @@ CONTAS = {
     # Perfil "Receitas Favoritas Grandes Dicas" (receitas@gmail.com, da casa) —
     # assina a Receita do dia (/receita-do-dia), que substitui a Base44 (01/10/2026).
     'receitas': ('NEWPOST_FEED_EMAIL_RECEITAS', 'NEWPOST_FEED_SENHA_RECEITAS'),
+    # Perfil "MÍDIA DIGITAL" (3f51ca52) — notícias pela Busca Notícias, escolhidas
+    # à mão; substitui a publicação automática da Base44 (02/10/2026).
+    'midia': ('NEWPOST_FEED_EMAIL_MIDIA', 'NEWPOST_FEED_SENHA_MIDIA'),
 }
 
 # ── Tags e série por conta (Gerador → feed) ─────────────────────────────────

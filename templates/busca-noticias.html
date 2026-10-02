@@ -29,7 +29,7 @@
             padding: 2rem 0;
         }
 
-        .category-btn {
+        .category-btn, .perfil-btn {
             background: var(--newpost-card);
             border: 1px solid rgba(124,58,237,0.3);
             border-radius: 12px;
@@ -40,7 +40,7 @@
             font-weight: 500;
         }
 
-        .category-btn:hover, .category-btn.active {
+        .category-btn:hover, .category-btn.active, .perfil-btn:hover, .perfil-btn.active {
             background: var(--newpost-purple);
             color: white;
             border-color: var(--newpost-purple);
@@ -188,6 +188,20 @@
             </div>
         </div>
 
+        <!-- Perfil que assina (02/10/2026): MÍDIA DIGITAL substitui a publicação
+             automática da Base44 — aqui sempre pela mão do produtor. -->
+        <div class="mb-4">
+            <p class="text-white font-semibold mb-3">Publicar como</p>
+            <div class="d-flex flex-wrap gap-2" id="perfil-container">
+                <button type="button" class="perfil-btn active" data-conta="futuro">
+                    <i class="fas fa-rocket me-2"></i>Futuro em Pauta
+                </button>
+                <button type="button" class="perfil-btn" data-conta="midia">
+                    <i class="fas fa-newspaper me-2"></i>MÍDIA DIGITAL
+                </button>
+            </div>
+        </div>
+
         <div class="mb-5">
             <button id="buscar-btn" class="btn btn-primary-custom btn-lg px-5 py-3">
                 <i class="fas fa-search me-2"></i>Buscar Notícias Reais
@@ -245,6 +259,17 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let selectedCategory = 'Tecnologia';
+        let contaEscolhida = 'futuro';
+        try { contaEscolhida = localStorage.getItem('busca_noticias_conta') === 'midia' ? 'midia' : 'futuro'; } catch (e) {}
+        document.querySelectorAll('.perfil-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.conta === contaEscolhida);
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.perfil-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                contaEscolhida = this.dataset.conta;
+                try { localStorage.setItem('busca_noticias_conta', contaEscolhida); } catch (e) {}
+            });
+        });
         let noticias = [];
         let buscando = false;
         let gerando = {};
@@ -454,13 +479,14 @@
                         conteudo: post, 
                         categoria: selectedCategory,
                         link: n.link,
+                        conta: contaEscolhida,
                         author_id: selectedAuthorId
                     })
                 });
                 
                 const data = await response.json();
                 if (data.success) {
-                    showToast('✅ Publicado no feed como Futuro em Pauta!');
+                    showToast('✅ Publicado no feed como ' + (data.author || 'Futuro em Pauta') + '!');
                 } else if (data.already) {
                     showToast('ℹ️ Essa notícia já foi publicada antes (mesmo link).', 'error');
                 } else {
