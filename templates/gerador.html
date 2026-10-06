@@ -463,6 +463,11 @@
         <button id="btnPublicarFeed" class="btn btn-outline-light btn-sm">
             <i class="fas fa-broadcast-tower me-1"></i>Feed
         </button>
+        <!-- Vídeo do episódio (06/10/2026): MP4 9:16 pro YouTube Shorts, molde do Filmora dele.
+             Módulo à parte (static/video-episodio.js) — só lê o resultado daqui. -->
+        <button id="btnVideoEpisodio" class="btn btn-outline-light btn-sm" title="Monta o MP4 vertical do episódio (capa + Episódio N + ESCUTE A DICA + final com WhatsApp e LIKE) pro YouTube Shorts">
+            <i class="fas fa-film me-1"></i>Vídeo
+        </button>
     </div>
 
     <!-- CENAS COM TEMPO DE VERDADE (Áudio para vídeo): uma linha por cena com o
@@ -482,11 +487,44 @@
         <div id="listaCenas"></div>
     </div>
 
+    <!-- VÍDEO DO EPISÓDIO (06/10/2026): substitui o Filmora. Tudo no navegador. -->
+    <div id="painelVideo" class="section-card mt-3" style="display:none">
+        <div class="resultado-nome mb-1"><i class="fas fa-film me-2"></i>Vídeo do episódio — YouTube Shorts (1080×1920)</div>
+        <div class="hint mb-2">Capa → "Episódio N" → capa com "ESCUTE A DICA" → final com SEGUIR, WhatsApp e LIKE. O vídeo é montado aqui no navegador (Chrome/Edge) e o áudio é o que está no player acima.</div>
+        <div class="d-flex flex-wrap gap-3 align-items-end mb-2">
+            <div>
+                <button id="btnVideoCapa" class="btn btn-outline-light btn-sm"><i class="fas fa-image me-1"></i>Escolher capa</button>
+                <input type="file" id="inputVideoCapa" accept="image/*" hidden>
+                <div class="hint" id="videoCapaNome"></div>
+            </div>
+            <div>
+                <label class="form-label" for="videoEpisodio">Episódio</label>
+                <input id="videoEpisodio" class="form-control form-control-sm" style="width: 90px" placeholder="nº">
+            </div>
+            <div>
+                <label class="form-label" for="videoWhatsapp">WhatsApp (tela final)</label>
+                <input id="videoWhatsapp" class="form-control form-control-sm" style="width: 190px" placeholder="85 9 9226-2297">
+            </div>
+            <button id="btnGerarVideo" class="btn btn-success btn-sm"><i class="fas fa-clapperboard me-1"></i>Gerar MP4</button>
+            <button id="btnBaixarVideo" class="btn btn-outline-light btn-sm" style="display:none"><i class="fas fa-download me-1"></i>Baixar MP4</button>
+        </div>
+        <progress id="videoProgresso" max="1" value="0" style="width: 100%; display:none"></progress>
+        <div class="hint mb-2" id="videoStatus"></div>
+        <div class="d-flex flex-wrap gap-2 align-items-start">
+            <canvas id="videoPreviaEp" width="135" height="240" title="Tela do episódio" style="border:1px solid #334155; border-radius:6px"></canvas>
+            <canvas id="videoPreviaDica" width="135" height="240" title="Capa com ESCUTE A DICA" style="border:1px solid #334155; border-radius:6px"></canvas>
+            <canvas id="videoPreviaFinal" width="135" height="240" title="Tela final" style="border:1px solid #334155; border-radius:6px"></canvas>
+            <video id="videoResultado" controls playsinline style="display:none; height: 240px; border-radius:6px; background:#000"></video>
+        </div>
+    </div>
+
     <!-- lamejs: sem ele o export cai pra WAV (arquivo bem maior). -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=19"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
     <script src="/static/gerador.js?v=30"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
+    <script src="/static/video-episodio.js?v=1"></script>
     <!-- VoxCraft: acima da barra fixa do resultado (#barraResultado). -->
     <style>.voxcraft-widget { bottom: 150px; }</style>
     {% include '_voxcraft_widget.html' %}

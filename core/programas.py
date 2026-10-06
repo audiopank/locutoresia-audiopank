@@ -118,7 +118,14 @@ def lista_para_tela():
         'conta_feed': p['conta_feed'],
         'miolo_palavras': list(p['miolo_palavras']),
         'ajustes': dict(p['ajustes']),
+        # Número do fecho (tela final do vídeo do episódio, 06/10/2026).
+        'whatsapp': _whatsapp_do_fecho(p.get('fecho')),
     } for pid, p in PROGRAMAS.items()]
+
+
+def _whatsapp_do_fecho(fecho):
+    m = re.search(r'WhatsApp:?\s*([\d][\d\s\-]*\d)', fecho or '')
+    return m.group(1).strip() if m else ''
 
 
 def contar_palavras(texto):
