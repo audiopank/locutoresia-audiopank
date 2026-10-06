@@ -7180,14 +7180,17 @@ def api_publish_social_post(post_id):
             timeout=10
         )
         
-        if resp_get.status_code not in (200, 201):
-            print(f"[DEBUG] ERRO ao buscar post: {resp_get.status_code} - {resp_get.text}")
-            if resp_get.status_code == 401:
-                return jsonify({"success": False, "error": "Falha de autenticação no Supabase (401) — verifique NEWPOST_SUPABASE_SERVICE_KEY/ANON_KEY no Vercel"}), 401
-            return jsonify({"success": False, "error": f"Erro ao buscar post: {resp_get.status_code}"}), resp_get.status_code
-        
-        posts_data = resp_get.json()
-        post = posts_data[0] if posts_data else None
+        # O ykswh é o banco de TRABALHO, não o feed. Fora do ar (402 por cota desde
+        # 30/09/2026) ele derrubava a publicação inteira aqui: "0 no feed · 15
+        # falharam" (06/10/2026). Agora é "se der, deu" — segue com o rascunho da
+        # memória e publica no feed de verdade (outro projeto).
+        banco_trabalho_ok = resp_get.status_code in (200, 201)
+        if not banco_trabalho_ok:
+            print(f"[social] banco de trabalho fora ({resp_get.status_code}) — seguindo pelo rascunho em memória: {resp_get.text[:120]}")
+            post = None
+        else:
+            posts_data = resp_get.json()
+            post = posts_data[0] if posts_data else None
 
         # --- FALLBACK: post não existe no Supabase (provável uuid local de rascunho). ---
         # Procura na memória local e INSERE na tabela 'posts' para obter um id real.
@@ -7322,15 +7325,15 @@ def api_publish_social_post(post_id):
                 )
                 print(f"[DEBUG] Insert no Supabase: {resp_insert.status_code} - {resp_insert.text[:300]}")
 
-                if resp_insert.status_code not in (200, 201):
-                    print(f"[DEBUG] Erro detalhado do Supabase: {resp_insert.status_code} - {resp_insert.text}")
-                    if resp_insert.status_code in (401, 403):
-                        return jsonify({"success": False, "error": "Falha de autenticação/permissão no Supabase ao criar o post (401/403) — verifique NEWPOST_SUPABASE_SERVICE_KEY no Vercel"}), resp_insert.status_code
-                    return jsonify({"success": False, "error": f"Não foi possível criar o post no Supabase: {resp_insert.status_code} - {resp_insert.text}"}), resp_insert.status_code
-
-                inserted = resp_insert.json()
+                inserted = resp_insert.json() if resp_insert.status_code in (200, 201) else None
                 if not (isinstance(inserted, list) and inserted):
-                    return jsonify({"success": False, "error": "Falha ao obter id do post recém-criado"}), 500
+                    # Banco de trabalho fora: o post vai pro feed com os dados do
+                    # próprio rascunho (o registro interno fica pra quando voltar).
+                    print(f"[social] cópia interna não gravou ({resp_insert.status_code}): {resp_insert.text[:160]}")
+                    banco_trabalho_ok = False
+                    inserted = [dict(insert_payload, id=post_id)]
+                else:
+                    banco_trabalho_ok = True
 
                 post = inserted[0]
                 # 'posts' não guarda hashtags; preserva as do rascunho local para o feed newpost_posts
@@ -7472,21 +7475,28 @@ def api_publish_social_post(post_id):
         except Exception as e_fn:
             print(f"[DEBUG] Aviso: Edge Function falhou, mas post está agendado: {e_fn}")
 
+        no_feed = feed_status == 'publicado' or str(feed_status).startswith('duplicado')
+
         # --- PASSO 6: sincronizar memória local (best-effort) ---
-        for i, p in enumerate(social_posts_store):
-            if str(p.get('id')) == str(post_id):
-                social_posts_store[i]['status'] = 'publicado'
-                social_posts_store[i]['updated_at'] = datetime.now(timezone.utc).isoformat()
-                print(f"[DEBUG] Post marcado como 'publicado' na memória local")
-                break
+        # Só marca "publicado" se chegou no feed — senão o post sumia da fila
+        # de aprovados sem ter ido a lugar nenhum.
+        if no_feed:
+            for i, p in enumerate(social_posts_store):
+                if str(p.get('id')) == str(post_id):
+                    social_posts_store[i]['status'] = 'publicado'
+                    social_posts_store[i]['updated_at'] = datetime.now(timezone.utc).isoformat()
+                    break
 
         # Devolve o resultado do feed real pra o operador saber se de fato saiu
         # na rede social (e não só no banco interno).
-        if feed_status == 'publicado':
-            msg = "Post publicado com sucesso na NewPost-IA!"
-        else:
-            msg = f"Post salvo, mas o feed da NewPost-IA respondeu: {feed_status}"
-        return jsonify({"success": True, "message": msg, "feed_newpost": feed_status})
+        if no_feed:
+            return jsonify({"success": True, "message": "Post publicado com sucesso na NewPost-IA!",
+                            "feed_newpost": feed_status})
+        if banco_trabalho_ok:
+            return jsonify({"success": True, "feed_newpost": feed_status,
+                            "message": f"Post salvo, mas o feed da NewPost-IA respondeu: {feed_status}"})
+        return jsonify({"success": False, "feed_newpost": feed_status,
+                        "error": f"O feed da NewPost-IA não aceitou: {feed_status}"})
 
     except Exception as e:
         import traceback
