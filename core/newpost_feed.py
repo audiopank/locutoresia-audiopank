@@ -425,6 +425,14 @@ def publicar(conteudo, conta='principal', tags=None, media_urls=None, media_type
     }
     try:
         r = requests.post(f'{url}/rest/v1/posts', headers=cabecalhos, json=payload, timeout=30)
+        # "JWT issued at future" (PGRST303, ep.20 em 06/10/2026): o token recém-saído
+        # do login vem uns segundos à frente do relógio do banco. Passa sozinho —
+        # espera e tenta de novo (até 2x) em vez de devolver o erro ao produtor.
+        for espera in (3, 5):
+            if r.status_code != 401 or 'PGRST303' not in (r.text or ''):
+                break
+            time.sleep(espera)
+            r = requests.post(f'{url}/rest/v1/posts', headers=cabecalhos, json=payload, timeout=30)
         if r.status_code not in (200, 201) and campos_transcricao and 'transcricao' in (r.text or ''):
             # Feed sem as colunas de transcrição (ou CHECK diferente): publica sem elas.
             print(f"[newpost_feed] feed recusou a transcrição, publicando sem ela: {(r.text or '')[:160]}")
