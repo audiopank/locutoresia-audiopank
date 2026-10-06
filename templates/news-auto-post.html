@@ -747,6 +747,8 @@
                                     hashtags: ['noticia', 'brasil'],
                                     platforms: ['newpost_ia'],
                                     status: 'rascunho',
+                                    // categoria da fonte (Tecnologia, Economia...) → hashtag certa no feed
+                                    category: newsItem.source || '',
                                     source_url: newsItem.url || ''
                                 })
                             });

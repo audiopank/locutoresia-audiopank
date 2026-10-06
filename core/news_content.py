@@ -272,6 +272,60 @@ sensacionalismo; hashtags em minúsculo e SEM o '#'; não use markdown."""
         return {}
 
 
+# ── Categoria e hashtags da curadoria (06/10/2026) ──────────────────────────
+# No feed saíam "#Geral #NewPostIA #relatam": categoria sempre geral (o News
+# Auto Post não mandava) e a 3ª hashtag era a 2ª palavra do título. Agora:
+# categoria certa + #NewPostIA + até 2 assuntos de verdade (sigla ou nome próprio).
+ROTULO_CATEGORIA = {
+    'tecnologia': 'Tecnologia', 'economia': 'Economia', 'politica': 'Política', 'saude': 'Saúde',
+    'esportes': 'Esportes', 'ciencia': 'Ciência', 'entretenimento': 'Entretenimento',
+    'cultura': 'Cultura', 'geral': 'Notícias',
+}
+_RAIZES_CATEGORIA = (('tecnolog', 'tecnologia'), ('econom', 'economia'), ('polit', 'politica'),
+                     ('saude', 'saude'), ('esport', 'esportes'), ('cienc', 'ciencia'),
+                     ('entreten', 'entretenimento'), ('cultur', 'cultura'))
+
+
+def categoria_slug(texto) -> str:
+    """'Tecnologia' / 'Notícias Gerais' / 'Política' → 'tecnologia' / 'geral' / 'politica'."""
+    import unicodedata
+    t = unicodedata.normalize('NFKD', str(texto or '')).encode('ascii', 'ignore').decode().lower()
+    for raiz, slug in _RAIZES_CATEGORIA:
+        if raiz in t:
+            return slug
+    return 'geral'
+
+
+_RE_SIGLA = re.compile(r'\b([A-ZÀ-Ý]{2,6})\b')
+_RE_NOME = re.compile(r"\b([A-ZÀ-Ý][a-zà-ÿ0-9]+(?: [A-ZÀ-Ý][a-zà-ÿ0-9]+)*)")
+
+
+def hashtags_da_noticia(titulo: str, categoria: str = 'geral') -> list:
+    """[Categoria, 'NewPostIA', até 2 assuntos]. Assunto = sigla (IA, EUA, BB) ou
+    nome próprio do título (Meta, Reino Unido → ReinoUnido). Título Em Maiúsculas
+    (Forbes) não diz o que é nome próprio: aí só vale sigla. A 1ª palavra sozinha
+    é começo de frase ("Programadores relatam…"), não assunto."""
+    titulo = str(titulo or '').strip()
+    tags = [ROTULO_CATEGORIA.get(categoria_slug(categoria), 'Notícias'), 'NewPostIA']
+    assuntos = [m.group(1) for m in _RE_SIGLA.finditer(titulo)]
+    longas = [w for w in re.findall(r'[A-Za-zÀ-ÿ]+', titulo) if len(w) > 3]
+    titulo_maiusculo = bool(longas) and sum(w[0].isupper() for w in longas) / len(longas) >= 0.85
+    if not titulo_maiusculo:
+        inicio = len(titulo) - len(titulo.lstrip('"\'“‘«( '))
+        for m in _RE_NOME.finditer(titulo):
+            nome = m.group(1)
+            if m.start() <= inicio and ' ' not in nome:
+                continue
+            assuntos.append(nome)
+    vistos = {t.lower() for t in tags}
+    for a in assuntos:
+        tag = re.sub(r'\W+', '', a)[:30]
+        if tag and tag.lower() not in vistos and len(tags) < 4:
+            tags.append(tag)
+            vistos.add(tag.lower())
+    return tags
+
+
 def montar_corpo(titulo: str, resumo: str, categoria: str = 'geral',
                  limite: int = LIMITE_PADRAO, usar_ia: bool = True) -> str:
     """Corpo final do post (sem título e sem hashtags — cada pipeline põe o seu

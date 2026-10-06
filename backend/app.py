@@ -133,6 +133,9 @@ def insert_post_resiliente(url, payload, headers, tentativas=4, timeout=10):
     return resp, corpo
 
 
+from core.news_content import categoria_slug, hashtags_da_noticia
+
+
 def publicar_no_feed_newpost(titulo, conteudo, categoria='geral', image_url='', source_url='', tags=None, conta='principal'):
     """Publica no FEED REAL da NewPost-IA (https://www.newpostia.app/).
 
@@ -151,8 +154,9 @@ def publicar_no_feed_newpost(titulo, conteudo, categoria='geral', image_url='', 
         from core import newpost_feed
         tem_link = str(source_url or '').lower().startswith('http')
         texto = newpost_feed.montar_conteudo(titulo, conteudo, source_url if tem_link else '')
-        etiquetas = list(tags or ['NewPostIA', 'LocutoresIA'])
-        if categoria and categoria != 'geral' and categoria not in etiquetas:
+        # tags=[] explícito = sem etiquetas (hashtags já no texto); None = as de sempre.
+        etiquetas = list(tags) if tags is not None else ['NewPostIA', 'LocutoresIA']
+        if tags is None and categoria and categoria != 'geral' and categoria not in etiquetas:
             etiquetas.append(str(categoria))
         midia = [image_url] if str(image_url or '').lower().startswith('http') else None
         r = newpost_feed.publicar(texto, conta=conta, tags=etiquetas, media_urls=midia,
@@ -6237,6 +6241,9 @@ def api_create_social_post():
             'image_url': image_url_sp,
             'tags': data.get('hashtags', []),
             'hashtags': data.get('hashtags', []),
+            # A fonte do News Auto Post (Tecnologia, Economia...) vira a categoria
+            # e a hashtag certa no feed — antes saía tudo #Geral (06/10/2026).
+            'category': categoria_slug(data.get('category')),
             'status': status_pt,
             'is_ia_generated': True,
             'created_at': datetime.now(timezone.utc).isoformat(),
@@ -7278,10 +7285,9 @@ def api_publish_social_post(post_id):
                 if len(base) > 1200:
                     base = base[:1200].rstrip() + '...'
 
-                palavras_titulo = titulo.split()
-                keyword = palavras_titulo[1] if len(palavras_titulo) > 1 else categoria
-                keyword = re.sub(r'\W+', '', keyword) or categoria
-                return f"{base}\n\n#{categoria.capitalize()} #NewPostIA #{keyword}"
+                # Categoria certa + #NewPostIA + assuntos de verdade do título
+                # (antes: "#Geral #NewPostIA #relatam" — 2ª palavra do título).
+                return f"{base}\n\n" + ' '.join('#' + t for t in hashtags_da_noticia(titulo, categoria))
 
             # Só insere se a dedup por source_url não tiver encontrado um post existente
             if not post:
@@ -7378,7 +7384,10 @@ def api_publish_social_post(post_id):
             conteudo=clean_content,
             categoria=post.get('category') or 'geral',
             image_url=post.get('image_url') or '',
-            source_url=post.get('source_url') or ''
+            source_url=post.get('source_url') or '',
+            # hashtags já vão no fim do texto (é dele que o feed indexa): sem
+            # etiquetas azuis repetidas embaixo — igual à Receita do dia.
+            tags=[]
         )
         print(f"[DEBUG] Feed NewPost-IA (plugpost): {feed_status}")
 
