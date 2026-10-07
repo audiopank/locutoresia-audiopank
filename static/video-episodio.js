@@ -332,10 +332,19 @@
             || ($('selectContaFeed') && $('selectContaFeed').value) || 'spots';
         const programa = () => est.programas.find(p => p.id === (($('selectPrograma') && $('selectPrograma').value) || '')) || null;
         const status = (msg) => { $('videoStatus').textContent = msg || ''; };
-        // Cenas com tempo medido (painel "Cenas com tempo de verdade" do Gerador).
-        const cenasDaTela = () => cenasDoTexto(Array.from(document.querySelectorAll('#listaCenas .cena-cab strong'))
-                                                   .map(el => el.textContent));
-        const opcoesDoRoteiro = (episodio) => ({ semEpisodio: !episodio, cenas: cenasDaTela(), finalCurto: !programa() });
+        // PROGRAMA ESCOLHIDO = molde do programa (Vida Saudável), SEMPRE. Decide pelo
+        // próprio seletor, não pela lista vinda da rede: se /api/gerador/programas
+        // falhar, o episódio não vira spot avulso (pergunta dele, 07/10/2026).
+        const temPrograma = () => !!($('selectPrograma') && $('selectPrograma').value);
+        // Cenas com tempo medido (painel "Cenas com tempo de verdade" do Gerador) —
+        // só com o painel VISÍVEL: as de um Achadinhos feito antes na mesma página
+        // ficam escondidas no DOM e não podem vazar pro vídeo seguinte.
+        const cenasDaTela = () => {
+            if ($('painelCenas') && $('painelCenas').style.display === 'none') return [];
+            return cenasDoTexto(Array.from(document.querySelectorAll('#listaCenas .cena-cab strong')).map(el => el.textContent));
+        };
+        const opcoesDoRoteiro = (episodio) => ({ semEpisodio: !episodio, cenas: temPrograma() ? [] : cenasDaTela(),
+                                                 finalCurto: !temPrograma() });
         const chaveChamada = () => 'locutores_video_chamada_' + chavePrograma();
 
         function desenharPrevias() {
@@ -373,12 +382,16 @@
 
         async function preencher() {
             const p = programa();
-            const ep = p && $('inputEpisodio') && $('inputEpisodio').value;
+            const ep = temPrograma() && $('inputEpisodio') && $('inputEpisodio').value;
             $('videoEpisodio').value = ep || '';
-            $('videoWhatsapp').value = (p && p.whatsapp) ? formatarWhatsApp(p.whatsapp) : ($('videoWhatsapp').value || '');
-            let chamada = '';
-            try { chamada = localStorage.getItem(chaveChamada()) || ''; } catch (e) { /* sem storage */ }
-            $('videoChamada').value = chamada || (p ? 'INFORMAÇÕES' : 'LINK NA DESCRIÇÃO');
+            // WhatsApp: o do programa; sem a lista (rede), o último usado neste programa/perfil.
+            let chamada = '', zap = '';
+            try {
+                chamada = localStorage.getItem(chaveChamada()) || '';
+                zap = localStorage.getItem('locutores_video_zap_' + chavePrograma()) || '';
+            } catch (e) { /* sem storage */ }
+            $('videoWhatsapp').value = (p && p.whatsapp) ? formatarWhatsApp(p.whatsapp) : zap;
+            $('videoChamada').value = chamada || (temPrograma() ? 'INFORMAÇÕES' : 'LINK NA DESCRIÇÃO');
             // Trocou de programa/perfil desde a última vez: a capa é outra.
             if (!est.capa || est.capaChave !== chavePrograma()) {
                 est.capa = null;
@@ -404,7 +417,11 @@
             const f = $('inputVideoCapa').files && $('inputVideoCapa').files[0];
             if (f) usarCapa(f, true);
         });
-        ['videoEpisodio', 'videoWhatsapp'].forEach(id => $(id).addEventListener('input', desenharPrevias));
+        $('videoEpisodio').addEventListener('input', desenharPrevias);
+        $('videoWhatsapp').addEventListener('input', () => {
+            try { localStorage.setItem('locutores_video_zap_' + chavePrograma(), $('videoWhatsapp').value); } catch (e) { /* sem storage */ }
+            desenharPrevias();
+        });
         $('videoChamada').addEventListener('input', () => {
             try { localStorage.setItem(chaveChamada(), $('videoChamada').value); } catch (e) { /* sem storage */ }
             desenharPrevias();
@@ -426,6 +443,7 @@
                 ac.close();
                 const inicio = performance.now();
                 const episodio = $('videoEpisodio').value.trim();
+                try { localStorage.setItem('locutores_video_zap_' + chavePrograma(), $('videoWhatsapp').value); } catch (e) { /* sem storage */ }
                 const mp4 = await gerarMp4({
                     audioBuffer, capa: est.capa, episodio,
                     whatsapp: formatarWhatsApp($('videoWhatsapp').value),
