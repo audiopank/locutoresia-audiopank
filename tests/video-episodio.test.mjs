@@ -55,6 +55,15 @@ test('spot com cenas: capa o tempo todo + título de cada cena na hora certa', (
     assert.deepEqual(ativas(rot, 38), ['final']);                       // cena que invade o final não aparece
 });
 
+// 07/10: spot do Achadinhos SEM cenas (narração a 2 vozes) mostrava "ESCUTE A DICA"
+// por cima da logo — isso é do podcast. Spot sem programa e sem cenas: capa + final.
+test('spot sem programa e sem cenas: só capa e final, sem ESCUTE A DICA', () => {
+    const rot = V.roteiro(31, { semEpisodio: true, cenas: [], finalCurto: true });
+    assert.ok(!rot.some(c => c.tipo === 'dica'));
+    assert.deepEqual(ativas(rot, 15), ['capa']);
+    assert.deepEqual(ativas(rot, 28), ['final']);
+});
+
 test('programa sem cenas continua igual (Vida Saudável)', () => {
     const rot = V.roteiro(116.5, { cenas: [] });
     assert.deepEqual(ativas(rot, 18), ['capa', 'dica']);

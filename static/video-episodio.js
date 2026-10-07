@@ -45,7 +45,8 @@
                 const ini = Math.max(Number(c.ini) || 0, epFim), fim = Math.min(Number(c.fim) || 0, finalIni);
                 if (fim - ini >= 0.5 && c.titulo) camadas.push({ tipo: 'cena', ini, fim, texto: String(c.titulo) });
             }
-        } else {
+        } else if (!o.finalCurto) {
+            // "ESCUTE A DICA" é do PROGRAMA (podcast); spot avulso sem cenas fica só capa + final.
             const base = semEpisodio ? Math.min(11, D * 0.3) : epFim;
             const dicaIni = base + 4, dicaFim = dicaIni + 7;
             if (dicaFim <= finalIni - 1) camadas.push({ tipo: 'dica', ini: dicaIni, fim: dicaFim });
