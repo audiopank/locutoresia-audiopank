@@ -490,7 +490,7 @@
     <!-- VÍDEO DO EPISÓDIO (06/10/2026): substitui o Filmora. Tudo no navegador. -->
     <div id="painelVideo" class="section-card mt-3" style="display:none">
         <div class="resultado-nome mb-1"><i class="fas fa-film me-2"></i>Vídeo do episódio — YouTube Shorts (1080×1920)</div>
-        <div class="hint mb-2">Capa → "Episódio N" → capa com "ESCUTE A DICA" → final com SEGUIR, WhatsApp e LIKE. O vídeo é montado aqui no navegador (Chrome/Edge) e o áudio é o que está no player acima.</div>
+        <div class="hint mb-2">Programa: capa → "Episódio N" → capa com "ESCUTE A DICA" → final. Spot em cenas (Achadinhos): capa com o título de cada cena na hora dela → final curto. Final: SEGUIR, sua chamada, WhatsApp (opcional) e LIKE. O vídeo é montado aqui no navegador (Chrome/Edge) e o áudio é o que está no player acima.</div>
         <div class="d-flex flex-wrap gap-3 align-items-end mb-2">
             <div>
                 <button id="btnVideoCapa" class="btn btn-outline-light btn-sm"><i class="fas fa-image me-1"></i>Escolher capa</button>
@@ -504,6 +504,10 @@
             <div>
                 <label class="form-label" for="videoWhatsapp">WhatsApp (tela final)</label>
                 <input id="videoWhatsapp" class="form-control form-control-sm" style="width: 190px" placeholder="85 9 9226-2297">
+            </div>
+            <div>
+                <label class="form-label" for="videoChamada">Chamada final</label>
+                <input id="videoChamada" class="form-control form-control-sm" style="width: 210px" maxlength="40" placeholder="INFORMAÇÕES / LINK NA DESCRIÇÃO">
             </div>
             <button id="btnGerarVideo" class="btn btn-success btn-sm"><i class="fas fa-clapperboard me-1"></i>Gerar MP4</button>
             <button id="btnBaixarVideo" class="btn btn-outline-light btn-sm" style="display:none"><i class="fas fa-download me-1"></i>Baixar MP4</button>
@@ -524,7 +528,7 @@
     <script src="/static/enviar-entrega.js?v=3"></script>
     <script src="/static/gerador.js?v=30"></script>
     <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
-    <script src="/static/video-episodio.js?v=1"></script>
+    <script src="/static/video-episodio.js?v=2"></script>
     <!-- VoxCraft: acima da barra fixa do resultado (#barraResultado). -->
     <style>.voxcraft-widget { bottom: 150px; }</style>
     {% include '_voxcraft_widget.html' %}

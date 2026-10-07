@@ -20,12 +20,18 @@
     // ── PARTE PURA (testada em Node) ─────────────────────────────────────
     // Camadas do vídeo com início/fim em segundos. Cobre o áudio inteiro, sem
     // buraco; o final nunca encosta na tela do episódio.
+    //
+    // `cenas` (07/10/2026, Achadinhos): spot em cenas — o título de cada cena
+    // aparece por cima da capa na hora dela, no lugar do "ESCUTE A DICA".
+    // `finalCurto`: spot sem programa fecha em 6 s (13 s comeria metade de um spot de 40 s).
     function roteiro(duracao, opcoes) {
+        const o = opcoes || {};
         const D = Math.max(1, Number(duracao) || 0);
-        const semEpisodio = !!(opcoes && opcoes.semEpisodio);
+        const semEpisodio = !!o.semEpisodio;
+        const cenas = Array.isArray(o.cenas) ? o.cenas : [];
         const capaIni = Math.min(5, D * 0.12);
-        const epFim = Math.min(capaIni + 6, D * 0.3);
-        const finalIni = Math.max(epFim, D - DURACAO_FINAL);
+        const epFim = semEpisodio ? 0 : Math.min(capaIni + 6, D * 0.3);
+        const finalIni = Math.max(epFim, D - (o.finalCurto ? Math.min(6, D * 0.2) : DURACAO_FINAL));
         const camadas = [];
         if (semEpisodio) {
             camadas.push({ tipo: 'capa', ini: 0, fim: finalIni });
@@ -34,10 +40,30 @@
             camadas.push({ tipo: 'episodio', ini: capaIni, fim: epFim });
             camadas.push({ tipo: 'capa', ini: epFim, fim: finalIni });
         }
-        const dicaIni = epFim + 4, dicaFim = dicaIni + 7;
-        if (dicaFim <= finalIni - 1) camadas.push({ tipo: 'dica', ini: dicaIni, fim: dicaFim });
+        if (cenas.length) {
+            for (const c of cenas) {
+                const ini = Math.max(Number(c.ini) || 0, epFim), fim = Math.min(Number(c.fim) || 0, finalIni);
+                if (fim - ini >= 0.5 && c.titulo) camadas.push({ tipo: 'cena', ini, fim, texto: String(c.titulo) });
+            }
+        } else {
+            const base = semEpisodio ? Math.min(11, D * 0.3) : epFim;
+            const dicaIni = base + 4, dicaFim = dicaIni + 7;
+            if (dicaFim <= finalIni - 1) camadas.push({ tipo: 'dica', ini: dicaIni, fim: dicaFim });
+        }
         camadas.push({ tipo: 'final', ini: finalIni, fim: D });
         return camadas.filter(c => c.fim > c.ini);
+    }
+
+    // Linhas "Cena 1 · 00:00–00:06 · Chega de Perder" (painel de cenas do Gerador)
+    // → [{ini, fim, titulo}]. Linha que não casa é ignorada.
+    function cenasDoTexto(linhas) {
+        const re = /^Cena\s+\d+\s+·\s+(\d+):(\d+)\s*[–-]\s*(\d+):(\d+)\s+·\s+(.+)$/;
+        const out = [];
+        for (const l of (linhas || [])) {
+            const m = re.exec(String(l || '').trim());
+            if (m) out.push({ ini: (+m[1]) * 60 + (+m[2]), fim: (+m[3]) * 60 + (+m[4]), titulo: m[5].trim() });
+        }
+        return out;
     }
 
     function camadasEm(rot, t) {
@@ -84,6 +110,20 @@
         ctx.fillText(str, W / 2, y);
     }
 
+    // Título longo cabe melhor em 2 linhas grandes do que em 1 linha minúscula.
+    function quebrarEmDuas(ctx, str, tam) {
+        ctx.font = `900 ${tam}px Arial, Helvetica, sans-serif`;
+        if (ctx.measureText(str).width <= W * 0.9) return [str];
+        const p = str.split(' ');
+        if (p.length < 2) return [str];
+        let melhor = 1, dif = Infinity;
+        for (let i = 1; i < p.length; i++) {
+            const d = Math.abs(ctx.measureText(p.slice(0, i).join(' ')).width - ctx.measureText(p.slice(i).join(' ')).width);
+            if (d < dif) { dif = d; melhor = i; }
+        }
+        return [p.slice(0, melhor).join(' '), p.slice(melhor).join(' ')];
+    }
+
     function retanguloRedondo(ctx, x, y, w, h, r) {
         ctx.beginPath();
         ctx.moveTo(x + r, y);
@@ -124,6 +164,11 @@
                 texto(ctx, String(dados.episodio || ''), H * 0.57, 260, gradienteLaranja(ctx, H * 0.5, H * 0.64));
             } else if (c.tipo === 'dica') {
                 texto(ctx, 'ESCUTE A DICA', H * 0.69, 130, gradienteLaranja(ctx, H * 0.66, H * 0.72));
+            } else if (c.tipo === 'cena') {
+                // Título da cena: até 2 linhas, em maiúsculas, no terço de baixo.
+                const linhas = quebrarEmDuas(ctx, String(c.texto || '').toUpperCase(), 110);
+                linhas.forEach((l, i) => texto(ctx, l, H * (0.7 + i * 0.065), 110,
+                                               gradienteLaranja(ctx, H * 0.66, H * 0.8)));
             } else if (c.tipo === 'final') {
                 // SEGUIR: pílula branca com letra roxa
                 ctx.fillStyle = '#ffffff';
@@ -133,7 +178,8 @@
                 roxo.addColorStop(0, '#a020f0');
                 roxo.addColorStop(1, '#6a3df0');
                 texto(ctx, 'SEGUIR', H * 0.0875, 120, roxo, { sombra: false, largura: 0.6 });
-                texto(ctx, 'INFORMAÇÕES', H * 0.2, 130, gradienteLaranja(ctx, H * 0.17, H * 0.23));
+                texto(ctx, String(dados.chamada || 'INFORMAÇÕES').toUpperCase(), H * 0.2, 130,
+                      gradienteLaranja(ctx, H * 0.17, H * 0.23));
                 capaNaCaixa(ctx, capa, 0, H * 0.25, W, H * 0.35);
                 if (dados.whatsapp) texto(ctx, dados.whatsapp, H * 0.7, 140, gradienteLaranja(ctx, H * 0.67, H * 0.73));
                 // ❤ LIKE: botão vermelho
@@ -191,7 +237,7 @@
         if (!sa || !sa.supported) throw new Error('O codificador de áudio AAC deste navegador não está disponível.');
 
         const dur = audio.duration;
-        const rot = roteiro(dur, { semEpisodio: !opc.episodio });
+        const rot = roteiro(dur, opc.roteiroOpcoes || { semEpisodio: !opc.episodio });
         const alvo = new Mp4Muxer.ArrayBufferTarget();
         const muxer = new Mp4Muxer.Muxer({
             target: alvo,
@@ -280,14 +326,29 @@
         if (!painel) return;
         const est = { capa: null, programas: [], mp4: null, url: null };
 
-        const chavePrograma = () => ($('selectPrograma') && $('selectPrograma').value) || 'spots';
-        const programa = () => est.programas.find(p => p.id === chavePrograma()) || null;
+        // Capa lembrada pelo PROGRAMA; spot sem programa (Achadinhos…) lembra pelo
+        // perfil escolhido no seletor do Feed — cada perfil com a sua logo.
+        const chavePrograma = () => ($('selectPrograma') && $('selectPrograma').value)
+            || ($('selectContaFeed') && $('selectContaFeed').value) || 'spots';
+        const programa = () => est.programas.find(p => p.id === (($('selectPrograma') && $('selectPrograma').value) || '')) || null;
         const status = (msg) => { $('videoStatus').textContent = msg || ''; };
+        // Cenas com tempo medido (painel "Cenas com tempo de verdade" do Gerador).
+        const cenasDaTela = () => cenasDoTexto(Array.from(document.querySelectorAll('#listaCenas .cena-cab strong'))
+                                                   .map(el => el.textContent));
+        const opcoesDoRoteiro = (episodio) => ({ semEpisodio: !episodio, cenas: cenasDaTela(), finalCurto: !programa() });
+        const chaveChamada = () => 'locutores_video_chamada_' + chavePrograma();
 
         function desenharPrevias() {
-            const dados = { episodio: $('videoEpisodio').value.trim(), whatsapp: formatarWhatsApp($('videoWhatsapp').value) };
-            const rot = roteiro(116, { semEpisodio: !dados.episodio });
-            [['videoPreviaEp', 7], ['videoPreviaDica', 18], ['videoPreviaFinal', 110]].forEach(([id, t]) => {
+            const dados = { episodio: $('videoEpisodio').value.trim(), whatsapp: formatarWhatsApp($('videoWhatsapp').value),
+                            chamada: $('videoChamada').value.trim() };
+            const dur = ($('playerResultado') && isFinite($('playerResultado').duration) && $('playerResultado').duration) || 116;
+            const rot = roteiro(dur, opcoesDoRoteiro(dados.episodio));
+            const meio = rot.filter(c => c.tipo === 'episodio' || c.tipo === 'dica' || c.tipo === 'cena');
+            const fim = rot.find(c => c.tipo === 'final');
+            const tempos = [meio[0] ? (meio[0].ini + meio[0].fim) / 2 : 1,
+                            meio[1] ? (meio[1].ini + meio[1].fim) / 2 : dur * 0.4,
+                            fim ? (fim.ini + fim.fim) / 2 : dur - 1];
+            [['videoPreviaEp', tempos[0]], ['videoPreviaDica', tempos[1]], ['videoPreviaFinal', tempos[2]]].forEach(([id, t]) => {
                 const c = $(id);
                 if (!c) return;
                 const off = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(W, H)
@@ -304,20 +365,26 @@
                 status('⚠️ Não consegui abrir essa imagem. Prefira PNG ou JPG.');
                 return;
             }
-            if (guardar) await guardarCapa(chavePrograma(), blob);
-            $('videoCapaNome').textContent = '✅ capa escolhida' + (guardar ? ' (fica lembrada pra este programa)' : '');
+            est.capaChave = chavePrograma();
+            if (guardar) await guardarCapa(est.capaChave, blob);
+            $('videoCapaNome').textContent = '✅ capa escolhida' + (guardar ? ` (fica lembrada pra "${est.capaChave}")` : '');
             desenharPrevias();
         }
 
         async function preencher() {
-            const ep = $('inputEpisodio') && $('inputEpisodio').value;
-            if (ep && !$('videoEpisodio').value) $('videoEpisodio').value = ep;
             const p = programa();
-            if (p && p.whatsapp && !$('videoWhatsapp').value) $('videoWhatsapp').value = formatarWhatsApp(p.whatsapp);
-            if (!est.capa) {
+            const ep = p && $('inputEpisodio') && $('inputEpisodio').value;
+            $('videoEpisodio').value = ep || '';
+            $('videoWhatsapp').value = (p && p.whatsapp) ? formatarWhatsApp(p.whatsapp) : ($('videoWhatsapp').value || '');
+            let chamada = '';
+            try { chamada = localStorage.getItem(chaveChamada()) || ''; } catch (e) { /* sem storage */ }
+            $('videoChamada').value = chamada || (p ? 'INFORMAÇÕES' : 'LINK NA DESCRIÇÃO');
+            // Trocou de programa/perfil desde a última vez: a capa é outra.
+            if (!est.capa || est.capaChave !== chavePrograma()) {
+                est.capa = null;
                 const blob = await lerCapa(chavePrograma());
                 if (blob) await usarCapa(blob, false);
-                else $('videoCapaNome').textContent = 'nenhuma capa ainda';
+                else $('videoCapaNome').textContent = `nenhuma capa ainda pra "${chavePrograma()}"`;
             }
             desenharPrevias();
         }
@@ -338,6 +405,10 @@
             if (f) usarCapa(f, true);
         });
         ['videoEpisodio', 'videoWhatsapp'].forEach(id => $(id).addEventListener('input', desenharPrevias));
+        $('videoChamada').addEventListener('input', () => {
+            try { localStorage.setItem(chaveChamada(), $('videoChamada').value); } catch (e) { /* sem storage */ }
+            desenharPrevias();
+        });
 
         $('btnGerarVideo').addEventListener('click', async () => {
             const src = $('playerResultado') && $('playerResultado').src;
@@ -354,10 +425,12 @@
                 const audioBuffer = await ac.decodeAudioData(bytes);
                 ac.close();
                 const inicio = performance.now();
+                const episodio = $('videoEpisodio').value.trim();
                 const mp4 = await gerarMp4({
-                    audioBuffer, capa: est.capa,
-                    episodio: $('videoEpisodio').value.trim(),
+                    audioBuffer, capa: est.capa, episodio,
                     whatsapp: formatarWhatsApp($('videoWhatsapp').value),
+                    chamada: $('videoChamada').value.trim(),
+                    roteiroOpcoes: opcoesDoRoteiro(episodio),
                     aoProgresso: p => { $('videoProgresso').value = p; status(`Montando o vídeo… ${Math.round(p * 100)}%`); },
                 });
                 if (est.url) URL.revokeObjectURL(est.url);
@@ -390,7 +463,7 @@
         });
     }
 
-    const VideoEpisodio = { W, H, FPS, roteiro, camadasEm, formatarWhatsApp, desenharQuadro, gerarMp4 };
+    const VideoEpisodio = { W, H, FPS, roteiro, camadasEm, cenasDoTexto, formatarWhatsApp, desenharQuadro, gerarMp4 };
     global.VideoEpisodio = VideoEpisodio;
     if (typeof module !== 'undefined' && module.exports) module.exports = VideoEpisodio;
     if (typeof document !== 'undefined') {

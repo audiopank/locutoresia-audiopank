@@ -26,7 +26,7 @@ def test_gerador_tem_o_painel_e_carrega_o_modulo_depois_do_gerador():
               'id="videoEpisodio"', 'id="videoWhatsapp"', 'id="btnGerarVideo"', 'id="videoProgresso"',
               'id="videoResultado"', 'id="btnBaixarVideo"', 'id="videoPreviaEp"', 'id="videoPreviaFinal"'):
         assert t in html, t
-    assert html.index('/static/gerador.js?v=30') < html.index('/static/video-episodio.js?v=1')
+    assert html.index('/static/gerador.js?v=30') < html.index('/static/video-episodio.js?v=2')
     assert 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js' in html
 
 
@@ -37,3 +37,14 @@ def test_modulo_so_le_o_gerador_e_usa_banco_proprio():
     assert 'innerHTML' not in js
     gerador = _ler('static', 'gerador.js')
     assert 'VideoEpisodio' not in gerador                          # o Gerador não depende do vídeo
+
+
+def test_achadinhos_cenas_chamada_e_capa_por_perfil():
+    """07/10: vídeo também pro Achadinhos (spot em cenas, sem programa)."""
+    html = _ler('templates', 'gerador.html')
+    assert 'id="videoChamada"' in html
+    js = _ler('static', 'video-episodio.js')
+    assert "document.querySelectorAll('#listaCenas .cena-cab strong')" in js     # lê as cenas da tela
+    assert "($('selectContaFeed') && $('selectContaFeed').value)" in js          # capa lembrada pelo perfil
+    assert 'finalCurto: !programa()' in js
+    assert "est.capaChave !== chavePrograma()" in js                              # trocou de perfil = outra capa
