@@ -1360,105 +1360,11 @@
 
             // [3] TRILHA — falha aqui NÃO interrompe: locução seca é entregável.
             passo(3, TOTAL, 'Escolhendo a trilha...');
-            estado.trilha = null;
-            estado.trilhaBuffer = null;
-            const escolha = document.getElementById('selectTrilha').value;
-            try {
-                if (escolha === 'nenhuma') {
-                    avisar('Sem trilha, por escolha sua.', 'info');
-                } else if (escolha === 'upload') {
-                    // Abriu o seletor de arquivo mas nenhum upload se concluiu.
-                    avisar('Nenhuma trilha foi subida — seguindo com locução seca. Suba o arquivo antes de gerar.', 'atencao');
-                } else if (escolha === TRILHA_PC && estado.trilhaPC) {
-                    // Arquivo do HD (01/10/2026): o buffer já está em mãos, sem nuvem.
-                    estado.trilha = { id: TRILHA_PC, name: estado.trilhaPC.name, file_url: null };
-                    estado.trilhaBuffer = estado.trilhaPC.buffer;
-                } else if (escolha === 'pc') {
-                    avisar('Nenhum arquivo do computador foi escolhido — seguindo com locução seca.', 'atencao');
-                } else if (estado.trilhaCliente && String(estado.trilhaCliente.id) === escolha) {
-                    // Trilha do cliente subida NESTA aba: o buffer já está em
-                    // mãos — não baixa de volta do Storage. Cobre também a
-                    // TRILHA_LOCAL (upload falhou, buffer só na memória).
-                    estado.trilha = {
-                        id: estado.trilhaCliente.id,
-                        name: estado.trilhaCliente.name,
-                        file_url: estado.trilhaCliente.file_url
-                    };
-                    estado.trilhaBuffer = estado.trilhaCliente.buffer;
-                } else if (escolha === 'auto') {
-                    const rTr = await fetch('/api/voxcraft/recommend-tracks', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ descricao: estado.roteiro })
-                    });
-                    const dTr = await rTr.json();
-                    // ATENÇÃO: 'sem_trilhas' vem com success=true e sem tracks.
-                    if (dTr.status === 'sem_trilhas') {
-                        avisar('Biblioteca de trilhas vazia — seguindo com locução seca.', 'atencao');
-                    } else if (dTr.success && dTr.tracks && dTr.tracks.length) {
-                        estado.trilha = dTr.tracks[0];
-                        // fonte 'base' = veio do acervo por ordem, não escolhida
-                        // pela IA. O spot sai com trilha do mesmo jeito, mas o
-                        // produtor precisa saber que a escolha não foi pensada.
-                        if (dTr.fonte === 'base') {
-                            avisar('⚙️ ' + (dTr.resumo || 'Trilha tirada do acervo, sem escolha da IA.')
-                                   + ' Confira se combina com o spot.', 'atencao');
-                        }
-                    } else {
-                        avisar('Não veio trilha nenhuma desta vez — seguindo com locução seca.', 'atencao');
-                    }
-                } else {
-                    const rT = await fetch('/api/tracks');
-                    const dT = await rT.json();
-                    estado.trilha = (dT.tracks || []).find(t => String(t.id) === escolha) || null;
-                }
-                if (estado.trilha && !estado.trilhaBuffer) {
-                    estado.trilhaBuffer = await baixarEDecodificar(estado.trilha.file_url);
-                }
-                // Jingle de cliente em spot de OUTRO cliente é desastre de
-                // marca. A IA já é cega a essas trilhas; a seleção manual é
-                // livre de propósito (o produtor é o guardião) — mas ganha um
-                // lembrete na cara toda vez (pedido do produtor no teste real).
-                if (estado.trilha && (estado.trilha.genre === 'trilha_cliente'
-                        || (estado.trilhaCliente && String(estado.trilhaCliente.id) === escolha))) {
-                    avisar('⚠️ "' + estado.trilha.name + '" é trilha de CLIENTE — use só em spots pedidos por esse cliente.', 'atencao');
-                }
-            } catch (e) {
-                avisar('Não consegui carregar a trilha (' + e.message + ') — seguindo com locução seca.', 'atencao');
-                estado.trilha = null;
-                estado.trilhaBuffer = null;
-            }
+            await prepararTrilha();
 
             // [4] RECEITA — falha cai na receita-base que o próprio endpoint devolve.
             passo(4, TOTAL, 'Definindo a mixagem...');
-            const tracksInfo = [{ type: 'voice', name: 'locucao', duration: estado.vozBuffer.duration }];
-            if (estado.trilhaBuffer) {
-                tracksInfo.push({ type: 'music', name: estado.trilha.name, duration: estado.trilhaBuffer.duration });
-            }
-            try {
-                const rRec = await fetch('/api/voxcraft/mix-recipe', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        tracks: tracksInfo,
-                        contexto: 'Roteiro da locução: ' + estado.roteiro.slice(0, 700)
-                    })
-                });
-                estado.receita = await rRec.json();
-            } catch (e) {
-                estado.receita = null;
-            }
-            if (!estado.receita || !estado.receita.success) {
-                // O endpoint caiu de vez. Não interrompe: montarTrack aplica os
-                // defaults e o spot sai — só sem o ajuste fino da IA.
-                avisar('Não consegui montar a receita — mixando com os valores padrão.', 'atencao');
-                estado.receita = null;
-            } else if (estado.receita.fonte === 'base') {
-                avisar('⚙️ Mixagem com a receita padrão — a IA não respondeu agora.', 'atencao');
-            }
-            if (estado.receita && estado.receita.resumo) {
-                const info = document.getElementById('infoMix');
-                info.textContent = '🎚️ ' + estado.receita.resumo;
-                info.style.display = 'block';
-            }
+            await prepararReceita();
 
             // [5] MIXAGEM
             passo(5, TOTAL, 'Mixando...');
@@ -1479,6 +1385,149 @@
             if (estado.vozBuffer && !estado.mixBlob) {
                 avisar('A locução chegou a ser gerada — só a mixagem falhou. Tente "Gerar anúncio" de novo.', 'atencao');
             }
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // [3] TRILHA como função (08/10/2026): o Gerar anúncio e o "Remixar com a
+    // trilha" usam a MESMA escolha. Falha aqui NÃO interrompe: locução seca é entregável.
+    async function prepararTrilha() {
+        estado.trilha = null;
+        estado.trilhaBuffer = null;
+        const escolha = document.getElementById('selectTrilha').value;
+        try {
+            if (escolha === 'nenhuma') {
+                avisar('Sem trilha, por escolha sua.', 'info');
+            } else if (escolha === 'upload') {
+                // Abriu o seletor de arquivo mas nenhum upload se concluiu.
+                avisar('Nenhuma trilha foi subida — seguindo com locução seca. Suba o arquivo antes de gerar.', 'atencao');
+            } else if (escolha === TRILHA_PC && estado.trilhaPC) {
+                // Arquivo do HD (01/10/2026): o buffer já está em mãos, sem nuvem.
+                estado.trilha = { id: TRILHA_PC, name: estado.trilhaPC.name, file_url: null };
+                estado.trilhaBuffer = estado.trilhaPC.buffer;
+            } else if (escolha === 'pc') {
+                avisar('Nenhum arquivo do computador foi escolhido — seguindo com locução seca.', 'atencao');
+            } else if (estado.trilhaCliente && String(estado.trilhaCliente.id) === escolha) {
+                // Trilha do cliente subida NESTA aba: o buffer já está em
+                // mãos — não baixa de volta do Storage. Cobre também a
+                // TRILHA_LOCAL (upload falhou, buffer só na memória).
+                estado.trilha = {
+                    id: estado.trilhaCliente.id,
+                    name: estado.trilhaCliente.name,
+                    file_url: estado.trilhaCliente.file_url
+                };
+                estado.trilhaBuffer = estado.trilhaCliente.buffer;
+            } else if (escolha === 'auto') {
+                const rTr = await fetch('/api/voxcraft/recommend-tracks', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ descricao: estado.roteiro })
+                });
+                const dTr = await rTr.json();
+                // ATENÇÃO: 'sem_trilhas' vem com success=true e sem tracks.
+                if (dTr.status === 'sem_trilhas') {
+                    avisar('Biblioteca de trilhas vazia — seguindo com locução seca.', 'atencao');
+                } else if (dTr.success && dTr.tracks && dTr.tracks.length) {
+                    estado.trilha = dTr.tracks[0];
+                    // fonte 'base' = veio do acervo por ordem, não escolhida
+                    // pela IA. O spot sai com trilha do mesmo jeito, mas o
+                    // produtor precisa saber que a escolha não foi pensada.
+                    if (dTr.fonte === 'base') {
+                        avisar('⚙️ ' + (dTr.resumo || 'Trilha tirada do acervo, sem escolha da IA.')
+                               + ' Confira se combina com o spot.', 'atencao');
+                    }
+                } else {
+                    avisar('Não veio trilha nenhuma desta vez — seguindo com locução seca.', 'atencao');
+                }
+            } else {
+                const rT = await fetch('/api/tracks');
+                const dT = await rT.json();
+                estado.trilha = (dT.tracks || []).find(t => String(t.id) === escolha) || null;
+            }
+            if (estado.trilha && !estado.trilhaBuffer) {
+                estado.trilhaBuffer = await baixarEDecodificar(estado.trilha.file_url);
+            }
+            // Jingle de cliente em spot de OUTRO cliente é desastre de
+            // marca. A IA já é cega a essas trilhas; a seleção manual é
+            // livre de propósito (o produtor é o guardião) — mas ganha um
+            // lembrete na cara toda vez (pedido do produtor no teste real).
+            if (estado.trilha && (estado.trilha.genre === 'trilha_cliente'
+                    || (estado.trilhaCliente && String(estado.trilhaCliente.id) === escolha))) {
+                avisar('⚠️ "' + estado.trilha.name + '" é trilha de CLIENTE — use só em spots pedidos por esse cliente.', 'atencao');
+            }
+        } catch (e) {
+            avisar('Não consegui carregar a trilha (' + e.message + ') — seguindo com locução seca.', 'atencao');
+            estado.trilha = null;
+            estado.trilhaBuffer = null;
+        }
+    }
+
+    // [4] RECEITA como função (08/10/2026). Falha cai na receita-base que o próprio endpoint devolve.
+    async function prepararReceita() {
+        const tracksInfo = [{ type: 'voice', name: 'locucao', duration: estado.vozBuffer.duration }];
+        if (estado.trilhaBuffer) {
+            tracksInfo.push({ type: 'music', name: estado.trilha.name, duration: estado.trilhaBuffer.duration });
+        }
+        try {
+            const rRec = await fetch('/api/voxcraft/mix-recipe', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tracks: tracksInfo,
+                    contexto: 'Roteiro da locução: ' + estado.roteiro.slice(0, 700)
+                })
+            });
+            estado.receita = await rRec.json();
+        } catch (e) {
+            estado.receita = null;
+        }
+        if (!estado.receita || !estado.receita.success) {
+            // O endpoint caiu de vez. Não interrompe: montarTrack aplica os
+            // defaults e o spot sai — só sem o ajuste fino da IA.
+            avisar('Não consegui montar a receita — mixando com os valores padrão.', 'atencao');
+            estado.receita = null;
+        } else if (estado.receita.fonte === 'base') {
+            avisar('⚙️ Mixagem com a receita padrão — a IA não respondeu agora.', 'atencao');
+        }
+        if (estado.receita && estado.receita.resumo) {
+            const info = document.getElementById('infoMix');
+            info.textContent = '🎚️ ' + estado.receita.resumo;
+            info.style.display = 'block';
+        }
+    }
+
+    // REMIXAR COM A TRILHA (08/10/2026): esqueceu a trilha (o vídeo do Achadinhos
+    // saiu só com a voz)? Reaproveita a voz JÁ GRAVADA e refaz só trilha + receita
+    // + mixagem — sem gastar TTS de novo.
+    async function remixarComTrilha() {
+        const btn = document.getElementById('btnRemixarTrilha');
+        if (!estado.vozBuffer) {
+            avisar('Gere o anúncio primeiro — o remix reaproveita a voz já gravada.', 'atencao');
+            return;
+        }
+        const escolha = (document.getElementById('selectTrilha') || {}).value;
+        if (escolha === 'nenhuma' || trilhaVaiFaltar()) {
+            avisar('🎵 Escolha a trilha no campo Trilha (ex.: "💻 Trilha do meu computador...") e clique em Remixar de novo.', 'atencao');
+            const s = document.getElementById('selectTrilha');
+            if (s) { s.scrollIntoView({ behavior: 'smooth', block: 'center' }); s.focus(); }
+            return;
+        }
+        btn.disabled = true;
+        limparAvisos();
+        try {
+            passo(1, 3, 'Carregando a trilha...');
+            await prepararTrilha();
+            if (!estado.trilhaBuffer) throw new Error('A trilha não carregou — confira o campo Trilha.');
+            passo(2, 3, 'Definindo a mixagem...');
+            await prepararReceita();
+            passo(3, 3, 'Mixando com a trilha...');
+            const r = await mixar((p, t) => passo(3, 3, `Mixando... ${Math.round(p)}% ${t || ''}`));
+            estado.mixBlob = r.blob;
+            await checarQualidade(r.duracao);
+            mostrarResultado(r.duracao);
+            passo(0, 3, '✅ Trilha colocada — a voz é a mesma, sem regravar.');
+            guardarRascunho();
+        } catch (e) {
+            passo(0, 3, '❌ ' + e.message);
         } finally {
             btn.disabled = false;
         }
@@ -1584,6 +1633,7 @@
         const btnBancada = document.getElementById('btnGuardarBancada');
         if (btnBancada) btnBancada.onclick = guardarBancada;
         document.getElementById('btnRegerarVoz').onclick = regerarVoz;
+        document.getElementById('btnRemixarTrilha').addEventListener('click', remixarComTrilha);
         // Áudio para vídeo (23/09/2026)
         const selPeca = document.getElementById('selectPeca');
         if (selPeca) { selPeca.addEventListener('change', atualizarPeca); atualizarPeca(); }
@@ -1772,7 +1822,8 @@
             selTrilha.value = TRILHA_PC;
             trilhaAnterior = TRILHA_PC;
             avisar('💻 Trilha "' + nome + '" pronta pra este spot (' + Math.round(buffer.duration)
-                   + ' s). Ela não vai pra nuvem: fica só nesta aba.', 'ok');
+                   + ' s). Ela não vai pra nuvem: fica só nesta aba.'
+                   + (estado.vozBuffer ? ' Clique em "🎵 Remixar com a trilha" pra colocar no spot sem regravar a voz.' : ''), 'ok');
         }
 
         // Seletor que LEMBRA A PASTA por programa (01/10/2026, pedido dele): o

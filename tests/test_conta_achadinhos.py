@@ -55,7 +55,7 @@ def test_servidor_tira_as_marcacoes_de_cena_do_texto_do_post():
 
 def test_tela_tem_a_conta_e_manda_so_a_narracao():
     html = _ler('templates', 'gerador.html')
-    assert '<option value="achadinhos">Achadinhos</option>' in html and 'gerador.js?v=31' in html
+    assert '<option value="achadinhos">Achadinhos</option>' in html and 'gerador.js?v=32' in html
     js = _ler('static', 'gerador.js')
     assert "achadinhos: 'Achadinhos'" in js
     assert "texto: textoParaFeed(document.getElementById('textoComercial').value || '')," in js

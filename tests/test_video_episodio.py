@@ -26,7 +26,7 @@ def test_gerador_tem_o_painel_e_carrega_o_modulo_depois_do_gerador():
               'id="videoEpisodio"', 'id="videoWhatsapp"', 'id="btnGerarVideo"', 'id="videoProgresso"',
               'id="videoResultado"', 'id="btnBaixarVideo"', 'id="videoPreviaEp"', 'id="videoPreviaFinal"'):
         assert t in html, t
-    assert html.index('/static/gerador.js?v=31') < html.index('/static/video-episodio.js?v=5')
+    assert html.index('/static/gerador.js?v=32') < html.index('/static/video-episodio.js?v=5')
     assert 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js' in html
 
 
