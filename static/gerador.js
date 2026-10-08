@@ -1225,6 +1225,20 @@
         }
     };
 
+    // A trilha vai faltar? (08/10/2026: o vídeo do Achadinhos saiu só com a voz —
+    // a trilha do PC foi escolhida DEPOIS de gerar.) "Sem trilha" escolhido de
+    // propósito não conta; "IA escolhe" com a Biblioteca vazia (Supabase fora) e
+    // "Trilha do meu computador" sem arquivo contam.
+    function trilhaVaiFaltar() {
+        const sel = document.getElementById('selectTrilha');
+        if (!sel) return false;
+        const escolha = sel.value;
+        if (escolha === 'nenhuma') return false;
+        if (escolha === 'auto') return sel.querySelectorAll('optgroup option').length === 0;
+        if (escolha === 'pc') return !estado.trilhaPC;
+        return false;
+    }
+
     async function gerarAnuncio() {
         const btn = document.getElementById('btnGerar');
         btn.disabled = true;
@@ -1234,6 +1248,17 @@
         const TOTAL = 6;
 
         try {
+            // Lembrete ANTES de gastar roteiro e voz (pedido dele, 08/10/2026).
+            if (trilhaVaiFaltar() && !confirm('🎵 Lembrete: este spot vai sair SEM TRILHA.\n\n'
+                    + 'A Biblioteca não trouxe trilha (ou o arquivo do computador não foi escolhido). '
+                    + 'Escolha "💻 Trilha do meu computador..." no campo Trilha.\n\n'
+                    + 'OK = gerar sem trilha mesmo  ·  Cancelar = voltar e escolher a trilha')) {
+                passo(0, TOTAL, '🎵 Escolha a trilha e clique em "Gerar anúncio" de novo.');
+                const s = document.getElementById('selectTrilha');
+                if (s) { s.scrollIntoView({ behavior: 'smooth', block: 'center' }); s.focus(); }
+                return;
+            }
+
             // Programa escolhido e roteiro ainda não montado: monta antes. O
             // texto do episódio vai como "texto pronto" — a IA já fez sua parte.
             if (programaAtual() && !document.getElementById('textoComercial').value.trim()) {

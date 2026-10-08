@@ -22,7 +22,7 @@ def _ler(*partes):
 def test_tela_tem_o_seletor_de_arquivo_e_a_versao_nova():
     html = _ler('templates', 'gerador.html')
     assert '<input type="file" id="inputTrilhaPC" accept="audio/*" style="display:none">' in html
-    assert 'gerador.js?v=30' in html
+    assert 'gerador.js?v=31' in html
 
 
 def test_opcao_no_select_e_valores_proprios():

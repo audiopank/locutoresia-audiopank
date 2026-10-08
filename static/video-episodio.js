@@ -432,6 +432,14 @@
             const src = $('playerResultado') && $('playerResultado').src;
             if (!src) { status('⚠️ Gere o áudio do episódio primeiro.'); return; }
             if (!est.capa) { status('⚠️ Escolha a capa do programa primeiro.'); return; }
+            // Áudio do player saiu sem trilha (08/10/2026: vídeo do Achadinhos só com a voz).
+            const semTrilha = /sem trilha/i.test(($('resultadoInfo') && $('resultadoInfo').textContent) || '');
+            if (semTrilha && !confirm('🎵 Este áudio está SEM TRILHA — o vídeo vai sair só com a voz.\n\n'
+                    + 'Se esqueceu, escolha a trilha no Gerador e gere o áudio de novo.\n\n'
+                    + 'OK = montar o vídeo assim mesmo  ·  Cancelar = voltar')) {
+                status('🎵 Escolha a trilha no Gerador, gere o áudio de novo e volte aqui.');
+                return;
+            }
             const b = $('btnGerarVideo');
             b.disabled = true;
             $('btnBaixarVideo').style.display = 'none';
