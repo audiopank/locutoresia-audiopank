@@ -593,14 +593,21 @@ RSS_FEEDS = {
         "https://g1.globo.com/rss/g1/tecnologia/",
         "https://olhardigital.com.br/feed/",
         "http://rss.uol.com.br/feed/tecnologia.xml",
+        "https://tecnoblog.net/feed/",               # 13/10/2026 (testado: 200, 50 itens)
     ],
     "Economia": [
         "https://g1.globo.com/rss/g1/economia/",
         "https://forbes.com.br/feed/",
         "http://rss.uol.com.br/feed/economia.xml",
+        "https://www.infomoney.com.br/feed/",        # 13/10/2026 (testado: 200, 10 itens)
     ],
     "Esportes": [
-        "http://rss.uol.com.br/feed/esporte.xml",   # os 3 do g1/ge/lance morreram
+        "http://rss.uol.com.br/feed/esporte.xml",
+        # 13/10/2026 (testados: 200 + itens). O ge morto era outro endereço;
+        # este /rss/ge/ está vivo.
+        "https://ge.globo.com/rss/ge/",
+        "https://www.espn.com.br/espn/rss/news",
+        "https://www.gazetaesportiva.com/feed/",
     ],
     "Política": [
         "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml",
@@ -685,17 +692,23 @@ def fetch_news_from_rss(category="Tecnologia", limit=7):
         return []
 
     feeds = RSS_FEEDS.get(category, RSS_FEEDS["Tecnologia"])
-    all_entries = []
-    
+    por_feed = []
+
     for feed_url in feeds:
         try:
             feed = feedparser.parse(feed_url)
-            entries = feed.entries[:6]   # até 6 por feed (era 3 — categorias com 1 feed só traziam 3)
-            all_entries.extend(entries)
+            por_feed.append(list(feed.entries[:6]))   # até 6 por feed (era 3 — categorias com 1 feed só traziam 3)
         except Exception as e:
             print(f"Erro no feed {feed_url}: {e}")
             continue
-    
+
+    # INTERCALA as fontes (13/10/2026): 1ª de cada feed, depois a 2ª de cada...
+    # Empilhando feed por feed, a tela (6 notícias) só mostrava o 1º feed e as
+    # fontes novas nunca apareciam.
+    all_entries = []
+    for i in range(max((len(f) for f in por_feed), default=0)):
+        all_entries.extend(f[i] for f in por_feed if i < len(f))
+
     # PORTÃO DE CONTEÚDO SENSÍVEL NA COLETA. Esta função é o funil por onde
     # passam as DUAS telas — /api/news/fetch (Busca Notícias) e /api/news/execute
     # (News Auto Post) — então barrar aqui protege as duas de uma vez. Notícia de
