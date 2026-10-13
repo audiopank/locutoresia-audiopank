@@ -4655,6 +4655,42 @@ def news_status():
         }), 500
 
 
+# FAXINA DE locucoes/ (13/10/2026): a cópia da locução no Storage só serve pro
+# link de download de 24 h, mas nunca era apagada — 148 MB em ~2,5 meses, ajudou
+# a estourar a cota. Depois de cada upload, apaga as cópias com mais de 2 dias.
+# No máximo 1x por hora por instância; só nomes que a própria geração cria.
+_ULTIMA_FAXINA_LOCUCOES = 0.0
+_NOME_LOCUCAO = re.compile(r'locution_[0-9a-f]{8}_\d{8}_\d{6}\.wav')
+
+
+def _faxinar_locucoes(storage, dias=2):
+    """Apaga de locucoes/ as cópias antigas. Devolve quantas apagou; nunca levanta."""
+    global _ULTIMA_FAXINA_LOCUCOES
+    import time as _time
+    from datetime import timezone as _tz
+    if _time.time() - _ULTIMA_FAXINA_LOCUCOES < 3600:
+        return 0
+    _ULTIMA_FAXINA_LOCUCOES = _time.time()
+    try:
+        limite = datetime.now(_tz.utc) - timedelta(days=dias)
+        arquivos = storage.list('locucoes', {
+            "limit": 100, "sortBy": {"column": "created_at", "order": "asc"}}) or []
+        velhas = []
+        for a in arquivos:
+            nome, criado = a.get('name') or '', a.get('created_at') or ''
+            if not _NOME_LOCUCAO.fullmatch(nome) or not criado:
+                continue
+            if datetime.fromisoformat(criado.replace('Z', '+00:00')) < limite:
+                velhas.append(f"locucoes/{nome}")
+        if velhas:
+            storage.remove(velhas)
+            print(f"🧹 locucoes/: {len(velhas)} cópia(s) com mais de {dias} dias apagada(s)", flush=True)
+        return len(velhas)
+    except Exception as e:
+        print(f"⚠️ Faxina de locucoes/ falhou (não afeta a geração): {e}", flush=True)
+        return 0
+
+
 def run_audio_generation(payload, trigger_source='api'):
     job = None
     try:
@@ -4775,6 +4811,7 @@ def run_audio_generation(payload, trigger_source='api'):
                 _url = _assinada.get('signedURL') or _assinada.get('signedUrl')
                 if _url:
                     download_url = _url
+                _faxinar_locucoes(_storage)
         except Exception as e:
             print(f"⚠️ Locução ficou só no /tmp (upload ao Storage falhou): {e}", flush=True)
 
