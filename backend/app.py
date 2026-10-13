@@ -9865,17 +9865,19 @@ def api_publish_to_newpost():
         # MÍDIA DIGITAL — este substitui a publicação automática da Base44.
         from core import newpost_feed
         perfis = {'futuro': ('Futuro em Pauta', ["Notícias", "FuturoEmPauta"]),
-                  'midia': ('MÍDIA DIGITAL', ["Notícias", "MídiaDigital"])}
+                  'midia': ('MÍDIA DIGITAL', ["Notícias", "MídiaDigital"]),
+                  # Canal Futebol (13/10/2026): futebol tem perfil próprio.
+                  'futebol': ('Canal Futebol', ["Futebol", "CanalFutebol"])}
         conta = str(data.get('conta') or 'futuro')
         if conta not in perfis:
             return jsonify({"success": False, "error": "Perfil inválido."}), 400
         nome_perfil, tags_padrao = perfis[conta]
-        # MÍDIA DIGITAL sem credenciais próprias cairia CALADO na conta principal
+        # Perfil sem credenciais próprias cairia CALADO na conta principal
         # (newpost_feed._credenciais): recusa e diz o NOME da variável que falta.
-        if conta == 'midia' and not newpost_feed.conta_configurada('midia'):
-            faltam = [v for v in newpost_feed.CONTAS['midia'] if not os.getenv(v, '').strip()]
+        if conta != 'futuro' and not newpost_feed.conta_configurada(conta):
+            faltam = [v for v in newpost_feed.CONTAS[conta] if not os.getenv(v, '').strip()]
             return jsonify({"success": False,
-                            "error": f"Perfil MÍDIA DIGITAL sem credenciais: falta {' e '.join(faltam)} "
+                            "error": f"Perfil {nome_perfil} sem credenciais: falta {' e '.join(faltam)} "
                                      "(Vercel, ambiente Production, e Redeploy)."}), 400
         conteudo = strip_html(content or title).strip()
         tem_link = link.lower().startswith('http')

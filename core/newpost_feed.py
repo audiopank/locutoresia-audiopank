@@ -61,6 +61,9 @@ CONTAS = {
     # Perfil "MÍDIA DIGITAL" (3f51ca52) — notícias pela Busca Notícias, escolhidas
     # à mão; substitui a publicação automática da Base44 (02/10/2026).
     'midia': ('NEWPOST_FEED_EMAIL_MIDIA', 'NEWPOST_FEED_SENHA_MIDIA'),
+    # Perfil "Canal Futebol" (canalfutebol@gmail.com) — notícias de futebol da
+    # Busca Notícias (ge, ESPN, Gazeta), escolhidas à mão (13/10/2026).
+    'futebol': ('NEWPOST_FEED_EMAIL_FUTEBOL', 'NEWPOST_FEED_SENHA_FUTEBOL'),
 }
 
 # ── Tags e série por conta (Gerador → feed) ─────────────────────────────────
