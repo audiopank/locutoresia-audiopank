@@ -44,7 +44,7 @@ def test_remixar_reaproveita_a_voz_sem_gastar_tts():
     assert 'mostrarResultado(r.duracao);' in f
     assert "document.getElementById('btnRemixarTrilha').addEventListener('click', remixarComTrilha)" in js
     html = _ler('templates', 'gerador.html')
-    assert 'id="btnRemixarTrilha"' in html and 'gerador.js?v=32' in html
+    assert 'id="btnRemixarTrilha"' in html and 'gerador.js?v=33' in html
 
 
 def test_escolher_trilha_depois_sugere_o_remix():

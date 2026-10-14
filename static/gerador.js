@@ -448,11 +448,41 @@
 
     // ── Helpers de áudio ─────────────────────────────────────────────────
 
+    // A Vercel recusa resposta de função acima de 4,5 MB (vira HTTP 500). WAV do
+    // Gemini = 48 KB/s, então locução de mais de ~98 s nunca descia inteira pelo
+    // /api/download — o caminho que sobra quando o Storage está fora (14/10/2026).
+    // Por isso o /api/download desce em pedaços (Range) abaixo do limite.
+    const PEDACO_DOWNLOAD = 4 * 1000 * 1000;
+
     async function baixarEDecodificar(url) {
-        const r = await fetch(url);
-        if (!r.ok) throw new Error(`Falha ao buscar o áudio (HTTP ${r.status})`);
-        const arr = await r.arrayBuffer();
-        return await ctx.decodeAudioData(arr);
+        if (!url.startsWith('/api/download/')) {
+            const r = await fetch(url);
+            if (!r.ok) throw new Error(`Falha ao buscar o áudio (HTTP ${r.status})`);
+            return await ctx.decodeAudioData(await r.arrayBuffer());
+        }
+        const partes = [];
+        let inicio = 0, total = Infinity;
+        while (inicio < total) {
+            const r = await fetch(url, {
+                headers: { 'Range': `bytes=${inicio}-${inicio + PEDACO_DOWNLOAD - 1}` }
+            });
+            if (!r.ok) throw new Error(`Falha ao buscar o áudio (HTTP ${r.status})`);
+            const parte = new Uint8Array(await r.arrayBuffer());
+            if (r.status !== 206) {             // servidor mandou o arquivo inteiro
+                partes.length = 0;
+                partes.push(parte);
+                break;
+            }
+            const faixa = /\/(\d+)$/.exec(r.headers.get('Content-Range') || '');
+            total = faixa ? Number(faixa[1]) : inicio + parte.length;
+            if (!parte.length) break;
+            partes.push(parte);
+            inicio += parte.length;
+        }
+        const tudo = new Uint8Array(partes.reduce((s, p) => s + p.length, 0));
+        let pos = 0;
+        for (const p of partes) { tudo.set(p, pos); pos += p.length; }
+        return await ctx.decodeAudioData(tudo.buffer);
     }
 
     // Monta uma faixa no formato que o MixEngine espera (espelha minidaw.js).
