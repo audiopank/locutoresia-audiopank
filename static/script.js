@@ -381,11 +381,9 @@ async function generateAudio() {
 
         // Busca o áudio conferindo que veio SOM, não uma página de erro: sem isto
         // qualquer falha do download virava player vazio em silêncio.
-        const audioResponse = await fetch(audioUrl);
-        if (!audioResponse.ok) throw new Error(`Falha ao buscar o áudio gerado (HTTP ${audioResponse.status})`);
-        const tipoAudio = (audioResponse.headers.get('Content-Type') || '').toLowerCase();
-        if (tipoAudio.includes('json') || tipoAudio.includes('text/html')) throw new Error('O endereço do áudio devolveu erro em vez de som.');
-        lastGeneratedAudioBlob = await audioResponse.blob();
+        // 17/10/2026: o /api/download desce em pedaços (static/baixar-audio.js) — inteiro,
+        // locução de mais de ~98 s passava dos 4,5 MB da Vercel e dava HTTP 500.
+        lastGeneratedAudioBlob = await window.baixarAudioEmPartes(audioUrl);
         if (!lastGeneratedAudioBlob.size) throw new Error('O áudio veio vazio.');
         audioPlayer.src = URL.createObjectURL(lastGeneratedAudioBlob);
         

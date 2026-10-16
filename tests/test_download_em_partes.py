@@ -62,3 +62,56 @@ def test_gerador_baixa_api_download_em_pedacos_abaixo_do_limite_da_vercel():
 
 def test_gerador_js_com_versao_nova_no_template():
     assert '/static/gerador.js?v=33' in _ler('templates', 'gerador.html')
+
+
+# 17/10/2026: Studio (tela inicial) e Narrativa tinham o mesmo limite.
+
+def test_ajudante_compartilhado_baixa_em_pedacos():
+    js = _ler('static', 'baixar-audio.js')
+    assert "url.startsWith('/api/download/')" in js
+    assert "'Range'" in js and 'Content-Range' in js
+    assert 'PEDACO_DOWNLOAD = 4 * 1000 * 1000' in js
+
+
+def test_studio_e_narrativa_usam_o_ajudante():
+    assert 'lastGeneratedAudioBlob = await window.baixarAudioEmPartes(audioUrl);' in _ler('static', 'script.js')
+    assert 'await window.baixarAudioEmPartes(d.download_url)' in _ler('static', 'narrativa.js')
+    idx = _ler('templates', 'index.html')
+    assert idx.index('/static/baixar-audio.js?v=1') < idx.index('/static/script.js?v=8')
+    nar = _ler('templates', 'narrativa.html')
+    assert nar.index('/static/baixar-audio.js?v=1') < nar.index('/static/narrativa.js?v=4')
+
+
+def test_ajudante_monta_o_arquivo_inteiro_no_node():
+    """Roda o ajudante de verdade no Node com um servidor falso que recusa > 4,5 MB."""
+    import shutil
+    import subprocess
+    if not shutil.which('node'):
+        pytest.skip('node não instalado')
+    roteiro = r"""
+const fs = require('fs');
+const arquivo = new Uint8Array(10368044).map((_, i) => i % 251);
+let chamadas = 0;
+global.window = {};
+global.fetch = async (url, op = {}) => {
+  chamadas++;
+  const m = /bytes=(\d+)-(\d+)/.exec((op.headers || {}).Range || '');
+  const a = +m[1], b = Math.min(+m[2], arquivo.length - 1);
+  const corpo = arquivo.slice(a, b + 1);
+  if (corpo.length > 4.5 * 1024 * 1024) return { ok: false, status: 500, headers: { get: () => '' } };
+  return { ok: true, status: 206,
+    headers: { get: h => h === 'Content-Range' ? `bytes ${a}-${b}/${arquivo.length}` : 'audio/wav' },
+    arrayBuffer: async () => corpo.buffer };
+};
+eval(fs.readFileSync(process.argv[1], 'utf8'));
+window.baixarAudioEmPartes('/api/download/x.wav?t=1').then(async blob => {
+  const out = new Uint8Array(await blob.arrayBuffer());
+  const igual = out.length === arquivo.length && out.every((v, i) => v === arquivo[i]);
+  console.log(JSON.stringify({ chamadas, igual, tipo: blob.type }));
+});
+"""
+    r = subprocess.run(['node', '-e', roteiro, os.path.join(RAIZ, 'static', 'baixar-audio.js')],
+                       capture_output=True, text=True, timeout=60)
+    import json
+    d = json.loads(r.stdout.strip().splitlines()[-1])
+    assert d == {'chamadas': 3, 'igual': True, 'tipo': 'audio/wav'}

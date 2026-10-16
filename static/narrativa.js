@@ -306,7 +306,9 @@
                 await esperar(seg + 2, `Bloco ${estado.blocos.indexOf(b) + 1} (${b.personagem}) bateu no limite por minuto`);
                 passo(`Gravando bloco ${estado.blocos.indexOf(b) + 1} (${b.personagem}, ${nomeDaVoz(v.voz)})... tentativa ${tentativa + 1}`);
             }
-            const ab = await (await fetch(d.download_url)).arrayBuffer();   // /tmp da Vercel é efêmero: buscar já
+            // /tmp da Vercel é efêmero: buscar já — em pedaços (static/baixar-audio.js), senão
+            // bloco de mais de ~98 s passa dos 4,5 MB da Vercel e dá HTTP 500.
+            const ab = await (await window.baixarAudioEmPartes(d.download_url)).arrayBuffer();
             b.buffer = await ctx.decodeAudioData(ab);
             b.chaveGerada = chaveGeracao(b);
             b.geracao = (b.geracao || 0) + 1;     // regravar o mesmo texto muda o áudio: a montagem tem que saber

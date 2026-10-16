@@ -36,9 +36,12 @@ def test_ninguem_cola_interrogacao_numa_url_que_ja_tem():
 
 def test_tela_inicial_nao_toca_erro_como_audio():
     js = _ler('static', 'script.js')
-    trecho = js[js.index("const audioResponse = await fetch(audioUrl);"):js.index("audioPlayer.load();")]
-    assert "if (!audioResponse.ok) throw new Error(" in trecho
-    assert "tipoAudio.includes('json') || tipoAudio.includes('text/html')" in trecho
+    trecho = js[js.index("lastGeneratedAudioBlob = await window.baixarAudioEmPartes(audioUrl);"):js.index("audioPlayer.load();")]
+    # 17/10/2026: o fetch e as checagens (HTTP e JSON/HTML no lugar de som) moraram pro
+    # static/baixar-audio.js, que também baixa o /api/download em pedaços.
+    ajudante = _ler('static', 'baixar-audio.js')
+    assert "if (!r.ok) throw new Error(" in ajudante
+    assert "tipo.includes('json') || tipo.includes('text/html')" in ajudante
     assert "if (!lastGeneratedAudioBlob.size) throw new Error('O áudio veio vazio.');" in trecho
     assert "catch (blobError)" not in trecho                                    # o "cai pro src cru" que escondia o erro saiu
 
@@ -60,4 +63,4 @@ def cliente():
 
 
 def test_versao_do_script_subiu(cliente):
-    assert 'script.js?v=7' in cliente.get('/').get_data(as_text=True)
+    assert 'script.js?v=8' in cliente.get('/').get_data(as_text=True)
