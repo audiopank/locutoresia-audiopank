@@ -153,6 +153,24 @@ const MiniDAWIntegrated = () => {
     audioRefs.current[trackId] = audio;
   }, [tracks]);
 
+  // Trecho arrastado de uma faixa pra outra (17/10/2026): a de destino recebe só o
+  // trecho, entrando no MESMO tempo em que ele estava. Faixa com áudio pergunta antes.
+  const receberTrecho = useCallback((origemId: string, destinoId: string, trecho: { url: string; duracao: number; inicio: number }) => {
+    const origem = tracks.find(t => t.id === origemId);
+    const destino = tracks.find(t => t.id === destinoId);
+    if (!origem || !destino) return false;
+    if (destino.audioUrl && !window.confirm(`A faixa "${destino.name}" já tem áudio. Trocar pelo trecho arrastado?`)) return false;
+    const inicio = Math.round(((origem.inicio || 0) + trecho.inicio) * 100) / 100;
+    setTracks(prev => prev.map(t => t.id === destinoId
+      ? { ...t, audioUrl: trecho.url, duration: trecho.duracao, inicio, audio_path: undefined, audio_url_direct: undefined }
+      : t));
+    const antigo = audioRefs.current[destinoId];
+    if (antigo) antigo.pause();
+    audioRefs.current[destinoId] = new Audio(trecho.url);
+    toast({ title: `⤵ Trecho levado para "${destino.name}"`, description: `${trecho.duracao.toFixed(1)} s, entrando em ${inicio.toFixed(1)} s. "Desfazer" na faixa de origem devolve o trecho lá.` });
+    return true;
+  }, [tracks, toast]);
+
   const handleFileUpload = useCallback((trackId: string, file: File) => {
     const url = URL.createObjectURL(file);
     const audio = new Audio(url);
@@ -655,7 +673,7 @@ const MiniDAWIntegrated = () => {
               </Card>
             ) : (
               tracks.map((track) => (
-                <Card key={track.id} className={`bg-white/5 border-2 backdrop-blur-sm ${track.color}`}>
+                <Card key={track.id} data-faixa-id={track.id} className={`bg-white/5 border-2 backdrop-blur-sm ${track.color}`}>
                   <div className="p-5 space-y-4">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3 flex-1">
@@ -701,6 +719,8 @@ const MiniDAWIntegrated = () => {
                           tipo={track.type}
                           onEditado={(url, duracao) => aplicarEdicao(track.id, url, duracao)}
                           tempoMix={isPlaying || currentTime > 0 ? currentTime : null}
+                          faixaId={track.id}
+                          onSoltarTrecho={(destino, trecho) => receberTrecho(track.id, destino, trecho)}
                         />
                         <div className="text-sm text-white/60">Duração: {track.duration.toFixed(1)}s</div>
                         {/* Entra em + fade (17/10/2026): assinatura cantada do jingle no fim do spot. */}

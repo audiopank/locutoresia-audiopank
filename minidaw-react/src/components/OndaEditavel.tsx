@@ -23,6 +23,11 @@ interface Props {
   // Tempo do Play verde (mix) — null quando parado no começo. Vira cursor VERDE
   // na onda e o contador da faixa mostra ele (pedido dele, 17/10/2026).
   tempoMix?: number | null;
+  // Arrastar o trecho marcado pra OUTRA faixa (pedido dele, 17/10/2026: separar a
+  // assinatura cantada do jingle num track próprio). Devolve true se a faixa de
+  // destino aceitou — aí o trecho SAI desta (mover; o Desfazer daqui traz de volta).
+  faixaId?: string;
+  onSoltarTrecho?: (destinoId: string, trecho: { url: string; duracao: number; inicio: number }) => boolean;
 }
 
 const ALTURA = 76;
@@ -50,7 +55,7 @@ const relogio = (s: number) => {
   return `${m}:${resto.toFixed(1).padStart(4, "0").replace(".", ",")}`;
 };
 
-export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null }: Props) {
+export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixaId, onSoltarTrecho }: Props) {
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [erro, setErro] = useState("");
   const [largura, setLargura] = useState(0);
@@ -63,6 +68,8 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null }: Pro
   const [zoom, setZoom] = useState(1);
   const [rolagem, setRolagem] = useState(0);
   const barraRef = useRef<HTMLDivElement>(null);
+  // Arrasto do trecho marcado: posição do "fantasma" que segue o mouse.
+  const [levando, setLevando] = useState<{ x: number; y: number } | null>(null);
   const caixaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -191,16 +198,43 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null }: Pro
     return t0 + frac * (t1 - t0);
   };
 
+  const dentroDoTrecho = (t: number) => !!sel && t >= sel[0] && t <= sel[1];
+
   const onDown = (e: React.PointerEvent) => {
     if (!buffer) return;
     (e.target as Element).setPointerCapture(e.pointerId);
     const t = tempoDoPonteiro(e);
+    // Clicou DENTRO do trecho laranja: começa a levar o trecho pra outra faixa.
+    if (onSoltarTrecho && dentroDoTrecho(t)) {
+      setLevando({ x: e.clientX, y: e.clientY });
+      return;
+    }
     setArrasto([t, t]);
   };
   const onMove = (e: React.PointerEvent) => {
+    if (levando) { setLevando({ x: e.clientX, y: e.clientY }); return; }
     if (arrasto) setArrasto([arrasto[0], tempoDoPonteiro(e)]);
   };
+  const soltarTrecho = (e: React.PointerEvent) => {
+    setLevando(null);
+    if (!buffer || !sel || !onSoltarTrecho) return;
+    const alvo = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-faixa-id]") as HTMLElement | null;
+    const destino = alvo?.dataset.faixaId;
+    if (!destino || destino === faixaId) return;   // soltou fora ou na própria faixa: nada muda
+    try {
+      const i0 = Math.round(sel[0] * buffer.sampleRate);
+      const i1 = Math.round(sel[1] * buffer.sampleRate);
+      const pedaco = new AudioBuffer({ length: i1 - i0, numberOfChannels: buffer.numberOfChannels, sampleRate: buffer.sampleRate });
+      for (let c = 0; c < buffer.numberOfChannels; c++) pedaco.copyToChannel(buffer.getChannelData(c).slice(i0, i1), c);
+      const url = URL.createObjectURL(paraWav(pedaco));
+      cache.set(url, pedaco);
+      if (onSoltarTrecho(destino, { url, duracao: pedaco.duration, inicio: sel[0] })) aplicar(cortarTrecho);
+    } catch (err: any) {
+      setErro(err.message);
+    }
+  };
   const onUp = (e: React.PointerEvent) => {
+    if (levando) return soltarTrecho(e);
     if (!arrasto || !buffer) return;
     const t = tempoDoPonteiro(e);
     const trecho = trechoValido(arrasto[0], t, buffer.duration);
@@ -272,7 +306,7 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null }: Pro
       <div ref={caixaRef} className="relative w-full rounded-lg bg-black/30 border border-white/10 overflow-hidden" style={{ height: ALTURA }}>
         <canvas
           ref={canvasRef}
-          style={{ width: "100%", height: ALTURA, cursor: buffer ? "text" : "default", touchAction: "none" }}
+          style={{ width: "100%", height: ALTURA, cursor: levando ? "grabbing" : buffer ? "text" : "default", touchAction: "none" }}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -298,7 +332,7 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null }: Pro
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-white/60 mr-1">
           {sel
-            ? `Trecho: ${fmt(sel[0])} → ${fmt(sel[1])} (${fmt(sel[1] - sel[0])})`
+            ? `Trecho: ${fmt(sel[0])} → ${fmt(sel[1])} (${fmt(sel[1] - sel[0])})${onSoltarTrecho ? " · arraste o laranja pra outra faixa" : ""}`
             : "Som original da faixa (sem efeitos) · arraste na onda para marcar o erro · clique para pular"}
         </span>
         <Button size="sm" variant="outline" disabled={!sel || editando} onClick={() => aplicar(cortarTrecho)}
@@ -315,6 +349,12 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null }: Pro
         </Button>
       </div>
       {erro && <div className="text-xs text-red-300">{erro}</div>}
+      {levando && sel && (
+        <div className="fixed z-[200] pointer-events-none rounded-md bg-amber-500 text-black text-xs font-semibold px-2 py-1 shadow-lg"
+          style={{ left: levando.x + 14, top: levando.y + 10 }}>
+          ⤵ {fmt(sel[1] - sel[0])} — solte numa faixa
+        </div>
+      )}
     </div>
   );
 }
