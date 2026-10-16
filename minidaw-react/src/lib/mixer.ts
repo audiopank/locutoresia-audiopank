@@ -1,6 +1,7 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
 import { buildEffectChain, hasActiveEffects, type TrackEffects } from "./audioEffects";
 import { detectarTrechos, aplicarGate } from "./gate.js";
+import { linhaDoTempo } from "./linhaDoTempo.js";
 
 export type MixFormat = "mp3" | "wav";
 export type MixQuality = "low" | "medium" | "high" | "ultra";
@@ -10,6 +11,9 @@ export interface MixTrack {
   type: "voiceover" | "music";
   volume: number; // 0-100
   effects?: TrackEffects;
+  // 17/10/2026 (assinatura cantada do jingle no fim): onde a faixa entra e como a trilha desce.
+  inicio?: number;                      // segundos; padrão 0
+  fade?: "voz" | "fim" | "nenhum";      // só trilha; padrão "voz" (ver lib/linhaDoTempo.js)
 }
 
 export interface MixOptions {
@@ -122,15 +126,15 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
   );
   await tmpCtx.close();
 
-  const voiceEnd = Math.max(0, ...decoded.filter((d) => d.type === "voiceover").map((d) => d.buffer.duration));
-  const hasVoice = voiceEnd > 0;
-  const hasMusic = decoded.some((d) => d.type === "music");
-  const longest = Math.max(...decoded.map((d) => d.buffer.duration));
-  // Duração final do mix:
-  //  - COM locução: termina quando a voz acaba + o fade-out da trilha (não arrasta o
-  //    resto da trilha como silêncio/áudio vazio). Ex.: voz 30s + trilha 120s => ~31.1s.
-  //  - SEM locução: usa a faixa mais longa (a própria trilha).
-  const duration = hasVoice ? voiceEnd + (hasMusic ? fadeAfter : 0) : longest;
+  // Linha do tempo (lib/linhaDoTempo.js): onde cada faixa entra, quando cada trilha
+  // desce e quanto dura o mix. Padrão igual ao de antes: trilha desce no fim da voz e
+  // o mix acaba voz + fade (voz 30 s + trilha 120 s => ~31,1 s); sem voz, a faixa
+  // mais longa. Com a assinatura cantada no fim, o mix vai até o fim dela.
+  const tempo = linhaDoTempo(
+    decoded.map((d) => ({ type: d.type, duracao: d.buffer.duration, inicio: d.inicio, fade: d.fade })),
+    fadeAfter
+  );
+  const duration = Math.max(0.1, tempo.duracao);
 
   const frameCount = Math.ceil(duration * TARGET_SAMPLE_RATE);
   const offline = new OfflineAudioContext(2, frameCount, TARGET_SAMPLE_RATE);
@@ -144,7 +148,8 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
   limiter.release.value = 0.1;
   limiter.connect(offline.destination);
 
-  for (const d of decoded) {
+  for (const [indice, d] of decoded.entries()) {
+    const { inicio, fadeEm } = tempo.faixas[indice];
     // Gate de respiração: roda ANTES da cadeia de efeitos (EQ/Compressor/etc),
     // direto no buffer decodificado — é conserto na voz crua, não estilo.
     // Independente de `hasActiveEffects`/`effects.enabled`: por isso é
@@ -163,9 +168,9 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
     const vol = Math.max(0, (d.volume ?? 100) / 100);
     gain.gain.setValueAtTime(vol, 0);
 
-    if (d.type === "music" && hasVoice) {
-      gain.gain.setValueAtTime(vol, voiceEnd);
-      gain.gain.linearRampToValueAtTime(0.0001, voiceEnd + fadeAfter);
+    if (fadeEm != null) {
+      gain.gain.setValueAtTime(vol, fadeEm);
+      gain.gain.linearRampToValueAtTime(0.0001, fadeEm + fadeAfter);
     }
 
     // Cadeia de efeitos por faixa (EQ + Compressor + Reverb + Nivelar) bakeada no mix
@@ -176,7 +181,7 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
     } else {
       src.connect(gain).connect(limiter);
     }
-    src.start(0);
+    src.start(inicio);
   }
 
   const rendered = await offline.startRendering();

@@ -20,6 +20,7 @@ import MasterizarPanel from "./MasterizarPanel";
 import { OndaEditavel } from "./OndaEditavel";
 import { ProjetoNoPC } from "./ProjetoNoPC";
 import { mixToMp3, downloadBlob } from "@/lib/mixer";
+import { fimDaVoz } from "@/lib/linhaDoTempo.js";
 import { defaultEffects, type TrackEffects } from "@/lib/audioEffects";
 
 interface Track {
@@ -35,7 +36,15 @@ interface Track {
   // os dois, senão o projeto salvo voltaria com o áudio antigo (projectStorage).
   audio_path?: string;
   audio_url_direct?: string;
+  // 17/10/2026 — assinatura cantada do jingle no fim (lib/linhaDoTempo.js):
+  inicio?: number;                      // "Entra em" (s)
+  fade?: "voz" | "fim" | "nenhum";      // só trilha
 }
+
+// O que o motor de mix precisa de cada faixa (Play verde, Prévia e Exportar iguais).
+const paraMix = (t: Track) => ({
+  audioUrl: t.audioUrl, type: t.type, volume: t.volume, effects: t.effects, inicio: t.inicio || 0, fade: t.fade,
+});
 
 type TabKey = "roteiro" | "trilha" | "upload" | "multitrack" | "mix" | "master";
 
@@ -238,7 +247,7 @@ const MiniDAWIntegrated = () => {
       toast({ title: "Nada para tocar", description: "Adicione ao menos uma faixa com áudio.", variant: "destructive" });
       return;
     }
-    const faixas = playable.map((t) => ({ audioUrl: t.audioUrl, type: t.type, volume: t.volume, effects: t.effects }));
+    const faixas = playable.map(paraMix);
     const chave = JSON.stringify(faixas);
     let tocar = atual;
     if (!atual || atual.chave !== chave) {
@@ -279,10 +288,19 @@ const MiniDAWIntegrated = () => {
   // BARRA DE ESPAÇO (pedido dele, 17/10/2026): 1 toque = Play/Pausa do Play verde;
   // 2 toques rápidos (< 350 ms) = Stop e volta pro começo. Digitando num campo
   // (roteiro, nome da faixa…) o Espaço continua sendo espaço.
-  const atalhoRef = useRef({ playPause: () => {}, pararMix: () => {} } as { playPause: () => void; pararMix: () => void });
+  const atalhoRef = useRef({ playPause: () => {}, pararMix: () => {}, novaFaixa: () => {} } as {
+    playPause: () => void; pararMix: () => void; novaFaixa: (tipo: "voiceover" | "music") => void;
+  });
   useEffect(() => {
     let ultimoToque = 0;
     const tecla = (e: KeyboardEvent) => {
+      // Alt+V = nova faixa de voz, Alt+T = nova faixa de trilha. (Ctrl+N o Chrome
+      // não deixa site nenhum usar: é "nova janela".)
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === "KeyV" || e.code === "KeyT")) {
+        e.preventDefault();
+        atalhoRef.current.novaFaixa(e.code === "KeyV" ? "voiceover" : "music");
+        return;
+      }
       if (e.code !== "Space" && e.key !== " ") return;
       const alvo = e.target as HTMLElement | null;
       const tag = (alvo?.tagName || "").toLowerCase();
@@ -302,7 +320,7 @@ const MiniDAWIntegrated = () => {
     window.addEventListener("keydown", tecla, true);
     return () => window.removeEventListener("keydown", tecla, true);
   }, []);
-  atalhoRef.current = { playPause, pararMix };   // sempre a versão atual (estado novo)
+  atalhoRef.current = { playPause, pararMix, novaFaixa: addTrack };   // sempre a versão atual (estado novo)
 
   const saveProject = useCallback(() => {
     setIsSaving(true);
@@ -322,7 +340,7 @@ const MiniDAWIntegrated = () => {
     toast({ title: "Mixando áudio...", description: "Renderizando e codificando o MP3 (fade-out automático da trilha)." });
     try {
       const blob = await mixToMp3(
-        playable.map((t) => ({ audioUrl: t.audioUrl, type: t.type, volume: t.volume, effects: t.effects })),
+        playable.map(paraMix),
         { musicFadeAfterVoice: 1.1 }
       );
       downloadBlob(blob, `${projectId}.mp3`);
@@ -347,7 +365,7 @@ const MiniDAWIntegrated = () => {
     toast({ title: "Gerando prévia...", description: "Aplicando os efeitos e o fade-out para você ouvir o resultado real." });
     try {
       const blob = await mixToMp3(
-        playable.map((t) => ({ audioUrl: t.audioUrl, type: t.type, volume: t.volume, effects: t.effects })),
+        playable.map(paraMix),
         { musicFadeAfterVoice: 1.1, format: "wav" }
       );
       setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
@@ -514,7 +532,7 @@ const MiniDAWIntegrated = () => {
               <div className="text-sm">
                 <span className="text-white/60">Tempo:</span>
                 <span className="ml-2 font-mono text-lg">{currentTime.toFixed(1)}s</span>
-                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade · Espaço = play/pausa · 2× = stop"}</div>
+                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade · Espaço = play/pausa · 2× = stop · Alt+V nova voz · Alt+T nova trilha"}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -685,6 +703,44 @@ const MiniDAWIntegrated = () => {
                           tempoMix={isPlaying || currentTime > 0 ? currentTime : null}
                         />
                         <div className="text-sm text-white/60">Duração: {track.duration.toFixed(1)}s</div>
+                        {/* Entra em + fade (17/10/2026): assinatura cantada do jingle no fim do spot. */}
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <span className="font-medium text-white/80">Entra em:</span>
+                          <Input
+                            type="number" min={0} step={0.1}
+                            value={track.inicio ?? 0}
+                            onChange={(e) => {
+                              const v = Math.max(0, parseFloat(e.target.value) || 0);
+                              setTracks(prev => prev.map(t => t.id === track.id ? { ...t, inicio: v } : t));
+                            }}
+                            className="w-24 h-8 bg-white/10 border-white/20 text-white"
+                            aria-label="Entra em (segundos)"
+                          />
+                          <span className="text-white/50">s</span>
+                          <Button size="sm" variant="outline" className="h-8 bg-white/5 border-white/20 text-white hover:bg-white/10"
+                            title="Põe esta faixa pra entrar quando a última fala da locução acaba (ex.: assinatura cantada do jingle)"
+                            onClick={() => {
+                              const fim = fimDaVoz(tracks.filter(t => t.id !== track.id).map(t => ({ type: t.type, duracao: t.duration, inicio: t.inicio })));
+                              setTracks(prev => prev.map(t => t.id === track.id ? { ...t, inicio: Math.round(fim * 10) / 10 } : t));
+                            }}>
+                            ⇥ logo depois da voz
+                          </Button>
+                          {track.type === "music" && (
+                            <>
+                              <span className="font-medium text-white/80 ml-2">Fade da trilha:</span>
+                              <select
+                                value={track.fade || "voz"}
+                                onChange={(e) => setTracks(prev => prev.map(t => t.id === track.id ? { ...t, fade: e.target.value as Track["fade"] } : t))}
+                                className="h-8 rounded-md bg-slate-900 border border-white/20 text-white px-2"
+                                aria-label="Fade da trilha"
+                              >
+                                <option value="voz">desce no fim da locução</option>
+                                <option value="fim">desce no fim do spot (fica por baixo do jingle)</option>
+                                <option value="nenhum">sem fade (toca até o fim — use no jingle)</option>
+                              </select>
+                            </>
+                          )}
+                        </div>
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-medium text-white/80 w-16">Volume:</span>
                           <Slider
