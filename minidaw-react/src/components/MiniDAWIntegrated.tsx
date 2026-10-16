@@ -51,7 +51,12 @@ const MiniDAWIntegrated = () => {
   const navigate = useNavigate();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime] = useState(0);
+  const [montandoPlay, setMontandoPlay] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  // Play verde = o MIX de verdade (efeitos, gate e fade da trilha), igual à Prévia/Exportar.
+  // Antes tocava as faixas cruas lado a lado: mexer no reverb/EQ não mudava nada no
+  // play e a trilha não fazia fade (17/10/2026). O WAV fica guardado enquanto nada muda.
+  const mixPlayRef = useRef<{ chave: string; url: string; audio: HTMLAudioElement } | null>(null);
   const [isMixing, setIsMixing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -207,17 +212,47 @@ const MiniDAWIntegrated = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const playPause = useCallback(() => {
-    if (isPlaying) {
-      Object.values(audioRefs.current).forEach(audio => audio.pause());
+  const playPause = useCallback(async () => {
+    const atual = mixPlayRef.current;
+    if (isPlaying && atual) {
+      atual.audio.pause();
       setIsPlaying(false);
-    } else {
-      Object.values(audioRefs.current).forEach(audio => {
-        if (audio.src) audio.play().catch(e => console.log("Play error:", e));
-      });
-      setIsPlaying(true);
+      return;
     }
-  }, [isPlaying]);
+    const playable = tracks.filter((t) => t.audioUrl);
+    if (playable.length === 0) {
+      toast({ title: "Nada para tocar", description: "Adicione ao menos uma faixa com áudio.", variant: "destructive" });
+      return;
+    }
+    const faixas = playable.map((t) => ({ audioUrl: t.audioUrl, type: t.type, volume: t.volume, effects: t.effects }));
+    const chave = JSON.stringify(faixas);
+    let tocar = atual;
+    if (!atual || atual.chave !== chave) {
+      setMontandoPlay(true);
+      try {
+        const blob = await mixToMp3(faixas, { musicFadeAfterVoice: 1.1, format: "wav" });
+        if (atual) { atual.audio.pause(); URL.revokeObjectURL(atual.url); }
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.addEventListener("timeupdate", () => setCurrentTime(audio.currentTime));
+        audio.addEventListener("ended", () => { setIsPlaying(false); setCurrentTime(0); audio.currentTime = 0; });
+        tocar = { chave, url, audio };
+        mixPlayRef.current = tocar;
+      } catch (e: any) {
+        console.error("Erro ao montar o play:", e);
+        toast({ title: "Erro ao tocar o mix", description: e?.message || "Falha na mixagem", variant: "destructive" });
+        return;
+      } finally {
+        setMontandoPlay(false);
+      }
+    }
+    try {
+      await tocar!.audio.play();
+      setIsPlaying(true);
+    } catch (e) {
+      console.log("Play error:", e);
+    }
+  }, [isPlaying, tracks, toast]);
 
   const saveProject = useCallback(() => {
     setIsSaving(true);
@@ -413,13 +448,16 @@ const MiniDAWIntegrated = () => {
               <Button
                 size="lg"
                 onClick={playPause}
+                disabled={montandoPlay}
+                title="Toca o mix de verdade: efeitos, gate e fade da trilha — igual ao Exportar"
                 className="w-14 h-14 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-500/20"
               >
-                {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
+                {montandoPlay ? <Loader2 className="w-6 h-6 animate-spin" /> : isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
               </Button>
               <div className="text-sm">
                 <span className="text-white/60">Tempo:</span>
                 <span className="ml-2 font-mono text-lg">{currentTime.toFixed(1)}s</span>
+                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade"}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">

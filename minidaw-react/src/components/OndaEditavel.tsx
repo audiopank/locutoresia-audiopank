@@ -216,7 +216,7 @@ export function OndaEditavel({ audioUrl, tipo, onEditado }: Props) {
         <span className="text-white/60 mr-1">
           {sel
             ? `Trecho: ${fmt(sel[0])} → ${fmt(sel[1])} (${fmt(sel[1] - sel[0])})`
-            : "Arraste na onda para marcar o erro · clique para pular"}
+            : "Som original da faixa (sem efeitos) · arraste na onda para marcar o erro · clique para pular"}
         </span>
         <Button size="sm" variant="outline" disabled={!sel || editando} onClick={() => aplicar(cortarTrecho)}
           className="bg-white/5 border-white/20 text-white hover:bg-white/10" title="Remove o trecho e junta as pontas (micro-fade, sem estalo)">

@@ -97,7 +97,7 @@ export const TrackEffectsPanel = ({ effects, onChange, trackType }: TrackEffects
             </div>
           </div>
 
-          <p className="text-xs text-white/40">Os efeitos são aplicados no mix final (Exportar/Mix Rápido).</p>
+          <p className="text-xs text-white/40">Para ouvir os efeitos use o Play verde ▶ (ou Ouvir Prévia) — o player da faixa toca o som original.</p>
         </div>
       )}
     </div>
