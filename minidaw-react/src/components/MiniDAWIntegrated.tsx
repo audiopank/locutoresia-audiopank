@@ -18,6 +18,7 @@ import { TrackEffectsPanel } from "@/components/TrackEffectsPanel";
 import { VipProjects } from "@/components/VipProjects";
 import MasterizarPanel from "./MasterizarPanel";
 import { OndaEditavel } from "./OndaEditavel";
+import { ProjetoNoPC } from "./ProjetoNoPC";
 import { mixToMp3, downloadBlob } from "@/lib/mixer";
 import { defaultEffects, type TrackEffects } from "@/lib/audioEffects";
 
@@ -212,6 +213,19 @@ const MiniDAWIntegrated = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Contador e cursor verde suaves enquanto o mix toca (timeupdate só vem ~4x/s).
+  useEffect(() => {
+    if (!isPlaying) return;
+    let raf = 0;
+    const passo = () => {
+      const a = mixPlayRef.current?.audio;
+      if (a) setCurrentTime(a.currentTime);
+      raf = requestAnimationFrame(passo);
+    };
+    raf = requestAnimationFrame(passo);
+    return () => cancelAnimationFrame(raf);
+  }, [isPlaying]);
+
   const playPause = useCallback(async () => {
     const atual = mixPlayRef.current;
     if (isPlaying && atual) {
@@ -361,6 +375,13 @@ const MiniDAWIntegrated = () => {
               <Button onClick={() => setVipOpen(true)} variant="outline" className="gap-2 border-yellow-500/50 hover:bg-yellow-500/10">
                 <Star className="w-4 h-4 text-yellow-500" /> VIP
               </Button>
+              {/* Salvar/Abrir no PC (17/10/2026): funciona sem o Supabase (bloqueado por cota). */}
+              <ProjetoNoPC
+                projectId={projectId}
+                getCurrent={() => ({ projectId, dbProjectId, roteiro, tracks })}
+                onLoad={loadSnapshot}
+                toast={toast}
+              />
               <Button onClick={createNewProject} variant="outline" className="gap-2 border-white/20 hover:bg-white/10">
                 <Plus className="w-4 h-4" /> Novo
               </Button>
@@ -625,6 +646,7 @@ const MiniDAWIntegrated = () => {
                           audioUrl={track.audioUrl}
                           tipo={track.type}
                           onEditado={(url, duracao) => aplicarEdicao(track.id, url, duracao)}
+                          tempoMix={isPlaying || currentTime > 0 ? currentTime : null}
                         />
                         <div className="text-sm text-white/60">Duração: {track.duration.toFixed(1)}s</div>
                         <div className="flex items-center gap-3">

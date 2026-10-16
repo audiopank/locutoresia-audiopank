@@ -18,6 +18,9 @@ interface Props {
   audioUrl: string;
   tipo: "voiceover" | "music";
   onEditado: (url: string, duracao: number) => void;
+  // Tempo do Play verde (mix) — null quando parado no começo. Vira cursor VERDE
+  // na onda e o contador da faixa mostra ele (pedido dele, 17/10/2026).
+  tempoMix?: number | null;
 }
 
 const ALTURA = 76;
@@ -36,8 +39,15 @@ async function decodificarUrl(url: string): Promise<AudioBuffer> {
 }
 
 const fmt = (s: number) => s.toFixed(2).replace(".", ",") + " s";
+// Contador estilo DAW: m:ss,d
+const relogio = (s: number) => {
+  const t = Math.max(0, s || 0);
+  const m = Math.floor(t / 60);
+  const resto = t - m * 60;
+  return `${m}:${resto.toFixed(1).padStart(4, "0").replace(".", ",")}`;
+};
 
-export function OndaEditavel({ audioUrl, tipo, onEditado }: Props) {
+export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null }: Props) {
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [erro, setErro] = useState("");
   const [largura, setLargura] = useState(0);
@@ -130,7 +140,12 @@ export function OndaEditavel({ audioUrl, tipo, onEditado }: Props) {
       g.fillStyle = "#f87171";
       g.fillRect(Math.min(largura - 2, x(tempo)), 0, 2, ALTURA);
     }
-  }, [envelope, largura, sel, arrasto, tempo, buffer, tipo]);
+    // Cursor do Play verde (mix), igual em todas as faixas.
+    if (dur && tempoMix != null && tempoMix <= dur) {
+      g.fillStyle = "#4ade80";
+      g.fillRect(Math.min(largura - 2, x(tempoMix)), 0, 2, ALTURA);
+    }
+  }, [envelope, largura, sel, arrasto, tempo, buffer, tipo, tempoMix]);
 
   const tempoDoPonteiro = (e: React.PointerEvent) => {
     const r = canvasRef.current!.getBoundingClientRect();
@@ -194,8 +209,17 @@ export function OndaEditavel({ audioUrl, tipo, onEditado }: Props) {
     onEditado(ultimo.url, ultimo.duracao);
   };
 
+  const doMix = tempoMix != null;
   return (
     <div className="space-y-2">
+      {/* Contador da faixa: posição do cursor (vermelho) ou do Play verde (mix). */}
+      <div className="flex items-baseline gap-2">
+        <span className={`font-mono text-xl tabular-nums ${doMix ? "text-green-400" : "text-white"}`}>
+          ⏱ {relogio(doMix ? tempoMix! : tempo)}
+        </span>
+        <span className="font-mono text-sm text-white/50 tabular-nums">/ {relogio(buffer?.duration || 0)}</span>
+        <span className="text-xs text-white/40">{doMix ? "tempo do mix (Play verde)" : "cursor da faixa"}</span>
+      </div>
       <div ref={caixaRef} className="relative w-full rounded-lg bg-black/30 border border-white/10 overflow-hidden" style={{ height: ALTURA }}>
         <canvas
           ref={canvasRef}
