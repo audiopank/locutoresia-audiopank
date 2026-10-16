@@ -73,3 +73,29 @@ export function silenciarTrecho(canais, sr, ini, fim, fadeMs = 10) {
         return out;
     });
 }
+
+// ── Zoom + rolagem por faixa (17/10/2026) ──────────────────────────────────
+// Pedido dele: zoom +/− nos objetos (voz e trilha) e barra de rolagem embaixo.
+// Conteúdo "virtual" = largura × zoom pixels; a tela mostra `largura` px a
+// partir da rolagem. O canvas nunca cresce (limite de ~32 mil px do navegador).
+
+/** [t0, t1] em segundos do que aparece na tela. */
+export function janelaVisivel(duracao, largura, zoom, rolagem) {
+    const total = largura * zoom;
+    const r = Math.max(0, Math.min(total - largura, rolagem || 0));
+    return [(r / total) * duracao, ((r + largura) / total) * duracao];
+}
+
+/** Rolagem que deixa o tempo `t` no pixel `xTela` com este zoom (limitada ao conteúdo). */
+export function rolagemParaAncora(t, xTela, duracao, largura, zoom) {
+    const total = largura * zoom;
+    const r = (duracao ? t / duracao : 0) * total - xTela;
+    return Math.round(Math.max(0, Math.min(total - largura, r)));
+}
+
+/** Envelope só do trecho [t0, t1] do áudio, em `largura` pixels. */
+export function picosDaJanela(canal, sr, t0, t1, largura) {
+    const i0 = Math.max(0, Math.min(canal.length - 1, Math.floor(t0 * sr)));
+    const i1 = Math.max(i0 + 1, Math.min(canal.length, Math.ceil(t1 * sr)));
+    return picos(canal.subarray(i0, i1), largura);
+}

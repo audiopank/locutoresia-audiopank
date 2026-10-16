@@ -268,6 +268,42 @@ const MiniDAWIntegrated = () => {
     }
   }, [isPlaying, tracks, toast]);
 
+  // Stop de verdade: para e volta pro começo (dois toques no Espaço).
+  const pararMix = useCallback(() => {
+    const atual = mixPlayRef.current;
+    if (atual) { atual.audio.pause(); atual.audio.currentTime = 0; }
+    setIsPlaying(false);
+    setCurrentTime(0);
+  }, []);
+
+  // BARRA DE ESPAÇO (pedido dele, 17/10/2026): 1 toque = Play/Pausa do Play verde;
+  // 2 toques rápidos (< 350 ms) = Stop e volta pro começo. Digitando num campo
+  // (roteiro, nome da faixa…) o Espaço continua sendo espaço.
+  const atalhoRef = useRef({ playPause: () => {}, pararMix: () => {} } as { playPause: () => void; pararMix: () => void });
+  useEffect(() => {
+    let ultimoToque = 0;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.code !== "Space" && e.key !== " ") return;
+      const alvo = e.target as HTMLElement | null;
+      const tag = (alvo?.tagName || "").toLowerCase();
+      if (alvo?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select") return;
+      if (document.querySelector('[role="dialog"]')) return;   // janela aberta (VIP, gerador de voz…)
+      e.preventDefault();          // não rola a página nem "clica" o botão em foco
+      if (e.repeat) return;        // tecla segurada não conta como vários toques
+      const agora = Date.now();
+      if (agora - ultimoToque < 350) {
+        ultimoToque = 0;
+        atalhoRef.current.pararMix();
+      } else {
+        ultimoToque = agora;
+        atalhoRef.current.playPause();
+      }
+    };
+    window.addEventListener("keydown", tecla, true);
+    return () => window.removeEventListener("keydown", tecla, true);
+  }, []);
+  atalhoRef.current = { playPause, pararMix };   // sempre a versão atual (estado novo)
+
   const saveProject = useCallback(() => {
     setIsSaving(true);
     setTimeout(() => {
@@ -470,7 +506,7 @@ const MiniDAWIntegrated = () => {
                 size="lg"
                 onClick={playPause}
                 disabled={montandoPlay}
-                title="Toca o mix de verdade: efeitos, gate e fade da trilha — igual ao Exportar"
+                title="Toca o mix de verdade: efeitos, gate e fade da trilha — igual ao Exportar. Atalho: Espaço (2 toques = Stop)"
                 className="w-14 h-14 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-500/20"
               >
                 {montandoPlay ? <Loader2 className="w-6 h-6 animate-spin" /> : isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
@@ -478,7 +514,7 @@ const MiniDAWIntegrated = () => {
               <div className="text-sm">
                 <span className="text-white/60">Tempo:</span>
                 <span className="ml-2 font-mono text-lg">{currentTime.toFixed(1)}s</span>
-                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade"}</div>
+                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade · Espaço = play/pausa · 2× = stop"}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">

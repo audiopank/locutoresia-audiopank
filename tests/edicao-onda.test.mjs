@@ -71,3 +71,31 @@ test('trechoValido: ordena, limita à duração e recusa trecho menor que 20 ms'
     assert.deepEqual(E.trechoValido(8, 12, 10), [8, 10]);
     assert.equal(E.trechoValido(2, 2.01, 10), null);
 });
+
+// ── zoom + rolagem (17/10/2026) ─────────────────────────────────────────────
+test('janelaVisivel: sem zoom mostra tudo; com zoom 4x e rolagem mostra 1/4', () => {
+    assert.deepEqual(E.janelaVisivel(20, 1000, 1, 0), [0, 20]);
+    assert.deepEqual(E.janelaVisivel(20, 1000, 4, 0), [0, 5]);
+    assert.deepEqual(E.janelaVisivel(20, 1000, 4, 2000), [10, 15]);
+    // rolagem além do fim é limitada
+    assert.deepEqual(E.janelaVisivel(20, 1000, 4, 99999), [15, 20]);
+});
+
+test('rolagemParaAncora: o ponto do tempo fica no mesmo x da tela ao mudar o zoom', () => {
+    // t=10 s no x=300 com zoom 8x: conteúdo de 8000 px, t=10 s está em 4000 px → rolagem 3700
+    assert.equal(E.rolagemParaAncora(10, 300, 20, 1000, 8), 3700);
+    assert.equal(E.rolagemParaAncora(0.1, 900, 20, 1000, 2), 0);        // não passa do começo
+    assert.equal(E.rolagemParaAncora(19.9, 0, 20, 1000, 2), 1000);      // nem do fim
+    const [t0, t1] = E.janelaVisivel(20, 1000, 8, 3700);
+    assert.ok(Math.abs(t0 + (300 / 1000) * (t1 - t0) - 10) < 1e-9);
+});
+
+test('picosDaJanela: envelope só do trecho visível', () => {
+    const canal = new Float32Array(1000);
+    canal[750] = 0.9;   // pico em 75% do áudio
+    const sr = 100;     // 10 s
+    const p = E.picosDaJanela(canal, sr, 7, 8, 10);
+    assert.equal(p.length, 10);
+    assert.ok(p.some(([, mx]) => mx === Math.fround(0.9)));
+    assert.ok(E.picosDaJanela(canal, sr, 0, 5, 10).every(([, mx]) => mx === 0));
+});
