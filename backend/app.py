@@ -6688,6 +6688,159 @@ def api_gerador_publicar_feed():
         return jsonify({"success": False, "error": str(e)[:200]}), 500
 
 
+# ── Campanhas agendadas (16/10/2026) ─────────────────────────────────────────
+# Substitui o agente da Base44/AppVerse que postava as campanhas do ecossistema
+# a cada 2 dias. O produtor cria/aprova cada campanha; o cron só republica o que
+# ele aprovou (09/15/21h, 1 por horário, teto por dia). Lógica em core/campanhas.py;
+# tabelas no banco do FEED (CREATE_CAMPANHAS_FEED.sql). Rotas privadas, menos o cron.
+
+@app.route('/campanhas')
+def campanhas_page():
+    return render_template('campanhas.html')
+
+
+def _campanhas_conta_ok(conta):
+    from core import campanhas as _camp
+    if conta not in _camp.contas_configuradas():
+        return jsonify({"success": False, "error": f"O perfil '{conta}' não tem login configurado no ambiente."}), 400
+    return None
+
+
+@app.route('/api/campanhas', methods=['GET'])
+def api_campanhas_listar():
+    from core import campanhas as _camp
+    todas, erros = _camp.listar_todas()
+    try:
+        teto = _camp.banco.ler_teto()
+    except Exception as e:
+        teto, erros = 1, erros + [f'teto: {e}']
+    return jsonify({"success": True, "campanhas": todas, "teto_diario": teto, "erros": erros,
+                    "perfis": _camp.contas_configuradas(), "hoje": _camp.hoje_brt().isoformat()})
+
+
+@app.route('/api/campanhas', methods=['POST'])
+def api_campanhas_criar():
+    from core import campanhas as _camp
+    dados = request.get_json() or {}
+    linha, erro = _camp.validar(dados, hoje=_camp.hoje_brt())
+    if erro:
+        return jsonify({"success": False, "error": erro}), 400
+    recusa = _campanhas_conta_ok(linha['conta'])
+    if recusa:
+        return recusa
+    try:
+        criada = _camp.banco.criar(linha['conta'], linha)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)[:300]}), 502
+    return jsonify({"success": True, "campanha": criada})
+
+
+@app.route('/api/campanhas/<cid>', methods=['PATCH'])
+def api_campanhas_editar(cid):
+    from core import campanhas as _camp
+    dados = request.get_json() or {}
+    conta = str(dados.get('conta') or '')
+    recusa = _campanhas_conta_ok(conta)
+    if recusa:
+        return recusa
+    try:
+        atual = next((c for c in _camp.banco.listar(conta) if str(c.get('id')) == str(cid)), None)
+        if not atual:
+            return jsonify({"success": False, "error": "Campanha não encontrada."}), 404
+        campos = {}
+        if 'ativa' in dados:
+            campos['ativa'] = bool(dados['ativa'])
+        editaveis = ('titulo', 'legenda', 'tags', 'regra', 'intervalo_dias', 'dias_semana', 'horario', 'proxima_em')
+        if any(k in dados for k in editaveis):
+            junto = dict(atual, **{k: dados[k] for k in editaveis if k in dados})
+            junto['conta'] = conta
+            junto['comeca_em'] = junto.get('proxima_em')
+            # Data nova só pode ser hoje ou depois; manter a atual (mesmo atrasada) vale.
+            nova_data = 'proxima_em' in dados and str(dados['proxima_em']) != str(atual.get('proxima_em'))
+            linha, erro = _camp.validar(junto, hoje=_camp.hoje_brt(), permitir_passado=not nova_data)
+            if erro:
+                return jsonify({"success": False, "error": erro}), 400
+            campos.update({k: linha[k] for k in ('titulo', 'legenda', 'tags', 'regra', 'intervalo_dias',
+                                                 'dias_semana', 'horario', 'proxima_em')})
+        if not campos:
+            return jsonify({"success": False, "error": "Nada para mudar."}), 400
+        return jsonify({"success": True, "campanha": _camp.banco.atualizar(conta, cid, campos)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)[:300]}), 502
+
+
+@app.route('/api/campanhas/<cid>', methods=['DELETE'])
+def api_campanhas_apagar(cid):
+    from core import campanhas as _camp
+    conta = str(request.args.get('conta') or '')
+    recusa = _campanhas_conta_ok(conta)
+    if recusa:
+        return recusa
+    try:
+        return jsonify({"success": _camp.banco.apagar(conta, cid)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)[:300]}), 502
+
+
+@app.route('/api/campanhas/config', methods=['POST'])
+def api_campanhas_config():
+    from core import campanhas as _camp
+    try:
+        teto = int((request.get_json() or {}).get('teto_diario'))
+    except (TypeError, ValueError):
+        teto = 0
+    if not 1 <= teto <= 3:
+        return jsonify({"success": False, "error": "O teto vai de 1 a 3 campanhas por dia."}), 400
+    try:
+        _camp.banco.gravar_teto(teto)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)[:300]}), 502
+    return jsonify({"success": True, "teto_diario": teto})
+
+
+@app.route('/api/campanhas/midia', methods=['POST'])
+def api_campanhas_midia():
+    """Sobe o áudio (MP3 do Gerador) ou a imagem da campanha pro storage do feed,
+    pelo perfil que vai publicar. Um arquivo por chamada (limite de 4,5 MB da Vercel)."""
+    from core import campanhas as _camp
+    import base64 as _b64
+    dados = request.get_json() or {}
+    conta = str(dados.get('conta') or '')
+    recusa = _campanhas_conta_ok(conta)
+    if recusa:
+        return recusa
+    tipo = 'audio' if dados.get('tipo') == 'audio' else 'imagem'
+    mime = 'audio/mpeg' if tipo == 'audio' else ('image/png' if dados.get('mime') == 'image/png' else 'image/jpeg')
+    bruto = str(dados.get('base64') or '')
+    if ',' in bruto[:80]:
+        bruto = bruto.split(',', 1)[1]
+    try:
+        arquivo = _b64.b64decode(bruto)
+    except Exception:
+        return jsonify({"success": False, "error": "Arquivo inválido."}), 400
+    if not arquivo:
+        return jsonify({"success": False, "error": "Arquivo vazio."}), 400
+    if len(arquivo) > 3_200_000:
+        return jsonify({"success": False, "error": "Arquivo grande demais (limite ~3 MB)."}), 400
+    nome = str(dados.get('nome') or 'campanha').strip()[:80]
+    try:
+        return jsonify({"success": True, "url": _camp.subir_midia(conta, tipo, nome, arquivo, mime)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)[:300]}), 502
+
+
+@app.route('/api/cron/campanhas', methods=['GET', 'POST'])
+def api_cron_campanhas():
+    """Vercel Cron 12/18/00 UTC (= 09/15/21h). Mesmo segredo do publish-news."""
+    cron_secret = os.environ.get('CRON_SECRET')
+    if cron_secret and request.headers.get('Authorization', '') != f'Bearer {cron_secret}':
+        return jsonify({'success': False, 'error': 'não autorizado'}), 401
+    from core import campanhas as _camp
+    resultado = _camp.disparar()
+    print(f"[cron/campanhas] {resultado}", flush=True)
+    return jsonify(dict(resultado, success=True))
+
+
 # ── Receita do dia (01/10/2026) ──────────────────────────────────────────────
 # Substitui a Base44 no perfil "Receitas Favoritas Grandes Dicas" da NewPost-IA.
 # NADA sai sozinho ("tudo tem que passar pela nossa mão"): a tela sugere

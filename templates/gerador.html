@@ -466,6 +466,11 @@
         <button id="btnPublicarFeed" class="btn btn-outline-light btn-sm">
             <i class="fas fa-broadcast-tower me-1"></i>Feed
         </button>
+        <!-- Campanha agendada (16/10/2026): o feed repete este spot nos dias/horários
+             escolhidos (página /campanhas). Módulo static/agendar-campanha.js. -->
+        <button id="btnAgendarCampanha" class="btn btn-outline-light btn-sm" title="Agendar este spot como campanha que se repete no feed (09h, 15h ou 21h)">
+            <i class="fas fa-calendar-plus me-1"></i>Agendar
+        </button>
         <!-- Vídeo do episódio (06/10/2026): MP4 9:16 pro YouTube Shorts, molde do Filmora dele.
              Módulo à parte (static/video-episodio.js) — só lê o resultado daqui. -->
         <button id="btnVideoEpisodio" class="btn btn-outline-light btn-sm" title="Monta o MP4 vertical do episódio (capa + Episódio N + ESCUTE A DICA + final com WhatsApp e LIKE) pro YouTube Shorts">
@@ -532,6 +537,8 @@
     <script src="/static/gerador.js?v=33"></script>
     <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
     <script src="/static/video-episodio.js?v=5"></script>
+    <script src="/static/campanha-form.js?v=1"></script>
+    <script src="/static/agendar-campanha.js?v=1"></script>
     <!-- VoxCraft: acima da barra fixa do resultado (#barraResultado). -->
     <style>.voxcraft-widget { bottom: 150px; }</style>
     {% include '_voxcraft_widget.html' %}

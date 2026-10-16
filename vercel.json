@@ -17,7 +17,10 @@
   "crons": [
     { "path": "/api/cron/publish-news", "schedule": "0 12 * * *" },
     { "path": "/api/cron/publish-news", "schedule": "0 15 * * *" },
-    { "path": "/api/cron/publish-news", "schedule": "0 21 * * *" }
+    { "path": "/api/cron/publish-news", "schedule": "0 21 * * *" },
+    { "path": "/api/cron/campanhas", "schedule": "0 12 * * *" },
+    { "path": "/api/cron/campanhas", "schedule": "0 18 * * *" },
+    { "path": "/api/cron/campanhas", "schedule": "0 0 * * *" }
   ],
   "env": {
     "FLASK_ENV": "production",

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Campanhas — Locutores IA</title>
+    <!-- CAMPANHAS AGENDADAS (16/10/2026): substitui o agente da Base44/AppVerse que
+         postava as campanhas do ecossistema no feed. Ele cria e aprova cada campanha;
+         o cron só republica o que foi aprovado (09/15/21h, 1 por horário, teto por dia).
+         Lógica em core/campanhas.py; rotas /api/campanhas* em backend/app.py. -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        :root {
+            --primary: #6366f1; --bg: #0f172a; --card: #1e293b; --txt: #f1f5f9; --txt2: #94a3b8;
+            --border: #334155; --ok: #22c55e; --atencao: #f59e0b; --erro: #ef4444;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--txt); line-height: 1.5; }
+        main { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+        header a { color: var(--txt2); text-decoration: none; }
+        h1 { font-size: 1.5rem; }
+        .sub { color: var(--txt2); font-size: .88rem; }
+        .aviso { padding: 12px 14px; border-radius: 10px; margin: 12px 0; background: var(--card); border-left: 4px solid var(--primary); white-space: pre-line; }
+        .aviso.ok { border-color: var(--ok); }
+        .aviso.erro { border-color: var(--erro); }
+        .numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+        .numero { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; }
+        .numero strong { display: block; font-size: 1.6rem; }
+        .numero span { color: var(--txt2); font-size: .8rem; }
+        .barra { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 10px 0 16px; }
+        .barra select { background: var(--card); color: var(--txt); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+        .btn { background: var(--primary); color: #fff; border: 0; border-radius: 999px; padding: 8px 16px; font-weight: 700; cursor: pointer; font-size: .88rem; }
+        .btn.sec { background: transparent; border: 1px solid var(--border); color: var(--txt); }
+        .btn.perigo { background: transparent; border: 1px solid #7f1d1d; color: #fca5a5; }
+        .btn:disabled { opacity: .5; cursor: wait; }
+        .cartao { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; display: flex; gap: 12px; }
+        .cartao.pausada { border-left-color: var(--txt2); opacity: .75; }
+        .cartao img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+        .cartao .corpo { flex: 1; min-width: 0; }
+        .cartao h3 { font-size: 1rem; }
+        .selo { font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: #312e81; color: #c7d2fe; margin-left: 6px; white-space: nowrap; }
+        .selo.pausada { background: #334155; color: var(--txt2); }
+        .cartao .meta { color: var(--txt2); font-size: .8rem; margin: 2px 0 4px; }
+        .cartao .legenda { font-size: .86rem; color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cartao .erro { color: #fca5a5; font-size: .8rem; margin-top: 4px; }
+        .cartao .acoes { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+        .cartao a { color: #a5b4fc; }
+        #painelForm { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        #painelForm h2 { font-size: 1.05rem; margin-bottom: 12px; }
+        .vazio { color: var(--txt2); text-align: center; padding: 30px 10px; }
+        @media (max-width: 600px) { .numeros { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+<main>
+    <header>
+        <div>
+            <h1>📅 Campanhas</h1>
+            <div class="sub">Campanhas do ecossistema no feed da NewPost-IA · 09h, 15h e 21h · você aprova, o sistema repete</div>
+        </div>
+        <a href="/"><i class="fas fa-arrow-left"></i> Início</a>
+    </header>
+
+    <div id="aviso" class="aviso" hidden></div>
+
+    <div class="numeros">
+        <div class="numero"><strong id="nTotal">–</strong><span>Total</span></div>
+        <div class="numero"><strong id="nAtivas">–</strong><span>Ativas</span></div>
+        <div class="numero"><strong id="nPausadas">–</strong><span>Pausadas</span></div>
+        <div class="numero"><strong id="nVezes">–</strong><span>Publicações feitas</span></div>
+    </div>
+
+    <div class="barra">
+        <label class="sub">No máximo
+            <select id="selTeto"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+            campanha(s) por dia no feed
+        </label>
+        <button type="button" id="btnNova" class="btn"><i class="fas fa-plus"></i> Nova campanha sem áudio</button>
+    </div>
+    <div class="sub" style="margin-top:-8px; margin-bottom:14px">Campanha com áudio nasce no <a href="/gerador" style="color:#a5b4fc">Gerador</a>: mixe o spot e clique em <strong>📅 Agendar</strong>.</div>
+
+    <section id="painelForm" hidden>
+        <h2 id="tituloForm">Nova campanha</h2>
+        <div id="formCampanha"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px">
+            <button type="button" id="btnCancelar" class="btn sec">Cancelar</button>
+            <button type="button" id="btnSalvar" class="btn"><i class="fas fa-calendar-check"></i> Agendar</button>
+        </div>
+    </section>
+
+    <div id="lista"><div class="vazio">Carregando…</div></div>
+</main>
+<script src="/static/campanha-form.js?v=1"></script>
+<script src="/static/campanhas.js?v=1"></script>
+</body>
+</html>
