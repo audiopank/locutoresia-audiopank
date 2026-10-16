@@ -17,6 +17,7 @@ import { SecretsManager } from "@/components/SecretsManager";
 import { TrackEffectsPanel } from "@/components/TrackEffectsPanel";
 import { VipProjects } from "@/components/VipProjects";
 import MasterizarPanel from "./MasterizarPanel";
+import { OndaEditavel } from "./OndaEditavel";
 import { mixToMp3, downloadBlob } from "@/lib/mixer";
 import { defaultEffects, type TrackEffects } from "@/lib/audioEffects";
 
@@ -29,6 +30,10 @@ interface Track {
   color: string;
   duration: number;
   effects: TrackEffects;
+  // Vêm do Salvar VIP: apontam pro áudio JÁ salvo. Editar a onda tem que limpar
+  // os dois, senão o projeto salvo voltaria com o áudio antigo (projectStorage).
+  audio_path?: string;
+  audio_url_direct?: string;
 }
 
 type TabKey = "roteiro" | "trilha" | "upload" | "multitrack" | "mix" | "master";
@@ -118,6 +123,20 @@ const MiniDAWIntegrated = () => {
       audioRefs.current[trackId].volume = volume / 100;
     }
   }, []);
+
+  // Onda editada (cortar/silenciar/desfazer): a faixa passa a apontar pro WAV novo.
+  // Prévia, Exportar e Masterizar leem `audioUrl`; o Salvar VIP sobe o áudio de novo
+  // porque audio_path/audio_url_direct saem.
+  const aplicarEdicao = useCallback((trackId: string, url: string, duracao: number) => {
+    setTracks(prev => prev.map(t => t.id === trackId
+      ? { ...t, audioUrl: url, duration: duracao, audio_path: undefined, audio_url_direct: undefined }
+      : t));
+    const antigo = audioRefs.current[trackId];
+    if (antigo) antigo.pause();
+    const audio = new Audio(url);
+    audio.volume = (tracks.find(t => t.id === trackId)?.volume ?? 100) / 100;
+    audioRefs.current[trackId] = audio;
+  }, [tracks]);
 
   const handleFileUpload = useCallback((trackId: string, file: File) => {
     const url = URL.createObjectURL(file);
@@ -564,12 +583,12 @@ const MiniDAWIntegrated = () => {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        <div className="flex items-center gap-4">
-                          <div className="flex-1">
-                            <audio src={track.audioUrl} controls className="w-full" />
-                          </div>
-                          <div className="text-sm text-white/60">Duração: {track.duration.toFixed(1)}s</div>
-                        </div>
+                        <OndaEditavel
+                          audioUrl={track.audioUrl}
+                          tipo={track.type}
+                          onEditado={(url, duracao) => aplicarEdicao(track.id, url, duracao)}
+                        />
+                        <div className="text-sm text-white/60">Duração: {track.duration.toFixed(1)}s</div>
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-medium text-white/80 w-16">Volume:</span>
                           <Slider
