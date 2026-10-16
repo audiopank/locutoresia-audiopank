@@ -18,6 +18,7 @@ import { TrackEffectsPanel } from "@/components/TrackEffectsPanel";
 import { VipProjects } from "@/components/VipProjects";
 import MasterizarPanel from "./MasterizarPanel";
 import { OndaEditavel, type LinhaComum, type Marcador } from "./OndaEditavel";
+import { ReguaLinha } from "./ReguaLinha";
 import { totalDaLinha } from "@/lib/edicaoOnda.js";
 import { ProjetoNoPC } from "./ProjetoNoPC";
 import { mixToMp3, downloadBlob } from "@/lib/mixer";
@@ -63,7 +64,12 @@ const MiniDAWIntegrated = () => {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [montandoPlay, setMontandoPlay] = useState(false);
+  // `currentTime` = CURSOR ÚNICO da linha do tempo (17/10/2026): o mesmo segundo em
+  // todas as faixas e na régua; o Play verde toca a partir dele.
   const [currentTime, setCurrentTime] = useState(0);
+  const inicioDoPlayRef = useRef(0);          // onde o play começou (2 toques no Espaço voltam pra cá)
+  const cabecalhoRef = useRef<HTMLElement>(null);
+  const [alturaCabecalho, setAlturaCabecalho] = useState(80);
   // Play verde = o MIX de verdade (efeitos, gate e fade da trilha), igual à Prévia/Exportar.
   // Antes tocava as faixas cruas lado a lado: mexer no reverb/EQ não mudava nada no
   // play e a trilha não fazia fade (17/10/2026). O WAV fica guardado enquanto nada muda.
@@ -280,8 +286,8 @@ const MiniDAWIntegrated = () => {
         if (atual) { atual.audio.pause(); URL.revokeObjectURL(atual.url); }
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
-        audio.addEventListener("timeupdate", () => setCurrentTime(audio.currentTime));
-        audio.addEventListener("ended", () => { setIsPlaying(false); setCurrentTime(0); audio.currentTime = 0; });
+        // Acabou o mix: volta pro ponto onde o play começou (como no Samplitude).
+        audio.addEventListener("ended", () => { setIsPlaying(false); setCurrentTime(inicioDoPlayRef.current); });
         tocar = { chave, url, audio };
         mixPlayRef.current = tocar;
       } catch (e: any) {
@@ -293,19 +299,45 @@ const MiniDAWIntegrated = () => {
       }
     }
     try {
-      await tocar!.audio.play();
+      const a = tocar!.audio;
+      if (!Number.isFinite(a.duration)) await new Promise((r) => a.addEventListener("loadedmetadata", r, { once: true }));
+      // Toca A PARTIR DO CURSOR (no fim do mix, recomeça do 0).
+      const de = currentTime < a.duration - 0.05 ? currentTime : 0;
+      a.currentTime = de;
+      inicioDoPlayRef.current = de;
+      await a.play();
       setIsPlaying(true);
     } catch (e) {
       console.log("Play error:", e);
     }
-  }, [isPlaying, tracks, toast]);
+  }, [isPlaying, tracks, toast, currentTime]);
 
-  // Stop de verdade: para e volta pro começo (dois toques no Espaço).
+  // Stop de verdade (dois toques no Espaço): para e volta pro ponto onde o play começou.
   const pararMix = useCallback(() => {
     const atual = mixPlayRef.current;
-    if (atual) { atual.audio.pause(); atual.audio.currentTime = 0; }
+    if (atual) atual.audio.pause();
     setIsPlaying(false);
-    setCurrentTime(0);
+    setCurrentTime(inicioDoPlayRef.current);
+  }, []);
+
+  // Mover o cursor (clique numa onda ou na régua). Tocando, o mix pula pra lá.
+  const moverCursor = useCallback((g: number) => {
+    const t = Math.max(0, g);
+    setCurrentTime(t);
+    const atual = mixPlayRef.current;
+    if (atual && isPlaying && Number.isFinite(atual.audio.duration)) {
+      atual.audio.currentTime = Math.min(t, atual.audio.duration);
+      inicioDoPlayRef.current = t;
+    }
+  }, [isPlaying]);
+
+  // Altura do cabeçalho fixo: a régua gruda logo embaixo dele.
+  useEffect(() => {
+    const el = cabecalhoRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setAlturaCabecalho(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // BARRA DE ESPAÇO (pedido dele, 17/10/2026): 1 toque = Play/Pausa do Play verde;
@@ -458,7 +490,7 @@ const MiniDAWIntegrated = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 text-white">
       {/* Header */}
-      <header className="border-b border-white/10 bg-black/30 backdrop-blur-xl sticky top-0 z-50">
+      <header ref={cabecalhoRef} className="border-b border-white/10 bg-black/30 backdrop-blur-xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -705,7 +737,11 @@ const MiniDAWIntegrated = () => {
                 </div>
               </Card>
             ) : (
-              tracks.map((track) => (
+              <>
+              {comAudio.length > 0 && (
+                <ReguaLinha linha={linha} cursor={currentTime} tocando={isPlaying} onCursor={moverCursor} topo={alturaCabecalho} />
+              )}
+              {tracks.map((track) => (
                 <Card key={track.id} data-faixa-id={track.id} className={`bg-white/5 border-2 backdrop-blur-sm ${track.color}`}>
                   <div className="p-5 space-y-4">
                     <div className="flex items-center justify-between gap-4">
@@ -751,7 +787,9 @@ const MiniDAWIntegrated = () => {
                           audioUrl={track.audioUrl}
                           tipo={track.type}
                           onEditado={(url, duracao) => aplicarEdicao(track.id, url, duracao)}
-                          tempoMix={isPlaying || currentTime > 0 ? currentTime : null}
+                          cursor={currentTime}
+                          tocandoMix={isPlaying}
+                          onCursor={moverCursor}
                           faixaId={track.id}
                           onSoltarTrecho={(destino, trecho) => receberTrecho(track.id, destino, trecho)}
                           inicio={track.inicio || 0}
@@ -820,7 +858,8 @@ const MiniDAWIntegrated = () => {
                     )}
                   </div>
                 </Card>
-              ))
+              ))}
+              </>
             )}
           </div>
         )}

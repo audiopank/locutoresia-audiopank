@@ -35,9 +35,12 @@ interface Props {
   audioUrl: string;
   tipo: "voiceover" | "music";
   onEditado: (url: string, duracao: number) => void;
-  // Tempo do Play verde (mix) — null quando parado no começo. Vira cursor VERDE
-  // na onda e o contador da faixa mostra ele (pedido dele, 17/10/2026).
-  tempoMix?: number | null;
+  // CURSOR ÚNICO da linha do tempo (pedido dele, 17/10/2026): o mesmo segundo em
+  // todas as faixas. Clicar numa onda move o cursor de todas; o Play verde toca a
+  // partir dele. Verde enquanto o mix toca, vermelho parado.
+  cursor: number;
+  tocandoMix: boolean;
+  onCursor: (g: number) => void;
   // Arrastar o trecho marcado pra OUTRA faixa (pedido dele, 17/10/2026: separar a
   // assinatura cantada do jingle num track próprio). Devolve true se a faixa de
   // destino aceitou — aí o trecho SAI desta (mover; o Desfazer daqui traz de volta).
@@ -76,12 +79,12 @@ const relogio = (s: number) => {
 };
 
 export function OndaEditavel({
-  audioUrl, tipo, onEditado, tempoMix = null, faixaId, onSoltarTrecho, inicio, linha, marcadores, onMover,
+  audioUrl, tipo, onEditado, cursor, tocandoMix, onCursor, faixaId, onSoltarTrecho, inicio, linha, marcadores, onMover,
 }: Props) {
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [erro, setErro] = useState("");
   const [largura, setLargura] = useState(0);
-  const [tempo, setTempo] = useState(0);                       // cursor da faixa (tempo LOCAL)
+  const [tocandoFaixa, setTocandoFaixa] = useState(false);     // o player "som original" desta faixa
   const [sel, setSel] = useState<[number, number] | null>(null);   // trecho em tempo LOCAL
   const [arrasto, setArrasto] = useState<[number, number] | null>(null);
   const [editando, setEditando] = useState(false);
@@ -92,6 +95,7 @@ export function OndaEditavel({
   const caixaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const ajusteRef = useRef(0);                // quantos "seeked" ainda são posicionamento por código
 
   // Decodifica o áudio da faixa (de novo a cada edição/desfazer — com cache).
   useEffect(() => {
@@ -118,24 +122,53 @@ export function OndaEditavel({
     const a = audioRef.current;
     if (!a) return;
     let raf = 0;
-    const passo = () => { setTempo(a.currentTime); raf = requestAnimationFrame(passo); };
-    const tocar = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(passo); };
-    const parar = () => { cancelAnimationFrame(raf); setTempo(a.currentTime); };
+    const passo = () => { onCursorRef.current(inicioRef.current + a.currentTime); raf = requestAnimationFrame(passo); };
+    const tocar = () => { setTocandoFaixa(true); cancelAnimationFrame(raf); raf = requestAnimationFrame(passo); };
+    // Só o que o PRODUTOR fez no player desta faixa move o cursor da linha. Quando
+    // o player é posicionado por código (cursor veio de fora), o "seeked" é ignorado —
+    // senão uma faixa curta "puxava" o cursor pro fim dela (bug visto no teste).
+    const parar = () => {
+      cancelAnimationFrame(raf);
+      if (!a.paused) return;
+      setTocandoFaixa((estava) => {
+        if (estava) onCursorRef.current(inicioRef.current + a.currentTime);
+        return false;
+      });
+    };
+    const procurou = () => {
+      if (ajusteRef.current > 0) { ajusteRef.current--; return; }
+      if (a.paused) onCursorRef.current(inicioRef.current + a.currentTime);
+    };
     a.addEventListener("play", tocar);
     a.addEventListener("pause", parar);
-    a.addEventListener("seeked", parar);
+    a.addEventListener("seeked", procurou);
     a.addEventListener("ended", parar);
     return () => {
       cancelAnimationFrame(raf);
       a.removeEventListener("play", tocar);
       a.removeEventListener("pause", parar);
-      a.removeEventListener("seeked", parar);
+      a.removeEventListener("seeked", procurou);
       a.removeEventListener("ended", parar);
     };
   }, []);
 
   const dur = buffer?.duration || 0;
-  const ini = movendo ? movendo.novo : inicio;                  // durante o arrasto, a posição nova
+  const ini = movendo ? movendo.novo : inicio;
+  // Refs pros ouvintes do <audio> (montados uma vez) enxergarem os valores atuais.
+  const onCursorRef = useRef(onCursor);
+  onCursorRef.current = onCursor;
+  const inicioRef = useRef(inicio);
+  inicioRef.current = inicio;
+  // Cursor movido por fora (outra faixa, régua, Play verde): o player desta faixa
+  // fica pronto no mesmo ponto — o "som original" toca de onde está o cursor.
+  useEffect(() => {
+    const a = audioRef.current;
+    // Com o mix tocando o player da faixa fica quieto (reposicionar a cada quadro
+    // gerava "seeked" atrasado que puxava o cursor). Ajusta quando o mix parar.
+    if (!a || !a.paused || !dur || tocandoMix) return;
+    const local = Math.min(dur, Math.max(0, cursor - inicio));
+    if (Math.abs(a.currentTime - local) > 0.05) { ajusteRef.current++; a.currentTime = local; }
+  }, [cursor, inicio, dur, tocandoMix]);                  // durante o arrasto, a posição nova
   // Janela global na tela (régua comum).
   const span = linha.total / linha.zoom;
   const g0 = Math.max(0, Math.min(linha.total - span, linha.g0));
@@ -157,11 +190,10 @@ export function OndaEditavel({
   // Tocando: a linha rola sozinha pra acompanhar o cursor.
   useEffect(() => {
     if (linha.zoom <= 1 || !largura) return;
-    const tocandoFaixa = audioRef.current && !audioRef.current.paused;
-    const g = tempoMix != null ? tempoMix : tocandoFaixa ? ini + tempo : null;
-    if (g == null || g > linha.total) return;
-    if (g < g0 || g > g1) linha.rolarPara(Math.max(0, g - span * 0.1));
-  }, [tempo, tempoMix, linha, largura, g0, g1, span, ini]);
+    if (!tocandoMix && !tocandoFaixa) return;
+    if (cursor > linha.total) return;
+    if (cursor < g0 || cursor > g1) linha.rolarPara(Math.max(0, cursor - span * 0.1));
+  }, [cursor, tocandoMix, tocandoFaixa, linha, largura, g0, g1, span]);
 
   // Desenho: fundo do objeto + alça, onda, marcadores, trecho, cursores.
   useEffect(() => {
@@ -219,16 +251,12 @@ export function OndaEditavel({
       g.fillRect(x(ini + a), ALCA, 1, ALTURA - ALCA);
       g.fillRect(Math.max(0, x(ini + b) - 1), ALCA, 1, ALTURA - ALCA);
     }
-    if (dur && ini + tempo >= g0 && ini + tempo <= g1) {
-      g.fillStyle = "#f87171";
-      g.fillRect(Math.min(largura - 2, x(ini + tempo)), 0, 2, ALTURA);
+    // Cursor ÚNICO (o mesmo segundo em todas as faixas): verde tocando, vermelho parado.
+    if (cursor >= g0 && cursor <= g1) {
+      g.fillStyle = tocandoMix ? "#4ade80" : "#f87171";
+      g.fillRect(Math.min(largura - 2, x(cursor)), 0, 2, ALTURA);
     }
-    // Cursor do Play verde (mix), igual em todas as faixas.
-    if (tempoMix != null && tempoMix >= g0 && tempoMix <= g1) {
-      g.fillStyle = "#4ade80";
-      g.fillRect(Math.min(largura - 2, x(tempoMix)), 0, 2, ALTURA);
-    }
-  }, [envelope, largura, sel, arrasto, tempo, buffer, tipo, tempoMix, g0, g1, span, dur, ini, movendo, marcadores]);
+  }, [envelope, largura, sel, arrasto, cursor, tocandoMix, buffer, tipo, g0, g1, span, dur, ini, movendo, marcadores]);
 
   // Ponteiro → segundo da régua (global) e altura dentro da onda.
   const ponteiro = (e: React.PointerEvent) => {
@@ -306,9 +334,8 @@ export function OndaEditavel({
     if (trecho) {
       setSel(trecho);
     } else {
-      setSel(null);   // clique sem arrastar: pula pro ponto
-      if (audioRef.current) audioRef.current.currentTime = t;
-      setTempo(t);
+      setSel(null);   // clique sem arrastar: o cursor de TODAS as faixas vai pra cá
+      onCursor(ponteiro(e).g);
     }
   };
 
@@ -348,22 +375,20 @@ export function OndaEditavel({
   // Zoom da LINHA (todas as faixas juntas), ancorado no cursor se ele estiver na tela.
   const zoomar = (novo: number) => {
     const z = Math.max(1, Math.min(ZOOM_MAX, novo));
-    const ref = tempoMix != null ? tempoMix : ini + tempo;
-    const ancora = ref >= g0 && ref <= g1 ? ref : (g0 + g1) / 2;
+    const ancora = cursor >= g0 && cursor <= g1 ? cursor : (g0 + g1) / 2;
     linha.mudarZoom(z, ancora, (ancora - g0) / span);
   };
 
-  const doMix = tempoMix != null;
   return (
     <div className="space-y-2">
       {/* Contador da faixa: posição do cursor (vermelho) ou do Play verde (mix). */}
       <div className="flex items-baseline gap-2 flex-wrap">
-        <span className={`font-mono text-xl tabular-nums ${doMix ? "text-green-400" : "text-white"}`}>
-          ⏱ {relogio(doMix ? tempoMix! : ini + tempo)}
+        <span className={`font-mono text-xl tabular-nums ${tocandoMix ? "text-green-400" : "text-white"}`}>
+          ⏱ {relogio(cursor)}
         </span>
         <span className="font-mono text-sm text-white/50 tabular-nums">/ {relogio(buffer?.duration || 0)}</span>
         <span className="text-xs text-white/40">
-          {doMix ? "tempo do mix (Play verde)" : "cursor (na linha do tempo)"}{ini > 0 ? ` · entra em ${relogio(ini)}` : ""}
+          {tocandoMix ? "tocando o mix (Play verde)" : "cursor (o mesmo em todas as faixas)"}{ini > 0 ? ` · entra em ${relogio(ini)}` : ""}
         </span>
         <div className="ml-auto flex items-center gap-1">
           <Button size="sm" variant="outline" disabled={!buffer || linha.zoom <= 1} onClick={() => zoomar(linha.zoom / 2)}
