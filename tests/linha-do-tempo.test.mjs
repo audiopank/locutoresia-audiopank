@@ -74,3 +74,45 @@ test('fimDaVoz: o "logo depois da voz" usa a última fala, contando o Entra em',
     assert.equal(fimDaVoz([{ type: 'voiceover', duracao: 10, inicio: 2 }, { type: 'voiceover', duracao: 4 }, { type: 'music', duracao: 60 }]), 12);
     assert.equal(fimDaVoz([{ type: 'music', duracao: 60 }]), 0);
 });
+
+// ── alças de fade-in / fade-out no objeto (17/10/2026) ──────────────────────
+import { envelopeGanho } from '../minidaw-react/src/lib/linhaDoTempo.js';
+
+const valor = (pts, t) => {          // interpola a envoltória (pontos [t, ganho])
+    if (t <= pts[0][0]) return pts[0][1];
+    for (let i = 1; i < pts.length; i++) {
+        const [ta, ga] = pts[i - 1], [tb, gb] = pts[i];
+        if (t <= tb) return tb === ta ? gb : ga + (gb - ga) * (t - ta) / (tb - ta);
+    }
+    return pts[pts.length - 1][1];
+};
+
+test('envelopeGanho sem fade: volume cheio do início ao fim', () => {
+    const p = envelopeGanho({ volume: 0.8, inicio: 2, duracao: 10 });
+    assert.equal(valor(p, 2), 0.8);
+    assert.equal(valor(p, 11.9), 0.8);
+});
+
+test('fade-in de 1 s e fade-out de 2 s nas alças do objeto', () => {
+    const p = envelopeGanho({ volume: 1, inicio: 2, duracao: 10, fadeIn: 1, fadeOut: 2 });
+    assert.equal(valor(p, 2), 0);
+    assert.ok(Math.abs(valor(p, 2.5) - 0.5) < 1e-9);
+    assert.equal(valor(p, 3), 1);
+    assert.equal(valor(p, 10), 1);
+    assert.ok(Math.abs(valor(p, 11) - 0.5) < 1e-9);
+    assert.ok(valor(p, 12) < 0.001);
+});
+
+test('fade automático da trilha + fade-out da alça: vale o mais baixo', () => {
+    // trilha 0–30 s, auto-fade começa aos 20 s (1,1 s); alça de fade-out de 4 s no fim (26–30 s)
+    const p = envelopeGanho({ volume: 1, inicio: 0, duracao: 30, fadeOut: 4, fadeEm: 20, fadeDepois: 1.1 });
+    assert.equal(valor(p, 19.9), 1);
+    assert.ok(valor(p, 21.1) < 0.001, 'auto-fade zera aos 21,1 s');
+    assert.ok(valor(p, 27) < 0.001, 'continua zerado depois');
+});
+
+test('fades maiores que o objeto são limitados (in + out nunca passam da duração)', () => {
+    const p = envelopeGanho({ volume: 1, inicio: 0, duracao: 4, fadeIn: 3, fadeOut: 3 });
+    assert.ok(valor(p, 2) <= 1);
+    assert.ok(valor(p, 0) === 0 && valor(p, 4) < 0.001);
+});

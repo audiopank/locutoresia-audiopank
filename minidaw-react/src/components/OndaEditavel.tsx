@@ -50,6 +50,10 @@ interface Props {
   linha: LinhaComum;
   marcadores: Marcador[];                              // das OUTRAS faixas (ímã)
   onMover: (novoInicio: number) => void;
+  // Alças de fade-in / fade-out (quadradinhos nos cantos de cima do objeto).
+  fadeIn: number;
+  fadeOut: number;
+  onFades: (fadeIn: number, fadeOut: number) => void;
 }
 
 const ALTURA = 76;
@@ -80,6 +84,7 @@ const relogio = (s: number) => {
 
 export function OndaEditavel({
   audioUrl, tipo, onEditado, cursor, tocandoMix, onCursor, faixaId, onSoltarTrecho, inicio, linha, marcadores, onMover,
+  fadeIn, fadeOut, onFades,
 }: Props) {
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [erro, setErro] = useState("");
@@ -91,6 +96,7 @@ export function OndaEditavel({
   const [pilha, setPilha] = useState<{ url: string; duracao: number }[]>([]);
   const [levando, setLevando] = useState<{ x: number; y: number } | null>(null);   // trecho → outra faixa
   const [movendo, setMovendo] = useState<{ gIni: number; inicioIni: number; novo: number } | null>(null);
+  const [puxandoFade, setPuxandoFade] = useState<{ lado: "in" | "out"; fi: number; fo: number } | null>(null);
   const barraRef = useRef<HTMLDivElement>(null);
   const caixaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -154,6 +160,8 @@ export function OndaEditavel({
 
   const dur = buffer?.duration || 0;
   const ini = movendo ? movendo.novo : inicio;
+  const fi = puxandoFade ? puxandoFade.fi : Math.max(0, fadeIn || 0);
+  const fo = puxandoFade ? puxandoFade.fo : Math.max(0, fadeOut || 0);
   // Refs pros ouvintes do <audio> (montados uma vez) enxergarem os valores atuais.
   const onCursorRef = useRef(onCursor);
   onCursorRef.current = onCursor;
@@ -230,6 +238,35 @@ export function OndaEditavel({
       const y2 = meio - mn * meiaAltura;
       g.fillRect(px, y1, 1, Math.max(1, y2 - y1));
     });
+    // Rampas das alças de fade (sombra por cima da onda + linha) e os quadradinhos.
+    if (dur) {
+      const xa = x(ini), xb = x(ini + dur);
+      g.fillStyle = "rgba(0, 0, 0, 0.45)";
+      if (fi > 0) {
+        g.beginPath(); g.moveTo(xa, ALCA); g.lineTo(x(ini + fi), ALCA); g.lineTo(xa, ALTURA); g.closePath(); g.fill();
+      }
+      if (fo > 0) {
+        g.beginPath(); g.moveTo(xb, ALCA); g.lineTo(x(ini + dur - fo), ALCA); g.lineTo(xb, ALTURA); g.closePath(); g.fill();
+      }
+      g.strokeStyle = "#fde68a";
+      g.lineWidth = 1.5;
+      if (fi > 0) { g.beginPath(); g.moveTo(xa, ALTURA); g.lineTo(x(ini + fi), ALCA); g.stroke(); }
+      if (fo > 0) { g.beginPath(); g.moveTo(x(ini + dur - fo), ALCA); g.lineTo(xb, ALTURA); g.stroke(); }
+      g.lineWidth = 1;
+      g.fillStyle = "#fde68a";
+      g.strokeStyle = "#78350f";
+      for (const hx of [x(ini + fi), x(ini + dur - fo)]) {
+        const q = Math.max(0, Math.min(largura - 9, hx - 4.5));
+        g.fillRect(q, ALCA - 4, 9, 9);
+        g.strokeRect(q + 0.5, ALCA - 3.5, 8, 8);
+      }
+      if (puxandoFade) {
+        g.fillStyle = "#fff";
+        g.font = "11px sans-serif";
+        const txt = puxandoFade.lado === "in" ? `fade-in ${fi.toFixed(2)} s` : `fade-out ${fo.toFixed(2)} s`;
+        g.fillText(txt, Math.max(4, Math.min(largura - 110, puxandoFade.lado === "in" ? x(ini + fi) + 8 : x(ini + dur - fo) - 105)), ALCA + 22);
+      }
+    }
     // Marcadores (ímã): fim da locução em âmbar, outras faixas em branco.
     g.setLineDash([4, 4]);
     for (const m of marcadores) {
@@ -256,7 +293,7 @@ export function OndaEditavel({
       g.fillStyle = tocandoMix ? "#4ade80" : "#f87171";
       g.fillRect(Math.min(largura - 2, x(cursor)), 0, 2, ALTURA);
     }
-  }, [envelope, largura, sel, arrasto, cursor, tocandoMix, buffer, tipo, g0, g1, span, dur, ini, movendo, marcadores]);
+  }, [envelope, largura, sel, arrasto, cursor, tocandoMix, buffer, tipo, g0, g1, span, dur, ini, movendo, marcadores, fi, fo, puxandoFade]);
 
   // Ponteiro → segundo da régua (global) e altura dentro da onda.
   const ponteiro = (e: React.PointerEvent) => {
@@ -271,6 +308,16 @@ export function OndaEditavel({
     if (!buffer) return;
     (e.target as Element).setPointerCapture(e.pointerId);
     const { g, y } = ponteiro(e);
+    // Quadradinhos de fade (cantos de cima): ~9 px de folga pra pegar com o mouse.
+    const pxPorSeg = largura / span;
+    if (y <= ALCA + 8 && dur) {
+      const dIn = Math.abs((g - (inicio + fi)) * pxPorSeg);
+      const dOut = Math.abs((g - (inicio + dur - fo)) * pxPorSeg);
+      if (Math.min(dIn, dOut) <= 9) {
+        setPuxandoFade({ lado: dIn <= dOut ? "in" : "out", fi, fo });
+        return;
+      }
+    }
     // Alça do objeto: move a faixa inteira na linha do tempo.
     if (y <= ALCA && g >= inicio && g <= inicio + dur) {
       setMovendo({ gIni: g, inicioIni: inicio, novo: inicio });
@@ -285,6 +332,12 @@ export function OndaEditavel({
     setArrasto([t, t]);
   };
   const onMove = (e: React.PointerEvent) => {
+    if (puxandoFade) {
+      const { g } = ponteiro(e);
+      if (puxandoFade.lado === "in") setPuxandoFade({ ...puxandoFade, fi: Math.max(0, Math.min(dur - puxandoFade.fo, g - inicio)) });
+      else setPuxandoFade({ ...puxandoFade, fo: Math.max(0, Math.min(dur - puxandoFade.fi, inicio + dur - g)) });
+      return;
+    }
     if (movendo) {
       const { g } = ponteiro(e);
       const bruto = Math.max(0, movendo.inicioIni + (g - movendo.gIni));
@@ -320,6 +373,12 @@ export function OndaEditavel({
     }
   };
   const onUp = (e: React.PointerEvent) => {
+    if (puxandoFade) {
+      const r2 = (v: number) => Math.round(v * 100) / 100;
+      onFades(r2(puxandoFade.fi), r2(puxandoFade.fo));
+      setPuxandoFade(null);
+      return;
+    }
     if (movendo) {
       const novo = Math.round(movendo.novo * 100) / 100;
       setMovendo(null);
@@ -388,7 +447,7 @@ export function OndaEditavel({
         </span>
         <span className="font-mono text-sm text-white/50 tabular-nums">/ {relogio(buffer?.duration || 0)}</span>
         <span className="text-xs text-white/40">
-          {tocandoMix ? "tocando o mix (Play verde)" : "cursor (o mesmo em todas as faixas)"}{ini > 0 ? ` · entra em ${relogio(ini)}` : ""}
+          {tocandoMix ? "tocando o mix (Play verde)" : "cursor (o mesmo em todas as faixas)"}{ini > 0 ? ` · entra em ${relogio(ini)}` : ""}{fi > 0 ? ` · fade-in ${fi.toFixed(1)} s` : ""}{fo > 0 ? ` · fade-out ${fo.toFixed(1)} s` : ""}
         </span>
         <div className="ml-auto flex items-center gap-1">
           <Button size="sm" variant="outline" disabled={!buffer || linha.zoom <= 1} onClick={() => zoomar(linha.zoom / 2)}
@@ -435,7 +494,7 @@ export function OndaEditavel({
         <span className="text-white/60 mr-1">
           {sel
             ? `Trecho: ${fmt(sel[0])} → ${fmt(sel[1])} (${fmt(sel[1] - sel[0])})${onSoltarTrecho ? " · arraste o laranja pra outra faixa" : ""}`
-            : "Som original da faixa (sem efeitos) · arraste na onda para marcar o erro · clique para pular · alça de cima move"}
+            : "Som original da faixa (sem efeitos) · arraste na onda pra marcar o erro · clique move o cursor · alça de cima move · quadradinhos = fade"}
         </span>
         <Button size="sm" variant="outline" disabled={!sel || editando} onClick={() => aplicar(cortarTrecho)}
           className="bg-white/5 border-white/20 text-white hover:bg-white/10" title="Remove o trecho e junta as pontas (micro-fade, sem estalo)">

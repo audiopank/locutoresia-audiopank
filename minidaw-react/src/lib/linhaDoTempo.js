@@ -63,3 +63,41 @@ export function linhaDoTempo(faixas, fadeDepois = 1.1) {
     });
     return { fimDaVoz: vozFim, fimDoSpot, duracao: r6(duracao), faixas: saida };
 }
+
+// ── Alças de fade-in / fade-out no objeto (17/10/2026, pedido dele: "handles de
+//    fade como nos clipes") ───────────────────────────────────────────────────
+
+function interpolar(pts, t) {
+    if (t <= pts[0][0]) return pts[0][1];
+    for (let i = 1; i < pts.length; i++) {
+        const [ta, ga] = pts[i - 1], [tb, gb] = pts[i];
+        if (t <= tb) return tb === ta ? gb : ga + ((gb - ga) * (t - ta)) / (tb - ta);
+    }
+    return pts[pts.length - 1][1];
+}
+
+/**
+ * Envoltória de volume de UMA faixa no tempo do mix: pontos [segundo, ganho] pra
+ * rampas lineares. Junta as alças do objeto (fadeIn/fadeOut, em segundos) com o
+ * fade automático da trilha (fadeEm → fadeEm + fadeDepois); onde os dois valem,
+ * fica o MAIS BAIXO. Fades maiores que o objeto são encolhidos na proporção.
+ */
+export function envelopeGanho({ volume, inicio = 0, duracao, fadeIn = 0, fadeOut = 0, fadeEm = null, fadeDepois = 1.1 }) {
+    const ini = inicioValido(inicio);
+    const fim = ini + (duracao || 0);
+    let fi = Math.max(0, Number(fadeIn) || 0);
+    let fo = Math.max(0, Number(fadeOut) || 0);
+    if (fi + fo > duracao && fi + fo > 0) {
+        const k = duracao / (fi + fo);
+        fi *= k;
+        fo *= k;
+    }
+    const clipe = [[ini, fi > 0 ? 0 : volume], [ini + fi, volume], [fim - fo, volume], [fim, fo > 0 ? 0 : volume]];
+    const auto = fadeEm != null
+        ? [[Math.min(ini, fadeEm), volume], [fadeEm, volume], [fadeEm + fadeDepois, 0], [Math.max(fim, fadeEm + fadeDepois), 0]]
+        : [[ini, volume], [fim, volume]];
+    const tempos = [...new Set([...clipe, ...auto].map(([t]) => r6(t)))]
+        .filter((t) => t >= ini - 1e-9 && t <= fim + 1e-9)
+        .sort((a, b) => a - b);
+    return tempos.map((t) => [t, r6(Math.min(interpolar(clipe, t), fadeEm != null ? interpolar(auto, t) : volume))]);
+}

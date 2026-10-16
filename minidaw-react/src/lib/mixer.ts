@@ -1,7 +1,7 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
 import { buildEffectChain, hasActiveEffects, type TrackEffects } from "./audioEffects";
 import { detectarTrechos, aplicarGate } from "./gate.js";
-import { linhaDoTempo } from "./linhaDoTempo.js";
+import { linhaDoTempo, envelopeGanho } from "./linhaDoTempo.js";
 
 export type MixFormat = "mp3" | "wav";
 export type MixQuality = "low" | "medium" | "high" | "ultra";
@@ -14,6 +14,8 @@ export interface MixTrack {
   // 17/10/2026 (assinatura cantada do jingle no fim): onde a faixa entra e como a trilha desce.
   inicio?: number;                      // segundos; padrão 0
   fade?: "voz" | "fim" | "nenhum";      // só trilha; padrão "voz" (ver lib/linhaDoTempo.js)
+  fadeIn?: number;                      // alças do objeto (s) — 17/10/2026
+  fadeOut?: number;
 }
 
 export interface MixOptions {
@@ -166,12 +168,14 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
 
     const gain = offline.createGain();
     const vol = Math.max(0, (d.volume ?? 100) / 100);
-    gain.gain.setValueAtTime(vol, 0);
-
-    if (fadeEm != null) {
-      gain.gain.setValueAtTime(vol, fadeEm);
-      gain.gain.linearRampToValueAtTime(0.0001, fadeEm + fadeAfter);
-    }
+    // Envoltória: alças de fade-in/out do objeto + fade automático da trilha (o mais baixo vence).
+    const pontos = envelopeGanho({
+      volume: vol, inicio, duracao: d.buffer.duration, fadeIn: d.fadeIn, fadeOut: d.fadeOut,
+      fadeEm, fadeDepois: fadeAfter,
+    });
+    gain.gain.setValueAtTime(pontos[0][1], 0);
+    gain.gain.setValueAtTime(pontos[0][1], pontos[0][0]);
+    for (const [t, v] of pontos.slice(1)) gain.gain.linearRampToValueAtTime(v, t);
 
     // Cadeia de efeitos por faixa (EQ + Compressor + Reverb + Nivelar) bakeada no mix
     if (hasActiveEffects(d.effects)) {

@@ -41,11 +41,14 @@ interface Track {
   // 17/10/2026 — assinatura cantada do jingle no fim (lib/linhaDoTempo.js):
   inicio?: number;                      // "Entra em" (s)
   fade?: "voz" | "fim" | "nenhum";      // só trilha
+  fadeIn?: number;                      // alças de fade do objeto (s)
+  fadeOut?: number;
 }
 
 // O que o motor de mix precisa de cada faixa (Play verde, Prévia e Exportar iguais).
 const paraMix = (t: Track) => ({
   audioUrl: t.audioUrl, type: t.type, volume: t.volume, effects: t.effects, inicio: t.inicio || 0, fade: t.fade,
+  fadeIn: t.fadeIn || 0, fadeOut: t.fadeOut || 0,
 });
 
 type TabKey = "roteiro" | "trilha" | "upload" | "multitrack" | "mix" | "master";
@@ -155,7 +158,8 @@ const MiniDAWIntegrated = () => {
   // porque audio_path/audio_url_direct saem.
   const aplicarEdicao = useCallback((trackId: string, url: string, duracao: number) => {
     setTracks(prev => prev.map(t => t.id === trackId
-      ? { ...t, audioUrl: url, duration: duracao, audio_path: undefined, audio_url_direct: undefined }
+      ? { ...t, audioUrl: url, duration: duracao, audio_path: undefined, audio_url_direct: undefined,
+          fadeIn: Math.min(t.fadeIn || 0, duracao / 2), fadeOut: Math.min(t.fadeOut || 0, duracao / 2) }
       : t));
     const antigo = audioRefs.current[trackId];
     if (antigo) antigo.pause();
@@ -796,6 +800,9 @@ const MiniDAWIntegrated = () => {
                           linha={linha}
                           marcadores={marcadoresDe(track.id)}
                           onMover={(v) => setTracks(prev => prev.map(t => t.id === track.id ? { ...t, inicio: v } : t))}
+                          fadeIn={track.fadeIn || 0}
+                          fadeOut={track.fadeOut || 0}
+                          onFades={(fi, fo) => setTracks(prev => prev.map(t => t.id === track.id ? { ...t, fadeIn: fi, fadeOut: fo } : t))}
                         />
                         <div className="text-sm text-white/60">Duração: {track.duration.toFixed(1)}s</div>
                         {/* Entra em + fade (17/10/2026): assinatura cantada do jingle no fim do spot. */}
