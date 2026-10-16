@@ -99,3 +99,28 @@ test('picosDaJanela: envelope só do trecho visível', () => {
     assert.ok(p.some(([, mx]) => mx === Math.fround(0.9)));
     assert.ok(E.picosDaJanela(canal, sr, 0, 5, 10).every(([, mx]) => mx === 0));
 });
+
+// ── linha do tempo comum + mover objeto + ímã (17/10/2026) ─────────────────
+test('picosDaFaixa: desenha o áudio só a partir do "Entra em"; fora dele é vazio (null)', () => {
+    const sr = 100;
+    const canal = new Float32Array(200).fill(0.5);   // 2 s de áudio
+    const p = E.picosDaFaixa(canal, sr, 3, 0, 10, 10); // entra aos 3 s; tela 0–10 s em 10 px (1 s/px)
+    assert.equal(p.length, 10);
+    assert.equal(p[0], null);
+    assert.equal(p[2], null);
+    assert.deepEqual(p[3], [0.5, 0.5]);
+    assert.deepEqual(p[4], [0.5, 0.5]);
+    assert.equal(p[5], null);
+});
+
+test('imantar: gruda na marca mais perto dentro da tolerância; longe dela, fica onde soltou', () => {
+    assert.equal(E.imantar(21.6, [0, 21.8, 23.7], 0.3), 21.8);
+    assert.equal(E.imantar(22.5, [0, 21.8, 23.7], 0.3), 22.5);
+    assert.equal(E.imantar(23.5, [21.8, 23.7], 0.3), 23.7);
+    assert.equal(E.imantar(-2, [], 0.3), 0, 'nunca antes do zero');
+});
+
+test('totalDaLinha: fim da faixa mais longa + folga pra arrastar pra direita', () => {
+    assert.equal(E.totalDaLinha([{ inicio: 0, duracao: 21.8 }, { inicio: 21.8, duracao: 10 }]), 31.8 + 5);
+    assert.equal(E.totalDaLinha([]), 10);
+});

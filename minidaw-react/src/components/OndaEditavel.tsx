@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Scissors, VolumeX, Undo2, Loader2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  trechoValido, cortarTrecho, silenciarTrecho, janelaVisivel, rolagemParaAncora, picosDaJanela,
+  trechoValido, cortarTrecho, silenciarTrecho, picosDaFaixa, imantar,
 } from "@/lib/edicaoOnda.js";
 import { paraWav } from "@/lib/audioFile.js";
 
@@ -14,7 +14,22 @@ import { paraWav } from "@/lib/audioFile.js";
  * A edição gera um WAV novo (blob:) e avisa o pai por `onEditado` — Prévia,
  * Exportar, Masterizar e Salvar VIP passam a usar a versão editada.
  * (O TrackWaveform.tsx da Lovable desenhava Math.random — foi apagado.)
+ *
+ * LINHA DO TEMPO COMUM (17/10/2026, pedido dele): todas as faixas na mesma régua —
+ * o áudio aparece a partir do "Entra em"; zoom e rolagem são da linha toda (vêm do
+ * pai), então as faixas ficam alinhadas. A ALÇA no topo do objeto arrasta ele pra
+ * esquerda/direita, com ÍMÃ nos marcadores (fim da locução, início/fim das outras
+ * faixas) — é assim que a assinatura cantada do jingle encaixa no fim da voz.
  */
+
+export interface LinhaComum {
+  total: number;                                       // segundos da régua
+  zoom: number;
+  g0: number;                                          // segundo no começo da tela
+  mudarZoom: (zoom: number, ancora: number, fracTela: number) => void;
+  rolarPara: (g0: number) => void;
+}
+export interface Marcador { t: number; cor: string; rotulo: string }
 
 interface Props {
   audioUrl: string;
@@ -28,10 +43,15 @@ interface Props {
   // destino aceitou — aí o trecho SAI desta (mover; o Desfazer daqui traz de volta).
   faixaId?: string;
   onSoltarTrecho?: (destinoId: string, trecho: { url: string; duracao: number; inicio: number }) => boolean;
+  inicio: number;                                      // "Entra em" desta faixa
+  linha: LinhaComum;
+  marcadores: Marcador[];                              // das OUTRAS faixas (ímã)
+  onMover: (novoInicio: number) => void;
 }
 
 const ALTURA = 76;
-const ZOOM_MAX = 64;   // 64× numa faixa de 30 s ≈ meio segundo na tela: dá pra pegar uma sílaba
+const ALCA = 14;       // faixa de cima do objeto: arrastar aqui MOVE o objeto
+export const ZOOM_MAX = 64;
 let ctxCompartilhado: AudioContext | null = null;
 const cache = new Map<string, AudioBuffer>();   // por URL: Desfazer não decodifica de novo
 
@@ -55,21 +75,20 @@ const relogio = (s: number) => {
   return `${m}:${resto.toFixed(1).padStart(4, "0").replace(".", ",")}`;
 };
 
-export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixaId, onSoltarTrecho }: Props) {
+export function OndaEditavel({
+  audioUrl, tipo, onEditado, tempoMix = null, faixaId, onSoltarTrecho, inicio, linha, marcadores, onMover,
+}: Props) {
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [erro, setErro] = useState("");
   const [largura, setLargura] = useState(0);
-  const [tempo, setTempo] = useState(0);
-  const [sel, setSel] = useState<[number, number] | null>(null);
+  const [tempo, setTempo] = useState(0);                       // cursor da faixa (tempo LOCAL)
+  const [sel, setSel] = useState<[number, number] | null>(null);   // trecho em tempo LOCAL
   const [arrasto, setArrasto] = useState<[number, number] | null>(null);
   const [editando, setEditando] = useState(false);
   const [pilha, setPilha] = useState<{ url: string; duracao: number }[]>([]);
-  // Zoom + rolagem da faixa (pedido dele, 17/10/2026): cada faixa tem o seu.
-  const [zoom, setZoom] = useState(1);
-  const [rolagem, setRolagem] = useState(0);
+  const [levando, setLevando] = useState<{ x: number; y: number } | null>(null);   // trecho → outra faixa
+  const [movendo, setMovendo] = useState<{ gIni: number; inicioIni: number; novo: number } | null>(null);
   const barraRef = useRef<HTMLDivElement>(null);
-  // Arrasto do trecho marcado: posição do "fantasma" que segue o mouse.
-  const [levando, setLevando] = useState<{ x: number; y: number } | null>(null);
   const caixaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -116,43 +135,35 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixa
   }, []);
 
   const dur = buffer?.duration || 0;
-  const [t0, t1] = largura && dur ? janelaVisivel(dur, largura, zoom, rolagem) : [0, dur];
+  const ini = movendo ? movendo.novo : inicio;                  // durante o arrasto, a posição nova
+  // Janela global na tela (régua comum).
+  const span = linha.total / linha.zoom;
+  const g0 = Math.max(0, Math.min(linha.total - span, linha.g0));
+  const g1 = g0 + span;
+
   const envelope = useMemo(
-    () => (buffer && largura ? picosDaJanela(buffer.getChannelData(0), buffer.sampleRate, t0, t1, largura) : []),
-    [buffer, largura, t0, t1]
+    () => (buffer && largura ? picosDaFaixa(buffer.getChannelData(0), buffer.sampleRate, ini, g0, g1, largura) : []),
+    [buffer, largura, ini, g0, g1]
   );
 
-  // A barra nativa manda na rolagem; mudar a rolagem por código acerta a barra.
-  const rolarPara = useCallback((px: number) => {
-    setRolagem(px);
-    if (barraRef.current && Math.abs(barraRef.current.scrollLeft - px) > 1) barraRef.current.scrollLeft = px;
-  }, []);
-
-  // Zoom mantendo no lugar o cursor (se estiver na tela) ou o meio da tela.
-  const mudarZoom = (novo: number) => {
-    if (!dur || !largura) return;
-    const z = Math.max(1, Math.min(ZOOM_MAX, novo));
-    const ref = tempoMix != null ? tempoMix : tempo;
-    const naTela = ref >= t0 && ref <= t1;
-    const ancora = naTela ? ref : (t0 + t1) / 2;
-    const xTela = ((ancora - t0) / (t1 - t0 || 1)) * largura;
-    setZoom(z);
-    // A barra só ganha o tamanho novo depois do render: rola no próximo quadro.
-    const alvo = rolagemParaAncora(ancora, xTela, dur, largura, z);
-    setRolagem(alvo);
-    requestAnimationFrame(() => { if (barraRef.current) barraRef.current.scrollLeft = alvo; });
-  };
-
-  // Tocando com zoom: a onda rola sozinha pra acompanhar o cursor.
+  // A barra de rolagem acompanha a linha comum (outra faixa pode ter rolado).
   useEffect(() => {
-    if (zoom <= 1 || !dur || !largura) return;
-    const t = tempoMix != null ? tempoMix : tempo;
-    const tocando = tempoMix != null || (audioRef.current && !audioRef.current.paused);
-    if (!tocando || t > dur) return;
-    if (t < t0 || t > t1) rolarPara(rolagemParaAncora(t, largura * 0.1, dur, largura, zoom));
-  }, [tempo, tempoMix, zoom, dur, largura, t0, t1, rolarPara]);
+    const b = barraRef.current;
+    if (!b || !largura) return;
+    const alvo = (g0 / linha.total) * largura * linha.zoom;
+    if (Math.abs(b.scrollLeft - alvo) > 1) b.scrollLeft = alvo;
+  }, [g0, linha.total, linha.zoom, largura]);
 
-  // Desenho: onda, trecho marcado, cursor.
+  // Tocando: a linha rola sozinha pra acompanhar o cursor.
+  useEffect(() => {
+    if (linha.zoom <= 1 || !largura) return;
+    const tocandoFaixa = audioRef.current && !audioRef.current.paused;
+    const g = tempoMix != null ? tempoMix : tocandoFaixa ? ini + tempo : null;
+    if (g == null || g > linha.total) return;
+    if (g < g0 || g > g1) linha.rolarPara(Math.max(0, g - span * 0.1));
+  }, [tempo, tempoMix, linha, largura, g0, g1, span, ini]);
+
+  // Desenho: fundo do objeto + alça, onda, marcadores, trecho, cursores.
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv || !largura) return;
@@ -163,47 +174,81 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixa
     if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, largura, ALTURA);
-    const x = (t: number) => (t1 > t0 ? ((t - t0) / (t1 - t0)) * largura : 0);
-    const meio = ALTURA / 2;
-    g.fillStyle = tipo === "voiceover" ? "rgba(96, 165, 250, 0.9)" : "rgba(192, 132, 252, 0.9)";
-    envelope.forEach(([mn, mx], px) => {
-      const y1 = meio - mx * meio;
-      const y2 = meio - mn * meio;
+    const x = (t: number) => ((t - g0) / span) * largura;
+    const azul = tipo === "voiceover";
+    if (dur) {
+      const xa = x(ini), xb = x(ini + dur);
+      g.fillStyle = azul ? "rgba(59, 130, 246, 0.10)" : "rgba(168, 85, 247, 0.10)";
+      g.fillRect(xa, 0, xb - xa, ALTURA);
+      g.fillStyle = movendo ? "#f59e0b" : azul ? "rgba(59, 130, 246, 0.55)" : "rgba(168, 85, 247, 0.55)";
+      g.fillRect(xa, 0, xb - xa, ALCA);
+      if (xb - xa > 70) {
+        g.fillStyle = "#fff";
+        g.font = "10px sans-serif";
+        g.fillText(movendo ? `entra em ${movendo.novo.toFixed(2)} s` : "⇔ arraste aqui para mover", Math.max(xa, 0) + 6, 10);
+      }
+    }
+    const meio = ALCA + (ALTURA - ALCA) / 2;
+    const meiaAltura = (ALTURA - ALCA) / 2;
+    g.fillStyle = azul ? "rgba(96, 165, 250, 0.9)" : "rgba(192, 132, 252, 0.9)";
+    envelope.forEach((p, px) => {
+      if (!p) return;
+      const [mn, mx] = p;
+      const y1 = meio - mx * meiaAltura;
+      const y2 = meio - mn * meiaAltura;
       g.fillRect(px, y1, 1, Math.max(1, y2 - y1));
     });
+    // Marcadores (ímã): fim da locução em âmbar, outras faixas em branco.
+    g.setLineDash([4, 4]);
+    for (const m of marcadores) {
+      if (m.t < g0 || m.t > g1) continue;
+      g.strokeStyle = m.cor;
+      g.beginPath();
+      g.moveTo(x(m.t) + 0.5, 0);
+      g.lineTo(x(m.t) + 0.5, ALTURA);
+      g.stroke();
+    }
+    g.setLineDash([]);
     // Trecho marcado POR CIMA da onda (atrás dela some quando a voz é alta).
     const marcado = arrasto || sel;
     if (marcado && dur) {
       const [a, b] = [Math.min(...marcado), Math.max(...marcado)];
       g.fillStyle = "rgba(250, 204, 21, 0.38)";
-      g.fillRect(x(a), 0, Math.max(1, x(b) - x(a)), ALTURA);
+      g.fillRect(x(ini + a), ALCA, Math.max(1, x(ini + b) - x(ini + a)), ALTURA - ALCA);
       g.fillStyle = "#facc15";
-      g.fillRect(x(a), 0, 1, ALTURA);
-      g.fillRect(Math.max(0, x(b) - 1), 0, 1, ALTURA);
+      g.fillRect(x(ini + a), ALCA, 1, ALTURA - ALCA);
+      g.fillRect(Math.max(0, x(ini + b) - 1), ALCA, 1, ALTURA - ALCA);
     }
-    if (dur && tempo >= t0 && tempo <= t1) {
+    if (dur && ini + tempo >= g0 && ini + tempo <= g1) {
       g.fillStyle = "#f87171";
-      g.fillRect(Math.min(largura - 2, x(tempo)), 0, 2, ALTURA);
+      g.fillRect(Math.min(largura - 2, x(ini + tempo)), 0, 2, ALTURA);
     }
     // Cursor do Play verde (mix), igual em todas as faixas.
-    if (dur && tempoMix != null && tempoMix <= dur && tempoMix >= t0 && tempoMix <= t1) {
+    if (tempoMix != null && tempoMix >= g0 && tempoMix <= g1) {
       g.fillStyle = "#4ade80";
       g.fillRect(Math.min(largura - 2, x(tempoMix)), 0, 2, ALTURA);
     }
-  }, [envelope, largura, sel, arrasto, tempo, buffer, tipo, tempoMix, t0, t1, dur]);
+  }, [envelope, largura, sel, arrasto, tempo, buffer, tipo, tempoMix, g0, g1, span, dur, ini, movendo, marcadores]);
 
-  const tempoDoPonteiro = (e: React.PointerEvent) => {
+  // Ponteiro → segundo da régua (global) e altura dentro da onda.
+  const ponteiro = (e: React.PointerEvent) => {
     const r = canvasRef.current!.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    return t0 + frac * (t1 - t0);
+    return { g: g0 + frac * span, y: e.clientY - r.top };
   };
-
+  const local = (g: number) => Math.min(dur, Math.max(0, g - inicio));
   const dentroDoTrecho = (t: number) => !!sel && t >= sel[0] && t <= sel[1];
 
   const onDown = (e: React.PointerEvent) => {
     if (!buffer) return;
     (e.target as Element).setPointerCapture(e.pointerId);
-    const t = tempoDoPonteiro(e);
+    const { g, y } = ponteiro(e);
+    // Alça do objeto: move a faixa inteira na linha do tempo.
+    if (y <= ALCA && g >= inicio && g <= inicio + dur) {
+      setMovendo({ gIni: g, inicioIni: inicio, novo: inicio });
+      return;
+    }
+    const t = local(g);
     // Clicou DENTRO do trecho laranja: começa a levar o trecho pra outra faixa.
     if (onSoltarTrecho && dentroDoTrecho(t)) {
       setLevando({ x: e.clientX, y: e.clientY });
@@ -212,8 +257,21 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixa
     setArrasto([t, t]);
   };
   const onMove = (e: React.PointerEvent) => {
+    if (movendo) {
+      const { g } = ponteiro(e);
+      const bruto = Math.max(0, movendo.inicioIni + (g - movendo.gIni));
+      // Ímã: o começo OU o fim do objeto grudam no marcador mais perto (~16 px na tela).
+      const tol = (16 / Math.max(1, largura)) * span;
+      const alvos = [0, ...marcadores.map((m) => m.t)];
+      const peloInicio = imantar(bruto, alvos, tol);
+      const peloFim = imantar(bruto + dur, alvos, tol) - dur;
+      const novo = Math.abs(peloInicio - bruto) > 0 ? peloInicio
+        : Math.abs(peloFim - bruto) > 0 ? Math.max(0, peloFim) : bruto;
+      setMovendo({ ...movendo, novo });
+      return;
+    }
     if (levando) { setLevando({ x: e.clientX, y: e.clientY }); return; }
-    if (arrasto) setArrasto([arrasto[0], tempoDoPonteiro(e)]);
+    if (arrasto) setArrasto([arrasto[0], local(ponteiro(e).g)]);
   };
   const soltarTrecho = (e: React.PointerEvent) => {
     setLevando(null);
@@ -234,9 +292,15 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixa
     }
   };
   const onUp = (e: React.PointerEvent) => {
+    if (movendo) {
+      const novo = Math.round(movendo.novo * 100) / 100;
+      setMovendo(null);
+      if (Math.abs(novo - inicio) >= 0.005) onMover(novo);
+      return;
+    }
     if (levando) return soltarTrecho(e);
     if (!arrasto || !buffer) return;
-    const t = tempoDoPonteiro(e);
+    const t = local(ponteiro(e).g);
     const trecho = trechoValido(arrasto[0], t, buffer.duration);
     setArrasto(null);
     if (trecho) {
@@ -281,24 +345,34 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixa
     onEditado(ultimo.url, ultimo.duracao);
   };
 
+  // Zoom da LINHA (todas as faixas juntas), ancorado no cursor se ele estiver na tela.
+  const zoomar = (novo: number) => {
+    const z = Math.max(1, Math.min(ZOOM_MAX, novo));
+    const ref = tempoMix != null ? tempoMix : ini + tempo;
+    const ancora = ref >= g0 && ref <= g1 ? ref : (g0 + g1) / 2;
+    linha.mudarZoom(z, ancora, (ancora - g0) / span);
+  };
+
   const doMix = tempoMix != null;
   return (
     <div className="space-y-2">
       {/* Contador da faixa: posição do cursor (vermelho) ou do Play verde (mix). */}
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-baseline gap-2 flex-wrap">
         <span className={`font-mono text-xl tabular-nums ${doMix ? "text-green-400" : "text-white"}`}>
-          ⏱ {relogio(doMix ? tempoMix! : tempo)}
+          ⏱ {relogio(doMix ? tempoMix! : ini + tempo)}
         </span>
         <span className="font-mono text-sm text-white/50 tabular-nums">/ {relogio(buffer?.duration || 0)}</span>
-        <span className="text-xs text-white/40">{doMix ? "tempo do mix (Play verde)" : "cursor da faixa"}</span>
+        <span className="text-xs text-white/40">
+          {doMix ? "tempo do mix (Play verde)" : "cursor (na linha do tempo)"}{ini > 0 ? ` · entra em ${relogio(ini)}` : ""}
+        </span>
         <div className="ml-auto flex items-center gap-1">
-          <Button size="sm" variant="outline" disabled={!buffer || zoom <= 1} onClick={() => mudarZoom(zoom / 2)}
-            className="h-7 px-2 bg-white/5 border-white/20 text-white hover:bg-white/10" title="Zoom − (afastar a onda)">
+          <Button size="sm" variant="outline" disabled={!buffer || linha.zoom <= 1} onClick={() => zoomar(linha.zoom / 2)}
+            className="h-7 px-2 bg-white/5 border-white/20 text-white hover:bg-white/10" title="Zoom − (afastar — vale pra todas as faixas)">
             <ZoomOut className="w-4 h-4" />
           </Button>
-          <span className="font-mono text-xs text-white/60 w-9 text-center tabular-nums" title="Zoom da faixa">{zoom}×</span>
-          <Button size="sm" variant="outline" disabled={!buffer || zoom >= ZOOM_MAX} onClick={() => mudarZoom(zoom * 2)}
-            className="h-7 px-2 bg-white/5 border-white/20 text-white hover:bg-white/10" title="Zoom + (aproximar a onda)">
+          <span className="font-mono text-xs text-white/60 w-9 text-center tabular-nums" title="Zoom da linha do tempo">{linha.zoom}×</span>
+          <Button size="sm" variant="outline" disabled={!buffer || linha.zoom >= ZOOM_MAX} onClick={() => zoomar(linha.zoom * 2)}
+            className="h-7 px-2 bg-white/5 border-white/20 text-white hover:bg-white/10" title="Zoom + (aproximar — vale pra todas as faixas)">
             <ZoomIn className="w-4 h-4" />
           </Button>
         </div>
@@ -306,11 +380,11 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixa
       <div ref={caixaRef} className="relative w-full rounded-lg bg-black/30 border border-white/10 overflow-hidden" style={{ height: ALTURA }}>
         <canvas
           ref={canvasRef}
-          style={{ width: "100%", height: ALTURA, cursor: levando ? "grabbing" : buffer ? "text" : "default", touchAction: "none" }}
+          style={{ width: "100%", height: ALTURA, cursor: movendo || levando ? "grabbing" : buffer ? "text" : "default", touchAction: "none" }}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
-          aria-label="Onda do áudio: clique para posicionar, arraste para marcar um trecho"
+          aria-label="Onda do áudio: clique para posicionar, arraste para marcar um trecho, arraste a alça de cima para mover"
         />
         {!buffer && !erro && (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-white/50 gap-2">
@@ -318,22 +392,25 @@ export function OndaEditavel({ audioUrl, tipo, onEditado, tempoMix = null, faixa
           </div>
         )}
       </div>
-      {/* Barra de rolagem da faixa (aparece com zoom): esquerda/direita no conteúdo ampliado. */}
+      {/* Barra de rolagem da LINHA (aparece com zoom): rola todas as faixas juntas. */}
       <div
         ref={barraRef}
         className="w-full overflow-x-scroll overflow-y-hidden rounded bg-white/10 [&::-webkit-scrollbar]:h-3.5 [&::-webkit-scrollbar-track]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-sky-400/70 hover:[&::-webkit-scrollbar-thumb]:bg-sky-300"
-        style={{ height: 14, display: zoom > 1 ? "block" : "none", colorScheme: "dark" }}
-        onScroll={(e) => setRolagem(e.currentTarget.scrollLeft)}
+        style={{ height: 14, display: linha.zoom > 1 ? "block" : "none", colorScheme: "dark" }}
+        onScroll={(e) => {
+          const total = largura * linha.zoom;
+          if (total) linha.rolarPara((e.currentTarget.scrollLeft / total) * linha.total);
+        }}
         aria-label="Rolagem da onda"
       >
-        <div style={{ width: largura * zoom, height: 1 }} />
+        <div style={{ width: largura * linha.zoom, height: 1 }} />
       </div>
       <audio ref={audioRef} src={audioUrl} controls className="w-full" />
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-white/60 mr-1">
           {sel
             ? `Trecho: ${fmt(sel[0])} → ${fmt(sel[1])} (${fmt(sel[1] - sel[0])})${onSoltarTrecho ? " · arraste o laranja pra outra faixa" : ""}`
-            : "Som original da faixa (sem efeitos) · arraste na onda para marcar o erro · clique para pular"}
+            : "Som original da faixa (sem efeitos) · arraste na onda para marcar o erro · clique para pular · alça de cima move"}
         </span>
         <Button size="sm" variant="outline" disabled={!sel || editando} onClick={() => aplicar(cortarTrecho)}
           className="bg-white/5 border-white/20 text-white hover:bg-white/10" title="Remove o trecho e junta as pontas (micro-fade, sem estalo)">

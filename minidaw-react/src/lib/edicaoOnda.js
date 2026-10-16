@@ -99,3 +99,48 @@ export function picosDaJanela(canal, sr, t0, t1, largura) {
     const i1 = Math.max(i0 + 1, Math.min(canal.length, Math.ceil(t1 * sr)));
     return picos(canal.subarray(i0, i1), largura);
 }
+
+// ── Linha do tempo COMUM às faixas (17/10/2026) ─────────────────────────────
+// Pedido dele: arrastar o objeto (ex.: assinatura cantada do jingle) pra esquerda/
+// direita e encaixar no marcador do fim da locução. Todas as faixas na mesma régua:
+// o áudio da faixa aparece a partir do "Entra em"; zoom e rolagem são da linha toda.
+
+/** Envelope da faixa na janela global [g0, g1]: null onde a faixa não tem som. */
+export function picosDaFaixa(canal, sr, inicio, g0, g1, largura) {
+    const n = canal.length;
+    const dur = n / sr;
+    const passo = (g1 - g0) / largura;
+    const saida = [];
+    for (let px = 0; px < largura; px++) {
+        const a = g0 + px * passo - inicio;
+        const b = a + passo;
+        if (b <= 0 || a >= dur) { saida.push(null); continue; }
+        const i0 = Math.max(0, Math.floor(a * sr));
+        const i1 = Math.min(n, Math.max(i0 + 1, Math.ceil(b * sr)));
+        let mn = Infinity, mx = -Infinity;
+        for (let i = i0; i < i1; i++) {
+            const v = canal[i];
+            if (v < mn) mn = v;
+            if (v > mx) mx = v;
+        }
+        saida.push([mn, mx]);
+    }
+    return saida;
+}
+
+/** Ímã: gruda `t` na marca mais perto (até `tolerancia` segundos). Nunca antes do 0. */
+export function imantar(t, alvos, tolerancia) {
+    let melhor = null, dist = Infinity;
+    for (const a of alvos) {
+        const d = Math.abs(a - t);
+        if (d <= tolerancia && d < dist) { melhor = a; dist = d; }
+    }
+    return Math.max(0, melhor != null ? melhor : t);
+}
+
+/** Tamanho da régua: fim da faixa mais longa + 5 s de folga pra arrastar pra direita. */
+export function totalDaLinha(faixas) {
+    if (!faixas.length) return 10;
+    const fim = Math.max(...faixas.map((f) => (Number(f.inicio) || 0) + (f.duracao || 0)));
+    return Math.round((fim + 5) * 1e6) / 1e6;
+}

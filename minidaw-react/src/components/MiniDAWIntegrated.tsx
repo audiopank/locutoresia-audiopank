@@ -17,7 +17,8 @@ import { SecretsManager } from "@/components/SecretsManager";
 import { TrackEffectsPanel } from "@/components/TrackEffectsPanel";
 import { VipProjects } from "@/components/VipProjects";
 import MasterizarPanel from "./MasterizarPanel";
-import { OndaEditavel } from "./OndaEditavel";
+import { OndaEditavel, type LinhaComum, type Marcador } from "./OndaEditavel";
+import { totalDaLinha } from "@/lib/edicaoOnda.js";
 import { ProjetoNoPC } from "./ProjetoNoPC";
 import { mixToMp3, downloadBlob } from "@/lib/mixer";
 import { fimDaVoz } from "@/lib/linhaDoTempo.js";
@@ -67,6 +68,10 @@ const MiniDAWIntegrated = () => {
   // Antes tocava as faixas cruas lado a lado: mexer no reverb/EQ não mudava nada no
   // play e a trilha não fazia fade (17/10/2026). O WAV fica guardado enquanto nada muda.
   const mixPlayRef = useRef<{ chave: string; url: string; audio: HTMLAudioElement } | null>(null);
+  // LINHA DO TEMPO COMUM (17/10/2026): mesma régua, zoom e rolagem pra todas as
+  // faixas — senão não dá pra alinhar a assinatura cantada no fim da locução.
+  const [linhaZoom, setLinhaZoom] = useState(1);
+  const [linhaG0, setLinhaG0] = useState(0);
   const [isMixing, setIsMixing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -396,6 +401,34 @@ const MiniDAWIntegrated = () => {
     }
   }, [tracks, toast]);
 
+  const comAudio = tracks.filter(t => t.audioUrl && t.duration > 0);
+  const totalLinha = totalDaLinha(comAudio.map(t => ({ inicio: t.inicio || 0, duracao: t.duration })));
+  const linha: LinhaComum = {
+    total: totalLinha,
+    zoom: linhaZoom,
+    g0: linhaG0,
+    mudarZoom: (z, ancora, frac) => {
+      setLinhaZoom(z);
+      setLinhaG0(Math.max(0, Math.min(totalLinha - totalLinha / z, ancora - frac * (totalLinha / z))));
+    },
+    rolarPara: (g) => setLinhaG0(Math.max(0, Math.min(totalLinha - totalLinha / linhaZoom, g))),
+  };
+  // Marcadores (ímã) que cada faixa enxerga: início/fim das OUTRAS faixas e o fim da locução.
+  const marcadoresDe = (id: string): Marcador[] => {
+    const outras = comAudio.filter(t => t.id !== id);
+    const lista: Marcador[] = [];
+    let fimVoz = 0;
+    for (const t of outras) {
+      const ini = t.inicio || 0;
+      const fim = ini + t.duration;
+      if (t.type === "voiceover") fimVoz = Math.max(fimVoz, fim);
+      lista.push({ t: fim, cor: "rgba(255,255,255,0.55)", rotulo: `fim de ${t.name}` });
+      if (ini > 0) lista.push({ t: ini, cor: "rgba(255,255,255,0.35)", rotulo: `início de ${t.name}` });
+    }
+    if (fimVoz > 0) lista.push({ t: fimVoz, cor: "#f59e0b", rotulo: "fim da locução" });
+    return lista;
+  };
+
   const createNewProject = useCallback(() => {
     setTracks([]);
     audioRefs.current = {};
@@ -721,6 +754,10 @@ const MiniDAWIntegrated = () => {
                           tempoMix={isPlaying || currentTime > 0 ? currentTime : null}
                           faixaId={track.id}
                           onSoltarTrecho={(destino, trecho) => receberTrecho(track.id, destino, trecho)}
+                          inicio={track.inicio || 0}
+                          linha={linha}
+                          marcadores={marcadoresDe(track.id)}
+                          onMover={(v) => setTracks(prev => prev.map(t => t.id === track.id ? { ...t, inicio: v } : t))}
                         />
                         <div className="text-sm text-white/60">Duração: {track.duration.toFixed(1)}s</div>
                         {/* Entra em + fade (17/10/2026): assinatura cantada do jingle no fim do spot. */}
