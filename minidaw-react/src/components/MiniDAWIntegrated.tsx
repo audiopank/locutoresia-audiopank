@@ -909,7 +909,7 @@ const MiniDAWIntegrated = () => {
             </div>
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-purple-400" />
-              <span>Gemini AI + ElevenLabs + LMNT</span>
+              <span>Gemini AI + ElevenLabs</span>
             </div>
           </div>
         </Card>

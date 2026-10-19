@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Volume2, Play, Pause, Loader2, Search, Mic, Plus } from "lucide-react";
+import { Volume2, Play, Pause, Loader2, Search, Plus } from "lucide-react";
 import { useLMNT } from "@/hooks/useLMNT";
 import { useToast } from "@/hooks/useToast";
 
-const CLONED_VOICES_KEY = "cloned_voices_library";
 const PREVIEW_TEXT = "Olá! Esta é uma amostra da minha voz para o seu projeto.";
 
 interface GalleryVoice {
@@ -38,8 +36,7 @@ interface VoiceGalleryProps {
 }
 
 export const VoiceGallery = ({ onUseVoice }: VoiceGalleryProps) => {
-  const navigate = useNavigate();
-  const { synthesizeSpeech, synthesizeClonedVoice } = useLMNT();
+  const { synthesizeSpeech } = useLMNT();
   const { toast } = useToast();
 
   const [voices, setVoices] = useState<GalleryVoice[]>([]);
@@ -62,23 +59,9 @@ export const VoiceGallery = ({ onUseVoice }: VoiceGalleryProps) => {
     setLoading(true);
     const list: GalleryVoice[] = [];
 
-    // Vozes clonadas (localStorage)
-    try {
-      const stored = localStorage.getItem(CLONED_VOICES_KEY);
-      const parsed = stored ? JSON.parse(stored) : [];
-      for (const v of parsed) {
-        list.push({
-          key: `cloned::${v.id}`,
-          id: v.lmntVoiceId || v.id,
-          name: v.name,
-          description: v.description,
-          provider: "clonada",
-          kind: "cloned",
-        });
-      }
-    } catch (e) {
-      console.error("Erro ao carregar vozes clonadas:", e);
-    }
+    // Vozes clonadas SAÍRAM da galeria (19/10/2026): eram do LMNT, que fechou — o
+    // preview só dava erro. A lista continua guardada no navegador e pode ser
+    // exportada em /cloned-voices; aqui só entram locutores que funcionam.
 
     // Locutores do backend
     try {
@@ -86,6 +69,7 @@ export const VoiceGallery = ({ onUseVoice }: VoiceGalleryProps) => {
       if (res.ok) {
         const data = await res.json();
         for (const v of data.voices || []) {
+          if (v.provider === "lmnt") continue;
           list.push({
             key: `api::${v.provider}::${v.id}`,
             id: v.id,
@@ -131,10 +115,7 @@ export const VoiceGallery = ({ onUseVoice }: VoiceGalleryProps) => {
       let url = previewCache.current[voice.key];
       if (!url) {
         setPreviewingKey(voice.key);
-        const result =
-          voice.kind === "cloned"
-            ? await synthesizeClonedVoice(PREVIEW_TEXT, voice.id)
-            : await synthesizeSpeech(PREVIEW_TEXT, voice.id, "pt", voice.provider);
+        const result = await synthesizeSpeech(PREVIEW_TEXT, voice.id, "pt", voice.provider);
         url = result.audioUrl;
         previewCache.current[voice.key] = url;
       }
@@ -170,14 +151,10 @@ export const VoiceGallery = ({ onUseVoice }: VoiceGalleryProps) => {
               <h3 className="text-lg font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                 Galeria de Vozes Profissionais
               </h3>
-              <p className="text-xs text-white/60">Ouça exemplos, clone vozes e gere áudio direto para os tracks</p>
+              <p className="text-xs text-white/60">Ouça exemplos e gere áudio direto para os tracks</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button onClick={() => navigate("/voice-cloning")} variant="outline" size="sm" className="gap-2 border-white/20 hover:bg-white/10">
-              <Mic className="w-4 h-4" />
-              Clonar Voz
-            </Button>
             <Badge variant="secondary" className="bg-purple-500/20 text-purple-200">{voices.length} vozes</Badge>
           </div>
         </div>
