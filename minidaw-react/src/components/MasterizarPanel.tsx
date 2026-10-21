@@ -4,6 +4,8 @@ import { Upload, Loader2, Activity, Play, Pause, Trash2, Download, Wand2 } from 
 import { decodificar, paraWav, paraMp3, baixar } from "@/lib/audioFile.js";
 import { medir, masterizar } from "@/lib/mastering.js";
 import { DESTINOS, acharDestino } from "@/lib/destinos.js";
+import { PADRAO, PRESETS } from "@/lib/compressorMaster.js";
+import { CompressorVisual, type ParamsComp, type ReducaoComp } from "./CompressorVisual";
 
 type Medicao = {
   lufs: number; picoDb: number; faixaDinamica: number;
@@ -47,6 +49,12 @@ export default function MasterizarPanel() {
   const [versoes, setVersoes] = useState<Versao[]>([]);
   const [processando, setProcessando] = useState(false);
   const [tocandoId, setTocandoId] = useState<string>("");
+  // Compressor do master (21/10/2026, padrão Dynamics da Acon) — nasce DESLIGADO.
+  const [comp, setComp] = useState<ParamsComp>(() => {
+    const { id: _i, nome: _n, ...p } = PADRAO as any;
+    return p as ParamsComp;
+  });
+  const [ultimaReducao, setUltimaReducao] = useState<ReducaoComp>(null);
 
   const [refNome, setRefNome] = useState("");
   const [refBalanco, setRefBalanco] = useState<number[] | null>(null);
@@ -117,12 +125,16 @@ export default function MasterizarPanel() {
         corteAltoHz: corteAlto,
         intensidade,
         balancoReferencia: refBalanco,
+        compressor: comp,
       });
+      setUltimaReducao(resultado.compressor || null);
+      const nomePreset = comp.ativo ? (PRESETS.find((x) => x.id === comp.preset)?.nome || "manual") : "";
       setVersoes((atual) => [
         ...atual,
         {
           id: `v_${++proximoIdRef.current}_${destinoEscolhido.chave}`,
-          rotulo: refBalanco ? `${destinoEscolhido.rotulo} + ref.` : destinoEscolhido.rotulo,
+          rotulo: (refBalanco ? `${destinoEscolhido.rotulo} + ref.` : destinoEscolhido.rotulo)
+            + (comp.ativo ? ` + comp. ${nomePreset}` : ""),
           buffer: resultado.buffer,
           medicao: resultado.medicao,
           alvoLufs: destinoEscolhido.alvoLufs,
@@ -134,7 +146,7 @@ export default function MasterizarPanel() {
     } finally {
       setProcessando(false);
     }
-  }, [buffer, destino, intensidade, corteBaixo, corteAlto, refBalanco]);
+  }, [buffer, destino, intensidade, corteBaixo, corteAlto, refBalanco, comp]);
 
   // Um player só para a pilha inteira: tocar duas versões ao mesmo tempo
   // atrapalharia a comparação, que é justamente o ponto da pilha.
@@ -250,6 +262,8 @@ export default function MasterizarPanel() {
               </label>
             </div>
           </div>
+
+          <CompressorVisual params={comp} onChange={setComp} reducao={ultimaReducao} />
 
           <button
             onClick={gerar} disabled={processando}
