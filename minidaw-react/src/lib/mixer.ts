@@ -155,7 +155,7 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
     const { inicio, fadeEm } = tempo.faixas[indice];
     // 🧹 Limpar ruído (RNNoise) ANTES do gate e dos efeitos: é conserto do som cru.
     // Roda na cópia decodificada — o arquivo da faixa não muda.
-    if (d.effects?.limparRuido) d.buffer = await limparRuidoBuffer(d.buffer);
+    if (d.effects?.limparRuido) d.buffer = await limparRuidoBuffer(d.buffer, d.effects.limparRuidoIntensidade ?? 80);
     // Gate de respiração: roda ANTES da cadeia de efeitos (EQ/Compressor/etc),
     // direto no buffer decodificado — é conserto na voz crua, não estilo.
     // Independente de `hasActiveEffects`/`effects.enabled`: por isso é

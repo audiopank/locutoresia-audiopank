@@ -17,6 +17,7 @@ export interface TrackEffects {
   gate: { ativo: boolean; sensibilidade: number }; // sensibilidade 1-30
   // 🧹 Limpar ruído (RNNoise, 21/10/2026) — também independe do `enabled`; liga só quando precisa.
   limparRuido?: boolean;
+  limparRuidoIntensidade?: number;   // 0–100 (%), padrão 80
 }
 
 export const defaultEffects = (trackType: "voiceover" | "music" = "music"): TrackEffects => ({
@@ -27,6 +28,7 @@ export const defaultEffects = (trackType: "voiceover" | "music" = "music"): Trac
   normalize: false,
   gate: { ativo: trackType === "voiceover", sensibilidade: 12 },
   limparRuido: false,
+  limparRuidoIntensidade: 80,
 });
 
 export const hasActiveEffects = (fx?: TrackEffects): boolean =>

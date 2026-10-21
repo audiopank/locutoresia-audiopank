@@ -38,6 +38,21 @@ export function limparCanal(canal, tamanhoQuadro, processar, atraso = 0) {
     return r;
 }
 
+/** Intensidade 0–100 (%), padrão 80: o limpo total às vezes abafa ou deixa metálico. */
+export function intensidadeValida(v) {
+    const n = Number(v);
+    if (v == null || !Number.isFinite(n)) return 80;
+    return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+/** Mistura o limpo com o original: `intensidade`% do limpo + o resto do original. Novo array. */
+export function misturarLimpeza(seco, limpo, intensidade) {
+    const k = intensidadeValida(intensidade) / 100;
+    const r = new Float32Array(seco.length);
+    for (let i = 0; i < seco.length; i++) r[i] = limpo[i] * k + seco[i] * (1 - k);
+    return r;
+}
+
 // O RNNoise vem do jsDelivr com a VERSÃO TRAVADA: o arquivo tem 4,8 MB (modelo embutido)
 // e na Vercel tudo passa pela função, que recusa resposta acima de 4,5 MB — servido
 // pelo app ele daria HTTP 500. Só baixa na 1ª vez que alguém liga o efeito; o
@@ -46,7 +61,7 @@ const URL_RNNOISE = 'https://cdn.jsdelivr.net/npm/@shiguredo/rnnoise-wasm@2025.1
 let carregando = null;
 
 /** AudioBuffer → AudioBuffer limpo, a 48 kHz (o mixer reamostra sozinho). Só navegador. */
-export async function limparRuidoBuffer(buffer) {
+export async function limparRuidoBuffer(buffer, intensidade = 80) {
     if (!carregando) {
         carregando = import(/* @vite-ignore */ URL_RNNOISE).then((m) => m.Rnnoise.load());
         carregando.catch(() => { carregando = null; });   // falhou (sem internet?): tenta de novo na próxima
@@ -71,7 +86,9 @@ export async function limparRuidoBuffer(buffer) {
     for (let c = 0; c < fonte.numberOfChannels; c++) {
         const estado = rnnoise.createDenoiseState();   // um estado por canal
         try {
-            limpo.copyToChannel(limparCanal(fonte.getChannelData(c), rnnoise.frameSize, (q) => estado.processFrame(q), ATRASO_RNNOISE), c);
+            const seco = fonte.getChannelData(c);
+            const sem = limparCanal(seco, rnnoise.frameSize, (q) => estado.processFrame(q), ATRASO_RNNOISE);
+            limpo.copyToChannel(misturarLimpeza(seco, sem, intensidade), c);
         } finally {
             estado.destroy();
         }

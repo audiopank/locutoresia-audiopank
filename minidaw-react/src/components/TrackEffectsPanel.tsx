@@ -77,8 +77,17 @@ export const TrackEffectsPanel = ({ effects, onChange, trackType }: TrackEffects
               <span className="flex items-center gap-2 text-sm text-white/80">🧹 Limpar ruído</span>
               <Switch checked={!!effects.limparRuido} onCheckedChange={(v) => set({ limparRuido: v })} aria-label="Limpar ruído" />
             </label>
+            {effects.limparRuido && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-white/60 w-20">Intensidade</span>
+                <Slider value={[effects.limparRuidoIntensidade ?? 80]} min={0} max={100} step={5}
+                  onValueChange={([v]) => set({ limparRuidoIntensidade: v })} className="flex-1" aria-label="Intensidade da limpeza" />
+                <span className="text-xs text-white/70 w-10 text-right">{effects.limparRuidoIntensidade ?? 80}%</span>
+              </div>
+            )}
             <p className="text-xs text-white/40">
               Tira ruído contínuo (ventilador, ar-condicionado, rua, chiado). Não resolve TV, música ou gente falando ao fundo.
+              Intensidade: mais = mais limpo; se a voz ficar abafada ou metálica, abaixe.
               Independe do "Ativar" ao lado. Ouça no Play verde ▶ — o arquivo original não muda.
             </p>
           </div>

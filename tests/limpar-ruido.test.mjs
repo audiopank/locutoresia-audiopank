@@ -34,3 +34,23 @@ test('limparCanal: valor acima do limite volta limitado a [-1, 1]', () => {
     const r = limparCanal(new Float32Array(480).fill(0.9), 480, (q) => { for (let i = 0; i < q.length; i++) q[i] *= 3; });
     assert.equal(r[10], 1);
 });
+
+// ── Intensidade (21/10/2026): pedido dele "como aumentar ou diminuir o limpar ruído" ──
+import { misturarLimpeza, intensidadeValida } from '../minidaw-react/src/lib/limparRuido.js';
+
+test('misturarLimpeza: 100% = só o limpo; 0% = só o original; 80% = 80/20', () => {
+    const seco = new Float32Array([1, 1, 1]);
+    const limpo = new Float32Array([0, 0, 0]);
+    assert.deepEqual([...misturarLimpeza(seco, limpo, 100)], [0, 0, 0]);
+    assert.deepEqual([...misturarLimpeza(seco, limpo, 0)], [1, 1, 1]);
+    const m = misturarLimpeza(seco, limpo, 80);
+    assert.ok(Math.abs(m[0] - 0.2) < 1e-6);
+    assert.equal(seco[0], 1, 'não mexe no original');
+});
+
+test('intensidadeValida: padrão 80, limitada a 0–100', () => {
+    assert.equal(intensidadeValida(undefined), 80);
+    assert.equal(intensidadeValida(150), 100);
+    assert.equal(intensidadeValida(-3), 0);
+    assert.equal(intensidadeValida(55), 55);
+});

@@ -104,6 +104,7 @@ const MiniDAWIntegrated = () => {
       ...t.effects,
       gate: { ...defaultEffects(t.type).gate, ...(t.effects?.gate || {}) },
       limparRuido: !!t.effects?.limparRuido,
+      limparRuidoIntensidade: t.effects?.limparRuidoIntensidade ?? 80,
     },
   });
 
