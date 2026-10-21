@@ -5,6 +5,7 @@ import { decodificar, paraWav, paraMp3, baixar } from "@/lib/audioFile.js";
 import { medir, masterizar } from "@/lib/mastering.js";
 import { DESTINOS, acharDestino } from "@/lib/destinos.js";
 import { PADRAO, PRESETS } from "@/lib/compressorMaster.js";
+import { MODOS_DITHER } from "@/lib/dither.js";
 import { CompressorVisual, type ParamsComp, type ReducaoComp } from "./CompressorVisual";
 
 type Medicao = {
@@ -47,6 +48,7 @@ export default function MasterizarPanel() {
   const [corteBaixo, setCorteBaixo] = useState(20);
   const [corteAlto, setCorteAlto] = useState(0);
   const [graves, setGraves] = useState(0);   // 21/10/2026: reforço de grave (0 a +8 dB)
+  const [dither, setDither] = useState("tpdf");   // 21/10/2026: dither no download (pedido dele)
   const [versoes, setVersoes] = useState<Versao[]>([]);
   const [processando, setProcessando] = useState(false);
   const [tocandoId, setTocandoId] = useState<string>("");
@@ -317,6 +319,15 @@ export default function MasterizarPanel() {
 
       {versoes.length > 0 && (
         <div className="space-y-2">
+          {/* Dither (21/10/2026): só na hora de baixar — a prévia e o som aprovado não mudam. */}
+          <label className="flex items-center gap-2 flex-wrap text-sm text-white/70">
+            Dither ao baixar (16 bits):
+            <select value={dither} onChange={(e) => setDither(e.target.value)} aria-label="Dither"
+                    className="bg-black/50 border border-white/15 rounded px-2 py-1 text-sm">
+              {MODOS_DITHER.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+            </select>
+            <span className="text-xs text-white/40">— troca a aspereza dos finais e fades por um chiado inaudível (~−96 dB).</span>
+          </label>
           {versoes.map((v) => {
             const alcancou = Math.abs(v.medicao.lufs - v.alvoLufs) <= 1;
             return (
@@ -335,11 +346,11 @@ export default function MasterizarPanel() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => baixar(paraMp3(v.buffer), `${nome.replace(/\.[^.]+$/, "")} - ${v.rotulo}.mp3`)}
+                <button onClick={() => baixar(paraMp3(v.buffer, 192, { dither: dither || null }), `${nome.replace(/\.[^.]+$/, "")} - ${v.rotulo}.mp3`)}
                         className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm inline-flex items-center gap-1">
                   <Download className="w-4 h-4" /> MP3
                 </button>
-                <button onClick={() => baixar(paraWav(v.buffer), `${nome.replace(/\.[^.]+$/, "")} - ${v.rotulo}.wav`)}
+                <button onClick={() => baixar(paraWav(v.buffer, { dither: dither || null }), `${nome.replace(/\.[^.]+$/, "")} - ${v.rotulo}.wav`)}
                         className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm">
                   WAV
                 </button>

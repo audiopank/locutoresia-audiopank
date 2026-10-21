@@ -4,6 +4,7 @@
  * masterização não saber nada de File nem de Blob.
  */
 import { Mp3Encoder } from '@breezystack/lamejs';
+import { quantizar16 } from './dither.js';
 
 /** Decodifica qualquer arquivo suportado pelo navegador num AudioBuffer. */
 export async function decodificar(file) {
@@ -16,8 +17,8 @@ export async function decodificar(file) {
     }
 }
 
-/** AudioBuffer → WAV 16 bits. */
-export function paraWav(buffer) {
+/** AudioBuffer → WAV 16 bits. `dither` ('tpdf' | 'tpdf_shaped') só na exportação final do Masterizar. */
+export function paraWav(buffer, { dither = null } = {}) {
     const nCh = buffer.numberOfChannels;
     const n = buffer.length;
     const sr = buffer.sampleRate;
@@ -41,11 +42,10 @@ export function paraWav(buffer) {
 
     let pos = 44;
     const canais = [];
-    for (let c = 0; c < nCh; c++) canais.push(buffer.getChannelData(c));
+    for (let c = 0; c < nCh; c++) canais.push(quantizar16(buffer.getChannelData(c), dither));
     for (let i = 0; i < n; i++) {
         for (let c = 0; c < nCh; c++) {
-            const v = Math.max(-1, Math.min(1, canais[c][i]));
-            view.setInt16(pos, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+            view.setInt16(pos, canais[c][i], true);
             pos += 2;
         }
     }
@@ -53,17 +53,10 @@ export function paraWav(buffer) {
 }
 
 /** AudioBuffer → MP3. Bitrate alto: é entrega para cliente, não streaming. */
-export function paraMp3(buffer, kbps = 192) {
+export function paraMp3(buffer, kbps = 192, { dither = null } = {}) {
     const nCh = Math.min(2, buffer.numberOfChannels);
     const enc = new Mp3Encoder(nCh, buffer.sampleRate, kbps);
-    const paraInt16 = (f32) => {
-        const out = new Int16Array(f32.length);
-        for (let i = 0; i < f32.length; i++) {
-            const v = Math.max(-1, Math.min(1, f32[i]));
-            out[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
-        }
-        return out;
-    };
+    const paraInt16 = (f32) => quantizar16(f32, dither);
     const esq = paraInt16(buffer.getChannelData(0));
     const dir = nCh > 1 ? paraInt16(buffer.getChannelData(1)) : esq;
 
