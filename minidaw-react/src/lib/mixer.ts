@@ -2,6 +2,7 @@ import { Mp3Encoder } from "@breezystack/lamejs";
 import { buildEffectChain, hasActiveEffects, type TrackEffects } from "./audioEffects";
 import { detectarTrechos, aplicarGate } from "./gate.js";
 import { linhaDoTempo, envelopeGanho } from "./linhaDoTempo.js";
+import { limparRuidoBuffer } from "./limparRuido.js";
 
 export type MixFormat = "mp3" | "wav";
 export type MixQuality = "low" | "medium" | "high" | "ultra";
@@ -152,6 +153,9 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
 
   for (const [indice, d] of decoded.entries()) {
     const { inicio, fadeEm } = tempo.faixas[indice];
+    // 🧹 Limpar ruído (RNNoise) ANTES do gate e dos efeitos: é conserto do som cru.
+    // Roda na cópia decodificada — o arquivo da faixa não muda.
+    if (d.effects?.limparRuido) d.buffer = await limparRuidoBuffer(d.buffer);
     // Gate de respiração: roda ANTES da cadeia de efeitos (EQ/Compressor/etc),
     // direto no buffer decodificado — é conserto na voz crua, não estilo.
     // Independente de `hasActiveEffects`/`effects.enabled`: por isso é

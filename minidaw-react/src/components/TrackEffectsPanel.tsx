@@ -41,6 +41,9 @@ export const TrackEffectsPanel = ({ effects, onChange, trackType }: TrackEffects
           {trackType === "voiceover" && effects.gate.ativo && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/30 text-teal-200">Gate</span>
           )}
+          {effects.limparRuido && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/30 text-sky-200">Limpar ruído</span>
+          )}
           {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
         <div className="flex items-center gap-2">
@@ -67,6 +70,18 @@ export const TrackEffectsPanel = ({ effects, onChange, trackType }: TrackEffects
               <p className="text-xs text-white/40">Corta a respiração entre as falas. Independe do "Ativar" ao lado — funciona sempre que ligado.</p>
             </div>
           )}
+
+          {/* 🧹 Limpar ruído (RNNoise, 21/10/2026): liga só quando a gravação tem ruído. */}
+          <div className="p-2 rounded-md bg-white/5 space-y-1">
+            <label className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-sm text-white/80">🧹 Limpar ruído</span>
+              <Switch checked={!!effects.limparRuido} onCheckedChange={(v) => set({ limparRuido: v })} aria-label="Limpar ruído" />
+            </label>
+            <p className="text-xs text-white/40">
+              Tira ruído contínuo (ventilador, ar-condicionado, rua, chiado). Não resolve TV, música ou gente falando ao fundo.
+              Independe do "Ativar" ao lado. Ouça no Play verde ▶ — o arquivo original não muda.
+            </p>
+          </div>
 
           <div className={`space-y-4 ${effects.enabled ? "" : "opacity-50 pointer-events-none"}`}>
             {/* Toggles rápidos */}
