@@ -26,6 +26,25 @@ MODELOS = {
         'estrutura': ('Gancho forte na primeira frase; o produto ou a oferta; o benefício principal pro cliente; '
                       'chamada final com endereço ou telefone (do briefing).'),
     },
+    # 21/10/2026, pedido dele depois do spot da vacinação antirrábica: prefeitura,
+    # governo e instituição falam com o CIDADÃO (informar, orientar, convocar),
+    # não com o consumidor. E a lei proíbe promoção pessoal na publicidade oficial.
+    'utilidade': {
+        'nome': 'Utilidade pública (Prefeituras, Governos e Instituições)',
+        'descricao': 'campanha de prefeitura, governo ou instituição: informa, orienta e convoca o cidadão',
+        'peca': 'spot',
+        'plano': 'spot_30_45',
+        'estilo': 'professional',
+        'direcao': 'Locutor institucional, voz clara, acolhedora e confiável, ritmo calmo',
+        'trilha': 'institucional leve e inspiradora',
+        'estrutura': ('Abra chamando o cidadão (ex.: "Atenção, população!" ou "A Prefeitura informa:"); '
+                      'diga O QUÊ, QUANDO (data e horário), ONDE e QUEM pode participar; as exigências '
+                      '(documentos, presença de responsável) só se estiverem no briefing; feche com a orientação '
+                      '(procure, compareça, consulte) e a assinatura do órgão. Linguagem de serviço, não de venda: '
+                      'nada de "promoção", "imperdível" ou "compre". PROIBIDO citar nome, apelido, slogan ou '
+                      'imagem de prefeito, governador, secretário ou qualquer político — publicidade oficial não '
+                      'pode fazer promoção pessoal (Constituição, art. 37, §1º).'),
+    },
     'volante': {
         'nome': 'Propaganda Volante',
         'descricao': 'carro de som: texto pra rodar na rua, com repetição',

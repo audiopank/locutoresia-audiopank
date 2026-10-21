@@ -25,7 +25,7 @@ def _ler(*p):
 
 
 def test_os_cinco_modelos_aprovados():
-    assert list(M.MODELOS) == ['comercial', 'volante', 'festa', 'vinheta', 'audiovisual']
+    assert list(M.MODELOS) == ['comercial', 'utilidade', 'volante', 'festa', 'vinheta', 'audiovisual']
     assert M.MODELOS['volante']['plano'] == 'spot_60_90'
     assert M.MODELOS['vinheta']['plano'] == 'teaser_5s'
     assert M.MODELOS['audiovisual']['peca'] == 'video'
@@ -119,7 +119,7 @@ def test_roteiro_sem_modelo_fica_igual(cliente):
 
 def test_rota_dos_modelos(cliente):
     d = cliente.get('/api/gerador/modelos-anuncio').get_json()
-    assert d['success'] and len(d['modelos']) == 5
+    assert d['success'] and len(d['modelos']) == 6
 
 
 def test_tela_tem_os_campos():
@@ -128,3 +128,12 @@ def test_tela_tem_os_campos():
     js = _ler('static', 'gerador.js')
     assert 'modelo: modeloAtual()' in js and 'sotaque: sotaqueAtual()' in js
     assert 'comSotaque(' in js                         # junção na tela (mesma regra do Python)
+
+def test_utilidade_publica_proibe_promocao_pessoal():
+    m = M.MODELOS['utilidade']
+    assert 'Prefeituras' in m['nome'] and m['plano'] == 'spot_30_45' and m['estilo'] == 'professional'
+    e = m['estrutura']
+    assert 'QUANDO' in e and 'ONDE' in e and 'QUEM' in e
+    assert 'prefeito' in e and 'art. 37' in e          # sem promoção pessoal de político
+    assert 'não de venda' in e
+    assert 'art. 37' in M.bloco_prompt('utilidade', '')
