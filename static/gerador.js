@@ -549,9 +549,90 @@
     // entrasse, a IA do roteiro a reescreveria, a checagem de duracao a
     // contaria como fala e ela apareceria no texto entregue ao cliente.
     // O Gemini so obedece ordem entre colchetes — o colchete entra aqui.
+    // ── Modelos de anúncio + sotaque regional (21/10/2026) ───────────────
+    // core/modelos_anuncio.py é a fonte; aqui só preenche a tela e manda pro roteiro.
+    let modelosAnuncio = { modelos: [], sotaques: [] };
+
+    function modeloAtual() {
+        const el = document.getElementById('selectModeloAnuncio');
+        return el ? el.value : '';
+    }
+
+    function sotaqueAtual() {
+        const sel = document.getElementById('selectSotaque');
+        if (!sel || !sel.value) return '';
+        if (sel.value === 'outro') {
+            const inp = document.getElementById('inputSotaqueOutro');
+            return inp ? inp.value.trim().slice(0, 80) : '';
+        }
+        const s = modelosAnuncio.sotaques.find(x => x.id === sel.value);
+        return s ? s.texto : '';
+    }
+
+    // Mesma regra de core/modelos_anuncio.direcao_com_sotaque (Python).
+    function comSotaque(direcao) {
+        const d = (direcao || '').trim();
+        const s = sotaqueAtual().split('[').join(' ').split(']').join(' ').replace(/\s+/g, ' ').trim();
+        if (!s) return d;
+        const pedido = 'com sotaque ' + s + ', natural, sem caricatura';
+        return d ? d + ', ' + pedido : pedido.charAt(0).toUpperCase() + pedido.slice(1);
+    }
+
+    async function carregarModelosAnuncio() {
+        const selM = document.getElementById('selectModeloAnuncio');
+        const selS = document.getElementById('selectSotaque');
+        if (!selM || !selS) return;
+        try {
+            const r = await fetch('/api/gerador/modelos-anuncio');
+            const d = await r.json();
+            if (!d.success) return;
+            modelosAnuncio = { modelos: d.modelos || [], sotaques: d.sotaques || [] };
+            modelosAnuncio.modelos.forEach(m => {
+                const o = document.createElement('option');
+                o.value = m.id;
+                o.textContent = m.nome;
+                o.title = m.descricao;
+                selM.appendChild(o);
+            });
+            selS.innerHTML = '';
+            modelosAnuncio.sotaques.forEach(s => {
+                const o = document.createElement('option');
+                o.value = s.id;
+                o.textContent = s.rotulo;
+                selS.appendChild(o);
+            });
+        } catch (e) {
+            console.warn('modelos de anúncio: não carregou', e);
+        }
+        selM.addEventListener('change', aplicarModeloAnuncio);
+        selS.addEventListener('change', () => {
+            document.getElementById('inputSotaqueOutro').style.display = selS.value === 'outro' ? '' : 'none';
+            if (selS.value && providerDaVoz() !== 'google') {
+                avisar('O sotaque na VOZ só vale no Modo Padrão (Google). No Expressivo, só o texto leva o sotaque.', 'atencao');
+            }
+        });
+    }
+
+    // Escolher o modelo ajusta a tela (nada travado — diferente do Programa).
+    function aplicarModeloAnuncio() {
+        const m = modelosAnuncio.modelos.find(x => x.id === modeloAtual());
+        const dica = document.getElementById('dicaModeloAnuncio');
+        if (!m) { if (dica) dica.textContent = 'Sem modelo: os campos ficam como você deixar.'; return; }
+        const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+        const peca = document.getElementById('selectPeca');
+        if (peca && peca.value !== m.peca) { peca.value = m.peca; peca.dispatchEvent(new Event('change')); }
+        if (m.peca === 'spot') set('selectPlano', m.plano);
+        set('selectEstilo', m.estilo);
+        set('direcaoLocucao', m.direcao);
+        const fmt = document.getElementById('selectFormato');
+        if (fmt && fmt.value !== 'unico') { fmt.value = 'unico'; fmt.dispatchEvent(new Event('change')); }
+        if (dica) dica.textContent = `${m.nome}: ${m.descricao}. Trilha que a IA procura: ${m.trilha}.`;
+        avisar(`📋 Modelo "${m.nome}": duração, direção e estilo ajustados — pode mudar qualquer campo. A IA vai escrever na estrutura deste tipo de peça.`, 'info');
+    }
+
     function comDirecao(texto) {
         const el = document.getElementById('direcaoLocucao');
-        let d = (el ? el.value : '').trim();
+        let d = comSotaque((el ? el.value : '').trim());
         if (!d) return texto;
         // Uma linha so: o backend le a PRIMEIRA linha como a ordem de tom.
         d = d.split('\n').join(' ').split(String.fromCharCode(13)).join(' ').trim();
@@ -1103,6 +1184,8 @@
 
     async function aplicarPrograma() {
         const p = programaAtual();
+        const selModelo = document.getElementById('selectModeloAnuncio');
+        if (selModelo) { if (p) selModelo.value = ''; selModelo.disabled = !!p; }
         document.getElementById('camposPrograma').style.display = p ? '' : 'none';
         estado.roteiroMontado = false;
         if (!p) return;
@@ -1328,6 +1411,8 @@
                         tipo: (estado.pedido && estado.pedido.tipo) || '',
                         estilo_voz: (estado.pedido && estado.pedido.estilo_voz) || '',
                         peca: pecaAtual(),
+                        modelo: modeloAtual(),
+                        sotaque: sotaqueAtual(),
                         duracao_video: pecaAtual() === 'video' ? duracaoVideoAlvo() : undefined,
                         estilo_narracao: pecaAtual() === 'video' ? document.getElementById('selectEstiloNarracao').value : undefined
                     })
@@ -1451,7 +1536,10 @@
             } else if (escolha === 'auto') {
                 const rTr = await fetch('/api/voxcraft/recommend-tracks', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ descricao: estado.roteiro })
+                    // O modelo de anúncio diz que tipo de trilha procurar (ex.: forró no volante).
+                    body: JSON.stringify({ descricao: estado.roteiro + (modeloAtual()
+                        ? '\nEstilo de trilha desejado: ' + ((modelosAnuncio.modelos.find(x => x.id === modeloAtual()) || {}).trilha || '')
+                        : '') })
                 });
                 const dTr = await rTr.json();
                 // ATENÇÃO: 'sem_trilhas' vem com success=true e sem tracks.
@@ -1635,7 +1723,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('selectModo').addEventListener('change', aplicarFiltroDeVozes);
 
-        await Promise.all([carregarPedidos(), carregarVozes(), carregarTrilhas()]);
+        await Promise.all([carregarPedidos(), carregarVozes(), carregarTrilhas(), carregarModelosAnuncio()]);
         carregarRascunhos();
 
         // Programa (preset de rádio) — tudo guardado: sem os elementos, nada quebra.

@@ -61,7 +61,7 @@ def test_gerador_baixa_api_download_em_pedacos_abaixo_do_limite_da_vercel():
 
 
 def test_gerador_js_com_versao_nova_no_template():
-    assert '/static/gerador.js?v=33' in _ler('templates', 'gerador.html')
+    assert '/static/gerador.js?v=34' in _ler('templates', 'gerador.html')
 
 
 # 17/10/2026: Studio (tela inicial) e Narrativa tinham o mesmo limite.

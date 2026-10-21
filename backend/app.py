@@ -1092,6 +1092,11 @@ def gerador_roteiro():
         plano = str(data.get('plano') or 'outro')
         tipo = str(data.get('tipo') or '')[:80]
         estilo_voz = str(data.get('estilo_voz') or '')[:300]
+        # Modelo de anúncio + sotaque regional (21/10/2026, core/modelos_anuncio.py):
+        # estrutura do tipo de peça e, se o cliente pediu, o sotaque. Vazio = igual a antes.
+        from core import modelos_anuncio as _modelos
+        bloco_modelo = _modelos.bloco_prompt(data.get('modelo'), data.get('sotaque'))
+        bloco_modelo = ('\n' + bloco_modelo + '\n') if bloco_modelo else ''
         formato = str(data.get('formato') or '')
         if formato not in ('dialogo', 'narracao'):
             formato = 'unico'
@@ -1204,7 +1209,7 @@ BRIEFING DO CLIENTE:
 Tipo de peça: {tipo or 'não informado'}
 Estilo de voz pedido: {estilo_voz or 'não informado'}
 {alvo_txt}
-
+{bloco_modelo}
 REGRAS:
 {regra_fala}
 - Português do Brasil, falado, natural na boca. Frases curtas.
@@ -1231,6 +1236,7 @@ IDEIA / BRIEFING:
 {briefing}
 
 {alvo_video}
+{bloco_modelo}
 Divida em {n_min} a {n_max} cenas. Cada cena tem: um TÍTULO curto (2 a 4 palavras), a NARRAÇÃO (o que a voz fala nessa cena, 1 a 3 frases, falado, natural) e o AMBIENTE SONORO (1 frase: clima da trilha e efeitos sonoros que cabem na cena — ex.: "trilha leve e otimista; notificação de celular").
 
 REGRAS:
@@ -1573,6 +1579,13 @@ def carimbo_atual():
 # core/programas.py (puro); aqui é só IA e feed.
 # ═══════════════════════════════════════════════════════════════════════════
 from core import programas as _programas
+
+
+@app.route('/api/gerador/modelos-anuncio', methods=['GET'])
+def api_gerador_modelos_anuncio():
+    """Modelos de anúncio + sotaques pro Gerador (core/modelos_anuncio.py)."""
+    from core import modelos_anuncio as _modelos
+    return jsonify(dict(_modelos.para_tela(), success=True))
 
 
 @app.route('/api/gerador/programas', methods=['GET'])

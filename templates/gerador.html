@@ -237,6 +237,19 @@
                 <div class="section-card">
                     <!-- ÁUDIO PARA VÍDEO (23/09/2026): o modal "Ideia para vídeo com IA"
                          virado em som — cenas numeradas, 1 voz por cena, tempo MEDIDO. -->
+                    <!-- MODELOS DE ANÚNCIO (21/10/2026, inspirado no ACE Studio): o tipo de
+                         peça ajusta duração, direção, estilo e trilha; a IA recebe a
+                         estrutura. Tudo editável depois. core/modelos_anuncio.py -->
+                    <label class="form-label" for="selectModeloAnuncio">Modelo de anúncio</label>
+                    <select id="selectModeloAnuncio" class="form-select mb-1">
+                        <option value="" selected>— nenhum (ajusto na mão) —</option>
+                    </select>
+                    <div class="hint mb-3" id="dicaModeloAnuncio">
+                        Spot Comercial, Propaganda Volante, Chamada de Festa, Vinheta falada ou
+                        Audiovisual: já ajusta duração, direção e estilo, e a IA escreve na
+                        estrutura daquele tipo. Pode mudar qualquer campo depois.
+                    </div>
+
                     <label class="form-label" for="selectPeca">Tipo de peça</label>
                     <select id="selectPeca" class="form-select mb-1">
                         <option value="spot" selected>Spot / anúncio</option>
@@ -339,6 +352,20 @@
                         pela IA que escreve o roteiro, não conta na duração e não vai no
                         texto entregue ao cliente — entra colado no roteiro só na hora de
                         gravar. Só o Modo Padrão (Google) entende direção.
+                    </div>
+
+                    <!-- Sotaque regional (21/10/2026): só quando o cliente pede. Vai pro texto
+                         (a IA escreve pensando no sotaque) e pra direção da voz (Modo Padrão). -->
+                    <label class="form-label" for="selectSotaque">Sotaque regional (opcional)</label>
+                    <select id="selectSotaque" class="form-select mb-1">
+                        <option value="" selected>— sem sotaque pedido —</option>
+                    </select>
+                    <input type="text" id="inputSotaqueOutro" class="form-control mb-1" maxlength="80"
+                           placeholder="Ex.: mineiro do interior, gaúcho, carioca" style="display:none">
+                    <div class="hint mb-3">
+                        Use quando o cliente pedir (ex.: cearense do Crato). A IA escreve o texto
+                        pensando no sotaque, sem caricatura, e a voz recebe o pedido junto da
+                        direção. Só o Modo Padrão (Google) entende — ouça antes de entregar.
                     </div>
 
                     <!-- Gate de respiração: o mesmo silenciador da MiniDAW (aplicarGate no
@@ -534,7 +561,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=19"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=33"></script>
+    <script src="/static/gerador.js?v=34"></script>
     <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
     <script src="/static/video-episodio.js?v=5"></script>
     <script src="/static/campanha-form.js?v=1"></script>
