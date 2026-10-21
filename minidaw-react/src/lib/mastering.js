@@ -48,7 +48,8 @@ export function medir(buffer) {
  *   corteAltoHz             — 0 desliga
  *   intensidade             — 0..1, força da correção de tom
  *   balancoReferencia       — array de 4 dB, ou null (sem referência = sem correção de tom)
- *   compressor              — { ativo, gainIn, threshold, ratio, knee, attack, release, makeup, mix }
+ *   gravesDb                — 0..8: reforço de grave (low-shelf em 100 Hz). 0 = cadeia igual à de antes.
+ *   compressor              — { ativo, gainIn, threshold, ratio, knee, attack, release, makeup, mix, sidechainHz }
  *                             (compressorMaster.js). Desligado = cadeia IGUAL à de antes.
  * Devolve { buffer, medicao, ganhoAplicadoDb, correcaoDb, compressor? }.
  */
@@ -56,7 +57,7 @@ export async function masterizar(bufferOriginal, opcoes) {
     const {
         alvoLufs, tetoDb,
         corteBaixoHz = 20, corteAltoHz = 0,
-        intensidade = 0.5, balancoReferencia = null, compressor = null,
+        intensidade = 0.5, balancoReferencia = null, compressor = null, gravesDb = 0,
     } = opcoes;
 
     const medicaoOriginal = medir(bufferOriginal);
@@ -79,6 +80,14 @@ export async function masterizar(bufferOriginal, opcoes) {
         const hp = ctx.createBiquadFilter();
         hp.type = 'highpass'; hp.frequency.value = corteBaixoHz; hp.Q.value = 0.707;
         ligar(hp);
+    }
+
+    // GRAVES (21/10/2026, pedido dele: "senti falta de grave"): low-shelf em 100 Hz.
+    // Zero = nenhum nó a mais (masters antigos saem idênticos).
+    if (gravesDb > 0.05) {
+        const lsh = ctx.createBiquadFilter();
+        lsh.type = 'lowshelf'; lsh.frequency.value = 100; lsh.gain.value = Math.min(8, gravesDb);
+        ligar(lsh);
     }
 
     // Uma banda de tom por faixa de frequência, centrada geometricamente.

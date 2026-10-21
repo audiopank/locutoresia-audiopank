@@ -67,3 +67,30 @@ test('presets na escola do Clarity: ratio 2–3,5, attack 8–12 ms, release 80�
     }
     assert.equal(C.PADRAO.ativo, false, 'nasce DESLIGADO (não muda masters já aprovados)');
 });
+
+// ── Filtro de sidechain (21/10/2026): pedido dele "senti falta de grave" ──────
+function mistura(seg, ampGrave, ampAgudo, sr) {
+    const n = Math.round(seg * sr), a = new Float32Array(n);
+    for (let i = 0; i < n; i++) a[i] = ampGrave * Math.sin(2 * Math.PI * 50 * i / sr) + ampAgudo * Math.sin(2 * Math.PI * 1000 * i / sr);
+    return a;
+}
+
+test('sidechain 100 Hz: grave forte NÃO dispara o compressor (o grave passa inteiro)', () => {
+    const sr = 44100, x = mistura(1, 0.8, 0.05, sr);              // bumbo/baixo forte + voz baixa
+    const base = { gainIn: 0, threshold: -20, ratio: 4, knee: 0, attack: 10, release: 100, makeup: 0, mix: 100 };
+    const sem = C.comprimir([x], sr, { ...base, sidechainHz: 0 });
+    const com = C.comprimir([x], sr, { ...base, sidechainHz: 100 });
+    assert.ok(sem.maxReducaoDb > 8, `sem filtro o grave faz segurar muito (${sem.maxReducaoDb.toFixed(1)})`);
+    assert.ok(com.maxReducaoDb < 1, `com filtro quase não segura (${com.maxReducaoDb.toFixed(1)})`);
+    assert.ok(Math.abs(com.canais[0][30000] - x[30000]) < 0.05, 'o áudio sai com o grave (o filtro é só no detector)');
+});
+
+test('sidechain: agudo forte continua sendo segurado normalmente', () => {
+    const sr = 44100, x = mistura(1, 0.0, 0.8, sr);
+    const r = C.comprimir([x], sr, { gainIn: 0, threshold: -20, ratio: 4, knee: 0, attack: 10, release: 100, makeup: 0, mix: 100, sidechainHz: 100 });
+    assert.ok(r.maxReducaoDb > 8, `1 kHz forte é segurado (${r.maxReducaoDb.toFixed(1)})`);
+});
+
+test('todos os presets vêm com o sidechain em 100 Hz', () => {
+    for (const p of C.PRESETS) assert.equal(p.sidechainHz, 100, p.id);
+});

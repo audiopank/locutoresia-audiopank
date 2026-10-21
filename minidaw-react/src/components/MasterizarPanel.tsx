@@ -46,6 +46,7 @@ export default function MasterizarPanel() {
   const [intensidade, setIntensidade] = useState(0.5);
   const [corteBaixo, setCorteBaixo] = useState(20);
   const [corteAlto, setCorteAlto] = useState(0);
+  const [graves, setGraves] = useState(0);   // 21/10/2026: reforço de grave (0 a +8 dB)
   const [versoes, setVersoes] = useState<Versao[]>([]);
   const [processando, setProcessando] = useState(false);
   const [tocandoId, setTocandoId] = useState<string>("");
@@ -126,6 +127,7 @@ export default function MasterizarPanel() {
         intensidade,
         balancoReferencia: refBalanco,
         compressor: comp,
+        gravesDb: graves,
       });
       setUltimaReducao(resultado.compressor || null);
       const nomePreset = comp.ativo ? (PRESETS.find((x) => x.id === comp.preset)?.nome || "manual") : "";
@@ -134,6 +136,7 @@ export default function MasterizarPanel() {
         {
           id: `v_${++proximoIdRef.current}_${destinoEscolhido.chave}`,
           rotulo: (refBalanco ? `${destinoEscolhido.rotulo} + ref.` : destinoEscolhido.rotulo)
+            + (graves > 0 ? ` + graves +${graves} dB` : "")
             + (comp.ativo ? ` + comp. ${nomePreset}` : ""),
           buffer: resultado.buffer,
           medicao: resultado.medicao,
@@ -146,7 +149,7 @@ export default function MasterizarPanel() {
     } finally {
       setProcessando(false);
     }
-  }, [buffer, destino, intensidade, corteBaixo, corteAlto, refBalanco, comp]);
+  }, [buffer, destino, intensidade, corteBaixo, corteAlto, refBalanco, comp, graves]);
 
   // Um player só para a pilha inteira: tocar duas versões ao mesmo tempo
   // atrapalharia a comparação, que é justamente o ponto da pilha.
@@ -249,6 +252,11 @@ export default function MasterizarPanel() {
                 <span className="text-white/60">Intensidade do acabamento: {intensidade.toFixed(2)}</span>
                 <input type="range" min={0} max={1} step={0.05} value={intensidade}
                        onChange={(e) => setIntensidade(parseFloat(e.target.value))} className="w-full" />
+              </label>
+              <label className="block">
+                <span className="text-white/60">Graves: {graves > 0 ? `+${graves} dB` : "sem reforço"} (em torno de 100 Hz)</span>
+                <input type="range" min={0} max={8} step={0.5} value={graves} aria-label="Graves"
+                       onChange={(e) => setGraves(parseFloat(e.target.value))} className="w-full" />
               </label>
               <label className="block">
                 <span className="text-white/60">Corte baixo: {corteBaixo || "desligado"} Hz</span>

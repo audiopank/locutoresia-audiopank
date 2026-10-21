@@ -13,6 +13,7 @@ export type ParamsComp = {
   ativo: boolean; preset: string;
   gainIn: number; threshold: number; ratio: number; knee: number;
   attack: number; release: number; makeup: number; mix: number;
+  sidechainHz: number;
 };
 export type ReducaoComp = { reducaoDb: Float32Array; blocoS: number; maxReducaoDb: number } | null;
 
@@ -185,6 +186,22 @@ export function CompressorVisual({ params, onChange, reducao }: {
           })}
         </div>
       </div>
+      {/* Filtro de sidechain (21/10/2026): o compressor não reage ao grave — o grave passa inteiro. */}
+      <div className={`mt-3 flex items-center gap-2 flex-wrap text-sm ${params.ativo ? "" : "opacity-60"}`}>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={params.sidechainHz > 0} aria-label="Filtro de sidechain"
+            onChange={(e) => set({ sidechainHz: e.target.checked ? (preset.sidechainHz || 100) : 0 })}
+            className="w-4 h-4 accent-amber-500" />
+          Sidechain: ignora graves abaixo de
+        </label>
+        <input type="number" min={20} max={500} step={10} value={params.sidechainHz || 100} disabled={!(params.sidechainHz > 0)}
+          aria-label="Frequência do sidechain"
+          onChange={(e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) set({ sidechainHz: Math.max(20, Math.min(500, v)) }); }}
+          className="w-20 text-center text-xs bg-black/50 border border-white/15 rounded px-1 py-0.5 tabular-nums disabled:opacity-40" />
+        <span>Hz</span>
+        <span className="text-xs text-white/40">— o compressor deixa de "comer" o grave (bumbo, baixo, peito da voz).</span>
+      </div>
+
       <div className="mt-3">
         <div className="flex justify-between text-xs text-white/50 mb-1">
           <span>Redução de ganho na última masterização (vermelho = quanto ele segurou)</span>
