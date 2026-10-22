@@ -239,6 +239,16 @@ class MiniDAW {
                 }
                 return;   // outros Ctrl+... seguem pro navegador
             }
+            // Alt+1 = engordar / Alt+2 = emagrecer a faixa (22/10/2026, pedido dele) —
+            // os botões + / − da fileira. Faixa sob o mouse; mouse fora das pistas = todas.
+            if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
+                && ['Digit1', 'Digit2', 'Numpad1', 'Numpad2'].includes(e.code)) {
+                e.preventDefault();
+                const engordar = e.code.endsWith('1');
+                const alvos = this.cursorLane != null ? [this.cursorLane] : this.tracks.map(t => t.id);
+                for (const id of alvos) this._ajustarAltura(id, engordar ? 1.3 : 1 / 1.3, alvos.length > 1);
+                return;
+            }
             if (e.ctrlKey || e.metaKey || e.altKey) return;
             if (e.key === 'Escape') {
                 this._fecharMenuObjeto();
@@ -391,11 +401,11 @@ class MiniDAW {
                          canto da PÁGINA e o produtor nunca os viu. Agora moram
                          na fileira, ao lado do chevron que também mexe no card. -->
                     <button class="btn btn-sm btn-outline-primary" onclick="minidaw.trackZoomIn('${track.id}')"
-                            title="Engordar faixa (mais altura: enxerga o detalhe da onda)">
+                            title="Engordar faixa — Alt+1 (mais altura: enxerga o detalhe da onda)">
                         <i class="fas fa-plus"></i>
                     </button>
                     <button class="btn btn-sm btn-outline-primary" onclick="minidaw.trackZoomOut('${track.id}')"
-                            title="Emagrecer faixa (menos altura: cabe mais pista na tela)">
+                            title="Emagrecer faixa — Alt+2 (menos altura: cabe mais pista na tela)">
                         <i class="fas fa-minus"></i>
                     </button>
                     <!-- Ganho VISUAL da onda: estica o desenho dentro da pista,
@@ -5421,13 +5431,14 @@ class MiniDAW {
     // zoom horizontal, e é independente do modo compacto (que esconde efeitos).
     // Altura é preferência de VISTA: fica no localStorage junto com `compacto`,
     // não vai pro projeto salvo no Supabase.
-    _ajustarAltura(trackId, fator) {
+    _ajustarAltura(trackId, fator, silencioso = false) {
         const track = this.tracks.find(t => t.id === trackId);
         if (!track) return;
         const atual = track.altura || MiniDAW.ALTURA_LANE_PADRAO;
         const nova = Math.max(MiniDAW.ALTURA_LANE_MIN,
                      Math.min(MiniDAW.ALTURA_LANE_MAX, Math.round(atual * fator)));
         if (nova === atual) {
+            if (silencioso) return;
             this.showNotification(
                 fator > 1 ? 'Faixa já está na altura máxima' : 'Faixa já está na altura mínima', 'info');
             return;
