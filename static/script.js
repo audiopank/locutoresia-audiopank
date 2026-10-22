@@ -445,11 +445,30 @@ function sendToMiniDAW() {
     }
     localStorage.setItem('minidaw_pending_audio', audioPlayer.src);
     localStorage.setItem('minidaw_pending_timestamp', Date.now().toString());
+    localStorage.removeItem('minidaw_pending_fatiar');
     // Leva o roteiro junto: é o que faz a Receita da IA na MiniDAW entender o
     // trabalho (spot animado x institucional) em vez de decidir às cegas.
     const roteiro = (document.getElementById('textInput')?.value || '').trim();
     if (roteiro) localStorage.setItem('minidaw_pending_roteiro', roteiro.slice(0, 900));
     window.open('/minidaw', '_blank');
+}
+
+// 22/10/2026 (ideia dele): mesma voz, mas chega na MiniDAW já cortada nos
+// parágrafos do roteiro, alternando Voz / Voz 2 (static/fatiar-paragrafos.js).
+function sendToMiniDAWFatiado() {
+    const roteiro = (document.getElementById('textInput')?.value || '').trim();
+    const n = roteiro.split(/\r?\n/).filter(l => l.trim()).length;
+    if (n < 2) {
+        alert('O roteiro tem um parágrafo só — não há onde fatiar. Use "Enviar para MiniDAW".');
+        return;
+    }
+    const audioPlayer = document.getElementById('generatedAudio');
+    if (!audioPlayer || !audioPlayer.src || audioPlayer.src === window.location.href) {
+        alert('Gere um áudio primeiro!');
+        return;
+    }
+    sendToMiniDAW();   // a aba nova só lê o localStorage 1 s depois
+    localStorage.setItem('minidaw_pending_fatiar', String(n));
 }
 
 function updateStats() {

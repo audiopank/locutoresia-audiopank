@@ -1333,7 +1333,8 @@
     <script src="/static/presets-locais.js?v=2"></script>
     <script src="/static/master-suite.js?v=10"></script>
     <script src="/static/time-stretch.js?v=2"></script>
-    <script src="/static/minidaw.js?v=80"></script>
+    <script src="/static/fatiar-paragrafos.js?v=1"></script>
+    <script src="/static/minidaw.js?v=81"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
@@ -1464,8 +1465,15 @@
                                     minidaw.updateTrackUI(track);
                                 }
                                 
-                                minidaw.showNotification('Áudio recebido da página principal!', 'success');
-                                
+                                // 22/10/2026: "Enviar fatiado por parágrafo" (Studio)
+                                const nPar = parseInt(localStorage.getItem('minidaw_pending_fatiar') || '0', 10);
+                                localStorage.removeItem('minidaw_pending_fatiar');
+                                if (nPar >= 2) {
+                                    minidaw.fatiarVozPorParagrafo(trackId, nPar);
+                                } else {
+                                    minidaw.showNotification('Áudio recebido da página principal!', 'success');
+                                }
+
                                 // Limpa localStorage
                                 localStorage.removeItem('minidaw_pending_audio');
                                 localStorage.removeItem('minidaw_pending_filename');

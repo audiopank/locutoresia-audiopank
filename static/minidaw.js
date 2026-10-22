@@ -2041,6 +2041,47 @@ class MiniDAW {
         if (herdou) this.showNotification(`Efeitos de "${origem.name}" vieram junto`, 'info');
     }
 
+    // Voz fatiada por parágrafo (22/10/2026, ideia dele): divide a locução no
+    // meio das pausas entre parágrafos (static/fatiar-paragrafos.js) e reparte os
+    // pedaços alternando esta faixa e uma "Voz" nova (1º, 3º, 5º aqui; 2º, 4º, 6º
+    // lá). Cada pedaço fica no MESMO tempo do arquivo: sem mexer, soa idêntico.
+    fatiarVozPorParagrafo(trackId, nParagrafos) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !track.audioBuffer || !(nParagrafos >= 2) || !window.FatiarParagrafos) return 0;
+        const buf = track.audioBuffer;
+        let mono = buf.getChannelData(0);
+        if (buf.numberOfChannels > 1) {
+            const dir = buf.getChannelData(1);
+            mono = Float32Array.from(mono, (v, i) => (v + dir[i]) / 2);
+        }
+        const cortes = FatiarParagrafos.acharCortes(mono, buf.sampleRate, nParagrafos);
+        if (!cortes.length) {
+            this.showNotification('Não achei pausas entre os parágrafos — a voz ficou inteira na faixa.', 'warning');
+            return 0;
+        }
+        let clips = this._clipsDaFaixa(track).slice();
+        for (const t of cortes) {
+            const alvo = ClipModel.clipNoPonto(clips, t);
+            const partes = alvo && ClipModel.dividirClip(alvo, t);
+            if (partes) clips = clips.filter(c => c !== alvo).concat(partes);
+        }
+        clips = ClipModel.ordenarClips(clips);
+        this.addTrack('voice');
+        const voz2 = this.tracks[this.tracks.length - 1];
+        track.clips = clips.filter((_, i) => i % 2 === 0);
+        voz2.clips = clips.filter((_, i) => i % 2 === 1);
+        this._sincronizarDerivados(track);
+        this._sincronizarDerivados(voz2);
+        this._copiarEfeitos(track, voz2);
+        this.updateTrackUI(track);
+        this.updateTrackUI(voz2);
+        this.aposMudancaDeClips([track, voz2]);
+        const faltou = cortes.length + 1 < nParagrafos
+            ? ` (o roteiro tem ${nParagrafos} parágrafos; achei ${cortes.length + 1} trechos — divida o resto com D/T)` : '';
+        this.showNotification(`Voz fatiada em ${clips.length} trechos, alternando "${track.name}" e "${voz2.name}"${faltou}.`, faltou ? 'warning' : 'success');
+        return clips.length;
+    }
+
     // Campos legados derivados dos clips — o resto do arquivo (e o export)
     // ainda lê audioBuffer/duration da faixa.
     _sincronizarDerivados(track) {
