@@ -471,6 +471,25 @@ function sendToMiniDAWFatiado() {
     localStorage.setItem('minidaw_pending_fatiar', String(n));
 }
 
+// 23/10/2026: o mesmo fatiado, mas pra MiniDAW React — lá cada parágrafo vira
+// uma faixa de locução própria (a React guarda um áudio por faixa).
+function sendToMiniDAWReactFatiado() {
+    const roteiro = (document.getElementById('textInput')?.value || '').trim();
+    const n = roteiro.split(/\r?\n/).filter(l => l.trim()).length;
+    const audioPlayer = document.getElementById('generatedAudio');
+    if (!audioPlayer || !audioPlayer.src || audioPlayer.src === window.location.href) {
+        alert('Gere um áudio primeiro!');
+        return;
+    }
+    if (n < 2) {
+        alert('O roteiro tem um parágrafo só — não há onde fatiar.');
+        return;
+    }
+    localStorage.setItem('minidaw_react_pending_audio', audioPlayer.src);
+    localStorage.setItem('minidaw_react_pending_fatiar', String(n));
+    window.open('/minidaw-react', '_blank');
+}
+
 function updateStats() {
     // O contador saiu do herói (virou promessa de oferta) e passou a viver na
     // faixa acima do catálogo — pode não existir na página. Sem esta guarda,

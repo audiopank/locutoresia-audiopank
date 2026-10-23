@@ -23,6 +23,8 @@ import { totalDaLinha } from "@/lib/edicaoOnda.js";
 import { ProjetoNoPC } from "./ProjetoNoPC";
 import { mixToMp3, downloadBlob } from "@/lib/mixer";
 import { fimDaVoz } from "@/lib/linhaDoTempo.js";
+import { decodificar, paraWav } from "@/lib/audioFile.js";
+import { pedacosDosCortes } from "@/lib/vozFatiada.js";
 import { defaultEffects, type TrackEffects } from "@/lib/audioEffects";
 
 interface Track {
@@ -245,6 +247,56 @@ const MiniDAWIntegrated = () => {
     audio.load();
     if (!silencioso) toast({ title: "Trilha adicionada!", description: name });
   }, [toast]);
+
+  // VOZ FATIADA VINDA DO STUDIO (23/10/2026, botão "Fatiado → React"): corta a
+  // locução no meio das pausas entre parágrafos (/static/fatiar-paragrafos.js, o
+  // mesmo da clássica) e cada parágrafo vira uma faixa de locução com "Entra em"
+  // = o tempo dele na gravação. Tocadas juntas, remontam a voz inteira.
+  useEffect(() => {
+    const url = localStorage.getItem("minidaw_react_pending_audio");
+    if (!url) return;
+    const nPar = parseInt(localStorage.getItem("minidaw_react_pending_fatiar") || "0", 10);
+    localStorage.removeItem("minidaw_react_pending_audio");
+    localStorage.removeItem("minidaw_react_pending_fatiar");
+    (async () => {
+      try {
+        const buf: AudioBuffer = await decodificar(await (await fetch(url)).blob());
+        let mono = buf.getChannelData(0);
+        if (buf.numberOfChannels > 1) {
+          const dir = buf.getChannelData(1);
+          mono = Float32Array.from(mono, (v, i) => (v + dir[i]) / 2);
+        }
+        const FP = (window as any).FatiarParagrafos;
+        const cortes: number[] = nPar >= 2 && FP ? FP.acharCortes(mono, buf.sampleRate, nPar) : [];
+        const pedacos = pedacosDosCortes(buf.length, buf.sampleRate, cortes);
+        const base = tracksRef.current.filter((t) => t.type === "voiceover").length;
+        const novas: Track[] = pedacos.map((p, i) => {
+          const b = new AudioBuffer({ length: p.fim - p.ini, numberOfChannels: buf.numberOfChannels, sampleRate: buf.sampleRate });
+          for (let c = 0; c < buf.numberOfChannels; c++) b.copyToChannel(buf.getChannelData(c).subarray(p.ini, p.fim), c);
+          const u = URL.createObjectURL(paraWav(b));
+          const id = `${Date.now()}_${i}`;
+          audioRefs.current[id] = new Audio(u);
+          return {
+            id, name: `Locução ${base + i + 1}`, type: "voiceover", audioUrl: u, volume: 100,
+            color: "border-blue-500 bg-blue-500/10", duration: b.duration,
+            effects: defaultEffects("voiceover"), inicio: Math.round(p.inicio * 1000) / 1000,
+          };
+        });
+        setTracks((prev) => [...prev, ...novas]);
+        setActiveTab("multitrack");
+        const faltou = cortes.length + 1 < nPar;
+        toast({
+          title: `✂ Voz fatiada em ${novas.length} faixa${novas.length > 1 ? "s" : ""}`,
+          description: faltou
+            ? `O roteiro tem ${nPar} parágrafos; achei ${novas.length} trechos (a locução emendou algum).`
+            : "Cada parágrafo numa faixa, no mesmo tempo da gravação.",
+        });
+      } catch (e: any) {
+        toast({ title: "Não consegui receber a voz do Studio", description: e?.message || String(e), variant: "destructive" });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // PRÉ-ESCUTA DE TRILHAS DO PC (23/10/2026): o painel é o mesmo da clássica
   // (/static/pre-escuta.js, tecla W). Aqui só a ponte: tocar as vozes junto e
