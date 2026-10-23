@@ -17,7 +17,7 @@ import { SecretsManager } from "@/components/SecretsManager";
 import { TrackEffectsPanel } from "@/components/TrackEffectsPanel";
 import { VipProjects } from "@/components/VipProjects";
 import MasterizarPanel from "./MasterizarPanel";
-import { OndaEditavel, type LinhaComum, type Marcador } from "./OndaEditavel";
+import { OndaEditavel, ZOOM_MAX, type LinhaComum, type Marcador } from "./OndaEditavel";
 import { ReguaLinha } from "./ReguaLinha";
 import { totalDaLinha } from "@/lib/edicaoOnda.js";
 import { ProjetoNoPC } from "./ProjetoNoPC";
@@ -455,8 +455,9 @@ const MiniDAWIntegrated = () => {
   // BARRA DE ESPAÇO (pedido dele, 17/10/2026): 1 toque = Play/Pausa do Play verde;
   // 2 toques rápidos (< 350 ms) = Stop e volta pro começo. Digitando num campo
   // (roteiro, nome da faixa…) o Espaço continua sendo espaço.
-  const atalhoRef = useRef({ playPause: () => {}, pararMix: () => {}, novaFaixa: () => {} } as {
+  const atalhoRef = useRef({ playPause: () => {}, pararMix: () => {}, novaFaixa: () => {}, zoomLinha: () => {}, alturaFaixa: () => {} } as {
     playPause: () => void; pararMix: () => void; novaFaixa: (tipo: "voiceover" | "music") => void;
+    zoomLinha: (fator: number) => void; alturaFaixa: (fator: number) => void;
   });
   useEffect(() => {
     let ultimoToque = 0;
@@ -468,10 +469,26 @@ const MiniDAWIntegrated = () => {
         atalhoRef.current.novaFaixa(e.code === "KeyV" ? "voiceover" : "music");
         return;
       }
-      if (e.code !== "Space" && e.key !== " ") return;
       const alvo = e.target as HTMLElement | null;
       const tag = (alvo?.tagName || "").toLowerCase();
-      if (alvo?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select") return;
+      const digitando = alvo?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
+      // 23/10/2026 (igual à clássica): + / − = zoom da LARGURA (linha toda);
+      // Alt+1 / Alt+2 = ALTURA da faixa sob o mouse (fora das faixas = todas).
+      if (!digitando && !e.ctrlKey && !e.metaKey && !document.querySelector('[role="dialog"]')) {
+        if (e.altKey && !e.shiftKey && ["Digit1", "Digit2", "Numpad1", "Numpad2"].includes(e.code)) {
+          e.preventDefault();
+          atalhoRef.current.alturaFaixa(e.code.endsWith("1") ? 1.3 : 1 / 1.3);
+          return;
+        }
+        if (!e.altKey && (e.key === "+" || e.key === "=" || e.code === "NumpadAdd")) {
+          e.preventDefault(); atalhoRef.current.zoomLinha(2); return;
+        }
+        if (!e.altKey && (e.key === "-" || e.key === "_" || e.code === "NumpadSubtract")) {
+          e.preventDefault(); atalhoRef.current.zoomLinha(0.5); return;
+        }
+      }
+      if (e.code !== "Space" && e.key !== " ") return;
+      if (digitando) return;
       if (document.querySelector('[role="dialog"]')) return;   // janela aberta (VIP, gerador de voz…)
       e.preventDefault();          // não rola a página nem "clica" o botão em foco
       if (e.repeat) return;        // tecla segurada não conta como vários toques
@@ -487,7 +504,19 @@ const MiniDAWIntegrated = () => {
     window.addEventListener("keydown", tecla, true);
     return () => window.removeEventListener("keydown", tecla, true);
   }, []);
-  atalhoRef.current = { playPause, pararMix, novaFaixa: addTrack };   // sempre a versão atual (estado novo)
+  // Altura de cada faixa (Alt+1 / Alt+2). É só VISTA: não vai pro projeto salvo.
+  const [alturas, setAlturas] = useState<Record<string, number>>({});
+  const faixaSobMouseRef = useRef<string | null>(null);
+  const alturaFaixa = (fator: number) => {
+    const alvo = faixaSobMouseRef.current;
+    const ids = alvo ? [alvo] : tracksRef.current.map((t) => t.id);
+    setAlturas((prev) => {
+      const n = { ...prev };
+      for (const id of ids) n[id] = Math.round(Math.max(40, Math.min(300, (prev[id] ?? 76) * fator)));
+      return n;
+    });
+  };
+  atalhoRef.current = { ...atalhoRef.current, playPause, pararMix, novaFaixa: addTrack, alturaFaixa };   // sempre a versão atual (estado novo)
 
   const saveProject = useCallback(() => {
     setIsSaving(true);
@@ -556,6 +585,15 @@ const MiniDAWIntegrated = () => {
       setLinhaG0(Math.max(0, Math.min(totalLinha - totalLinha / z, ancora - frac * (totalLinha / z))));
     },
     rolarPara: (g) => setLinhaG0(Math.max(0, Math.min(totalLinha - totalLinha / linhaZoom, g))),
+  };
+  // Teclas + / − : o mesmo zoom dos botões das faixas, ancorado no cursor se ele estiver na tela.
+  atalhoRef.current.zoomLinha = (fator: number) => {
+    if (!totalLinha) return;
+    const z = Math.max(1, Math.min(ZOOM_MAX, linhaZoom * fator));
+    if (z === linhaZoom) return;
+    const span = totalLinha / linhaZoom;
+    const ancora = currentTime >= linhaG0 && currentTime <= linhaG0 + span ? currentTime : linhaG0 + span / 2;
+    linha.mudarZoom(z, ancora, (ancora - linhaG0) / span);
   };
   // Marcadores (ímã) que cada faixa enxerga: início/fim das OUTRAS faixas e o fim da locução.
   const marcadoresDe = (id: string): Marcador[] => {
@@ -727,7 +765,7 @@ const MiniDAWIntegrated = () => {
               <div className="text-sm">
                 <span className="text-white/60">Tempo:</span>
                 <span className="ml-2 font-mono text-lg">{currentTime.toFixed(1)}s</span>
-                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade · Espaço = play/pausa · 2× = stop · Alt+V nova voz · Alt+T nova trilha · W pré-escuta"}</div>
+                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade · Espaço = play/pausa · 2× = stop · Alt+V nova voz · Alt+T nova trilha · W pré-escuta · +/− zoom · Alt+1/2 altura"}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -858,7 +896,10 @@ const MiniDAWIntegrated = () => {
                 <ReguaLinha linha={linha} cursor={currentTime} tocando={isPlaying} onCursor={moverCursor} topo={alturaCabecalho} />
               )}
               {tracks.map((track) => (
-                <Card key={track.id} data-faixa-id={track.id} className={`bg-white/5 border-2 backdrop-blur-sm ${track.color}`}>
+                <Card key={track.id} data-faixa-id={track.id}
+                  onMouseEnter={() => { faixaSobMouseRef.current = track.id; }}
+                  onMouseLeave={() => { if (faixaSobMouseRef.current === track.id) faixaSobMouseRef.current = null; }}
+                  className={`bg-white/5 border-2 backdrop-blur-sm ${track.color}`}>
                   <div className="p-5 space-y-4">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3 flex-1">
@@ -915,6 +956,7 @@ const MiniDAWIntegrated = () => {
                           fadeIn={track.fadeIn || 0}
                           fadeOut={track.fadeOut || 0}
                           onFades={(fi, fo) => setTracks(prev => prev.map(t => t.id === track.id ? { ...t, fadeIn: fi, fadeOut: fo } : t))}
+                          altura={alturas[track.id]}
                         />
                         <div className="text-sm text-white/60">Duração: {track.duration.toFixed(1)}s</div>
                         {/* Entra em + fade (17/10/2026): assinatura cantada do jingle no fim do spot. */}

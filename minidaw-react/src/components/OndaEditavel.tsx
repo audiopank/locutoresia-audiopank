@@ -54,9 +54,11 @@ interface Props {
   fadeIn: number;
   fadeOut: number;
   onFades: (fadeIn: number, fadeOut: number) => void;
+  // Altura da onda em px (Alt+1 engorda / Alt+2 emagrece — 23/10/2026). Padrão 76.
+  altura?: number;
 }
 
-const ALTURA = 76;
+const ALTURA_PADRAO = 76;
 const ALCA = 14;       // faixa de cima do objeto: arrastar aqui MOVE o objeto
 export const ZOOM_MAX = 64;
 let ctxCompartilhado: AudioContext | null = null;
@@ -84,8 +86,9 @@ const relogio = (s: number) => {
 
 export function OndaEditavel({
   audioUrl, tipo, onEditado, cursor, tocandoMix, onCursor, faixaId, onSoltarTrecho, inicio, linha, marcadores, onMover,
-  fadeIn, fadeOut, onFades,
+  fadeIn, fadeOut, onFades, altura,
 }: Props) {
+  const ALTURA = altura ?? ALTURA_PADRAO;
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [erro, setErro] = useState("");
   const [largura, setLargura] = useState(0);
@@ -293,7 +296,7 @@ export function OndaEditavel({
       g.fillStyle = tocandoMix ? "#4ade80" : "#f87171";
       g.fillRect(Math.min(largura - 2, x(cursor)), 0, 2, ALTURA);
     }
-  }, [envelope, largura, sel, arrasto, cursor, tocandoMix, buffer, tipo, g0, g1, span, dur, ini, movendo, marcadores, fi, fo, puxandoFade]);
+  }, [envelope, largura, sel, arrasto, cursor, tocandoMix, buffer, tipo, g0, g1, span, dur, ini, movendo, marcadores, fi, fo, puxandoFade, ALTURA]);
 
   // Ponteiro → segundo da régua (global) e altura dentro da onda.
   const ponteiro = (e: React.PointerEvent) => {
