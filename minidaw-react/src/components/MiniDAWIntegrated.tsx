@@ -225,7 +225,7 @@ const MiniDAWIntegrated = () => {
 
   // Trilha vinda da Biblioteca de Trilhas Sonoras (/library -> "Usar no MiniDAW React"),
   // entregue via localStorage por não haver navegação com estado entre as duas páginas.
-  const handleMusicTrackFromLibrary = useCallback((audioUrl: string, name: string) => {
+  const handleMusicTrackFromLibrary = useCallback((audioUrl: string, name: string, silencioso = false) => {
     const newTrack: Track = {
       id: Date.now().toString(),
       name,
@@ -243,8 +243,62 @@ const MiniDAWIntegrated = () => {
       audioRefs.current[newTrack.id] = audio;
     });
     audio.load();
-    toast({ title: "Trilha adicionada!", description: name });
+    if (!silencioso) toast({ title: "Trilha adicionada!", description: name });
   }, [toast]);
+
+  // PRÉ-ESCUTA DE TRILHAS DO PC (23/10/2026): o painel é o mesmo da clássica
+  // (/static/pre-escuta.js, tecla W). Aqui só a ponte: tocar as vozes junto e
+  // adicionar a trilha escolhida. Nada sobe pro servidor.
+  const tracksRef = useRef(tracks);
+  tracksRef.current = tracks;
+  const vozesPreRef = useRef<{ chave: string; url: string; audio: HTMLAudioElement } | null>(null);
+  useEffect(() => {
+    const w = window as any;
+    const pararTudo = () => {
+      mixPlayRef.current?.audio.pause();
+      vozesPreRef.current?.audio.pause();
+      setIsPlaying(false);
+    };
+    w.preEscutaHost = {
+      avisar: (msg: string, tipo?: string) =>
+        toast({ title: msg, variant: tipo === "error" ? "destructive" : undefined }),
+      temVoz: () => tracksRef.current.some((t) => t.type === "voiceover" && t.audioUrl),
+      tocandoProjeto: () =>
+        !!(mixPlayRef.current && !mixPlayRef.current.audio.paused) || !!(vozesPreRef.current && !vozesPreRef.current.audio.paused),
+      pararProjeto: pararTudo,
+      zerarProjeto: () => {
+        pararTudo();
+        if (vozesPreRef.current) vozesPreRef.current.audio.currentTime = 0;
+      },
+      // Mix SÓ das vozes (com os efeitos delas), montado uma vez e reaproveitado.
+      tocarVozesDe: async (t: number) => {
+        const vozes = tracksRef.current.filter((x) => x.type === "voiceover" && x.audioUrl).map(paraMix);
+        const chave = JSON.stringify(vozes);
+        let v = vozesPreRef.current;
+        if (!v || v.chave !== chave) {
+          const blob = await mixToMp3(vozes, { format: "wav" });
+          if (v) { v.audio.pause(); URL.revokeObjectURL(v.url); }
+          const url = URL.createObjectURL(blob);
+          v = { chave, url, audio: new Audio(url) };
+          vozesPreRef.current = v;
+          await new Promise((r) => v!.audio.addEventListener("loadedmetadata", r, { once: true }));
+        }
+        v.audio.currentTime = Math.min(t, Math.max(0, v.audio.duration - 0.05));
+        await v.audio.play();
+      },
+      devolverTrilhas: () => {},   // aqui as trilhas nem entram no mix das vozes
+      // 1ª faixa de trilha vazia; senão cria "Trilha N". Nunca substitui.
+      adicionarTrilha: async (arquivo: File) => {
+        const vazia = tracksRef.current.find((x) => x.type === "music" && !x.audioUrl);
+        setActiveTab("multitrack");
+        if (vazia) { handleFileUpload(vazia.id, arquivo); return vazia.name; }
+        const nome = `Trilha ${tracksRef.current.filter((x) => x.type === "music").length + 1}`;
+        handleMusicTrackFromLibrary(URL.createObjectURL(arquivo), nome, true);
+        return nome;
+      },
+    };
+    return () => { delete w.preEscutaHost; };
+  }, [toast, handleFileUpload, handleMusicTrackFromLibrary]);
 
   useEffect(() => {
     const pendingUrl = localStorage.getItem('selectedTrackUrl');
@@ -621,7 +675,7 @@ const MiniDAWIntegrated = () => {
               <div className="text-sm">
                 <span className="text-white/60">Tempo:</span>
                 <span className="ml-2 font-mono text-lg">{currentTime.toFixed(1)}s</span>
-                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade · Espaço = play/pausa · 2× = stop · Alt+V nova voz · Alt+T nova trilha"}</div>
+                <div className="text-xs text-white/40">{montandoPlay ? "montando o mix…" : "mix com efeitos e fade · Espaço = play/pausa · 2× = stop · Alt+V nova voz · Alt+T nova trilha · W pré-escuta"}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -633,6 +687,10 @@ const MiniDAWIntegrated = () => {
               </Button>
               <Button onClick={() => addTrack("music")} variant="outline" className="gap-2 border-white/20 hover:bg-white/10">
                 <Music className="w-4 h-4" /> Adicionar Trilha
+              </Button>
+              <Button onClick={() => (window as any).PreEscuta?.abrir()} variant="outline" className="gap-2 border-white/20 hover:bg-white/10"
+                      title="Ouvir trilhas do seu PC antes de subir (sozinha ou junto com a voz) — atalho W">
+                <Headphones className="w-4 h-4" /> Pré-escuta (W)
               </Button>
               <Button onClick={saveProject} variant="outline" className="gap-2 border-white/20 hover:bg-white/10" disabled={isSaving}>
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar

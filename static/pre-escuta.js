@@ -16,6 +16,8 @@
  * - Painel aberto: Espaço = play/pausa da pré-escuta, ↑/↓ = trilha anterior/
  *   próxima, Esc = fecha. Fechado: tudo volta a ser da MiniDAW.
  *
+ * Serve as DUAS MiniDAWs: a clássica (window.minidaw) e a React, que registra
+ * window.preEscutaHost (ver hostClassica() pra lista de funções).
  * As funções puras de cima são testadas em tests/pre-escuta.test.mjs.
  */
 (function (global) {
@@ -107,8 +109,7 @@
     st.audio.volume = 0.7;
     let ui = null;
 
-    const daw = () => global.minidaw;
-    const avisar = (msg, tipo) => { const d = daw(); if (d && d.showNotification) d.showNotification(msg, tipo || 'info'); };
+    const avisar = (msg, tipo) => { const h = host(); if (h) h.avisar(msg, tipo || 'info'); };
     const el = (tag, props, filhos) => {
         const e = Object.assign(document.createElement(tag), props || {});
         for (const f of (filhos || [])) e.append(f);
@@ -315,7 +316,8 @@
         // Onda: decodifica só a selecionada, sem travar o play.
         const seq = ++st.decodSeq;
         try {
-            const ctx = (daw() && daw().audioContext) || new (global.AudioContext || global.webkitAudioContext)();
+            const h = host();
+            const ctx = (h && h.audioContext) || st.ctx || (st.ctx = new (global.AudioContext || global.webkitAudioContext)());
             const buf = await ctx.decodeAudioData(await arquivo.arrayBuffer());
             if (seq !== st.decodSeq) return;
             st.picos = picos(buf.getChannelData(0), ui.canvas.width / 2);
@@ -346,28 +348,66 @@
         desenharOnda();
     }
 
-    // ── Tocar sozinha ou junto com a voz ─────────────────────────────────
-    function silenciarTrilhasDoProjeto() {
-        const d = daw();
-        st.silenciadas = d ? d.tracks.filter(t => t.type === 'music' && !t.sfx && t.audioBuffer && !t.muted) : [];
-        for (const t of st.silenciadas) t.muted = true;
-    }
-    function devolverTrilhasDoProjeto() {
-        for (const t of st.silenciadas) t.muted = false;
-        st.silenciadas = [];
+    // ── Ponte com a MiniDAW (23/10/2026) ─────────────────────────────────
+    // O painel é UM só pras duas MiniDAWs. A React registra
+    // `window.preEscutaHost` com estas funções; sem ela, a ponte é a da
+    // clássica (`window.minidaw`).
+    function host() { return global.preEscutaHost || hostClassica(); }
+
+    function hostClassica() {
+        const d = global.minidaw;
+        if (!d) return null;
+        return {
+            audioContext: d.audioContext,
+            avisar: (msg, tipo) => d.showNotification(msg, tipo || 'info'),
+            temVoz: () => d.tracks.some(t => t.audioBuffer && t.type === 'voice'),
+            tocandoProjeto: () => !!d.isPlaying,
+            pararProjeto: () => { if (d.isPlaying) d.stop(); },
+            zerarProjeto: () => { if (d.stopPlayback) d.stopPlayback(); },
+            // Toca as vozes a partir de `t` com as TRILHAS do projeto mudas até devolverTrilhas().
+            tocarVozesDe: (t) => {
+                st.silenciadas = d.tracks.filter(x => x.type === 'music' && !x.sfx && x.audioBuffer && !x.muted);
+                for (const x of st.silenciadas) x.muted = true;
+                d.currentTime = t;
+                d.play();
+            },
+            devolverTrilhas: () => {
+                for (const x of st.silenciadas) x.muted = false;
+                st.silenciadas = [];
+            },
+            // 1ª trilha vazia, senão cria; devolve o nome da faixa.
+            adicionarTrilha: async (arquivo) => {
+                let destino = faixaDestino(d.tracks);
+                if (!destino) {
+                    d.addTrack('music');
+                    destino = d.tracks[d.tracks.length - 1].id;
+                }
+                await d.loadAudioFile(arquivo, destino);
+                const card = document.getElementById(`track_${destino}`);
+                if (card) setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+                const faixa = d.tracks.find(t => t.id === destino);
+                return faixa ? faixa.name : 'Trilha';
+            },
+        };
     }
 
-    function tocar() {
+    // ── Tocar sozinha ou junto com a voz ─────────────────────────────────
+    async function tocar() {
         if (st.sel < 0 || !st.audio.src) return;
-        const d = daw();
-        if (st.junto && d && d.tracks.some(t => t.audioBuffer && t.type === 'voice')) {
-            if (d.isPlaying) d.stop();
-            silenciarTrilhasDoProjeto();
-            d.currentTime = st.audio.currentTime || 0;
-            d.play();
+        const h = host();
+        if (st.junto && h && h.temVoz()) {
+            h.pararProjeto();
             st.tocandoJunto = true;
-        } else if (d && d.isPlaying) {
-            d.stop();   // a pré-escuta não toca por cima do projeto
+            try {
+                await h.tocarVozesDe(st.audio.currentTime || 0);   // na React monta o mix das vozes antes
+            } catch (e) {
+                st.tocandoJunto = false;
+                avisar('Não consegui tocar as vozes junto: ' + (e.message || e), 'error');
+                return;
+            }
+            if (!st.tocandoJunto) { h.pararProjeto(); return; }   // pausou enquanto montava
+        } else if (h && h.tocandoProjeto()) {
+            h.pararProjeto();   // a pré-escuta não toca por cima do projeto
         }
         st.audio.play().catch(() => {});
     }
@@ -375,9 +415,8 @@
     function pausar() {
         st.audio.pause();
         if (st.tocandoJunto) {
-            const d = daw();
-            if (d && d.isPlaying) d.stop();
-            devolverTrilhasDoProjeto();
+            const h = host();
+            if (h) { h.pararProjeto(); h.devolverTrilhas(); }
             st.tocandoJunto = false;
         }
     }
@@ -385,11 +424,11 @@
     function parar() {
         pausar();
         try { st.audio.currentTime = 0; } catch (e) { /* sem src */ }
-        if (st.junto) { const d = daw(); if (d && d.stopPlayback) d.stopPlayback(); }
+        if (st.junto) { const h = host(); if (h) h.zerarProjeto(); }
         atualizarTempo();
     }
 
-    function alternar() { st.audio.paused ? tocar() : pausar(); }
+    function alternar() { st.audio.paused && !st.tocandoJunto ? tocar() : pausar(); }
 
     function pular(t) {
         const tocando = !st.audio.paused;
@@ -400,25 +439,17 @@
 
     // ── Adicionar ao projeto ─────────────────────────────────────────────
     async function adicionar() {
-        const d = daw();
+        const h = host();
         const it = st.itens[st.sel];
-        if (!d || !it) return;
+        if (!h || !it) return;
         parar();
         let arquivo;
         try { arquivo = await arquivoDo(it); } catch (e) { avisar('Não consegui ler esse arquivo.', 'error'); return; }
-        let destino = faixaDestino(d.tracks);
-        if (!destino) {
-            d.addTrack('music');
-            destino = d.tracks[d.tracks.length - 1].id;
-        }
-        await d.loadAudioFile(arquivo, destino);
+        const nomeFaixa = await h.adicionarTrilha(arquivo, it.nome);
         st.marcas = marcarUsada(st.marcas, it.nome);
         salvarMarcas();
-        const faixa = d.tracks.find(t => t.id === destino);
-        avisar(`"${it.nome}" entrou em "${faixa ? faixa.name : 'Trilha'}". As vozes não mudaram.`, 'success');
+        avisar(`"${it.nome}" entrou em "${nomeFaixa}". As vozes não mudaram.`, 'success');
         fecharPainel();
-        const card = document.getElementById(`track_${destino}`);
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     // ── Teclado ──────────────────────────────────────────────────────────
@@ -446,7 +477,7 @@
     }, true);
 
     // Página fechando com a pré-escuta "junto": não deixa trilha do projeto muda.
-    global.addEventListener('pagehide', devolverTrilhasDoProjeto);
+    global.addEventListener('pagehide', () => { const h = host(); if (h) h.devolverTrilhas(); });
 
     Object.assign(PreEscuta, { abrir, fechar: fecharPainel, alternar: alternarPainel });
 })(typeof window !== 'undefined' ? window : globalThis);
