@@ -65,7 +65,27 @@
         return p > 0 ? 20 * Math.log10(p) : -Infinity;
     }
 
-    const Gravacao = { wav24, posicionarTake, sobrepoe, nomeDoTake, picoDb };
+    // 24/10/2026: placa USB manda as DUAS entradas; com o microfone na entrada 2 o
+    // take saía mudo (só a 1 era gravada). Agora grava as duas e escolhe no fim.
+    // `energias` = RMS de cada entrada no take; `modo` = 'auto' | '0' | '1'.
+    function escolherCanal(energias, modo) {
+        const n = energias.length;
+        if (modo === '0' || modo === '1') return { modo: 'canal', canal: Math.min(n - 1, Number(modo)) };
+        if (n < 2) return { modo: 'canal', canal: 0 };
+        const [a, b] = energias;
+        if (a > b * 4) return { modo: 'canal', canal: 0 };    // 12 dB+ de diferença: só uma tem voz
+        if (b > a * 4) return { modo: 'canal', canal: 1 };
+        return { modo: 'mistura' };
+    }
+
+    function juntarCanais(canais, escolha) {
+        if (escolha.modo === 'canal') return Float32Array.from(canais[escolha.canal]);
+        const n = canais[0].length, out = new Float32Array(n);
+        for (let i = 0; i < n; i++) { let s = 0; for (const c of canais) s += c[i]; out[i] = s / canais.length; }
+        return out;
+    }
+
+    const Gravacao = { wav24, posicionarTake, sobrepoe, nomeDoTake, picoDb, escolherCanal, juntarCanais };
     global.Gravacao = Gravacao;
     if (typeof module !== 'undefined' && module.exports) { module.exports = Gravacao; return; }
     if (typeof document === 'undefined') return;
@@ -73,7 +93,8 @@
     // ── Navegador ────────────────────────────────────────────────────────
     const st = {
         armada: null, stream: null, fonte: null, no: null, deviceId: localStorage.getItem('gravacao_entrada') || '',
-        gravando: false, blocos: [], tPrim: null, base: 0, inicioRelogio: 0, pico: -Infinity, picoMax: -Infinity,
+        gravando: false, blocos: [], tPrim: null, base: 0, inicioRelogio: 0, picos: [0, 0], picoMax: -Infinity,
+        canalModo: localStorage.getItem('gravacao_canal') || 'auto',
         pasta: null, semBackup: false, nTake: 0, mudaAntes: false, raf: 0,
         ajusteMs: parseFloat(localStorage.getItem('gravacao_ajuste_ms') || '0') || 0,
     };
@@ -86,10 +107,10 @@
         class CapturaLocutor extends AudioWorkletProcessor {
             constructor() { super(); this.on = false; this.port.onmessage = (e) => { this.on = e.data; }; }
             process(inputs) {
-                const ch = inputs[0] && inputs[0][0];
-                if (ch) {
-                    let p = 0; for (let i = 0; i < ch.length; i++) { const a = Math.abs(ch[i]); if (a > p) p = a; }
-                    this.port.postMessage({ t: currentTime, pico: p, dados: this.on ? ch.slice(0) : null });
+                const chs = inputs[0];
+                if (chs && chs.length) {
+                    const picos = chs.map((ch) => { let p = 0; for (let i = 0; i < ch.length; i++) { const a = Math.abs(ch[i]); if (a > p) p = a; } return p; });
+                    this.port.postMessage({ t: currentTime, picos, dados: this.on ? chs.map((ch) => ch.slice(0)) : null });
                 }
                 return true;
             }
@@ -105,7 +126,7 @@
             audio: {
                 deviceId: st.deviceId ? { exact: st.deviceId } : undefined,
                 echoCancellation: false, noiseSuppression: false, autoGainControl: false,
-                channelCount: 1, sampleRate: ctx.sampleRate,
+                channelCount: { ideal: 2 }, sampleRate: ctx.sampleRate,   // as duas entradas da placa
             },
         });
         if (!ctx._capturaLocutor) {
@@ -115,16 +136,17 @@
             ctx._capturaLocutor = true;
         }
         st.fonte = ctx.createMediaStreamSource(st.stream);
-        st.no = new AudioWorkletNode(ctx, 'captura-locutor', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' });
+        // 'max' = recebe as entradas como a placa manda (1 ou 2), sem misturar.
+        st.no = new AudioWorkletNode(ctx, 'captura-locutor', { numberOfInputs: 1, numberOfOutputs: 1, channelCountMode: 'max', channelInterpretation: 'discrete' });
         const mudo = ctx.createGain(); mudo.gain.value = 0;   // mantém o nó rodando sem sair no fone
         st.fonte.connect(st.no); st.no.connect(mudo); mudo.connect(ctx.destination);
         st.no.port.onmessage = (e) => {
             const m = e.data;
-            st.pico = Math.max(st.pico, m.pico);
+            m.picos.forEach((p, i) => { st.picos[i] = Math.max(st.picos[i] || 0, p); });
             if (m.dados) {
                 if (st.tPrim == null) st.tPrim = m.t;
-                st.blocos.push(m.dados);
-                st.picoMax = Math.max(st.picoMax, m.pico);
+                st.blocos.push(m.dados);   // [canal][amostras]
+                st.picoMax = Math.max(st.picoMax, ...m.picos);
             }
         };
         await listarEntradas();
@@ -147,12 +169,17 @@
     function desenharMedidor() {
         st.raf = requestAnimationFrame(desenharMedidor);
         if (!ui) return;
-        const db = st.pico > 0 ? 20 * Math.log10(st.pico) : -Infinity;
-        st.pico = 0;
-        const pct = Number.isFinite(db) ? Math.max(0, Math.min(100, (db + 60) / 60 * 100)) : 0;
-        ui.barra.style.width = pct + '%';
-        ui.barra.style.background = db > -1 ? '#ef4444' : db > -9 ? '#f59e0b' : '#22c55e';
-        ui.db.textContent = Number.isFinite(db) ? db.toFixed(0) + ' dB' : '—';
+        const nCh = st.no ? Math.max(1, Math.min(2, st.picos.length)) : 1;
+        for (let c = 0; c < 2; c++) {
+            const p = st.picos[c] || 0;
+            const db = p > 0 ? 20 * Math.log10(p) : -Infinity;
+            const pct = Number.isFinite(db) ? Math.max(0, Math.min(100, (db + 60) / 60 * 100)) : 0;
+            ui.barras[c].style.width = pct + '%';
+            ui.barras[c].style.background = db > -1 ? '#ef4444' : db > -9 ? '#f59e0b' : '#22c55e';
+            ui.dbs[c].textContent = Number.isFinite(db) ? db.toFixed(0) + ' dB' : '—';
+            ui.linhasMed[c].style.display = c < nCh ? 'flex' : 'none';
+        }
+        st.picos = st.picos.map(() => 0);
         if (st.gravando) {
             const d = daw();
             const seg = d.audioContext.currentTime - st.inicioRelogio;
@@ -180,8 +207,13 @@
             st.deviceId = e.target.value; localStorage.setItem('gravacao_entrada', st.deviceId);
             try { await ligarMicrofone(); } catch (err) { avisar('Não consegui abrir essa entrada: ' + err.message, 'error'); }
         } });
-        const barra = el('div');
-        const db = el('span', { className: 'gv-sub', textContent: '—' });
+        const barras = [el('div'), el('div')];
+        const dbs = [el('span', { className: 'gv-sub', textContent: '—' }), el('span', { className: 'gv-sub', textContent: '—' })];
+        const linhasMed = [0, 1].map((c) => el('div', { className: 'gv-linha' }, [
+            el('span', { className: 'gv-sub', textContent: `Entrada ${c + 1}` }), el('div', { className: 'gv-med' }, [barras[c]]), dbs[c]]));
+        const canal = el('select', { title: 'Qual entrada da placa gravar', onchange: (e) => { st.canalModo = e.target.value; localStorage.setItem('gravacao_canal', st.canalModo); } },
+            [['auto', 'Automático (a que tiver voz)'], ['0', 'Só a entrada 1'], ['1', 'Só a entrada 2']]
+                .map(([v, t]) => el('option', { value: v, textContent: t, selected: st.canalModo === v })));
         const pastaBtn = el('button', { textContent: '📁 Pasta dos takes', onclick: escolherPasta });
         const pastaNome = el('span', { className: 'gv-sub', textContent: 'não escolhida (pergunto no 1º take)' });
         const ajuste = el('input', { type: 'number', step: 1, value: st.ajusteMs, style: 'width:70px',
@@ -194,7 +226,8 @@
             el('div', { className: 'gv-topo' }, [el('span', {}, [el('b', { textContent: '🎙️ Gravação — ' }), faixa]),
                 el('button', { textContent: '✕', title: 'Desarmar e fechar', onclick: () => desarmar() })]),
             el('div', { className: 'gv-linha' }, [el('span', { textContent: 'Entrada:' }), entrada]),
-            el('div', { className: 'gv-linha' }, [el('div', { className: 'gv-med' }, [barra]), db]),
+            linhasMed[0], linhasMed[1],
+            el('div', { className: 'gv-linha' }, [el('span', { textContent: 'Gravar:' }), canal]),
             el('div', { className: 'gv-linha' }, [pastaBtn, pastaNome]),
             el('div', { className: 'gv-linha' }, [el('span', { textContent: 'Ajuste de atraso:' }), ajuste, el('span', { className: 'gv-sub', textContent: 'ms' })]),
             rec, estado,
@@ -202,7 +235,7 @@
         ]);
         document.head.append(css);
         document.body.append(painel);
-        ui = { painel, entrada, barra, db, pastaNome, rec, estado, faixa };
+        ui = { painel, entrada, barras, dbs, linhasMed, pastaNome, rec, estado, faixa };
     }
 
     async function armar(trackId) {
@@ -286,13 +319,18 @@
         const t = d.tracks.find(x => x.id === st.armada);
         if (t) t.muted = st.mudaAntes;
         if (d.isPlaying) d.stop();
-        const n = st.blocos.reduce((s, b) => s + b.length, 0);
+        const n = st.blocos.reduce((s, b) => s + b[0].length, 0);
         const ctx = d.audioContext, sr = ctx.sampleRate;
         if (n < sr * 0.3 || st.tPrim == null) { avisar('Take muito curto — descartado.', 'warning'); return; }
-        const tudo = new Float32Array(n);
+        const nCh = Math.max(...st.blocos.map(b => b.length));
+        const canais = Array.from({ length: nCh }, () => new Float32Array(n));
         let o = 0;
-        for (const b of st.blocos) { tudo.set(b, o); o += b.length; }
+        for (const b of st.blocos) { for (let c = 0; c < nCh; c++) canais[c].set(b[c] || b[0], o); o += b[0].length; }
         st.blocos = [];
+        const energias = canais.map(c => { let e = 0; for (let i = 0; i < c.length; i += 4) e += c[i] * c[i]; return Math.sqrt(e / (c.length / 4)); });
+        const escolha = escolherCanal(energias, st.canalModo);
+        const tudo = juntarCanais(canais, escolha);
+        const qualEntrada = nCh < 2 ? '' : escolha.modo === 'mistura' ? ' (entradas 1+2)' : ` (entrada ${escolha.canal + 1})`;
         const trilhaIn = st.stream && st.stream.getAudioTracks()[0];
         const latIn = (trilhaIn && trilhaIn.getSettings().latency) || 0;
         const lat = (ctx.outputLatency || 0) + (ctx.baseLatency || 0) + latIn + st.ajusteMs / 1000;
@@ -321,8 +359,10 @@
         d.calculateDuration();
         d.aposMudancaDeClips([destino]);
 
-        const picoTxt = Number.isFinite(st.picoMax) ? ` · pico ${(20 * Math.log10(st.picoMax)).toFixed(1)} dB` : '';
-        const estourou = st.picoMax >= 0.999;
+        const picoTake = picoDb(amostras);
+        const picoTxt = Number.isFinite(picoTake) ? ` · pico ${picoTake.toFixed(1)} dB${qualEntrada}` : '';
+        const estourou = picoTake >= -0.01;
+        const baixo = picoTake < -30;
         let copia = '';
         if (st.pasta) {
             try {
@@ -335,8 +375,9 @@
             } catch (e) { copia = ' ⚠ Não salvei a cópia no PC: ' + (e.message || e); }
         }
         avisar(`Take ${st.nTake}: ${buf.duration.toFixed(1).replace('.', ',')} s em "${destino.name}", a partir de ${pos.inicio.toFixed(2).replace('.', ',')} s${picoTxt}.` +
-            (estourou ? ' ⚠ ESTOUROU (0 dB) — baixe o ganho da placa e grave de novo.' : '') + copia,
-            estourou ? 'warning' : 'success');
+            (estourou ? ' ⚠ ESTOUROU (0 dB) — baixe o ganho da placa e grave de novo.' : '')
+            + (baixo ? ' ⚠ MUITO BAIXO — confira a entrada da placa (medidor) e o ganho do microfone.' : '') + copia,
+            estourou || baixo ? 'warning' : 'success');
     }
 
     // R = gravar/parar com faixa armada; Espaço durante a gravação = parar.

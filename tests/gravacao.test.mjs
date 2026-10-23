@@ -54,3 +54,19 @@ test('picoDb: pico em dBFS; silêncio = -Infinity', () => {
     assert.ok(Math.abs(G.picoDb(new Float32Array([0.5])) - (-6.0206)) < 1e-3);
     assert.equal(G.picoDb(new Float32Array([0, 0])), -Infinity);
 });
+
+// ── 24/10/2026: placa USB com o microfone na ENTRADA 2 (o take saía mudo) ──
+test('escolherCanal: automático pega a entrada que tem voz', () => {
+    assert.deepEqual(G.escolherCanal([1e-8, 0.02], 'auto'), { modo: 'canal', canal: 1 });   // mic na entrada 2
+    assert.deepEqual(G.escolherCanal([0.02, 1e-8], 'auto'), { modo: 'canal', canal: 0 });
+    assert.deepEqual(G.escolherCanal([0.02, 0.015], 'auto'), { modo: 'mistura' });          // as duas com sinal
+    assert.deepEqual(G.escolherCanal([0.02], 'auto'), { modo: 'canal', canal: 0 });         // mono
+    assert.deepEqual(G.escolherCanal([1e-8, 0.02], '0'), { modo: 'canal', canal: 0 });      // travado na entrada 1
+    assert.deepEqual(G.escolherCanal([0.02], '1'), { modo: 'canal', canal: 0 });            // pediu a 2, só existe 1
+});
+
+test('juntarCanais: mistura = média; canal = cópia daquele', () => {
+    const c = [new Float32Array([0.2, 0.4]), new Float32Array([0.0, 0.2])];
+    assert.deepEqual(Array.from(G.juntarCanais(c, { modo: 'mistura' })).map(v => +v.toFixed(2)), [0.1, 0.3]);
+    assert.deepEqual(Array.from(G.juntarCanais(c, { modo: 'canal', canal: 1 })).map(v => +v.toFixed(2)), [0, 0.2]);
+});
