@@ -11,6 +11,8 @@
  * - "Ouvir junto com a voz": toca o projeto do 0:00 com as TRILHAS que já
  *   existem silenciadas (devolvidas ao parar) + a candidata.
  * - Adicionar: primeira faixa de trilha VAZIA, senão cria uma. Nunca substitui.
+ * - Marcas: ✓ usada (sozinha, ao Adicionar) e ⭐ aprovada (clique) + filtro
+ *   "Só as ⭐" — guardadas no navegador (localStorage preEscuta_marcas).
  * - Painel aberto: Espaço = play/pausa da pré-escuta, ↑/↓ = trilha anterior/
  *   próxima, Esc = fecha. Fechado: tudo volta a ser da MiniDAW.
  *
@@ -58,7 +60,32 @@
         return out;
     }
 
-    const PreEscuta = { ehAudio, ordenarNomes, faixaDestino, tempo, picos };
+    // ── Marcas (23/10/2026, pedido dele): ✓ usada (automática ao Adicionar) e
+    // ⭐ aprovada (clique). Chave = nome do arquivo, sem maiúscula: vale em
+    // qualquer pasta. Ficam NO NAVEGADOR — os arquivos do PC não são tocados.
+    const chave = (nome) => String(nome || '').toLocaleLowerCase('pt-BR');
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    function marcarUsada(marcas, nome, data) {
+        const k = chave(nome), r = Object.assign({}, marcas[k]);
+        r.usos = (r.usos || 0) + 1;
+        r.ultima = iso(data || new Date());
+        return Object.assign({}, marcas, { [k]: r });
+    }
+
+    function alternarAprovada(marcas, nome) {
+        const k = chave(nome), r = Object.assign({}, marcas[k]);
+        r.aprovada = !r.aprovada;
+        return Object.assign({}, marcas, { [k]: r });
+    }
+
+    function rotuloUsada(r) {
+        if (!r || !r.usos || !r.ultima) return '';
+        const [, mes, dia] = r.ultima.split('-');
+        return r.usos > 1 ? `✓ usada ${r.usos}× · última ${dia}/${mes}` : `✓ usada em ${dia}/${mes}`;
+    }
+
+    const PreEscuta = { ehAudio, ordenarNomes, faixaDestino, tempo, picos, chave, marcarUsada, alternarAprovada, rotuloUsada };
     global.PreEscuta = PreEscuta;
     if (typeof module !== 'undefined' && module.exports) { module.exports = PreEscuta; return; }
     if (typeof document === 'undefined') return;
@@ -68,7 +95,14 @@
         aberto: false, itens: [], filtro: '', sel: -1,
         audio: new Audio(), url: null, picos: null, decodSeq: 0,
         junto: false, silenciadas: [], tocandoJunto: false,
+        marcas: lerMarcas(), soAprovadas: false,
     };
+    function lerMarcas() {
+        try { return JSON.parse(localStorage.getItem('preEscuta_marcas') || '{}') || {}; } catch (e) { return {}; }
+    }
+    function salvarMarcas() {
+        try { localStorage.setItem('preEscuta_marcas', JSON.stringify(st.marcas)); } catch (e) { /* navegador sem espaço/privado */ }
+    }
     st.audio.preload = 'metadata';
     st.audio.volume = 0.7;
     let ui = null;
@@ -103,6 +137,10 @@
             #preEscuta canvas{width:100%;height:56px;background:#0d1222;border-radius:8px;cursor:pointer;display:block}
             #preEscuta .pe-linha{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
             #preEscuta .pe-vazio{padding:18px;text-align:center;color:#9aa3c7}
+            #preEscuta .pe-item>span{flex:1;min-width:0;overflow-wrap:anywhere}
+            #preEscuta button.pe-estrela{background:none;border:none;padding:0 4px;font-size:17px;line-height:1;color:#6b7399}
+            #preEscuta button.pe-estrela.on{color:#fbbf24}
+            #preEscuta .pe-usada{color:#34d399;font-size:12px}
             #preEscuta label.pe-linha{flex-wrap:nowrap;align-items:flex-start;cursor:pointer}
             #preEscuta label.pe-linha input{margin-top:3px;flex:none}` });
         const fechar = el('button', { textContent: '✕', title: 'Fechar (Esc)', onclick: fecharPainel });
@@ -110,6 +148,7 @@
         const btnArq = el('button', { textContent: 'Escolher arquivos', onclick: () => ui.input.click() });
         const input = el('input', { type: 'file', multiple: true, accept: 'audio/*', hidden: true, onchange: (e) => carregarArquivos(e.target.files) });
         const busca = el('input', { type: 'search', placeholder: 'Procurar pelo nome…', oninput: (e) => { st.filtro = e.target.value; desenharLista(); } });
+        const soAprov = el('input', { type: 'checkbox', id: 'peSoAprovadas', onchange: (e) => { st.soAprovadas = e.target.checked; desenharLista(); } });
         const lista = el('div', { className: 'pe-lista' });
         const nome = el('div', { textContent: 'Nenhuma trilha selecionada' });
         const canvas = el('canvas', { width: 820, height: 112, title: 'Clique para pular para esse ponto' });
@@ -127,7 +166,9 @@
             el('div', { className: 'pe-topo' }, [el('b', { textContent: '🎧 Pré-escuta de trilhas' }), fechar]),
             el('div', { className: 'pe-linha' }, [btnPasta, btnArq, input]),
             el('div', { className: 'pe-sub', textContent: 'Toca daqui do seu PC — nada sobe pro servidor e nada entra no projeto até você clicar em Adicionar. ↑/↓ troca de trilha, Espaço toca/pausa.' }),
-            busca, lista, nome, canvas,
+            busca,
+            el('label', { className: 'pe-linha', htmlFor: 'peSoAprovadas' }, [soAprov, el('span', { textContent: 'Só as ⭐ aprovadas' })]),
+            lista, nome, canvas,
             el('div', { className: 'pe-linha' }, [btnPlay, btnStop, tempoEl, el('span', { className: 'pe-sub', textContent: '🔊' }), vol]),
             el('label', { className: 'pe-linha', htmlFor: 'peJunto' }, [junto, el('span', { textContent: 'Ouvir junto com a voz do spot (do 0:00; as trilhas do projeto ficam mudas)' })]),
             btnAdd,
@@ -206,6 +247,7 @@
     function visiveis() {
         const f = st.filtro.trim().toLocaleLowerCase('pt-BR');
         return st.itens.map((it, i) => ({ it, i }))
+            .filter(({ it }) => !st.soAprovadas || (st.marcas[chave(it.nome)] || {}).aprovada)
             .filter(({ it }) => !f || (it.caminho + '/' + it.nome).toLocaleLowerCase('pt-BR').includes(f));
     }
 
@@ -214,12 +256,28 @@
         ui.lista.replaceChildren();
         const vis = visiveis();
         if (!vis.length) {
-            ui.lista.append(el('div', { className: 'pe-vazio', textContent: st.itens.length ? 'Nada com esse nome.' : 'Abra a pasta de trilhas do seu PC.' }));
+            ui.lista.append(el('div', { className: 'pe-vazio', textContent: !st.itens.length ? 'Abra a pasta de trilhas do seu PC.'
+                : st.soAprovadas ? 'Nenhuma ⭐ aprovada nesta pasta ainda — clique na estrela de uma trilha.' : 'Nada com esse nome.' }));
             return;
         }
         for (const { it, i } of vis) {
+            const marca = st.marcas[chave(it.nome)] || {};
+            const estrela = el('button', {
+                className: 'pe-estrela' + (marca.aprovada ? ' on' : ''), textContent: marca.aprovada ? '★' : '☆',
+                title: marca.aprovada ? 'Aprovada — clique pra tirar' : 'Marcar como aprovada',
+            });
+            estrela.onclick = (e) => {
+                e.stopPropagation();   // a estrela não troca a trilha que está tocando
+                st.marcas = alternarAprovada(st.marcas, it.nome);
+                salvarMarcas();
+                desenharLista();
+            };
+            const usada = rotuloUsada(marca);
             const linha = el('div', { className: 'pe-item' + (i === st.sel ? ' sel' : ''), title: it.caminho ? it.caminho + '/' + it.nome : it.nome }, [
-                el('span', {}, [el('div', { textContent: it.nome }), it.caminho ? el('div', { className: 'pe-sub', textContent: it.caminho }) : '']),
+                estrela,
+                el('span', {}, [el('div', { textContent: it.nome }),
+                    it.caminho ? el('div', { className: 'pe-sub', textContent: it.caminho }) : '',
+                    usada ? el('div', { className: 'pe-usada', textContent: usada }) : '']),
                 el('small', { textContent: it.duracao ? tempo(it.duracao) : '' }),
             ]);
             linha.onclick = () => selecionar(i, true);
@@ -354,6 +412,8 @@
             destino = d.tracks[d.tracks.length - 1].id;
         }
         await d.loadAudioFile(arquivo, destino);
+        st.marcas = marcarUsada(st.marcas, it.nome);
+        salvarMarcas();
         const faixa = d.tracks.find(t => t.id === destino);
         avisar(`"${it.nome}" entrou em "${faixa ? faixa.name : 'Trilha'}". As vozes não mudaram.`, 'success');
         fecharPainel();
