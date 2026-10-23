@@ -418,6 +418,11 @@ class MiniDAW {
                             title="${track.compacto ? 'Expandir efeitos' : 'Recolher efeitos (só timeline)'}">
                         <i class="fas fa-chevron-${track.compacto ? 'down' : 'up'}"></i>
                     </button>
+                    ${track.type === 'voice' && window.Gravacao && Gravacao.armar ? `
+                    <button class="btn btn-sm btn-outline-danger btn-rec-faixa ${Gravacao.armada() === track.id ? 'active' : ''}"
+                            onclick="Gravacao.armar('${track.id}')" title="Armar pra gravar (locutor ao vivo) — depois R grava/para">
+                        <i class="fas fa-circle"></i>
+                    </button>` : ''}
                     <button class="btn btn-sm btn-outline-secondary ${track.muted ? 'active' : ''}" onclick="toggleMute('${track.id}')" title="Mudo">
                         <i class="fas fa-volume-mute"></i>
                     </button>
