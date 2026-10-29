@@ -81,7 +81,7 @@ def test_faixa_tem_presets_com_os_mesmos_efeitos_do_copiar():
     assert 'o.textContent = p.nome;' in js                                    # nome nunca vira HTML
     assert 'id="presetfaixa_${track.id}"' in js
     html = _ler('templates', 'minidaw.html')
-    assert 'minidaw.js?v=80' in html
+    assert 'minidaw.js?v=83' in html
 
 
 def test_resumo_dos_presets_de_faixa_e_aviso_do_importar_que_se_explica():

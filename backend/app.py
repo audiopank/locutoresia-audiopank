@@ -2644,6 +2644,8 @@ def get_client_delivery_upload_url():
                 storage_path = _caminho_rascunho(filename, twin_of=data.get('twin_of'))
             except ValueError as e:
                 return jsonify({"success": False, "error": str(e)}), 400
+            # Cópia nova chegando = hora de tirar as de mais de 60 dias (29/10/2026).
+            _faxinar_rascunhos(supabase_manager.newpost_manager_client.storage.from_(CLIENT_DELIVERIES_BUCKET))
         else:
             storage_path = f"{pasta}/{uuid.uuid4()}{file_extension}"
 
@@ -4701,6 +4703,55 @@ def _faxinar_locucoes(storage, dias=2):
         return len(velhas)
     except Exception as e:
         print(f"⚠️ Faxina de locucoes/ falhou (não afeta a geração): {e}", flush=True)
+        return 0
+
+
+# Cópias dos spots do Gerador em rascunhos/ (29/10/2026, decisão dele depois da
+# faxina grande): com mais de 60 dias saem o ÁUDIO e o roteiro gêmeo (.txt de
+# mesmo nome). O .txt SOZINHO é a "bancada guardada" (preset do cliente) e NUNCA
+# sai. Roda ao guardar uma cópia nova, no máximo 1x/h por instância; nunca levanta.
+_ULTIMA_FAXINA_RASCUNHOS = 0.0
+_NOME_RASCUNHO_AUDIO = re.compile(r'(\d{8}-\d{6})_[\w\-]+\.(mp3|wav)')
+
+
+def _faxinar_rascunhos(storage, dias=60):
+    """Apaga de rascunhos/ os spots antigos (+ roteiro gêmeo). Devolve quantos spots saíram."""
+    global _ULTIMA_FAXINA_RASCUNHOS
+    import time as _time
+    from datetime import timezone as _tz
+    if _time.time() - _ULTIMA_FAXINA_RASCUNHOS < 3600:
+        return 0
+    _ULTIMA_FAXINA_RASCUNHOS = _time.time()
+    try:
+        limite = datetime.now(_tz.utc) - timedelta(days=dias)
+        arquivos = storage.list('rascunhos', {
+            "limit": 1000, "sortBy": {"column": "created_at", "order": "asc"}}) or []
+        nomes = {a.get('name') or '' for a in arquivos}
+        sai, spots = [], 0
+        for a in arquivos:
+            nome = a.get('name') or ''
+            casou = _NOME_RASCUNHO_AUDIO.fullmatch(nome)
+            if not casou:
+                continue                      # .txt sozinho (bancada guardada) e nome estranho ficam
+            criado = a.get('created_at') or ''
+            try:
+                quando = (datetime.fromisoformat(criado.replace('Z', '+00:00')) if criado
+                          else datetime.strptime(casou.group(1), '%Y%m%d-%H%M%S').replace(tzinfo=_tz.utc))
+            except ValueError:
+                continue
+            if quando >= limite:
+                continue
+            spots += 1
+            sai.append(f"rascunhos/{nome}")
+            gemeo = os.path.splitext(nome)[0] + '.txt'
+            if gemeo in nomes:
+                sai.append(f"rascunhos/{gemeo}")
+        if sai:
+            storage.remove(sai)
+            print(f"🧹 rascunhos/: {spots} cópia(s) de spot com mais de {dias} dias apagada(s)", flush=True)
+        return spots
+    except Exception as e:
+        print(f"⚠️ Faxina de rascunhos/ falhou (não afeta o salvar): {e}", flush=True)
         return 0
 
 
