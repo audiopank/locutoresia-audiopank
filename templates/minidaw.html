@@ -1041,6 +1041,26 @@
                 <button onclick="desfazerEncurtar()" title="Voltar a voz ao original"
                         style="background:#2a3350;color:#e6e8f0;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;">↩</button>
             </div>
+            <!-- 🧲 ALINHAR FALAS (29/10/2026, static/alinhar-falas.js): apara o silêncio
+                 das bordas dos trechos de voz e põe as falas em fila, sem encavalar.
+                 A 1ª entra em "voz entra em" (a trilha abre o spot). Ctrl+Z desfaz. -->
+            <div class="quick-action-btn" style="display:flex;align-items:center;gap:6px;cursor:default;">
+                <span>🧲 Alinhar falas</span>
+                <span style="opacity:.75;">voz entra em</span>
+                <input type="number" id="alinharEntrada" value="0.3" min="0" max="10" step="0.05"
+                       style="width:64px;padding:2px 6px;border-radius:6px;border:1px solid #2a3350;background:#0e1424;color:#e6e8f0;"
+                       title="Onde a 1ª fala começa (s) — a trilha abre o spot e a voz entra aqui">
+                <span style="opacity:.6;">s · respiro</span>
+                <input type="number" id="alinharRespiro" value="0.1" min="0" max="2" step="0.05"
+                       style="width:64px;padding:2px 6px;border-radius:6px;border:1px solid #2a3350;background:#0e1424;color:#e6e8f0;"
+                       title="Espaço entre o fim de uma fala e o começo da próxima (s)">
+                <span style="opacity:.6;">s</span>
+                <button onclick="minidaw.alinharFalas(parseFloat(document.getElementById('alinharEntrada').value) || 0, parseFloat(document.getElementById('alinharRespiro').value) || 0)"
+                        title="Apara as bordas e põe as falas em fila (só faixas de voz; trecho com cadeado fica de fora)"
+                        style="background:#22c55e;color:#052e16;border:none;border-radius:6px;padding:3px 8px;font-weight:600;cursor:pointer;">Alinhar</button>
+                <button onclick="minidaw.desfazerClips()" title="Desfazer (Ctrl+Z)"
+                        style="background:#2a3350;color:#e6e8f0;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;">↩</button>
+            </div>
             <button class="quick-action-btn" onclick="clearAllTracks()">
                 <i class="fas fa-trash me-1"></i>
                 Limpar
@@ -1340,7 +1360,8 @@
     <script src="/static/time-stretch.js?v=2"></script>
     <script src="/static/fatiar-paragrafos.js?v=1"></script>
     <script src="/static/gravacao.js?v=3"></script>
-    <script src="/static/minidaw.js?v=83"></script>
+    <script src="/static/alinhar-falas.js?v=1"></script>
+    <script src="/static/minidaw.js?v=84"></script>
     <script src="/static/pre-escuta.js?v=3"></script>
     
     <!-- Script para carregar áudio enviado da página principal -->

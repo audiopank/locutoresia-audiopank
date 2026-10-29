@@ -2097,6 +2097,62 @@ class MiniDAW {
         return clips.length;
     }
 
+    // 🧲 ALINHAR FALAS (29/10/2026, ideia dele vendo o Reaper): apara o silêncio
+    // das bordas de cada trecho de VOZ e põe as falas em fila (static/alinhar-falas.js).
+    // 1ª fala em `entrada` s (a trilha abre o spot), cada uma no fim da anterior +
+    // `respiro`. Trecho continua na mesma faixa; trilha/efeito não se movem;
+    // trecho com cadeado fica de fora. Um Ctrl+Z desfaz tudo.
+    alinharFalas(entrada = 0.3, respiro = 0.1) {
+        if (!window.AlinharFalas) return 0;
+        const vozes = this.tracks.filter(t => t.type === 'voice' && t.audioBuffer);
+        const itens = [], porChave = new Map();
+        const antes = [];
+        for (const t of vozes) {
+            for (const c of this._clipsDaFaixa(t)) {
+                antes.push({ inicio: c.inicio, duracao: c.duracao });
+                if (ClipModel.estaTravado(c)) continue;
+                const buf = c.buffer, sr = buf.sampleRate;
+                let mono = buf.getChannelData(0);
+                const ini = Math.floor(c.offset * sr), fim = Math.min(mono.length, Math.floor((c.offset + c.duracao) * sr));
+                if (buf.numberOfChannels > 1) {
+                    const dir = buf.getChannelData(1), m = new Float32Array(mono.length);
+                    for (let i = ini; i < fim; i++) m[i] = (mono[i] + dir[i]) / 2;
+                    mono = m;
+                }
+                const b = AlinharFalas.bordasDaFala(mono, sr, ini, fim);
+                if (!b) continue;   // trecho mudo: não mexe
+                itens.push({ chave: c.id, inicio: c.inicio, offset: c.offset, duracao: c.duracao,
+                             cortaIni: b.ini / sr - c.offset, cortaFim: b.fim / sr - c.offset });
+                porChave.set(c.id, c);
+            }
+        }
+        if (!itens.length) {
+            this.showNotification('Nenhum trecho de voz pra alinhar (sem voz, ou tudo com cadeado).', 'warning');
+            return 0;
+        }
+        const duracaoAntes = this.duration || 0;
+        const snapshot = this._snapshotClips();
+        for (const p of AlinharFalas.planejar(itens, { entrada, respiro })) {
+            const c = porChave.get(p.chave);
+            c.inicio = p.inicio; c.offset = p.offset; c.duracao = p.duracao;
+            if (c.fadeIn) c.fadeIn = Math.min(c.fadeIn, p.duracao / 2);
+            if (c.fadeOut) c.fadeOut = Math.min(c.fadeOut, p.duracao / 2);
+        }
+        for (const t of vozes) {
+            t.clips = ClipModel.ordenarClips(t.clips);
+            this._sincronizarDerivados(t);
+        }
+        this._guardarUndo(snapshot);
+        this.calculateDuration();
+        this.aposMudancaDeClips(vozes);
+        const desfeitas = AlinharFalas.contarSobreposicoes(antes);
+        const fmt = (s) => s.toFixed(1).replace('.', ',');
+        this.showNotification(`🧲 ${itens.length} fala(s) alinhada(s) em ${vozes.length} faixa(s) de voz` +
+            (desfeitas ? ` · ${desfeitas} sobreposição(ões) desfeita(s)` : '') +
+            ` · spot: ${fmt(duracaoAntes)} s → ${fmt(this.duration || 0)} s. Ctrl+Z desfaz.`, 'success');
+        return itens.length;
+    }
+
     // Campos legados derivados dos clips — o resto do arquivo (e o export)
     // ainda lê audioBuffer/duration da faixa.
     _sincronizarDerivados(track) {
