@@ -449,7 +449,7 @@ def get_real_dashboard_data():
     try:
         hours = request.args.get('hours', 24, type=int)
 
-        # Dados REAIS via módulo compartilhado (lê o feed hzmt, agrupa por fonte real)
+        # Dados REAIS via módulo compartilhado (notícias coletadas pelo agente na tabela posts do ykswh, agrupadas por fonte real)
         from backend.news_metrics import compute_news_metrics
         m = compute_news_metrics(hours)
 
@@ -473,7 +473,7 @@ def get_real_dashboard_data():
             'trending_topics': m['trending_topics'][:10],
             'period_hours': hours,
             'generated_at': datetime.now().isoformat(),
-            'data_source': 'Supabase do feed NewPost-IA (posts reais, agrupado por fonte)'
+            'data_source': 'Notícias reais coletadas pelo agente (tabela posts do Supabase do Locutores IA), agrupadas por fonte'
         })
         
     except Exception as e:

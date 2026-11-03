@@ -218,7 +218,7 @@ DASHBOARD_HTML = '''
     <div class="container">
         <div class="header">
             <h1>📊 Dashboard NewsAgent</h1>
-            <p>Tendências e tópicos em alta — contados nos posts reais do feed</p>
+            <p>Tendências e tópicos em alta — contados nas notícias reais que o agente coletou (publicadas ou não)</p>
         </div>
         
         <div class="controls">
@@ -317,7 +317,7 @@ DASHBOARD_HTML = '''
                 // Atualizar gráficos
                 updateSourcesChart(trends.by_source || {});
                 updateCategoriesChart(trends.by_category || {});
-                updateKeywordsChart(trends.global_keywords || []);
+                updateKeywordsChart(trends.keyword_counts || []);
                 updateTrendingTopics(trends.trending_topics || []);
                 
                 errorDiv.style.display = 'none';
@@ -403,13 +403,14 @@ DASHBOARD_HTML = '''
                 keywordsChartObj.destroy();
             }
             
-            // Simular contagem (em produção viria do servidor)
-            const data = keywords.slice(0, 8).map(k => Math.floor(Math.random() * 100) + 10);
-            
+            // 03/11/2026: contagem REAL vinda do servidor (antes as barras eram sorteadas no navegador).
+            const top = (keywords || []).slice(0, 8);
+            const data = top.map(k => k[1]);
+
             keywordsChartObj = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: keywords.slice(0, 8),
+                    labels: top.map(k => k[0]),
                     datasets: [{
                         label: 'Frequência',
                         data: data,
@@ -474,7 +475,7 @@ def get_trends():
     try:
         hours = request.args.get('hours', 24, type=int)
 
-        # Dados REAIS via módulo compartilhado (lê o feed hzmt, agrupa por fonte real)
+        # Dados REAIS via módulo compartilhado (notícias coletadas pelo agente na tabela posts do ykswh, agrupadas por fonte real)
         from backend.news_metrics import compute_news_metrics
         m = compute_news_metrics(hours)
 
@@ -485,11 +486,12 @@ def get_trends():
                 'by_source': m['by_source'],
                 'by_category': m['by_category'],
                 'global_keywords': m['global_keywords'],
+                'keyword_counts': m['keyword_counts'],
                 'trending_topics': m['trending_topics'][:10],
                 'by_day': m['by_day'],
                 'period_hours': hours,
                 'generated_at': datetime.now().isoformat(),
-                'data_source': 'Supabase do feed NewPost-IA (posts reais, agrupado por fonte)'
+                'data_source': 'Notícias reais coletadas pelo agente (tabela posts do Supabase do Locutores IA), agrupadas por fonte'
             }
         })
         

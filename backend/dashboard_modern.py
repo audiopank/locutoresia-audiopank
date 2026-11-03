@@ -604,7 +604,7 @@ MODERN_DASHBOARD_HTML = '''
                 // Atualizar gráficos
                 updateSourcesChart(trends.by_source || {});
                 updateCategoriesChart(trends.by_category || {});
-                updateKeywordsChart(trends.global_keywords || []);
+                updateKeywordsChart(trends.keyword_counts || []);
                 updateTrendingTopics(trends.trending_topics || []);
                 
                 // Mostrar sucesso
@@ -783,15 +783,14 @@ MODERN_DASHBOARD_HTML = '''
                 keywordsChart.destroy();
             }
             
-            // Simular frequência (em produção viria do servidor)
-            const data = keywords.slice(0, 8).map((keyword, index) => 
-                Math.max(20, 100 - (index * 10) + Math.random() * 20)
-            );
-            
+            // 03/11/2026: contagem REAL vinda do servidor (antes as barras eram sorteadas no navegador).
+            const top = (keywords || []).slice(0, 8);
+            const data = top.map(k => k[1]);
+
             keywordsChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: keywords.slice(0, 8),
+                    labels: top.map(k => k[0]),
                     datasets: [{
                         label: 'Frequência',
                         data: data,
@@ -902,7 +901,7 @@ def get_trends():
     try:
         hours = request.args.get('hours', 24, type=int)
 
-        # Dados REAIS via módulo compartilhado (lê o feed hzmt, agrupa por fonte real)
+        # Dados REAIS via módulo compartilhado (notícias coletadas pelo agente na tabela posts do ykswh, agrupadas por fonte real)
         from backend.news_metrics import compute_news_metrics
         m = compute_news_metrics(hours)
 
@@ -913,11 +912,12 @@ def get_trends():
                 'by_source': m['by_source'],
                 'by_category': m['by_category'],
                 'global_keywords': m['global_keywords'],
+                'keyword_counts': m['keyword_counts'],
                 'trending_topics': m['trending_topics'][:10],
                 'by_day': m['by_day'],
                 'period_hours': hours,
                 'generated_at': datetime.now().isoformat(),
-                'data_source': 'Supabase do feed NewPost-IA (posts reais, agrupado por fonte)'
+                'data_source': 'Notícias reais coletadas pelo agente (tabela posts do Supabase do Locutores IA), agrupadas por fonte'
             }
         })
         

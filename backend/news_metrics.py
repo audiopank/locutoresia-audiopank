@@ -40,7 +40,15 @@ _STOP = set("""
 para com uma que dos das este esta isso como mais pelo pela seu sua suas seus pode
 sobre apos após entre até ainda quando onde porque sao são tem têm ser foi tera terá
 nao não dia ano anos hoje novo nova vai veja diz após contra dois duas todo toda meio
+nesta neste nessa nesse desta deste dessa desse essa esse aqui pelos pelas numa também
+tambem muito muita muitos muitas está estão estao será serão serao podem deve devem
+tudo cada outro outra outros outras depois antes agora ontem amanhã amanha semana
+mês mes meses saiba confira três tres quatro cinco primeiro primeira última ultima
+segunda terça terca quarta quinta sexta sábado sabado domingo
+janeiro fevereiro março marco abril maio junho julho agosto setembro outubro novembro dezembro
 """.split())
+# 03/11/2026: "Nesta", "Terça", "2026" viravam "tópicos em alta" — número sozinho também sai.
+_SO_NUMERO = re.compile(r'\d+')
 
 
 def _source_name(url):
@@ -108,10 +116,12 @@ def compute_news_metrics(hours=24, limit=2000):
     for p in news:
         for w in re.findall(r'[A-Za-zÀ-ÿ0-9]{4,}', (p.get('title') or '')):
             wl = w.lower()
-            if wl not in _STOP:
+            if wl not in _STOP and not _SO_NUMERO.fullmatch(wl):
                 words.append(wl)
     kw = Counter(words)
     global_keywords = [w for w, _ in kw.most_common(15)]
+    # 03/11/2026: as barras do painel eram SORTEADAS no navegador — agora vai a contagem real
+    keyword_counts = [[w, c] for w, c in kw.most_common(15)]
 
     # tópicos em alta REAIS: top keywords + as fontes onde aparecem
     trending_topics = []
@@ -148,6 +158,7 @@ def compute_news_metrics(hours=24, limit=2000):
         'by_category': dict(by_category.most_common(15)),
         'by_status': by_status,
         'global_keywords': global_keywords,
+        'keyword_counts': keyword_counts,
         'trending_topics': trending_topics,
         'recent': news[:10],
         'by_day': by_day,
