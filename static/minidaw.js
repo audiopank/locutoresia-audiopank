@@ -3947,28 +3947,7 @@ class MiniDAW {
         this.updateMixingProgress(0, 'Preparando mixagem...');
 
         try {
-            // "Otimizar" tem dois caminhos (Suíte Master C, 17/09/2026):
-            //  - por LUFS (caixinha ligada no painel Master): mede o mix, ganho até
-            //    o alvo do destino, limiter DEPOIS do ganho, confere e garante o teto;
-            //  - legado (caixinha desligada): RMS + tanh, o som aprovado em 24/07.
-            const otimizar = this.masterTarget != null;
-            const porLufs = otimizar && !!window.MasterSuite && MasterSuite.loudnessAtivo();
-            let renderedBuffer = await this._renderizarParaExport(
-                tracksWithAudio, (p, t) => this.updateMixingProgress(p, t),
-                { semLimiter: porLufs }
-            );
-            let infoMaster = null;
-            if (porLufs) {
-                this.updateMixingProgress(93, 'Masterizando pro alvo (LUFS + limiter)...');
-                const r = await MasterSuite.masterizarParaAlvo(renderedBuffer);
-                renderedBuffer = r.buffer;
-                infoMaster = r.info;
-            } else if (otimizar) {
-                this.updateMixingProgress(93, 'Otimizando (loudness + limiter)...');
-                this.masterizarBuffer(renderedBuffer, this.masterTarget);
-            } else if (window.MasterSuite) {
-                MasterSuite.garantirTeto(renderedBuffer);   // Exportar comum: rede de segurança do pico real
-            }
+            const { buffer: renderedBuffer, infoMaster } = await this._renderizarMixFinal(tracksWithAudio);
 
             this.updateMixingProgress(95, 'Convertendo formato...');
 
@@ -4011,6 +3990,34 @@ class MiniDAW {
             this.showMixingStatus(false);
             this.showNotification('Erro ao exportar mix', 'error');
         }
+    }
+
+    // O mix FINAL (com master) — o mesmo do Exportar. Separado em 03/11/2026 pro
+    // "MP4 com o vídeo do cliente" (static/video-cliente.js) sair com o som idêntico.
+    // "Otimizar" tem dois caminhos (Suíte Master C, 17/09/2026):
+    //  - por LUFS (caixinha ligada no painel Master): mede o mix, ganho até
+    //    o alvo do destino, limiter DEPOIS do ganho, confere e garante o teto;
+    //  - legado (caixinha desligada): RMS + tanh, o som aprovado em 24/07.
+    async _renderizarMixFinal(tracksWithAudio) {
+        const otimizar = this.masterTarget != null;
+        const porLufs = otimizar && !!window.MasterSuite && MasterSuite.loudnessAtivo();
+        let renderedBuffer = await this._renderizarParaExport(
+            tracksWithAudio, (p, t) => this.updateMixingProgress(p, t),
+            { semLimiter: porLufs }
+        );
+        let infoMaster = null;
+        if (porLufs) {
+            this.updateMixingProgress(93, 'Masterizando pro alvo (LUFS + limiter)...');
+            const r = await MasterSuite.masterizarParaAlvo(renderedBuffer);
+            renderedBuffer = r.buffer;
+            infoMaster = r.info;
+        } else if (otimizar) {
+            this.updateMixingProgress(93, 'Otimizando (loudness + limiter)...');
+            this.masterizarBuffer(renderedBuffer, this.masterTarget);
+        } else if (window.MasterSuite) {
+            MasterSuite.garantirTeto(renderedBuffer);   // Exportar comum: rede de segurança do pico real
+        }
+        return { buffer: renderedBuffer, infoMaster };
     }
 
     bufferToWav(buffer) {
