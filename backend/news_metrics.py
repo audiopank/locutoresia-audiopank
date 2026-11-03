@@ -142,6 +142,15 @@ def compute_news_metrics(hours=24, limit=2000):
         ca = (p.get('created_at') or '')[:10]
         if ca:
             by_day[ca] += 1
+    # 03/11/2026: dia SEM notícia entra como 0 — sem isto o gráfico ligava 29/10 a 03/11
+    # com uma reta e escondia os dias do bloqueio do Supabase.
+    hoje = datetime.now(timezone.utc).date()
+    dia = hoje - timedelta(days=max(0, (hours // 24) - 1)) if hours >= 48 else hoje
+    if by_day:
+        dia = min(dia, datetime.fromisoformat(min(by_day)).date())
+    while dia <= hoje:
+        by_day.setdefault(str(dia), 0)
+        dia += timedelta(days=1)
     by_day = dict(sorted(by_day.items()))
 
     total = len(news)

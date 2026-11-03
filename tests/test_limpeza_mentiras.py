@@ -68,7 +68,7 @@ def test_paginas_reais_sem_mentiras(cliente, rota):
 
 def test_dashboards_mantem_o_que_e_real(cliente):
     html = cliente.get('/dashboard').get_data(as_text=True)
-    assert 'dados reais do feed' in html and 'stat-posts' in html
+    assert 'notícias reais coletadas pelo agente' in html and 'stat-posts' in html
     html = cliente.get('/dashboard-profissional').get_data(as_text=True)
     assert 'Tópicos em Alta' in html and 'sourcesChart' in html and 'sentimentChart' not in html
 

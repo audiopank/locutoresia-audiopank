@@ -43,3 +43,29 @@ def test_endpoints_mandam_a_contagem_e_o_navegador_nao_sorteia():
         assert "'keyword_counts': m['keyword_counts']" in src, arq
         ini = src.index('function updateKeywordsChart')
         assert 'Math.random' not in src[ini:ini + 1500], arq
+
+
+# ── 03/11/2026: painéis "NewPost-IA Dashboard" e "Dashboard Analytics" ──────────
+def test_por_dia_mostra_os_dias_sem_noticia_como_zero(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    hoje = datetime.now(timezone.utc).date()
+    p = _posts('Mercado sobe', 'Mercado cai')
+    p[0]['created_at'] = f'{hoje - timedelta(days=5)}T10:00:00+00:00'
+    p[1]['created_at'] = f'{hoje}T10:00:00+00:00'
+    monkeypatch.setattr(nm, '_fetch_posts', lambda h, l: p)
+    por_dia = nm.compute_news_metrics(168)['by_day']
+    dias = [str(hoje - timedelta(days=i)) for i in range(5, -1, -1)]
+    assert [por_dia.get(d) for d in dias] == [1, 0, 0, 0, 0, 1]   # o bloqueio aparece como zero
+
+
+def test_painel_newpost_rotula_certo_e_nao_esconde_rascunho():
+    src = open('backend/dashboard_real.py', encoding='utf-8').read()
+    assert '>Autores<' not in src                  # era o número de FONTES
+    assert '>Fontes<' in src and '>Rascunhos<' in src
+    assert "'draft': by_status.get('draft', 0)" in src
+    assert "const statusClass = 'status-published';" not in src   # ✓ fixo em tudo
+    assert 'Rascunhos' in src[src.index('function updateStatusChart'):]
+
+
+def test_dashboard_analytics_nao_diz_feed():
+    assert 'dados reais do feed' not in open('templates/dashboard.html', encoding='utf-8').read()

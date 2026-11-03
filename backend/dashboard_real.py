@@ -176,6 +176,7 @@ REAL_DASHBOARD_HTML = '''
         .status-published { background: rgba(16, 185, 129, 0.1); color: var(--success); }
         .status-pending { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
         .status-error { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .status-draft { background: rgba(148, 163, 184, 0.15); color: #64748b; }
         .publication-content { flex: 1; }
         .publication-title { font-weight: 600; color: var(--dark); margin-bottom: 0.25rem; }
         .publication-meta { font-size: 0.85rem; color: var(--gray); }
@@ -236,14 +237,14 @@ REAL_DASHBOARD_HTML = '''
                 <div class="stat-label">Publicações Totais</div>
             </div>
             <div class="stat-card info">
-                <div class="stat-icon"><i class="fas fa-user"></i></div>
+                <div class="stat-icon"><i class="fas fa-rss"></i></div>
                 <div class="stat-value" id="total-authors">0</div>
-                <div class="stat-label">Autores</div>
+                <div class="stat-label">Fontes</div>
             </div>
             <div class="stat-card warning">
-                <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                <div class="stat-icon"><i class="fas fa-pen"></i></div>
                 <div class="stat-value" id="pending-count">0</div>
-                <div class="stat-label">Pendentes</div>
+                <div class="stat-label">Rascunhos</div>
             </div>
             <div class="stat-card success">
                 <div class="stat-icon"><i class="fas fa-share-alt"></i></div>
@@ -257,7 +258,7 @@ REAL_DASHBOARD_HTML = '''
             <div class="chart-card">
                 <div class="chart-header">
                     <div class="chart-title">Publicações por Fonte</div>
-                    <div class="chart-subtitle">Distribuição real das publicações no NewPost-IA</div>
+                    <div class="chart-subtitle">Notícias coletadas pelo agente, por fonte</div>
                 </div>
                 <div class="chart-container">
                     <canvas id="sourcesChart"></canvas>
@@ -267,7 +268,7 @@ REAL_DASHBOARD_HTML = '''
             <div class="chart-card">
                 <div class="chart-header">
                     <div class="chart-title">Status das Publicações</div>
-                    <div class="chart-subtitle">Publicadas vs Pendentes vs Erros</div>
+                    <div class="chart-subtitle">Publicadas no feed vs Rascunhos (coletadas, ainda não publicadas) vs Pendentes</div>
                 </div>
                 <div class="chart-container">
                     <canvas id="statusChart"></canvas>
@@ -311,7 +312,7 @@ REAL_DASHBOARD_HTML = '''
                 // Atualizar estatísticas
                 document.getElementById('total-publications').textContent = data.stats.total_publications || 0;
                 document.getElementById('total-authors').textContent = Object.keys(data.by_source || {}).length || 0;
-                document.getElementById('pending-count').textContent = data.stats.pending || 0;
+                document.getElementById('pending-count').textContent = data.stats.draft || 0;   // 03/11/2026: coletadas e ainda não publicadas
                 document.getElementById('published-count').textContent = data.stats.published || 0;
                 
                 // Atualizar gráficos
@@ -376,10 +377,11 @@ REAL_DASHBOARD_HTML = '''
             statusChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: ['Publicadas', 'Pendentes', 'Erros'],
+                    // 03/11/2026: os rascunhos sumiam (o código lia data.error, que não existe)
+                    labels: ['Publicadas', 'Rascunhos', 'Pendentes'],
                     datasets: [{
-                        data: [data.published || 0, data.pending || 0, data.error || 0],
-                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                        data: [data.published || 0, data.draft || 0, data.pending || 0],
+                        backgroundColor: ['#10b981', '#94a3b8', '#f59e0b'],
                         borderRadius: 8
                     }]
                 },
@@ -409,16 +411,20 @@ REAL_DASHBOARD_HTML = '''
             }
             
             container.innerHTML = publications.map(pub => {
-                const statusClass = 'status-published';
-                const statusIcon = 'fa-check';
+                // 03/11/2026: o ✓ era fixo em tudo — rascunho aparecia como publicado.
+                const st = pub.status === 'published' ? ['status-published', 'fa-check', 'publicada']
+                         : pub.status === 'draft' ? ['status-draft', 'fa-pen', 'rascunho']
+                         : ['status-pending', 'fa-clock', pub.status || 'sem status'];
+                const statusClass = st[0], statusIcon = st[1];
+                const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
                 
                 return `
                     <div class="publication-item">
-                        <div class="publication-status ${statusClass}">
+                        <div class="publication-status ${statusClass}" title="${st[2]}">
                             <i class="fas ${statusIcon}"></i>
                         </div>
                         <div class="publication-content">
-                            <div class="publication-title">${pub.titulo || pub.title || 'Sem título'}</div>
+                            <div class="publication-title">${esc(pub.titulo || pub.title || 'Sem título')}</div>
                             <div class="publication-meta">
                                 <i class="fas fa-calendar"></i> ${new Date(pub.criado_em || pub.created_at).toLocaleString('pt-BR')}
                                 ${pub.autor_id ? `<i class="fas fa-user" style="margin-left: 1rem;"></i> Autor: ${pub.autor_id}` : ''}
@@ -460,7 +466,7 @@ def get_real_dashboard_data():
             'total_sources': len(by_source),
             'published': by_status.get('published', 0),
             'pending': by_status.get('pending', 0),
-            'error': by_status.get('draft', 0),
+            'draft': by_status.get('draft', 0),   # 03/11/2026: rascunho NÃO é erro
         }
 
         return jsonify({
