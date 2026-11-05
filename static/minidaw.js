@@ -279,6 +279,11 @@ class MiniDAW {
                 if (e.shiftKey) this.igualarTrecho(this.trackTesoura);
                 else this.aplicarCorte(this.trackTesoura, 'silenciar');
             }
+            // G = 🔁 Regerar trecho (05/11/2026): fala nova só no trecho marcado da voz.
+            if (k === 'g' && !e.shiftKey && this.trackTesoura && (this.selecoes || {})[this.trackTesoura] && window.RegerarTrecho) {
+                e.preventDefault();
+                window.RegerarTrecho.abrir(this.trackTesoura);
+            }
         });
 
         // Último ponto do mouse — o Ctrl+V lê daqui pra saber em que faixa
@@ -477,6 +482,10 @@ class MiniDAW {
                     <button class="btn btn-sm btn-outline-warning" id="btnvarios_${track.id}" onclick="minidaw.alternarVariosTrechos('${track.id}')"
                             title="Vários trechos: ligado, cada novo arrasto GUARDA o trecho anterior (fica âmbar) em vez de descartar; no fim, um clique em Silenciar aplica em todos. Segurar Shift ao arrastar faz o mesmo sem ligar nada.">
                         <i class="fas fa-layer-group me-1"></i>Vários
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" id="btnregerar_${track.id}" onclick="window.RegerarTrecho && RegerarTrecho.abrir('${track.id}')"
+                            title="Regerar trecho: a IA errou uma palavra? Marque a FRASE, digite do jeito que deve soar e gere só ela — o resto da voz anda a diferença. Tecla G. Ctrl+Z desfaz.">
+                        <i class="fas fa-rotate me-1"></i>Regerar trecho
                     </button>` : ''}
                     <span class="vol-trecho" title="Volume do trecho: sobe ou desce SÓ o trecho marcado — o resto fica igual e o tempo não muda. Ctrl+Q aplica (de novo soma mais) · Shift+Q = Igualar · Ctrl+Z desfaz.">
                         <button class="btn btn-sm btn-info" id="btnvoltrecho_${track.id}" onclick="minidaw.aplicarVolumeTrecho('${track.id}')">

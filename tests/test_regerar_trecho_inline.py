@@ -110,3 +110,18 @@ def test_studio_guarda_voz_e_estilo_junto_do_roteiro():
     i_ult = js.index("localStorage.setItem('minidaw_ultima_geracao'")
     assert 0 < i_ult - i_rot < 400                 # gravado no mesmo ponto (depois que a voz saiu)
     assert "body: JSON.stringify(Object.assign({ text }, pedidoTts))" in js   # o MESMO pedido que foi pro TTS
+
+
+def test_minidaw_classica_tem_o_botao_a_tecla_g_e_carrega_o_modulo():
+    import os
+    raiz = os.path.join(os.path.dirname(__file__), '..')
+    js = open(os.path.join(raiz, 'static', 'minidaw.js'), encoding='utf-8').read()
+    html = open(os.path.join(raiz, 'templates', 'minidaw.html'), encoding='utf-8').read()
+    # botão só em faixa de VOZ: mora dentro do mesmo bloco do Silenciar/Vários
+    bloco = js[js.index("${track.type === 'voice' ? `<button class=\"btn btn-sm btn-warning\" id=\"btnsilenciar_"):]
+    bloco = bloco[:bloco.index("` : ''}")]
+    assert "RegerarTrecho.abrir('${track.id}')" in bloco
+    assert "k === 'g'" in js and "window.RegerarTrecho.abrir(this.trackTesoura)" in js
+    # depois do clip-model, do alinhar-falas e do minidaw (usa os três)
+    assert html.index('/static/alinhar-falas.js') < html.index('/static/minidaw.js?v=86') < html.index('/static/regerar-trecho.js?v=1')
+    assert html.index('/static/clip-model.js') < html.index('/static/regerar-trecho.js')
