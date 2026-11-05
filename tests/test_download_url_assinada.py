@@ -63,4 +63,4 @@ def cliente():
 
 
 def test_versao_do_script_subiu(cliente):
-    assert 'script.js?v=8' in cliente.get('/').get_data(as_text=True)
+    assert 'script.js?v=11' in cliente.get('/').get_data(as_text=True)

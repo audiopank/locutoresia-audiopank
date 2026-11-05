@@ -351,16 +351,16 @@ async function generateAudio() {
     document.getElementById('audioPlayer').style.display = 'none';
 
     try {
+        const pedidoTts = {
+            voice: voice.model || voiceId,
+            style: speechStyle,
+            language: voice.language || 'pt-BR',
+            provider: voice.provider === 'cloned' ? 'lmnt' : ((voice.provider && voice.provider !== 'cloned') ? voice.provider : 'auto')
+        };
         const response = await fetch('/api/generate-audio', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                text, 
-                voice: voice.model || voiceId, 
-                style: speechStyle, 
-                language: voice.language || 'pt-BR', 
-                provider: voice.provider === 'cloned' ? 'lmnt' : ((voice.provider && voice.provider !== 'cloned') ? voice.provider : 'auto') 
-            })
+            body: JSON.stringify(Object.assign({ text }, pedidoTts))
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Erro ao gerar áudio');
@@ -369,6 +369,9 @@ async function generateAudio() {
         // gerada. Antes só ia se você clicasse "Enviar para MiniDAW" — quem abria
         // a MiniDAW pelo menu lateral chegava lá sem roteiro nenhum.
         try { localStorage.setItem('minidaw_pending_roteiro', text.slice(0, 900)); } catch (_) {}
+        // 🔁 Regerar trecho (05/11/2026): a MiniDAW abre a janelinha já com a MESMA
+        // voz e estilo desta locução — a fala nova casa com o resto.
+        try { localStorage.setItem('minidaw_ultima_geracao', JSON.stringify(Object.assign({ nome: voice.name || '' }, pedidoTts))); } catch (_) {}
 
         // ⚠️ 18/09/2026: download_url é URL ASSINADA do Storage desde 11/09 (já traz
         // "?token=..."). Colar "?t=" nela quebrava a assinatura (400 InvalidJWT) e a

@@ -101,3 +101,12 @@ def test_sem_inline_o_caminho_de_sempre_continua(app_falso):
     assert resp['download_url'].startswith('https://x.supabase.co/assinada')
     assert len(storage.subiu) == 1 and storage.subiu[0].startswith('locucoes/')
     assert 'audio_base64' not in resp
+
+
+def test_studio_guarda_voz_e_estilo_junto_do_roteiro():
+    import os
+    js = open(os.path.join(os.path.dirname(__file__), '..', 'static', 'script.js'), encoding='utf-8').read()
+    i_rot = js.index("localStorage.setItem('minidaw_pending_roteiro'")
+    i_ult = js.index("localStorage.setItem('minidaw_ultima_geracao'")
+    assert 0 < i_ult - i_rot < 400                 # gravado no mesmo ponto (depois que a voz saiu)
+    assert "body: JSON.stringify(Object.assign({ text }, pedidoTts))" in js   # o MESMO pedido que foi pro TTS
