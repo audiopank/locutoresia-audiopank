@@ -88,10 +88,15 @@
         return { clips: resultado, delta, clipNovo, ganhoDb };
     }
 
-    /** Frases do roteiro (botõezinhos do painel). Corta em . ! ? … e quebra de linha. */
+    /**
+     * Frases do roteiro (botõezinhos do painel). Corta em . ! ? … e quebra de linha.
+     * Marcação entre colchetes ([pausa 0.3s], [ênfase]) sai — 1º job real (05/11) virou
+     * botões "[pausa 0." e "3s]" — e ponto entre dígitos (0.3, 9.90) não corta a frase.
+     */
     function frasesDoRoteiro(texto) {
-        return (String(texto || '').match(/[^.!?…\n]+[.!?…]*/g) || [])
-            .map(f => f.trim()).filter(f => f.length >= 2);
+        const limpo = String(texto || '').replace(/\[[^\]\n]*\]/g, ' ');
+        return (limpo.match(/(?:\d[.,]\d|[^.!?…\n])+[.!?…]*/g) || [])
+            .map(f => f.replace(/[ \t]+/g, ' ').trim()).filter(f => f.length >= 2);
     }
 
     /** Voz pelo nome do clip: "Callirrhoe_-_Gemini_179…" → a voz Callirrhoe. */

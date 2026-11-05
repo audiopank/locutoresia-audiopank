@@ -123,5 +123,5 @@ def test_minidaw_classica_tem_o_botao_a_tecla_g_e_carrega_o_modulo():
     assert "RegerarTrecho.abrir('${track.id}')" in bloco
     assert "k === 'g'" in js and "window.RegerarTrecho.abrir(this.trackTesoura)" in js
     # depois do clip-model, do alinhar-falas e do minidaw (usa os três)
-    assert html.index('/static/alinhar-falas.js') < html.index('/static/minidaw.js?v=86') < html.index('/static/regerar-trecho.js?v=1')
+    assert html.index('/static/alinhar-falas.js') < html.index('/static/minidaw.js?v=86') < html.index('/static/regerar-trecho.js?v=2')
     assert html.index('/static/clip-model.js') < html.index('/static/regerar-trecho.js')

@@ -91,6 +91,12 @@ test('frases do roteiro viram botõezinhos (mesmo sem espaço depois do "!")', (
     assert.deepEqual(RT.frasesDoRoteiro(''), []);
 });
 
+test('frases do roteiro: marcação [pausa 0.3s]/[ênfase] não vira botão nem corta número (job real 05/11)', () => {
+    assert.deepEqual(
+        RT.frasesDoRoteiro('Atenção, caçador de ofertas! [pausa 0.3s]\nCriamos a comunidade [ênfase] oficial. Só R$ 9.90 hoje!'),
+        ['Atenção, caçador de ofertas!', 'Criamos a comunidade oficial.', 'Só R$ 9.90 hoje!']);
+});
+
 test('voz pelo nome do clip ("Callirrhoe_-_Gemini_…")', () => {
     const vozes = [{ id: 'Zephyr', name: 'Zephyr - Bright' }, { id: 'Callirrhoe', name: 'Callirrhoe - Easy-going' }];
     assert.equal(RT.vozDoNome('Callirrhoe_-_Gemini_1793734796574', vozes).id, 'Callirrhoe');
