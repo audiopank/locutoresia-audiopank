@@ -1431,6 +1431,21 @@
 
                 // Roteiro alimenta o Briefing, pra a Receita da IA daqui ter contexto.
                 if (p.roteiro) localStorage.setItem('minidaw_pending_roteiro', p.roteiro);
+                // Voz/estilo da locução: o 🔁 Regerar trecho abre com eles (05/11/2026).
+                if (p.tts && p.tts.voice) localStorage.setItem('minidaw_ultima_geracao', JSON.stringify(p.tts));
+
+                // "Abrir fatiado na MiniDAW" (05/11/2026): corta DEPOIS da receita,
+                // pra a Voz 2 herdar os mesmos efeitos da voz — e o volume/pan da
+                // receita também, senão os parágrafos pares saem noutro nível.
+                if (p.fatiar >= 2 && minidaw.fatiarVozPorParagrafo(idVoz, p.fatiar)) {
+                    const voz2 = minidaw.tracks[minidaw.tracks.length - 1];
+                    if (tVoz && voz2 && voz2.id !== idVoz) {
+                        minidaw.updateTrackVolume(voz2.id, tVoz.volume);
+                        minidaw.updateTrackPan(voz2.id, (tVoz.pan || 0) * 100);   // o setter recebe −100..100
+                        minidaw.updateTrackUI(voz2);
+                    }
+                    return true;
+                }
 
                 minidaw.showNotification(
                     'Projeto do Gerador aberto' + (idTrilha ? ' (voz + trilha)' : ' (voz)') +

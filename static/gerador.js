@@ -1845,8 +1845,18 @@
         // Mix renderizado é arquivo achatado: não dá pra mexer no volume da
         // trilha, trocar efeito nem salvar projeto de verdade — e é exatamente
         // pra isso que se abre a MiniDAW.
-        document.getElementById('btnAbrirMiniDAW').onclick = async () => {
+        // 05/11/2026 (pedido dele): "Abrir fatiado" = o mesmo pacote + quantos
+        // parágrafos o roteiro tem — a MiniDAW corta a voz alternando Voz / Voz 2,
+        // igual ao "Enviar fatiado" do Studio, pronta pro 🧲 Alinhar e o 🔁 Regerar.
+        document.getElementById('btnAbrirMiniDAW').onclick = () => abrirNaMiniDAW(false);
+        document.getElementById('btnAbrirMiniDAWFatiado').onclick = () => abrirNaMiniDAW(true);
+        async function abrirNaMiniDAW(fatiado) {
             if (!estado.vozBuffer) { alert('Gere o anúncio primeiro.'); return; }
+            const nParagrafos = (estado.roteiro || '').split(/\r?\n/).filter(l => l.trim()).length;
+            if (fatiado && nParagrafos < 2) {
+                alert('O roteiro tem um parágrafo só — não há onde fatiar. Use "Abrir na MiniDAW".');
+                return;
+            }
 
             // A aba abre JÁ, dentro do gesto do clique: codificar o MP3 de uma
             // locução longa passa dos ~5s de ativação que o Chrome exige pro
@@ -1872,7 +1882,15 @@
                             ? { url: estado.trilha.file_url, nome: estado.trilha.name }
                             : null,
                         receita: estado.receita || null,
-                        roteiro: (estado.roteiro || '').slice(0, 900)
+                        roteiro: (estado.roteiro || '').slice(0, 900),
+                        fatiar: fatiado ? nParagrafos : 0,
+                        // Voz/estilo desta locução: o 🔁 Regerar trecho da MiniDAW abre com eles.
+                        tts: {
+                            voice: document.getElementById('selectVoz').value,
+                            style: document.getElementById('selectEstilo').value,
+                            language: 'pt-BR',
+                            provider: providerDaVoz()
+                        }
                     }));
                     if (estado.trilhaBuffer && !(estado.trilha && estado.trilha.file_url)) {
                         avisar('💻 A trilha do computador não vai junto pra MiniDAW: lá, adicione o mesmo arquivo '
@@ -1887,7 +1905,7 @@
                 }
             };
             fr.readAsDataURL(vozBlob);
-        };
+        }
 
         // ── Upload de trilha do cliente ──────────────────────────────────
         const selTrilha = document.getElementById('selectTrilha');
