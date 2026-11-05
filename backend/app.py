@@ -4766,6 +4766,9 @@ def run_audio_generation(payload, trigger_source='api'):
         style = str(data.get('style', 'normal') or 'normal')
         language = str(data.get('language', 'pt-BR') or 'pt-BR')
         api = str(data.get('api', data.get('provider', 'auto')) or 'auto')
+        # 🔁 Regerar trecho (05/11/2026): a frase nova volta DENTRO da resposta e
+        # nada sobe pro Storage — pedido dele pra não sufocar o Supabase.
+        entrega_inline = str(data.get('entrega') or '') == 'inline'
 
         if api == 'gemini':
             api = 'google'
@@ -4854,6 +4857,23 @@ def run_audio_generation(payload, trigger_source='api'):
             traceback.print_exc()
             operation_tracker.fail_job(job['id'], f'Erro ao gerar áudio: {str(e)}', http_status=500)
             return {'error': f'Erro ao gerar áudio: {str(e)}'}, 500
+
+        if entrega_inline:
+            # 3,5 MB ≈ 1 min de WAV 24 kHz — e cabe nos 4,5 MB de resposta da Vercel em base64.
+            if len(audio_data) > 3_500_000:
+                msg = 'Trecho longo demais pra regerar de uma vez — marque só a frase errada.'
+                operation_tracker.fail_job(job['id'], msg, http_status=413)
+                return {'error': msg}, 413
+            operation_tracker.complete_job(job['id'], {
+                "provider": api, "voice": voice_model, "bytes": len(audio_data), "entrega": "inline"})
+            if supabase_manager:
+                supabase_manager.log_usage_event('audio_generated')
+            return {
+                'success': True,
+                'audio_base64': base64.b64encode(audio_data).decode('ascii'),
+                'mime': 'audio/wav' if audio_data[:4] == b'RIFF' else 'audio/mpeg',
+                'message': 'Fala nova gerada!'
+            }, 200
 
         filename = f"locution_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
