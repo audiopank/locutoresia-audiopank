@@ -216,6 +216,9 @@
             margin-left: 0.25rem;
         }
         .gate-panel small, .deesser-panel small, .reverb-panel small, .delay-panel small { color: var(--text-secondary); font-size: 0.75rem; }
+        .reverb-panel .sala-reverb { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; }
+        .reverb-panel .sala-reverb .effect-label { margin: 0; }
+        .reverb-panel .sala-reverb select { max-width: 220px; }
 
         /* (a regra .effect-btn.active já existe mais abaixo neste arquivo —
            eu tinha duplicado aqui sem necessidade. Removida.) */
@@ -1357,7 +1360,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
-    <script src="/static/mix-engine.js?v=19"></script>
+    <script src="/static/mix-engine.js?v=20"></script>
     <script src="/static/clip-model.js?v=8"></script>
     <script src="/static/loudness.js?v=1"></script>
     <script src="/static/presets-locais.js?v=2"></script>
@@ -1366,7 +1369,7 @@
     <script src="/static/fatiar-paragrafos.js?v=1"></script>
     <script src="/static/gravacao.js?v=3"></script>
     <script src="/static/alinhar-falas.js?v=1"></script>
-    <script src="/static/minidaw.js?v=86"></script>
+    <script src="/static/minidaw.js?v=87"></script>
     <script src="/static/regerar-trecho.js?v=2"></script>
     <script src="/static/video-cliente.js?v=4"></script>
     <script src="/static/pre-escuta.js?v=3"></script>

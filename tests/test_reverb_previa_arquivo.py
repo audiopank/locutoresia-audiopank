@@ -37,7 +37,7 @@ def test_play_liga_o_retorno_do_reverb_no_volume_da_faixa_como_o_arquivo():
 
 def test_play_usa_a_mesma_sala_e_a_mesma_quantidade_do_motor():
     js = _ler('static', 'minidaw.js')
-    assert 'reverbNode.buffer = MixEngine.criarImpulsoReverb(this.audioContext);' in js
+    assert 'reverbNode.buffer = MixEngine.criarImpulsoReverb(this.audioContext, salaInicial);' in js   # 05/11: + sala da faixa
     assert 'reverb: MixEngine.wetReverbDaFaixa(track),' in js            # _valoresDosRetornos
     assert 'track.effects.reverb ? 0.3 : 0' not in js
     assert 'Math.random() * 2 - 1) * Math.pow(1 - i / length, 2)' not in js   # a sala sorteada do play saiu
@@ -65,10 +65,10 @@ def test_quantidade_viaja_no_projeto():
 def test_paginas_carregam_as_versoes_novas_e_o_css_do_painel():
     c = _cliente()
     html = c.get('/minidaw').get_data(as_text=True)
-    for t in ('mix-engine.js?v=19', 'minidaw.js?v=86', '.reverb-panel.ativo', '.track-card.compacta .reverb-panel'):
+    for t in ('mix-engine.js?v=20', 'minidaw.js?v=87', '.reverb-panel.ativo', '.track-card.compacta .reverb-panel'):
         assert t in html, t
     for pagina in ('/gerador', '/narrativa'):
-        assert 'mix-engine.js?v=19' in c.get(pagina).get_data(as_text=True), pagina
+        assert 'mix-engine.js?v=20' in c.get(pagina).get_data(as_text=True), pagina
 
 
 def test_retornos_so_abertos_com_o_play_rodando():

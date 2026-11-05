@@ -546,7 +546,9 @@
                 // playback (29/09/2026). O retorno entra no trackGain, lá embaixo.
                 const reverbNode = offlineContext.createConvolver();
                 reverbNode.normalize = true;
-                reverbNode.buffer = criarImpulsoReverb(offlineContext);
+                reverbNode.buffer = criarImpulsoReverb(offlineContext, salaDaFaixa(track));
+                // 🏛️ Plenário: a sala ouve a voz pela "caixa de som"; Estúdio = null (direto).
+                const envioSala = criarEnvioSala(offlineContext, salaDaFaixa(track));
 
                 const reverbGain = offlineContext.createGain();
                 reverbGain.gain.value = wetReverbDaFaixa(track);
@@ -623,7 +625,8 @@
                 compressorNode.connect(limiterNode);
                 limiterNode.connect(gateGain);
                 gateGain.connect(trackGain);
-                limiterNode.connect(reverbNode);
+                if (envioSala) { limiterNode.connect(envioSala.input); envioSala.output.connect(reverbNode); }
+                else limiterNode.connect(reverbNode);
                 reverbNode.connect(reverbGain);
                 reverbGain.connect(trackGain);
                 // Delay em paralelo, igual ao playback
@@ -668,7 +671,8 @@
             return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
         };
     }
-    function criarImpulsoReverb(ctx) {
+    function criarImpulsoReverb(ctx, sala) {
+        if (sala === 'plenario') return criarImpulsoPlenario(ctx);
         const sr = ctx.sampleRate;
         const n = Math.floor(sr * REVERB_DURACAO_S);
         const ir = ctx.createBuffer(2, n, sr);
@@ -679,6 +683,68 @@
         }
         return ir;
     }
+    // ── 🏛️ AMBIENTE: a SALA do reverb (05/11/2026, pedido dele) ──────────
+    // "Estúdio" = a sala de sempre (campo ausente = ela; projeto e preset antigos
+    // soam idênticos). "Plenário" = câmara média: pré-delay, primeiras reflexões
+    // (paredes, mesa, teto) e cauda de ~1,2 s que escurece; o retorno passa antes
+    // por uma "cara de caixa de som" (criarEnvioSala) — a sala ouve a voz pelas
+    // caixas do plenário. A voz SECA não muda. Mesmas funções no play e no arquivo.
+    const SALAS = ['estudio', 'plenario'];
+    const PLENARIO = {
+        DURACAO_S: 1.8, PRE_DELAY_S: 0.018, RT60_S: 1.2, CAUDA_S: 0.03,
+        REFLEXOES: [[0.007, 0.6], [0.013, 0.5], [0.021, 0.45], [0.029, 0.38], [0.037, 0.3], [0.046, 0.25]],
+        CORTE_INI_HZ: 7000, CORTE_FIM_HZ: 1800,
+        CAIXA_HP_HZ: 200, CAIXA_MEIO_HZ: 2500, CAIXA_MEIO_DB: 3, CAIXA_LP_HZ: 5500,
+    };
+    function salaDaFaixa(track) {
+        const s = track && track.sala;
+        return SALAS.includes(s) ? s : 'estudio';
+    }
+    function criarImpulsoPlenario(ctx) {
+        const P = PLENARIO, sr = ctx.sampleRate;
+        const n = Math.floor(sr * P.DURACAO_S);
+        const ir = ctx.createBuffer(2, n, sr);
+        const pre = Math.round(P.PRE_DELAY_S * sr);
+        for (let c = 0; c < 2; c++) {
+            const sorteio = _aleatorioComSemente(0x91E7A + c * 0x9E3779B9);
+            const d = ir.getChannelData(c);
+            // Primeiras reflexões: o lado direito chega um tico depois e com sinal
+            // trocado em metade delas — é isso que abre a sala no estéreo.
+            P.REFLEXOES.forEach(([t, g], k) => {
+                const i = pre + Math.round((t + c * 0.0017 * (k % 3)) * sr);
+                if (i < n) d[i] += (c === 1 && k % 2) ? -g : g;
+            });
+            // Cauda difusa: cai 60 dB em RT60 e um passa-baixa que vai fechando
+            // (7 kHz → 1,8 kHz) escurece o fim, como sala com gente e cadeira.
+            const i0 = pre + Math.round(P.CAUDA_S * sr), entrada = Math.round(0.02 * sr);
+            let y = 0;
+            for (let i = i0; i < n; i++) {
+                const t = (i - pre) / sr;
+                const corte = P.CORTE_INI_HZ * Math.pow(P.CORTE_FIM_HZ / P.CORTE_INI_HZ, Math.min(1, t / P.RT60_S));
+                const a = 1 - Math.exp(-2 * Math.PI * corte / sr);
+                y += a * ((sorteio() * 2 - 1) - y);
+                const env = Math.pow(10, -3 * t / P.RT60_S) * Math.min(1, (i - i0) / entrada);
+                d[i] += y * env;
+            }
+        }
+        return ir;
+    }
+    // O que entra na sala: Estúdio = direto (null, sem filtro nenhum); Plenário =
+    // caixa de som (corta grave < 200 Hz e agudo > 5,5 kHz, +3 dB no meio).
+    function criarEnvioSala(ctx, sala) {
+        if (sala !== 'plenario') return null;
+        const P = PLENARIO;
+        const hp = ctx.createBiquadFilter();
+        hp.type = 'highpass'; hp.frequency.value = P.CAIXA_HP_HZ; hp.Q.value = 0.7;
+        const meio = ctx.createBiquadFilter();
+        meio.type = 'peaking'; meio.frequency.value = P.CAIXA_MEIO_HZ; meio.Q.value = 0.8; meio.gain.value = P.CAIXA_MEIO_DB;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = P.CAIXA_LP_HZ; lp.Q.value = 0.7;
+        hp.connect(meio);
+        meio.connect(lp);
+        return { input: hp, output: lp, sala };
+    }
+
     // Quantidade escolhida na faixa (0..1), mesmo com o botão desligado — é o
     // que o slider mostra. Campo ausente ou lixo = padrão; 0 é escolha válida.
     function quantidadeReverbDaFaixa(track) {
@@ -1146,6 +1212,7 @@
 
     global.MixEngine = {
         REVERB_DURACAO_S, REVERB_QUANTIDADE_PADRAO, criarImpulsoReverb, quantidadeReverbDaFaixa, wetReverbDaFaixa,
+        SALAS, PLENARIO, salaDaFaixa, criarEnvioSala,
         DELAY_QUANTIDADE_PADRAO, quantidadeDelayDaFaixa, wetDelayDaFaixa,
         GANHO_OBJETO_MAX_DB, RAMPA_VOLUME_S, ganhoDbDoClip, dbParaLinear, volumeDoClip, agendarVolumeDoClip,
         XF_SEGMENTOS, crossfadesDoClip, agendarCrossfadeDoClip,

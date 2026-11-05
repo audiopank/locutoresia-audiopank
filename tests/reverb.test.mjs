@@ -74,7 +74,7 @@ test('criarImpulsoReverb: estéreo descorrelacionado, dentro de ±1 e com cauda 
 });
 
 test('renderizarMix: arquivo usa a MESMA sala e a MESMA quantidade do play, com retorno pelo volume da faixa', () => {
-    assert.ok(src.includes('reverbNode.buffer = criarImpulsoReverb(offlineContext);'));
+    assert.ok(src.includes('reverbNode.buffer = criarImpulsoReverb(offlineContext, salaDaFaixa(track));'));
     assert.ok(src.includes('reverbGain.gain.value = wetReverbDaFaixa(track);'));
     assert.ok(src.includes('reverbGain.connect(trackGain);'));
     assert.ok(!src.includes('track.effects.reverb ? 0.3 : 0'), 'nada de 30% fixo no motor');
