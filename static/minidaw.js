@@ -1490,11 +1490,13 @@ class MiniDAW {
                     this.stretchExato(track.id, clip.id);
                 });
                 el.appendChild(alca);
-                if (clip.stretch > 0 && Math.abs(clip.stretch - 1) > 1e-3) {
+                const temStretch = clip.stretch > 0 && Math.abs(clip.stretch - 1) > 1e-3;
+                if (temStretch || clip.pitch) {
                     const selo = document.createElement('span');
                     selo.className = 'clip-stretch-info';
-                    selo.textContent = clip.stretch.toFixed(2).replace('.', ',') + '×';
-                    selo.title = 'Objeto com Time Stretch (fator sobre o áudio original)';
+                    selo.textContent = [temStretch ? clip.stretch.toFixed(2).replace('.', ',') + '×' : '',
+                                        clip.pitch ? (clip.pitch > 0 ? '🐥 ' : '👹 ') + this._fmtSemitons(clip.pitch) : ''].filter(Boolean).join(' · ');
+                    selo.title = 'Objeto com Time Stretch e/ou Tom (sobre o áudio original). Botão direito → Tom original.';
                     el.appendChild(selo);
                 }
             }
@@ -2053,14 +2055,20 @@ class MiniDAW {
         const fator = TimeStretch.fatorPara(clip, novaDur);
         const perfil = this._perfilStretch(track);
         const oQue = track.type === 'voice' ? 'Voz' : (track.sfx ? 'Efeito' : 'Trilha');
+        const st = clip.pitch || 0;                    // 🐥👹 o tom do objeto continua junto
+        if (st && !TimeStretch.cabeNoStretch(fator, st)) {
+            this.showNotification('Com o tom deste objeto, esse Time Stretch passa do limite — diminua o stretch ou o tom.', 'warning');
+            this.renderizarTimeline();                   // desfaz a largura provisória do bloco
+            return;
+        }
         const snapshot = this._snapshotClips();
         this._stretchOcupado = true;
         this.showNotification(`Time Stretch ${fator.toFixed(2).replace('.', ',')}× — processando ${oQue.toLowerCase()}...`, 'info');
         await new Promise(r => setTimeout(r, 40));     // deixa a tela pintar antes do cálculo
         try {
-            const novoBuffer = (Math.abs(fator - 1) < 1e-3) ? null
-                : TimeStretch.esticarBuffer(this.audioContext, base.buffer, base.offset, base.duracao, fator, perfil);
-            Object.assign(clip, TimeStretch.camposEsticados(clip, base, novoBuffer, fator));
+            const novoBuffer = (Math.abs(fator - 1) < 1e-3 && !st) ? null
+                : TimeStretch.esticarBuffer(this.audioContext, base.buffer, base.offset, base.duracao, fator, perfil, st);
+            Object.assign(clip, TimeStretch.camposEsticados(clip, base, novoBuffer, fator, st));
         } catch (e) {
             this._stretchOcupado = false;
             this.showNotification('Time Stretch falhou: ' + e.message, 'error');
@@ -2490,6 +2498,10 @@ class MiniDAW {
             { rotulo: 'Dividir aqui', tecla: 'D', acao: () => this.cutTrackAtTime(trackId, tempo) },
             { rotulo: 'Time Stretch exato…', acao: () => this.stretchExato(trackId, clipId) },
             { rotulo: 'Volume do objeto…' + plural, acao: () => this.volumeDoObjeto(trackId, clipId) },
+            { rotulo: '🐥 Voz fininha (patinho, +7)' + plural, acao: () => this.aplicarTom(trackId, clipId, 7) },
+            { rotulo: '👹 Voz grossa (monstro, −7)' + plural, acao: () => this.aplicarTom(trackId, clipId, -7) },
+            { rotulo: '🎚️ Tom exato…' + plural, acao: () => this.tomExato(trackId, clipId) },
+            ...(alvosTrava.some(c => c && c.pitch) ? [{ rotulo: '↩ Tom original' + plural, acao: () => this.aplicarTom(trackId, clipId, 0) }] : []),
             { rotulo: (vaiTravar ? 'Travar ' : 'Destravar ') + (n >= 2 ? `${n} objetos` : 'objeto'), acao: () => this.alternarTrava(trackId, clipId) },
             { sep: true },
             { rotulo: 'Apagar' + plural, tecla: 'Delete', acao: () => this.apagarSelecionados() },
@@ -2582,7 +2594,7 @@ class MiniDAW {
             trackId: g.track.id, rel: g.clip.inicio - base,
             buffer: g.clip.buffer, offset: g.clip.offset, duracao: g.clip.duracao,
             fadeIn: g.clip.fadeIn || 0, fadeOut: g.clip.fadeOut || 0,
-            stretch: g.clip.stretch, origem: g.clip.origem, ganhoDb: g.clip.ganhoDb
+            stretch: g.clip.stretch, pitch: g.clip.pitch, origem: g.clip.origem, ganhoDb: g.clip.ganhoDb
         }));
     }
 
@@ -2604,6 +2616,7 @@ class MiniDAW {
             const ent = porFaixa.get(track);
             const novo = ClipModel.clonarClip(item, Math.max(0, tempoBase + item.rel));
             if (item.stretch > 0) novo.stretch = item.stretch;
+            if (item.pitch) novo.pitch = item.pitch;
             if (item.origem) novo.origem = item.origem;
             if (ClipModel.temSobreposicao(ent.lista.concat([novo]), novo)) {
                 this.showNotification(`Sem espaço em "${track.name}" a ${novo.inicio.toFixed(2)}s — nada colado (tudo ou nada)`, 'info');
@@ -5365,14 +5378,78 @@ class MiniDAW {
 
     // Botão direito → "Volume do objeto…": digitar o dB do objeto inteiro (ou do
     // grupo selecionado). 0 = volta ao original.
-    volumeDoObjeto(trackId, clipId) {
-        let grupo = (this.selecionados.length >= 2 && this._estaSelecionado(clipId)) ? this._selecionadosVivos() : null;
-        if (!grupo || !grupo.length) {
-            const track = this.tracks.find(t => t.id === trackId);
-            const clip = track ? this._clipsDaFaixa(track).find(c => c.id === clipId) : null;
-            if (!clip) return;
-            grupo = [{ track, clip }];
+    // Alvos de uma ação do botão direito: o grupo selecionado (se o objeto faz
+    // parte dele) ou só o objeto clicado. [] = objeto sumiu.
+    _alvosDoMenu(trackId, clipId) {
+        const grupo = (this.selecionados.length >= 2 && this._estaSelecionado(clipId)) ? this._selecionadosVivos() : null;
+        if (grupo && grupo.length) return grupo;
+        const track = this.tracks.find(t => t.id === trackId);
+        const clip = track ? this._clipsDaFaixa(track).find(c => c.id === clipId) : null;
+        return clip ? [{ track, clip }] : [];
+    }
+
+    // 🐥👹 TOM DO OBJETO (11/11/2026, pedido dele pra diálogo de humor): voz
+    // fininha (patinho) ou grossa (monstro) SEM mudar a duração. Valor livre,
+    // com decimal (-3,2). Refeito sempre a partir da ORIGEM, junto com o Time
+    // Stretch que o objeto já tiver. Um ou vários objetos; um Ctrl+Z desfaz.
+    tomExato(trackId, clipId) {
+        const grupo = this._alvosDoMenu(trackId, clipId);
+        if (!grupo.length) return;
+        const quem = grupo.length > 1 ? `destes ${grupo.length} objetos` : 'deste objeto';
+        const resp = prompt(`Tom ${quem} em semitons — 0 = original · +7 fininha (patinho) · -7 grossa (monstro) · aceita decimal, ex.: -3,2 · limite ±${TimeStretch.SEMITONS_MAX}:`,
+                            String(grupo[0].clip.pitch || 0).replace('.', ','));
+        if (resp == null) return;
+        const st = parseFloat(String(resp).replace(',', '.'));
+        if (!isFinite(st)) { this.showNotification('Valor inválido — use um número, ex.: 7 ou -3,2', 'error'); return; }
+        this.aplicarTom(trackId, clipId, st);
+    }
+
+    async aplicarTom(trackId, clipId, semitons) {
+        if (!window.TimeStretch || this._stretchOcupado) return;
+        const grupo = this._alvosDoMenu(trackId, clipId);
+        if (!grupo.length) return;
+        if (grupo.some(g => ClipModel.estaTravado(g.clip))) {
+            this.showNotification('Objeto travado — destrave no cadeado pra mudar o tom', 'warning');
+            return;
         }
+        const st = TimeStretch.limitarSemitons(semitons);
+        const fatorDe = (c) => (c.stretch > 0 ? c.stretch : 1);
+        if (grupo.some(g => !TimeStretch.cabeNoStretch(fatorDe(g.clip), st))) {
+            this.showNotification('Com o Time Stretch deste objeto, esse tom passa do limite — diminua o tom ou o stretch.', 'warning');
+            return;
+        }
+        const snapshot = this._snapshotClips();
+        this._stretchOcupado = true;
+        this.showNotification(`Mudando o tom (${this._fmtSemitons(st)})… processando`, 'info');
+        await new Promise(r => setTimeout(r, 40));     // deixa a tela pintar antes do cálculo
+        const faixas = new Set();
+        try {
+            for (const g of grupo) {
+                const base = TimeStretch.baseDoStretch(g.clip), fator = fatorDe(g.clip);
+                const novo = (Math.abs(fator - 1) < 1e-3 && !st) ? null
+                    : TimeStretch.esticarBuffer(this.audioContext, base.buffer, base.offset, base.duracao, fator, this._perfilStretch(g.track), st);
+                Object.assign(g.clip, TimeStretch.camposEsticados(g.clip, base, novo, fator, st));
+                faixas.add(g.track);
+            }
+        } catch (e) {
+            this._stretchOcupado = false;
+            this.showNotification('Mudar o tom falhou: ' + e.message, 'error');
+            return;
+        }
+        this._stretchOcupado = false;
+        this._guardarUndo(snapshot);
+        for (const t of faixas) this._sincronizarDerivados(t);
+        this.aposMudancaDeClips([...faixas]);
+        const quem = grupo.length > 1 ? `${grupo.length} objetos` : 'objeto';
+        this.showNotification(st ? `${st > 0 ? '🐥' : '👹'} Tom ${this._fmtSemitons(st)} no ${quem} — mesma duração. Ctrl+Z desfaz.`
+                                 : `Tom original no ${quem}. Ctrl+Z desfaz.`, 'success');
+    }
+
+    _fmtSemitons(st) { return (st > 0 ? '+' : st < 0 ? '−' : '') + String(Math.abs(st)).replace('.', ','); }
+
+    volumeDoObjeto(trackId, clipId) {
+        const grupo = this._alvosDoMenu(trackId, clipId);
+        if (!grupo.length) return;
         if (grupo.some(g => ClipModel.estaTravado(g.clip))) {
             this.showNotification('Objeto travado — destrave no cadeado pra mudar o volume', 'warning');
             return;
@@ -5964,6 +6041,7 @@ class MiniDAW {
                     inicio: c.inicio, offset: c.offset, duracao: c.duracao,
                     fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
                     stretch: (c.stretch > 0) ? c.stretch : 1,       // Time Stretch aplicado (só informativo: o áudio salvo JÁ está esticado)
+                    pitch: c.pitch || undefined,                     // 🐥👹 Tom do objeto (idem: só o selo)
                     ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined, // Volume do objeto (sem volume: campo nem vai)
                     travado: ClipModel.estaTravado(c) || undefined    // Cadeado
                 });
@@ -6564,6 +6642,7 @@ class MiniDAW {
                         inicio: c.inicio, offset: c.offset, duracao: c.duracao,
                         fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
                         stretch: (c.stretch > 0 && Math.abs(c.stretch - 1) > 1e-3) ? c.stretch : undefined,
+                        pitch: Number(c.pitch) || undefined,      // 🐥👹 selo do tom (o áudio salvo JÁ está com o tom)
                         ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined,
                         travado: ClipModel.estaTravado(c) || undefined
                     }));

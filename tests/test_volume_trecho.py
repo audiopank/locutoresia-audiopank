@@ -28,7 +28,7 @@ def _cliente():
 
 def test_pagina_carrega_as_versoes_novas():
     html = _cliente().get('/minidaw').get_data(as_text=True)
-    for t in ('mix-engine.js?v=20', 'clip-model.js?v=8', 'minidaw.js?v=87', '.clip-vol {', '.vol-trecho {'):
+    for t in ('mix-engine.js?v=20', 'clip-model.js?v=8', 'minidaw.js?v=88', '.clip-vol {', '.vol-trecho {'):
         assert t in html, t
 
 
@@ -72,4 +72,4 @@ def test_volume_viaja_no_salvar_reabrir_e_colar():
     js = _ler('static', 'minidaw.js')
     assert js.count('ganhoDb: MixEngine.ganhoDbDoClip(c) || undefined') == 2      # salvar + reabrir
     assert 'ganhoDb: clip.ganhoDb,' in js                                         # Ctrl+C de um objeto
-    assert 'stretch: g.clip.stretch, origem: g.clip.origem, ganhoDb: g.clip.ganhoDb' in js   # grupo
+    assert 'stretch: g.clip.stretch, pitch: g.clip.pitch, origem: g.clip.origem, ganhoDb: g.clip.ganhoDb' in js   # grupo

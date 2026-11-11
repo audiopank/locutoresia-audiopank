@@ -44,9 +44,9 @@ def test_estica_a_partir_da_origem_e_entra_no_desfazer():
     trecho = js[js.index("    async _aplicarStretch(track, clip, novaDur) {"):js.index("    // Move o clip pra outra faixa.")]
     assert "const base = TimeStretch.baseDoStretch(clip);" in trecho
     assert "const snapshot = this._snapshotClips();" in trecho and "this._guardarUndo(snapshot);" in trecho   # Ctrl+Z
-    assert "TimeStretch.esticarBuffer(this.audioContext, base.buffer, base.offset, base.duracao, fator, perfil)" in trecho
+    assert "TimeStretch.esticarBuffer(this.audioContext, base.buffer, base.offset, base.duracao, fator, perfil, st)"   # 11/11: + tom do objeto in trecho
     assert "' Em trilha, acima de ~15% o ritmo começa a borrar" in trecho          # aviso próprio da trilha
-    assert "Object.assign(clip, TimeStretch.camposEsticados(clip, base, novoBuffer, fator));" in trecho
+    assert "Object.assign(clip, TimeStretch.camposEsticados(clip, base, novoBuffer, fator, st));" in trecho
     assert "this._sincronizarDerivados(track);" in trecho and "this.aposMudancaDeClips([track]);" in trecho
     # Esticar não invade o vizinho (arrasto e valor digitado).
     assert js.count("ClipModel.sobreposicaoInvalida(this._clipsDaFaixa(track), { id: clip.id, inicio: clip.inicio, duracao: ") == 2
@@ -75,7 +75,7 @@ def cliente():
 def test_tela_carrega_o_motor_antes_da_minidaw(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     for t in ('.clip-alca-stretch {', '.clip-stretch-rotulo {', '.clip-stretch-rotulo.forcado {',
-              'time-stretch.js?v=2', 'minidaw.js?v=87'):
+              'time-stretch.js?v=3', 'minidaw.js?v=88'):
         assert t in html, t
-    assert html.index('clip-model.js?v=8') < html.index('time-stretch.js?v=2') < html.index('minidaw.js?v=87')
+    assert html.index('clip-model.js?v=8') < html.index('time-stretch.js?v=3') < html.index('minidaw.js?v=88')
     assert cliente.get('/static/time-stretch.js').status_code == 200

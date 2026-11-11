@@ -170,15 +170,50 @@
 
     // Devolve os campos NOVOS do clip depois de esticar (o chamador faz o
     // Object.assign — o id e o `inicio` ficam). Fator ~1 = volta ao original.
-    function camposEsticados(clip, base, novoBuffer, fator) {
-        if (Math.abs(fator - 1) < 1e-3) {
-            return { buffer: base.buffer, offset: base.offset, duracao: base.duracao, stretch: undefined, origem: undefined };
+    function camposEsticados(clip, base, novoBuffer, fator, semitons) {
+        const st = limitarSemitons(semitons);
+        if (Math.abs(fator - 1) < 1e-3 && !st) {
+            return { buffer: base.buffer, offset: base.offset, duracao: base.duracao, stretch: undefined, pitch: undefined, origem: undefined };
         }
         return {
             buffer: novoBuffer, offset: 0, duracao: novoBuffer.duration,
-            stretch: fator,
+            stretch: Math.abs(fator - 1) < 1e-3 ? undefined : fator,
+            pitch: st || undefined,
             origem: { buffer: base.buffer, offset: base.offset, duracao: base.duracao }
         };
+    }
+
+    // ── 🐥👹 TOM DO OBJETO (11/11/2026, pedido dele) ──────────────────────
+    // Voz fininha (patinho) ou grossa (monstro) SEM mudar a duração: o WSOLA
+    // estica por fator×razão e a reamostragem toca razão× mais rápido — sobra
+    // a duração do Time Stretch e o tom × razão. O timbre muda junto, de
+    // propósito: é isso que dá o efeito de desenho animado.
+    const SEMITONS_MAX = 12;
+    function limitarSemitons(s) {
+        const n = Number(s);
+        if (!isFinite(n)) return 0;
+        return Math.max(-SEMITONS_MAX, Math.min(SEMITONS_MAX, Math.round(n * 10) / 10));
+    }
+    function razaoDoTom(semitons) { return Math.pow(2, limitarSemitons(semitons) / 12); }
+    function cabeNoStretch(fator, semitons) {
+        const f = fator * razaoDoTom(semitons);
+        return f >= FATOR_MIN - 1e-9 && f <= FATOR_MAX + 1e-9;
+    }
+    // shortcut: interpolação linear sem filtro anti-aliasing; voz quase não tem energia acima de sr/2/razão — usar filtro se um dia chiar no agudo.
+    function reamostrar(c, razao) {
+        const out = new Float32Array(Math.max(1, Math.floor(c.length / razao)));
+        for (let i = 0; i < out.length; i++) {
+            const x = i * razao, k = Math.floor(x), a = c[k] || 0, b = k + 1 < c.length ? c[k + 1] : a;
+            out[i] = a + (b - a) * (x - k);
+        }
+        return out;
+    }
+    function processarCanais(canais, sampleRate, fator, semitons, perfil) {
+        const r = razaoDoTom(semitons);
+        const e = esticarCanais(canais, sampleRate, fator * r, perfil);
+        if (Math.abs(r - 1) < 1e-6) return e;
+        const novos = e.canais.map(c => reamostrar(c, r));
+        return { sampleRate, numberOfChannels: e.numberOfChannels, length: novos[0].length, canais: novos };
     }
 
     function soaNatural(fator, perfil) {
@@ -191,13 +226,13 @@
     // AudioBuffer novo. Marca `_esticado`: ao salvar o projeto esse buffer
     // NUNCA pode ser "referenciado" pela URL do arquivo original — tem que
     // subir como WAV, senão reabrir traz a voz na velocidade antiga.
-    function esticarBuffer(ctx, buffer, offset, duracao, fator, perfil) {
+    function esticarBuffer(ctx, buffer, offset, duracao, fator, perfil, semitons) {
         const sr = buffer.sampleRate;
         const a0 = Math.max(0, Math.floor((offset || 0) * sr));
         const a1 = Math.max(a0 + 1, Math.min(buffer.length, Math.round(((offset || 0) + duracao) * sr)));
         const canais = [];
         for (let ch = 0; ch < buffer.numberOfChannels; ch++) canais.push(buffer.getChannelData(ch).subarray(a0, a1));
-        const r = esticarCanais(canais, sr, fator, perfil);
+        const r = processarCanais(canais, sr, fator, semitons, perfil);
         const novo = ctx.createBuffer(r.numberOfChannels, Math.max(1, r.length), sr);
         for (let ch = 0; ch < r.numberOfChannels; ch++) novo.copyToChannel(r.canais[ch], ch);
         try { novo._esticado = true; } catch (e) { /* buffer não extensível: o guarda do save também olha clip.stretch */ }
@@ -206,7 +241,8 @@
 
     const TimeStretch = {
         FATOR_MIN, FATOR_MAX, FATOR_NATURAL_MIN, FATOR_NATURAL_MAX, PERFIS, perfilDe,
-        limitarFator, esticarCanais, baseDoStretch, fatorPara, camposEsticados, soaNatural, esticarBuffer
+        limitarFator, esticarCanais, baseDoStretch, fatorPara, camposEsticados, soaNatural, esticarBuffer,
+        SEMITONS_MAX, limitarSemitons, razaoDoTom, cabeNoStretch, processarCanais
     };
 
     global.TimeStretch = TimeStretch;
