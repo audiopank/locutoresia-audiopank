@@ -57,6 +57,18 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ── Carregar TODAS as vozes (Gemini + Edge TTS + ElevenLabs) ───────────────────
+// Avatar desenhado no próprio navegador (12/11/2026): os rostos vinham do picsum.photos
+// e sumiam quando o site caía. Iniciais + cor fixa por nome, igual aos cartões da vitrine.
+function avatarDesenhado(nome) {
+    const base = String(nome || '?').split(' - ')[0].trim();
+    let h = 0;
+    for (const ch of base) h = (h * 31 + ch.codePointAt(0)) % 360;
+    const ini = base.split(/\s+/).slice(0, 2).map(p => p[0] || '').join('').toUpperCase();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="hsl(${h},55%,42%)"/>` +
+        `<text x="40" y="40" dy=".35em" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" font-weight="700" fill="#fff">${ini}</text></svg>`;
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
 async function loadAllVoices() {
     try {
         const response = await fetch('/api/voices');
@@ -70,7 +82,7 @@ async function loadAllVoices() {
                 gender: v.gender,
                 language: v.language,
                 style: 'professional',
-                avatar: `https://picsum.photos/seed/${v.id}/80/80`,
+                avatar: avatarDesenhado(v.id),
                 model: v.id,
                 provider: getVoiceProvider(v.id),
                 sampleText: getSampleText(v)
@@ -85,6 +97,7 @@ async function loadAllVoices() {
                 // Adicionar style padrão para vozes ElevenLabs
                 const elevenWithStyle = elevenResult.voices.map(v => ({
                     ...v,
+                    avatar: avatarDesenhado(v.name),
                     style: v.style || 'professional'
                 }));
                 currentVoices = [...currentVoices, ...elevenWithStyle];
@@ -125,7 +138,7 @@ async function loadAllVoices() {
         console.error('Erro ao carregar vozes:', error);
         // Fallback para voz padrão
         currentVoices = [
-            { id: 'Sadachbia', name: 'Sadachbia - Gemini', description: 'Voz masculina clara e profissional', gender: 'male', language: 'pt-BR', style: 'professional', avatar: 'https://picsum.photos/seed/Sadachbia/80/80', model: 'Sadachbia', provider: 'gemini', sampleText: 'Bem-vindo à nossa plataforma. Estamos aqui para oferecer o melhor serviço possível.' }
+            { id: 'Sadachbia', name: 'Sadachbia - Gemini', description: 'Voz masculina clara e profissional', gender: 'male', language: 'pt-BR', style: 'professional', avatar: avatarDesenhado('Sadachbia'), model: 'Sadachbia', provider: 'gemini', sampleText: 'Bem-vindo à nossa plataforma. Estamos aqui para oferecer o melhor serviço possível.' }
         ];
         renderVoices(currentVoices);
         populateVoiceSelect();

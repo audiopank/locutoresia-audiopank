@@ -5462,7 +5462,6 @@ def list_elevenlabs_voices():
                 'gender': 'neutral',
                 'language': 'pt-BR',
                 'style': 'professional',
-                'avatar': f'https://picsum.photos/seed/{voice.get("name")}/80/80',
                 'model': voice.get('voice_id'),
                 'sampleText': f'Olá! Esta é uma amostra da voz {voice.get("name")} gerada com ElevenLabs.',
                 'provider': 'elevenlabs',

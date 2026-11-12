@@ -82,3 +82,13 @@ def test_vitrine_e_demos_mostram_o_locutor():
     assert 'class="amostra-avatar"' in vit and 'personagens das nossas vozes de IA' in vit
     adm = open(os.path.join(raiz, 'templates', 'demos-voz.html'), encoding='utf-8').read()
     assert "Nome do locutor (personagem)" in adm
+
+
+def test_studio_nao_depende_de_site_externo_pros_avatares():
+    import os
+    js = open(os.path.join(os.path.dirname(__file__), '..', 'static', 'script.js'), encoding='utf-8').read()
+    assert 'https://picsum.photos' not in js            # 12/11/2026: o site caiu e os rostos sumiram
+    assert 'avatar: avatarDesenhado(v.id),' in js
+    assert 'avatar: avatarDesenhado(v.name),' in js     # vozes ElevenLabs também
+    app = open(os.path.join(os.path.dirname(__file__), '..', 'backend', 'app.py'), encoding='utf-8').read()
+    assert 'picsum.photos' not in app

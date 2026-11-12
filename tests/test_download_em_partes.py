@@ -77,7 +77,7 @@ def test_studio_e_narrativa_usam_o_ajudante():
     assert 'lastGeneratedAudioBlob = await window.baixarAudioEmPartes(audioUrl);' in _ler('static', 'script.js')
     assert 'await window.baixarAudioEmPartes(d.download_url)' in _ler('static', 'narrativa.js')
     idx = _ler('templates', 'index.html')
-    assert idx.index('/static/baixar-audio.js?v=1') < idx.index('/static/script.js?v=11')
+    assert idx.index('/static/baixar-audio.js?v=1') < idx.index('/static/script.js?v=12')
     nar = _ler('templates', 'narrativa.html')
     assert nar.index('/static/baixar-audio.js?v=1') < nar.index('/static/narrativa.js?v=4')
 
