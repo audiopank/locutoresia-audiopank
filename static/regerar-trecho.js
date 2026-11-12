@@ -206,14 +206,88 @@
             ui.frase.focus();
 
             const vozes = await carregarVozes();
-            const ultima = lerJson('minidaw_ultima_geracao') || {};
             const doNome = vozDoNome(track.name, vozes);
-            let i = doNome ? vozes.indexOf(doNome) : vozes.findIndex(v => String(v.model || v.id) === String(ultima.voice));
-            ui.voz.replaceChildren(el('option', { value: '', textContent: vozes.length ? '— escolha a voz —' : 'não consegui carregar as vozes' }),
+            preencherVozes(ui.voz, ui.estilo, vozes, doNome ? vozes.indexOf(doNome) : -1);
+        }
+
+        // O áudio volta DIRETO na resposta (entrega inline): nada sobe pro Supabase.
+        // Usado pelos dois quadros: 🔁 Regerar trecho e 🎙️ Gerar voz aqui.
+        async function pedirVozInline(texto, v, estilo) {
+            const pedido = { voice: v.model || v.id, style: estilo, language: v.language || 'pt-BR',
+                provider: v.provider === 'cloned' ? 'lmnt' : (v.provider || 'auto') };
+            const r = await fetch('/api/generate-audio', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.assign({ text: texto, entrega: 'inline' }, pedido))
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j.audio_base64) throw new Error(j.error || `HTTP ${r.status}`);
+            return { bytes: Uint8Array.from(atob(j.audio_base64), ch => ch.charCodeAt(0)), mime: j.mime || 'audio/wav', pedido };
+        }
+        const msgErro = (e) => /429|quota|RESOURCE_EXHAUSTED/i.test(e.message || '')
+            ? 'A cota de vozes da IA acabou por agora (429). Nada foi mudado — tente mais tarde.'
+            : 'Não consegui gerar: ' + (e.message || e);
+
+        // Preenche Voz/Estilo: a última voz gerada (Studio, Gerador ou aqui) já vem marcada.
+        function preencherVozes(selVoz, selEstilo, vozes, iPreferida) {
+            const ultima = lerJson('minidaw_ultima_geracao') || {};
+            const i = iPreferida >= 0 ? iPreferida : vozes.findIndex(v => String(v.model || v.id) === String(ultima.voice));
+            selVoz.replaceChildren(el('option', { value: '', textContent: vozes.length ? '— escolha a voz —' : 'não consegui carregar as vozes' }),
                 ...vozes.map((v, k) => el('option', { value: String(k), textContent: v.name || v.id })));
-            ui.voz.value = i >= 0 ? String(i) : '';
+            selVoz.value = i >= 0 ? String(i) : '';
             const mesmaVoz = i >= 0 && String(vozes[i].model || vozes[i].id) === String(ultima.voice);
-            ui.estilo.value = (mesmaVoz && ESTILOS.some(e => e[0] === ultima.style)) ? ultima.style : 'normal';
+            selEstilo.value = (mesmaVoz && ESTILOS.some(e => e[0] === ultima.style)) ? ultima.style : 'normal';
+        }
+
+        // ── 🎙️ GERAR VOZ AQUI (12/11/2026) ─────────────────────────────────
+        // Na faixa de VOZ vazia: texto + voz + estilo → a voz entra na faixa pelo
+        // MESMO caminho de um arquivo escolhido (loadAudioFile). Sem Supabase.
+        async function gerarVozNaFaixa(trackId) {
+            const d = daw();
+            const zona = document.getElementById('drop_' + trackId);
+            if (!d || !zona) return;
+            const aberto = zona.querySelector('.gv-form');
+            if (aberto) { aberto.querySelector('textarea').focus(); return; }
+            const texto = el('textarea', { className: 'form-control form-control-sm', rows: 3,
+                placeholder: 'Texto da locução. [Direção] entre colchetes vale — ex.: [animado, sorrindo]' });
+            const voz = el('select', { className: 'form-select form-select-sm', title: 'Voz da IA' });
+            voz.style.cssText = 'width:auto;min-width:180px';
+            const estilo = el('select', { className: 'form-select form-select-sm', title: 'Estilo de fala' });
+            estilo.style.width = 'auto';
+            for (const [v, n] of ESTILOS) estilo.append(el('option', { value: v, textContent: n }));
+            const info = el('div', { className: 'small mt-1' });
+            info.style.cssText = 'color:#fcd34d;min-height:1em';
+            const nota = el('div', { className: 'small', textContent: 'Até ~70 s de fala por vez (spot). Cada Gerar gasta 1 voz da cota. Nada sobe pro Supabase — o Salvar no PC guarda junto.' });
+            nota.style.color = '#9aa3c7';
+            const botao = el('button', { type: 'button', className: 'btn btn-warning btn-sm fw-bold', textContent: '🎙️ Gerar' });
+            zona.append(el('div', { className: 'gv-form text-start mt-3 w-100' }, [
+                texto,
+                el('div', { className: 'd-flex gap-2 mt-2 flex-wrap align-items-center' }, [voz, estilo, botao]),
+                info, nota,
+            ]));
+            texto.focus();
+            const vozes = await carregarVozes();
+            preencherVozes(voz, estilo, vozes, -1);
+            botao.onclick = async () => {
+                const t = texto.value.trim();
+                if (!t) { avisar('Digite o texto da locução', 'warning'); texto.focus(); return; }
+                const v = vozes[+voz.value];
+                if (voz.value === '' || !v) { avisar('Escolha a voz', 'warning'); return; }
+                botao.disabled = true;
+                info.textContent = 'Gerando a voz…';
+                try {
+                    const { bytes, mime, pedido } = await pedirVozInline(t, v, estilo.value);
+                    try { localStorage.setItem('minidaw_ultima_geracao', JSON.stringify(Object.assign({ nome: v.name || '' }, pedido))); } catch (_) {}
+                    const ext = /mpeg|mp3/i.test(mime) ? 'mp3' : 'wav';
+                    await d.loadAudioFile(new File([bytes], `${v.name || 'Voz'}.${ext}`, { type: mime }), trackId);
+                    info.textContent = '';
+                } catch (e) {
+                    const msg = msgErro(e);
+                    info.textContent = msg;
+                    avisar(msg, 'error');
+                } finally {
+                    botao.disabled = false;
+                }
+            };
         }
 
         function travar(sim, rotulo) {
@@ -232,16 +306,7 @@
             pararPrevia();
             travar(true, 'Gerando a fala nova…');
             try {
-                const r = await fetch('/api/generate-audio', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: texto, voice: v.model || v.id, style: ui.estilo.value, language: v.language || 'pt-BR',
-                        provider: v.provider === 'cloned' ? 'lmnt' : (v.provider || 'auto'), entrega: 'inline'
-                    })
-                });
-                const j = await r.json().catch(() => ({}));
-                if (!r.ok || !j.audio_base64) throw new Error(j.error || `HTTP ${r.status}`);
-                const bytes = Uint8Array.from(atob(j.audio_base64), ch => ch.charCodeAt(0));
+                const { bytes } = await pedirVozInline(texto, v, ui.estilo.value);
                 const buffer = await d.audioContext.decodeAudioData(bytes.buffer);
                 const fala = falaDoBuffer(buffer);
                 if (!fala) throw new Error(ERROS['fala-vazia']);
@@ -255,9 +320,7 @@
                     (prev.ganhoDb ? ` · volume ${prev.ganhoDb > 0 ? '+' : ''}${String(prev.ganhoDb).replace('.', ',')} dB pra casar` : '') +
                     ' — ouça o depois e Aplique.';
             } catch (e) {
-                const msg = /429|quota|RESOURCE_EXHAUSTED/i.test(e.message || '')
-                    ? 'A cota de vozes da IA acabou por agora (429). Nada foi mudado — tente mais tarde.'
-                    : 'Não consegui gerar: ' + (e.message || e);
+                const msg = msgErro(e);
                 ui.info.textContent = msg;
                 avisar(msg, 'error');
             } finally {
@@ -344,7 +407,7 @@
             st.novo = st.prev = null;
         }
 
-        Object.assign(RegerarTrecho, { abrir, fechar: fecharPainel, _estado: st });
+        Object.assign(RegerarTrecho, { abrir, fechar: fecharPainel, gerarVozNaFaixa, _estado: st });
     }
     global.RegerarTrecho = RegerarTrecho;
     if (typeof module !== 'undefined' && module.exports) module.exports = RegerarTrecho;

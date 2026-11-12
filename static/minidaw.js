@@ -459,6 +459,8 @@ class MiniDAW {
                     <button class="btn btn-daw btn-sm mt-2" onclick="document.querySelector('#drop_${track.id} input').click()">
                         Escolher Arquivo
                     </button>
+                    ${track.type === 'voice' ? `<button class="btn btn-warning btn-sm mt-2 ms-1 fw-bold" onclick="window.RegerarTrecho && RegerarTrecho.gerarVozNaFaixa('${track.id}')"
+                            title="Escreve o texto, escolhe a voz e gera aqui mesmo — sem sair da MiniDAW">🎙️ Gerar voz aqui</button>` : ''}
                 </div>
             ` : `
                 <div class="timeline-regua regua-faixa" id="reguafx_${track.id}" title="Régua da faixa: clique = cursor aqui · duplo clique = marcador"></div>
