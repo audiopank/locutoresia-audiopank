@@ -100,7 +100,7 @@
                     ${c.demos.map(dm => `
                         <div class="demo-linha">
                             <div class="flex-grow-1" style="min-width:160px;">
-                                <div>${esc(dm.nome)}</div>
+                                <div>${dm.locutor ? '<b>' + esc(dm.locutor) + '</b> · ' : ''}${esc(dm.nome)}</div>
                                 <small class="text-secondary">${esc(dm.descricao || '')}</small>
                             </div>
                             <!-- preload=metadata (nao none): so o cabecalho, ~poucos KB, mas o
@@ -189,9 +189,9 @@
     const CATS = ['institucional', 'varejo', 'jovem', 'nordeste', 'outro'];
 
     async function renomear(id) {
-        const novo = prompt('Novo nome da amostra (é o que o cliente lê):');
+        const novo = prompt('Novo nome da amostra (vazio = mantém o atual):');
         if (novo === null) return;
-        if (!novo.trim()) { alert('O nome não pode ficar vazio.'); return; }
+        // 12/11/2026: vazio mantém o nome — dá pra só trocar o locutor sem redigitar tudo.
         const desc = prompt('Descrição curta (deixe como está ou reescreva):', '');
         // Faltava trocar a CATEGORIA: uma voz com sotaque publicada em
         // "Institucional" deixa a categoria certa vazia — e categoria vazia
@@ -201,10 +201,15 @@
             '1 - Institucional padrão\n2 - Varejo animado\n3 - Jovem — festas e promoções\n' +
             '4 - Sotaque nordestino\n5 - Outros estilos');
         try {
-            const corpo = { nome: novo.trim() };
+            const corpo = novo.trim() ? { nome: novo.trim() } : {};
             if (desc !== null && desc.trim()) corpo.descricao = desc.trim();
             const i = parseInt(cat, 10);
             if (i >= 1 && i <= CATS.length) corpo.categoria = CATS[i - 1];
+            // Cartão da vitrine: avatar com as iniciais + este nome no lugar do técnico.
+            const loc = prompt('Nome do locutor (personagem) que aparece na vitrine — ex.: Adriano Satti.\n'
+                + 'Invente um nome (nunca o de um locutor real). Vazio = mantém · - (traço) = tira:', '');
+            if (loc !== null && loc.trim()) corpo.locutor = loc.trim();
+            if (!Object.keys(corpo).length) return;
             const r = await fetch('/api/voice-demos/' + id, {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(corpo)

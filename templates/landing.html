@@ -161,6 +161,13 @@
             background: var(--card); border: 1px solid var(--border);
             border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
         }
+        .amostra-avatar {
+            width: 52px; height: 52px; border-radius: 50%; flex: 0 0 52px;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-weight: 800; font-size: 1.15rem; letter-spacing: .5px;
+            box-shadow: 0 0 0 3px rgba(255,255,255,.08);
+        }
+        .amostra-nota { text-align: center; font-size: .75rem; color: var(--txt2); margin-top: 6px; }
         .amostra-info { flex: 1; min-width: 170px; }
         .amostra-info strong { display: block; font-size: .95rem; }
         .amostra-info span { font-size: .8rem; color: var(--txt2); }
@@ -246,6 +253,7 @@
         <div id="listaVozes" class="grade" style="max-width:820px;">
             <p class="amostra-vazio"><i class="fas fa-spinner fa-spin"></i> Carregando amostras...</p>
         </div>
+        <p class="amostra-nota">Nomes e avatares são personagens das nossas vozes de IA.</p>
     </section>
 
     <section>
@@ -422,6 +430,15 @@
             document.getElementById('pedido').scrollIntoView({ behavior: 'smooth', block: 'start' });
         };
 
+        // Cartão de locutor (12/11/2026): avatar com as iniciais do personagem e uma
+        // cor fixa por nome (a mesma em toda visita). Sem personagem: 🎙️ (voz) ou 🎵 (jingle).
+        const iniciais = (n) => n.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('');
+        const corDoLocutor = (n) => {
+            let h = 0;
+            for (const ch of String(n)) h = (h * 31 + ch.codePointAt(0)) % 360;
+            return `hsl(${h}, 55%, 42%)`;
+        };
+
         (async function carregarAmostras() {
             const alvo = document.getElementById('listaVozes');
             try {
@@ -439,8 +456,9 @@
                         ${c.desc ? `<p class="amostra-cat-desc">${escAmostra(c.desc)}</p>` : ''}
                         ${c.demos.map(dm => `
                             <div class="amostra">
+                                <div class="amostra-avatar" style="background:${corDoLocutor(dm.locutor || dm.nome)}">${dm.locutor ? escAmostra(iniciais(dm.locutor)) : (/jingle/i.test(dm.nome) ? '🎵' : '🎙️')}</div>
                                 <div class="amostra-info">
-                                    <strong>${escAmostra(dm.nome)}</strong>
+                                    <strong>${escAmostra(dm.locutor || dm.nome)}</strong>
                                     ${dm.descricao ? `<span>${escAmostra(dm.descricao)}</span>` : ''}
                                 </div>
                                 <!-- preload=metadata (nao none): so o cabecalho, ~poucos KB, mas o
@@ -448,7 +466,7 @@
      cliente achava que o audio estava quebrado. -->
                                 <audio controls preload="metadata" src="${escAmostra(dm.audio_url)}"></audio>
                                 <button type="button" class="btn-escolher"
-                                        data-voz="${escAmostra(c.nome + ' — ' + dm.nome)}">
+                                        data-voz="${escAmostra(c.nome + ' — ' + (dm.locutor ? dm.locutor + ' (' + dm.nome + ')' : dm.nome))}">
                                     Quero esta voz
                                 </button>
                             </div>`).join('')}

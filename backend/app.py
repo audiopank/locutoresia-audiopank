@@ -1394,6 +1394,8 @@ def get_tracks():
 # demo de voz apareceria como trilha de fundo na Biblioteca da MiniDAW.
 # ══════════════════════════════════════════════════════════════════════════
 DEMO_VOZ_MARCADOR = 'demo_voz'
+# Nome do "locutor" (personagem) do cartão da vitrine mora em `artist`; este valor = sem personagem.
+LOCUTOR_PADRAO = 'Locutores IA'
 
 CATEGORIAS_DEMO_VOZ = [
     {"id": "institucional", "nome": "Institucional padrão",
@@ -1431,6 +1433,8 @@ def listar_demos_voz():
                 "descricao": i.get('description') or '',
                 "audio_url": i.get('file_url'),
                 "duracao": i.get('duration') or 0,
+                # Personagem do cartão na vitrine (12/11/2026); o artist padrão = sem personagem.
+                "locutor": None if (i.get('artist') or LOCUTOR_PADRAO) == LOCUTOR_PADRAO else i.get('artist'),
             } for i in itens if (i.get('mood') or 'outro') == cat['id']]
             if demos:
                 por_categoria.append({**cat, "demos": demos})
@@ -1466,7 +1470,7 @@ def salvar_demo_voz():
 
         registro = {
             "name": nome[:120],
-            "artist": "Locutores IA",
+            "artist": LOCUTOR_PADRAO,        # personagem: dá-se depois pelo lápis da página Demos de Voz
             "genre": DEMO_VOZ_MARCADOR,      # marcador que separa demo de trilha
             "mood": categoria,               # categoria da demo
             "duration": int(data.get('duracao', 0) or 0),
@@ -1520,6 +1524,9 @@ def renomear_demo_voz(demo_id):
         if data.get('categoria'):
             validas = {c['id'] for c in CATEGORIAS_DEMO_VOZ}
             campos['mood'] = data['categoria'] if data['categoria'] in validas else 'outro'
+        if 'locutor' in data:
+            nome = str(data.get('locutor') or '').strip()[:60]
+            campos['artist'] = LOCUTOR_PADRAO if nome in ('', '-') else nome
         if not campos:
             return jsonify({"success": False, "error": "Nada para atualizar"}), 400
 
