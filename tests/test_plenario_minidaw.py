@@ -40,5 +40,5 @@ def test_seletor_no_painel_do_reverb_e_versoes():
     assert "onchange=\"minidaw.updateSalaReverb('${track.id}', this.value)\"" in painel
     assert '🏛️ Plenário</option>' in painel and 'Estúdio (padrão)</option>' in painel
     for t in ('minidaw.html', 'gerador.html', 'narrativa.html'):
-        assert '/static/mix-engine.js?v=20' in _ler('templates', t), t
-    assert '/static/minidaw.js?v=88' in _ler('templates', 'minidaw.html')
+        assert '/static/mix-engine.js?v=21' in _ler('templates', t), t
+    assert '/static/minidaw.js?v=89' in _ler('templates', 'minidaw.html')

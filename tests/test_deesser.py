@@ -22,7 +22,7 @@ def test_motor_no_node():
     r = subprocess.run(['node', '--test', os.path.join(RAIZ, 'tests', 'deesser.test.mjs')],
                        capture_output=True, text=True, cwd=RAIZ)
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
-    assert '# fail 0' in r.stdout and '# pass 3' in r.stdout
+    assert '# fail 0' in r.stdout and '# pass 4' in r.stdout
 
 
 def test_mesmo_no_entre_presenca_e_compressor_no_play_e_no_export():
@@ -31,10 +31,10 @@ def test_mesmo_no_entre_presenca_e_compressor_no_play_e_no_export():
     # Play
     assert "const deesser = MixEngine.criarDeesser(this.audioContext, MixEngine.freqDeesserDaFaixa(track));" in daw
     assert "presenceNode.connect(deesser.input);\n        deesser.output.connect(compressorNode);" in daw
-    assert "nodes.deesser.aplicar(track.effects.deesser ? MixEngine.paramsDeesser(MixEngine.forcaDeesserDaFaixa(track)) : null);" in daw
+    assert "nodes.deesser.aplicar(track.effects.deesser ? MixEngine.paramsDeesser(MixEngine.forcaDeesserDaFaixa(track), !!track.deesserSettings?.analogico) : null);" in daw
     # Export
     assert "const deesser = criarDeesser(offlineContext, freqDeesserDaFaixa(track));" in eng
-    assert "deesser.aplicar(track.effects.deesser ? paramsDeesser(forcaDeesserDaFaixa(track)) : null);" in eng
+    assert "deesser.aplicar(track.effects.deesser ? paramsDeesser(forcaDeesserDaFaixa(track), !!(track.deesserSettings && track.deesserSettings.analogico)) : null);" in eng
     assert "presenceNode.connect(deesser.input);\n                deesser.output.connect(compressorNode);" in eng
     # O caminho antigo (Presença direto no Compressor) saiu dos DOIS.
     assert "presenceNode.connect(compressorNode);" not in daw and "presenceNode.connect(compressorNode);" not in eng
@@ -54,6 +54,9 @@ def test_botao_e_painel_so_em_voz_com_slider_de_forca():
     assert "onchange=\"minidaw.updateDeesserFreq('${track.id}', this.value)\"" in painel
     assert '<option value="3500"' in painel and '<option value="5000"' in painel and '<option value="6500"' in painel
     assert 'id="deessergr_${track.id}"' in painel
+    # 12/11: 🎞️ Analógico liga/desliga (agudo macio só no sss); vai junto no deesserSettings.
+    assert "onclick=\"minidaw.toggleDeesserAnalogico('${track.id}')\"" in painel and '🎞️ Analógico' in painel
+    assert "toggleDeesserAnalogico(trackId) {" in js and "track.deesserSettings.analogico = !track.deesserSettings.analogico;" in js
     assert "updateDeesserFreq(trackId, hz) {" in js and "nodes.deesser.setFreq(MixEngine.freqDeesserDaFaixa(track));" in js
     assert "_garantirMedidorDeesser() {" in js and "this._garantirMedidorDeesser();" in js
     assert "nodes.deesser.comp.reduction" in js and "agora - pico.em > 600" in js       # retenção de pico
@@ -82,6 +85,6 @@ def cliente():
 def test_css_e_versoes(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
     assert '.deesser-panel' in html and '.deesser-panel.ativo' in html
-    assert 'mix-engine.js?v=20' in html and 'minidaw.js?v=88' in html
+    assert 'mix-engine.js?v=21' in html and 'minidaw.js?v=89' in html
     for pagina in ('/gerador', '/narrativa'):
-        assert 'mix-engine.js?v=20' in cliente.get(pagina).get_data(as_text=True), pagina
+        assert 'mix-engine.js?v=21' in cliente.get(pagina).get_data(as_text=True), pagina

@@ -63,7 +63,7 @@ test('criarDeesser: crossover LR4 em 5 kHz (2+2 biquads Q=1/√2), alta no compr
     assert.ok(de.input.saidas.includes(de.dry) && de.dry.saidas.includes(de.output));
     assert.ok(de.input.saidas.includes(de.lp[0]) && de.lp[0].saidas.includes(de.lp[1]) && de.lp[1].saidas.includes(de.wet));
     assert.ok(de.input.saidas.includes(de.hp[0]) && de.hp[0].saidas.includes(de.hp[1]) && de.hp[1].saidas.includes(de.comp));
-    assert.ok(de.comp.saidas.includes(de.compGain) && de.compGain.saidas.includes(de.wet) && de.wet.saidas.includes(de.output));
+    assert.ok(de.comp.saidas.includes(de.compGain) && de.compGain.saidas.includes(de.direto) && de.direto.saidas.includes(de.wet) && de.wet.saidas.includes(de.output));
     assert.ok(!de.lp[1].saidas.includes(de.comp));                    // a banda baixa NUNCA passa pelo compressor
     // Nasce desligado: seco 1, molhado 0, compressor em bypass.
     assert.equal(de.dry.gain.value, 1);
@@ -100,4 +100,27 @@ test('forcaDeesserDaFaixa / freqDeesserDaFaixa: projeto antigo sem o campo = 5 e
     assert.equal(MixEngine.freqDeesserDaFaixa({ deesserSettings: { freq: '6500' } }), 6500);   // vem do <select> como string
     assert.equal(MixEngine.freqDeesserDaFaixa({ deesserSettings: { freq: 4200 } }), 5000);
     assert.deepEqual(MixEngine.DEESSER_FREQS, [3500, 5000, 6500]);
+});
+
+test('Analógico (12/11): highshelf −4 dB em 8 kHz SÓ na banda do sss; desligado = caminho de antes', () => {
+    const ctx = contextoFalso();
+    const de = MixEngine.criarDeesser(ctx);
+    assert.equal(de.shelf.type, 'highshelf');
+    assert.equal(de.shelf.frequency.value, 8000);
+    assert.equal(de.shelf.gain.value, -4);
+    // banda do sss: compGain → direto → wet  e  compGain → shelf → analogico → wet
+    assert.ok(de.compGain.saidas.includes(de.direto) && de.compGain.saidas.includes(de.shelf));
+    assert.ok(de.shelf.saidas.includes(de.analogico) && de.analogico.saidas.includes(de.wet));
+    assert.ok(de.direto.saidas.includes(de.wet));
+    // banda baixa e seco não passam pelo shelf
+    assert.ok(!de.lp[1].saidas.includes(de.shelf));
+    de.aplicar(MixEngine.paramsDeesser(5));
+    assert.equal(de.direto.gain.value, 1); assert.equal(de.analogico.gain.value, 0);   // padrão: desligado
+    de.aplicar(MixEngine.paramsDeesser(5, true));
+    assert.equal(de.direto.gain.value, 0); assert.equal(de.analogico.gain.value, 1);
+    de.aplicar(null);
+    assert.equal(de.analogico.gain.value, 0);
+    assert.equal(MixEngine.paramsDeesser(5, true).analogico, true);
+    assert.equal(MixEngine.paramsDeesser(5).analogico, false);
+    assert.equal(MixEngine.paramsDeesser(null, true).analogico, false);              // de-esser off = sem analógico
 });

@@ -519,7 +519,7 @@
 
                 // 3b. De-esser (Suíte v2 D1) — MESMO construtor do playback.
                 const deesser = criarDeesser(offlineContext, freqDeesserDaFaixa(track));
-                deesser.aplicar(track.effects.deesser ? paramsDeesser(forcaDeesserDaFaixa(track)) : null);
+                deesser.aplicar(track.effects.deesser ? paramsDeesser(forcaDeesserDaFaixa(track), !!(track.deesserSettings && track.deesserSettings.analogico)) : null);
 
                 // 4. Compressor
                 const compressorNode = offlineContext.createDynamicsCompressor();
@@ -984,15 +984,19 @@
     // intocada — "muda muito pouco" (ele, 22/09). O produtor escolhe.
     const DEESSER_FREQS = [3500, 5000, 6500];
 
-    function paramsDeesser(forca) {
+    // Analógico (12/11/2026): highshelf suave SÓ na banda do sss — esconde a
+    // aspereza do agudo sem tocar na presença (abaixo do corte). Sem saturação.
+    const DEESSER_ANALOGICO = { freqHz: 8000, ganhoDb: -4 };
+
+    function paramsDeesser(forca, analogico) {
         // forca 1..10 (padrão 5). null/0/lixo = bypass.
         const f = Number(forca);
-        if (!(f > 0)) return { ativo: false, threshold: 0, ratio: 1, knee: 0, attack: 0.001, release: 0.05, compDb: 0 };
+        if (!(f > 0)) return { ativo: false, threshold: 0, ratio: 1, knee: 0, attack: 0.001, release: 0.05, compDb: 0, analogico: false };
         const k = Math.max(1, Math.min(10, f));
         const threshold = -18 - k * 3;                       // 1 → -21 dB · 5 → -33 · 10 → -48
         const ratio = 2 + k;                                 // 1 → 3 · 5 → 7 · 10 → 12
         const compDb = 0.6 * threshold * (1 - 1 / ratio);    // anula o makeup automático
-        return { ativo: true, threshold, ratio, knee: 0, attack: 0.001, release: 0.05, compDb };
+        return { ativo: true, threshold, ratio, knee: 0, attack: 0.001, release: 0.05, compDb, analogico: !!analogico };
     }
 
     function criarDeesser(ctx, freqHz) {
@@ -1008,14 +1012,22 @@
         for (const n of [hp1, hp2]) { n.type = 'highpass'; n.frequency.value = fc; n.Q.value = Q; }
         const comp = ctx.createDynamicsCompressor();
         const compGain = ctx.createGain(); compGain.gain.value = 1;
+        // Analógico: dois caminhos pra banda do sss; o desligado tem ganho 0 exato
+        // (som bit-idêntico ao de antes quando o botão está off).
+        const direto = ctx.createGain();    direto.gain.value = 1;
+        const analogico = ctx.createGain(); analogico.gain.value = 0;
+        const shelf = ctx.createBiquadFilter();
+        shelf.type = 'highshelf'; shelf.frequency.value = DEESSER_ANALOGICO.freqHz; shelf.gain.value = DEESSER_ANALOGICO.ganhoDb;
         // Seco (desligado)
         entrada.connect(dry); dry.connect(saida);
         // Molhado: baixa intacta + alta comprimida
         entrada.connect(lp1); lp1.connect(lp2); lp2.connect(wet);
-        entrada.connect(hp1); hp1.connect(hp2); hp2.connect(comp); comp.connect(compGain); compGain.connect(wet);
+        entrada.connect(hp1); hp1.connect(hp2); hp2.connect(comp); comp.connect(compGain);
+        compGain.connect(direto); direto.connect(wet);
+        compGain.connect(shelf); shelf.connect(analogico); analogico.connect(wet);
         wet.connect(saida);
         const de = {
-            input: entrada, output: saida, comp, compGain, dry, wet, lp: [lp1, lp2], hp: [hp1, hp2], freqHz: fc,
+            input: entrada, output: saida, comp, compGain, direto, analogico, shelf, dry, wet, lp: [lp1, lp2], hp: [hp1, hp2], freqHz: fc,
             // Muda o corte ao vivo (4 biquads); fora da lista, fica como está.
             setFreq(hz) {
                 const f = Number(hz);
@@ -1031,6 +1043,8 @@
                 compGain.gain.value = Math.pow(10, q.compDb / 20);
                 dry.gain.value = q.ativo ? 0 : 1;
                 wet.gain.value = q.ativo ? 1 : 0;
+                direto.gain.value = q.analogico ? 0 : 1;
+                analogico.gain.value = q.analogico ? 1 : 0;
                 return q;
             }
         };

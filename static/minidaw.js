@@ -703,6 +703,10 @@ class MiniDAW {
                             <option value="5000" ${(!track.deesserSettings?.freq || track.deesserSettings?.freq == 5000) ? 'selected' : ''}>5 kHz — padrão</option>
                             <option value="6500" ${track.deesserSettings?.freq == 6500 ? 'selected' : ''}>6,5 kHz — voz aguda</option>
                         </select>
+                        <button type="button" id="deesseranalog_${track.id}"
+                                class="btn btn-sm py-0 ${track.deesserSettings?.analogico ? 'btn-warning' : 'btn-outline-secondary'}"
+                                onclick="minidaw.toggleDeesserAnalogico('${track.id}')"
+                                title="Liga/desliga: agudo mais macio (aveludado) só no sss, acima de 8 kHz. A presença da voz fica intacta. Sem saturação.">🎞️ Analógico</button>
                         <span class="ms-auto" title="Quanto o de-esser está abaixando o sss NESTE instante (retém o pico por 0,6 s)">redução agora: <strong id="deessergr_${track.id}">—</strong></span>
                     </div>
                     <small>
@@ -1095,7 +1099,7 @@ class MiniDAW {
         // De-esser (só banda alta; desligado = caminho seco)
         if (nodes.deesser) {
             nodes.deesser.setFreq(MixEngine.freqDeesserDaFaixa(track));
-            nodes.deesser.aplicar(track.effects.deesser ? MixEngine.paramsDeesser(MixEngine.forcaDeesserDaFaixa(track)) : null);
+            nodes.deesser.aplicar(track.effects.deesser ? MixEngine.paramsDeesser(MixEngine.forcaDeesserDaFaixa(track), !!track.deesserSettings?.analogico) : null);
         }
 
         // Compressor
@@ -3168,6 +3172,21 @@ class MiniDAW {
         this.applyEffectStates(track);
         clearTimeout(this._deesserSaveTimer);
         this._deesserSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
+    }
+
+    // 🎞️ Analógico (12/11/2026): agudo macio na banda do sss. Nasce desligado.
+    toggleDeesserAnalogico(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        track.deesserSettings = track.deesserSettings || {};
+        track.deesserSettings.analogico = !track.deesserSettings.analogico;
+        const btn = document.getElementById(`deesseranalog_${trackId}`);
+        if (btn) {
+            btn.classList.toggle('btn-warning', track.deesserSettings.analogico);
+            btn.classList.toggle('btn-outline-secondary', !track.deesserSettings.analogico);
+        }
+        this.applyEffectStates(track);
+        this.saveToLocalStorage();
     }
 
     updateDeesserFreq(trackId, hz) {
