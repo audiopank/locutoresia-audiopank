@@ -641,6 +641,20 @@ class MiniDAW {
                                 </button>
                             ` : ''}
                         </div>
+                <div class="brilho-panel ${track.effects.brilho ? 'ativo' : ''}" id="brilhopanel_${track.id}">
+                    <div class="effect-label">
+                        ✨ Brilho — intensidade
+                        <strong id="brilhoval_${track.id}">${Math.round(MixEngine.quantidadeBrilhoDaFaixa(track) * 100)}%</strong>
+                    </div>
+                    <input type="range" class="form-range" min="0" max="100" step="1"
+                           value="${Math.round(MixEngine.quantidadeBrilhoDaFaixa(track) * 100)}"
+                           oninput="minidaw.updateBrilhoAmount('${track.id}', this.value)"
+                           title="Quanto de AR acima de 10 kHz: 40% = +5 dB (padrão) · 100% = +12,5 dB. Os médios ficam sempre −3 dB.">
+                    <small>
+                        Sobe = mais ar e brilho na voz. Padrão 40%. Passou do ponto, o "s" fica afiado:
+                        volte um pouco ou ligue o De-esser. O arquivo exportado sai igual ao que você ouve.
+                    </small>
+                </div>
                 <div class="reverb-panel ${track.effects.reverb ? 'ativo' : ''}" id="reverbpanel_${track.id}">
                     <div class="effect-label">
                         Reverb — quantidade
@@ -1114,7 +1128,7 @@ class MiniDAW {
 
         // Presence boost
         nodes.presenceNode.gain.value = track.effects.presence ? 4 : 0; // +4dB de presença
-        if (nodes.brilho) nodes.brilho.aplicar(!!track.effects.brilho);
+        if (nodes.brilho) nodes.brilho.aplicar(!!track.effects.brilho, MixEngine.quantidadeBrilhoDaFaixa(track));
 
         // De-esser (só banda alta; desligado = caminho seco)
         if (nodes.deesser) {
@@ -2787,6 +2801,7 @@ class MiniDAW {
         destino.compressorSettings = Object.assign({}, origem.compressorSettings || {});
         destino.reverbAmount = MixEngine.quantidadeReverbDaFaixa(origem);   // sempre: faixa no padrão (30%) também iguala
         destino.delayAmount = MixEngine.quantidadeDelayDaFaixa(origem);
+        destino.brilhoAmount = MixEngine.quantidadeBrilhoDaFaixa(origem);
         if (MixEngine.salaDaFaixa(origem) !== 'estudio') destino.sala = MixEngine.salaDaFaixa(origem); else delete destino.sala;
     }
 
@@ -2805,6 +2820,7 @@ class MiniDAW {
             compressorSettings: track.compressorSettings || {},
             reverbAmount: MixEngine.quantidadeReverbDaFaixa(track),
             delayAmount: MixEngine.quantidadeDelayDaFaixa(track),
+            brilhoAmount: MixEngine.quantidadeBrilhoDaFaixa(track),
             sala: MixEngine.salaDaFaixa(track)
         }));
     }
@@ -2876,6 +2892,7 @@ class MiniDAW {
         track.compressorSettings = Object.assign({}, e.compressorSettings || {});
         if (typeof e.reverbAmount === 'number') track.reverbAmount = e.reverbAmount;
         if (typeof e.delayAmount === 'number') track.delayAmount = e.delayAmount;
+        if (typeof e.brilhoAmount === 'number') track.brilhoAmount = e.brilhoAmount;
         // Preset = a cadeia inteira: sem o campo (preset antigo) é sala Estúdio, como soava.
         if (MixEngine.salaDaFaixa(e) !== 'estudio') track.sala = MixEngine.salaDaFaixa(e); else delete track.sala;
         track.presetFaixa = p.nome;
@@ -3170,6 +3187,10 @@ class MiniDAW {
         if (deesserPanel) {
             deesserPanel.classList.toggle('ativo', !!track.effects.deesser);
         }
+        const brilhoPanel = trackCard.querySelector('.brilho-panel');
+        if (brilhoPanel) {
+            brilhoPanel.classList.toggle('ativo', !!track.effects.brilho);
+        }
         // Quantidade do reverb: aparece com o botão Reverb ligado (toda faixa).
         const reverbPanel = trackCard.querySelector('.reverb-panel');
         if (reverbPanel) {
@@ -3289,6 +3310,19 @@ class MiniDAW {
         if (nodes) this._aplicarRetornos(track, nodes);
         clearTimeout(this._reverbSaveTimer);
         this._reverbSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
+    }
+
+    // Slider "✨ Brilho — intensidade" (0–100%, 13/11). Aplica na hora; mesma conta no arquivo.
+    updateBrilhoAmount(trackId, valor) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const pct = parseFloat(String(valor).replace(',', '.'));
+        track.brilhoAmount = MixEngine.quantidadeBrilhoDaFaixa({ brilhoAmount: Number.isFinite(pct) ? pct / 100 : null });
+        const rotulo = document.getElementById(`brilhoval_${trackId}`);
+        if (rotulo) rotulo.textContent = Math.round(track.brilhoAmount * 100) + '%';
+        this.applyEffectStates(track);
+        clearTimeout(this._brilhoSaveTimer);
+        this._brilhoSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
     }
 
     // Slider "Delay — quantidade" (0–50%). Mesma conta no play e no arquivo.
@@ -6062,6 +6096,7 @@ class MiniDAW {
                 deesserSettings: t.deesserSettings,
                 reverbAmount: MixEngine.quantidadeReverbDaFaixa(t),
                 delayAmount: MixEngine.quantidadeDelayDaFaixa(t),
+                brilhoAmount: MixEngine.quantidadeBrilhoDaFaixa(t),
                 sala: MixEngine.salaDaFaixa(t) !== 'estudio' ? MixEngine.salaDaFaixa(t) : undefined,   // Estúdio = sem campo
                 automacaoVolume: t.automacaoVolume,
                 buffers: [], clips: []
@@ -6658,6 +6693,7 @@ class MiniDAW {
             // Quantidade do reverb (29/09/2026). Projeto antigo (sem o campo) = padrão 30%, como soava.
             track.reverbAmount = (td.reverbAmount != null) ? MixEngine.quantidadeReverbDaFaixa(td) : undefined;
             track.delayAmount = (td.delayAmount != null) ? MixEngine.quantidadeDelayDaFaixa(td) : undefined;   // antigo = 12%, como soava
+            track.brilhoAmount = (td.brilhoAmount != null) ? MixEngine.quantidadeBrilhoDaFaixa(td) : undefined;   // antigo = 40%, como soava
             if (MixEngine.salaDaFaixa(td) !== 'estudio') track.sala = MixEngine.salaDaFaixa(td); else delete track.sala;   // 🏛️🎻 sem campo = Estúdio
             // Normaliza o formato -- cobre projetos salvos antes desta
             // feature (campo ausente), e os salvos HOJE mais cedo antes

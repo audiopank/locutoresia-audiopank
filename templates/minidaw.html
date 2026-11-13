@@ -196,7 +196,7 @@
         }
 
         /* Painel do Gate — só aparece com o gate ligado, igual ao do EQ. */
-        .gate-panel, .deesser-panel, .reverb-panel, .delay-panel {
+        .gate-panel, .deesser-panel, .brilho-panel, .reverb-panel, .delay-panel {
             display: none;
             margin-top: 1rem;
             padding: 0.85rem 1rem;
@@ -204,18 +204,18 @@
             border: 1px solid var(--border-color);
             border-radius: 8px;
         }
-        .gate-panel.ativo, .deesser-panel.ativo, .reverb-panel.ativo, .delay-panel.ativo { display: block; }
-        .gate-panel .effect-label, .deesser-panel .effect-label, .reverb-panel .effect-label, .delay-panel .effect-label {
+        .gate-panel.ativo, .deesser-panel.ativo, .brilho-panel.ativo, .reverb-panel.ativo, .delay-panel.ativo { display: block; }
+        .gate-panel .effect-label, .deesser-panel .effect-label, .brilho-panel .effect-label, .reverb-panel .effect-label, .delay-panel .effect-label {
             font-size: 0.85rem;
             color: var(--text-secondary);
             margin-bottom: 0.4rem;
         }
-        .gate-panel .effect-label strong, .deesser-panel .effect-label strong, .reverb-panel .effect-label strong, .delay-panel .effect-label strong {
+        .gate-panel .effect-label strong, .deesser-panel .effect-label strong, .brilho-panel .effect-label strong, .reverb-panel .effect-label strong, .delay-panel .effect-label strong {
             color: var(--accent-color);
             font-variant-numeric: tabular-nums;
             margin-left: 0.25rem;
         }
-        .gate-panel small, .deesser-panel small, .reverb-panel small, .delay-panel small { color: var(--text-secondary); font-size: 0.75rem; }
+        .gate-panel small, .deesser-panel small, .brilho-panel small, .reverb-panel small, .delay-panel small { color: var(--text-secondary); font-size: 0.75rem; }
         .reverb-panel .sala-reverb { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; }
         .reverb-panel .sala-reverb .effect-label { margin: 0; }
         .reverb-panel .sala-reverb select { max-width: 220px; }
@@ -929,6 +929,7 @@
         .track-card.compacta .track-effects,
         .track-card.compacta .gate-panel,
         .track-card.compacta .deesser-panel,
+        .track-card.compacta .brilho-panel,
         .track-card.compacta .reverb-panel,
         .track-card.compacta .delay-panel,
         .track-card.compacta .effects-panel { display: none !important; }
@@ -1360,7 +1361,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
     <!-- Motor de mixagem: precisa vir ANTES do minidaw.js, que delega pra ele. -->
-    <script src="/static/mix-engine.js?v=23"></script>
+    <script src="/static/mix-engine.js?v=24"></script>
     <script src="/static/clip-model.js?v=8"></script>
     <script src="/static/loudness.js?v=1"></script>
     <script src="/static/presets-locais.js?v=2"></script>
@@ -1369,7 +1370,7 @@
     <script src="/static/fatiar-paragrafos.js?v=1"></script>
     <script src="/static/gravacao.js?v=3"></script>
     <script src="/static/alinhar-falas.js?v=1"></script>
-    <script src="/static/minidaw.js?v=92"></script>
+    <script src="/static/minidaw.js?v=93"></script>
     <script src="/static/regerar-trecho.js?v=3"></script>
     <script src="/static/video-cliente.js?v=4"></script>
     <script src="/static/pre-escuta.js?v=3"></script>

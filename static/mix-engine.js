@@ -519,7 +519,7 @@
 
                 // 2b. ✨ Brilho — MESMO construtor do playback.
                 const brilho = criarBrilho(offlineContext);
-                brilho.aplicar(!!track.effects.brilho);
+                brilho.aplicar(!!track.effects.brilho, quantidadeBrilhoDaFaixa(track));
 
                 // 3b. De-esser (Suíte v2 D1) — MESMO construtor do playback.
                 const deesser = criarDeesser(offlineContext, freqDeesserDaFaixa(track));
@@ -775,7 +775,16 @@
     // Médios levemente cavados (tira o "fanho") + ar aberto acima de 10 kHz.
     // Liga/desliga; desligado = ganho 0 nos dois filtros = som idêntico ao de antes.
     // MESMO construtor no play (minidaw.js) e no arquivo (renderizarMix).
-    const BRILHO = { MEIO_HZ: 1000, MEIO_Q: 0.7, MEIO_DB: -3, AR_HZ: 10000, AR_DB: 5 };
+    // Intensidade (13/11, pedido dele): o slider 0–100% mexe só no AR, até +12,5 dB
+    // (perto do REAPER dele); padrão 40% = +5 dB, o Brilho de antes do slider.
+    const BRILHO = { MEIO_HZ: 1000, MEIO_Q: 0.7, MEIO_DB: -3, AR_HZ: 10000, AR_MAX_DB: 12.5, QUANTIDADE_PADRAO: 0.4 };
+    function quantidadeBrilhoDaFaixa(track) {
+        const bruto = track ? track.brilhoAmount : undefined;
+        if (bruto == null || bruto === '') return BRILHO.QUANTIDADE_PADRAO;
+        const q = Number(bruto);
+        if (!Number.isFinite(q)) return BRILHO.QUANTIDADE_PADRAO;
+        return Math.max(0, Math.min(1, q));
+    }
     function criarBrilho(ctx) {
         const meio = ctx.createBiquadFilter();
         meio.type = 'peaking'; meio.frequency.value = BRILHO.MEIO_HZ; meio.Q.value = BRILHO.MEIO_Q; meio.gain.value = 0;
@@ -784,9 +793,10 @@
         meio.connect(ar);
         return {
             input: meio, output: ar,
-            aplicar(ligado) {
+            aplicar(ligado, quantidade) {
+                const q = quantidade == null ? BRILHO.QUANTIDADE_PADRAO : quantidade;
                 meio.gain.value = ligado ? BRILHO.MEIO_DB : 0;
-                ar.gain.value = ligado ? BRILHO.AR_DB : 0;
+                ar.gain.value = ligado ? BRILHO.AR_MAX_DB * q : 0;
             }
         };
     }
@@ -1272,7 +1282,7 @@
 
     global.MixEngine = {
         REVERB_DURACAO_S, REVERB_QUANTIDADE_PADRAO, criarImpulsoReverb, quantidadeReverbDaFaixa, wetReverbDaFaixa,
-        SALAS, PLENARIO, CAMARA, salaDaFaixa, criarEnvioSala, BRILHO, criarBrilho,
+        SALAS, PLENARIO, CAMARA, salaDaFaixa, criarEnvioSala, BRILHO, criarBrilho, quantidadeBrilhoDaFaixa,
         DELAY_QUANTIDADE_PADRAO, quantidadeDelayDaFaixa, wetDelayDaFaixa,
         GANHO_OBJETO_MAX_DB, RAMPA_VOLUME_S, ganhoDbDoClip, dbParaLinear, volumeDoClip, agendarVolumeDoClip,
         XF_SEGMENTOS, crossfadesDoClip, agendarCrossfadeDoClip,

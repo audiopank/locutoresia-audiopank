@@ -30,10 +30,26 @@ def test_brilho_botao_so_na_voz_e_mesmo_no_play_e_no_export():
     assert "minidaw.toggleEffect('${track.id}', 'brilho')" in voz and '✨ Brilho' in voz
     assert 'const brilho = MixEngine.criarBrilho(this.audioContext);' in js
     assert 'eqAirNode.connect(brilho.input);\n        brilho.output.connect(presenceNode);' in js
-    assert 'if (nodes.brilho) nodes.brilho.aplicar(!!track.effects.brilho);' in js
+    assert 'if (nodes.brilho) nodes.brilho.aplicar(!!track.effects.brilho, MixEngine.quantidadeBrilhoDaFaixa(track));' in js
     me = _ler('static', 'mix-engine.js')
-    assert 'const brilho = criarBrilho(offlineContext);' in me and 'brilho.aplicar(!!track.effects.brilho);' in me
+    assert 'const brilho = criarBrilho(offlineContext);' in me and 'brilho.aplicar(!!track.effects.brilho, quantidadeBrilhoDaFaixa(track));' in me
     assert 'eqAirNode.connect(brilho.input);\n                brilho.output.connect(presenceNode);' in me
+
+
+def test_slider_de_intensidade_do_brilho_e_viaja_junto():
+    js = _ler('static', 'minidaw.js')
+    painel = js[js.index('<div class="brilho-panel'):js.index('<div class="reverb-panel')]
+    assert "oninput=\"minidaw.updateBrilhoAmount('${track.id}', this.value)\"" in painel
+    assert 'min="0" max="100"' in painel and 'id="brilhoval_${track.id}"' in painel
+    assert 'updateBrilhoAmount(trackId, valor) {' in js
+    assert "brilhoPanel.classList.toggle('ativo', !!track.effects.brilho);" in js
+    assert 'destino.brilhoAmount = MixEngine.quantidadeBrilhoDaFaixa(origem);' in js            # Copiar Efeitos
+    assert 'brilhoAmount: MixEngine.quantidadeBrilhoDaFaixa(track),' in js                       # preset guarda
+    assert "if (typeof e.brilhoAmount === 'number') track.brilhoAmount = e.brilhoAmount;" in js   # preset aplica
+    assert 'brilhoAmount: MixEngine.quantidadeBrilhoDaFaixa(t),' in js                           # projeto salva
+    assert 'track.brilhoAmount = (td.brilhoAmount != null)' in js                                # projeto abre
+    html = _ler('templates', 'minidaw.html')
+    assert '.brilho-panel.ativo' in html and '.track-card.compacta .brilho-panel' in html
 
 
 def test_camara_no_seletor_e_viaja_como_o_plenario():
@@ -47,5 +63,5 @@ def test_camara_no_seletor_e_viaja_como_o_plenario():
 
 def test_versoes():
     for t in ('minidaw.html', 'gerador.html', 'narrativa.html'):
-        assert '/static/mix-engine.js?v=23' in _ler('templates', t), t
-    assert '/static/minidaw.js?v=92' in _ler('templates', 'minidaw.html')
+        assert '/static/mix-engine.js?v=24' in _ler('templates', t), t
+    assert '/static/minidaw.js?v=93' in _ler('templates', 'minidaw.html')

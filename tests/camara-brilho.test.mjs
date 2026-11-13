@@ -79,9 +79,25 @@ test('Brilho: médios −3 dB em 1 kHz + ar em 10 kHz; desligado = ganho 0 (som 
     assert.equal(meio.type, 'peaking'); assert.equal(meio.frequency.value, 1000);
     assert.equal(ar.type, 'highshelf'); assert.equal(ar.frequency.value, 10000);
     assert.equal(meio.gain.value, 0); assert.equal(ar.gain.value, 0);          // nasce desligado
-    b.aplicar(true);
-    assert.equal(meio.gain.value, -3); assert.equal(ar.gain.value, ME.BRILHO.AR_DB);
-    assert.ok(ME.BRILHO.AR_DB > 0);
+    b.aplicar(true);                                                           // sem quantidade = padrão 40% = +5 dB (o de antes)
+    assert.equal(meio.gain.value, -3); assert.equal(ar.gain.value, 5);
     b.aplicar(false);
     assert.equal(meio.gain.value, 0); assert.equal(ar.gain.value, 0);
+});
+
+test('Brilho — intensidade (13/11): 0–100% mexe só no ar, até +12,5 dB; desligado ignora o slider', () => {
+    const ctx = contextoFalso(48000);
+    const b = ME.criarBrilho(ctx);
+    const [meio, ar] = ctx.filtros;
+    b.aplicar(true, 1);    assert.equal(ar.gain.value, 12.5); assert.equal(meio.gain.value, -3);
+    b.aplicar(true, 0.6);  assert.ok(Math.abs(ar.gain.value - 7.5) < 1e-9);
+    b.aplicar(true, 0);    assert.equal(ar.gain.value, 0);  assert.equal(meio.gain.value, -3);   // 0% = só tira o fanho
+    b.aplicar(false, 1);   assert.equal(ar.gain.value, 0);  assert.equal(meio.gain.value, 0);
+    // quantidade da faixa: ausente/lixo = 40% (projeto de antes soa igual), limite 0..1, 0 vale
+    assert.equal(ME.quantidadeBrilhoDaFaixa({}), 0.4);
+    assert.equal(ME.quantidadeBrilhoDaFaixa(null), 0.4);
+    assert.equal(ME.quantidadeBrilhoDaFaixa({ brilhoAmount: 'x' }), 0.4);
+    assert.equal(ME.quantidadeBrilhoDaFaixa({ brilhoAmount: 0 }), 0);
+    assert.equal(ME.quantidadeBrilhoDaFaixa({ brilhoAmount: 3 }), 1);
+    assert.equal(ME.quantidadeBrilhoDaFaixa({ brilhoAmount: 0.75 }), 0.75);
 });

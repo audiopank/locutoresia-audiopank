@@ -70,7 +70,7 @@ def cliente():
 
 def test_versoes_dos_scripts_subiram(cliente):
     html = cliente.get('/minidaw').get_data(as_text=True)
-    for t in ('mix-engine.js?v=23', 'clip-model.js?v=8', 'minidaw.js?v=92'):
+    for t in ('mix-engine.js?v=24', 'clip-model.js?v=8', 'minidaw.js?v=93'):
         assert t in html, t
-    assert 'mix-engine.js?v=23' in cliente.get('/gerador').get_data(as_text=True)
-    assert 'mix-engine.js?v=23' in cliente.get('/narrativa').get_data(as_text=True)
+    assert 'mix-engine.js?v=24' in cliente.get('/gerador').get_data(as_text=True)
+    assert 'mix-engine.js?v=24' in cliente.get('/narrativa').get_data(as_text=True)
