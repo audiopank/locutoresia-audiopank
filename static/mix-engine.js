@@ -517,6 +517,10 @@
                 presenceNode.frequency.value = 4000;
                 presenceNode.gain.value = track.effects.presence ? 4 : 0;
 
+                // 2b. ✨ Brilho — MESMO construtor do playback.
+                const brilho = criarBrilho(offlineContext);
+                brilho.aplicar(!!track.effects.brilho);
+
                 // 3b. De-esser (Suíte v2 D1) — MESMO construtor do playback.
                 const deesser = criarDeesser(offlineContext, freqDeesserDaFaixa(track));
                 deesser.aplicar(track.effects.deesser ? paramsDeesser(forcaDeesserDaFaixa(track), !!(track.deesserSettings && track.deesserSettings.analogico)) : null);
@@ -619,7 +623,8 @@
                 eqLowNode.connect(eqNode);
                 eqNode.connect(eqHighNode);
                 eqHighNode.connect(eqAirNode);
-                eqAirNode.connect(presenceNode);
+                eqAirNode.connect(brilho.input);
+                brilho.output.connect(presenceNode);
                 presenceNode.connect(deesser.input);
                 deesser.output.connect(compressorNode);
                 compressorNode.connect(limiterNode);
@@ -673,6 +678,7 @@
     }
     function criarImpulsoReverb(ctx, sala) {
         if (sala === 'plenario') return criarImpulsoPlenario(ctx);
+        if (sala === 'camara') return criarImpulsoSala(ctx, CAMARA, 0xC4A3A);
         const sr = ctx.sampleRate;
         const n = Math.floor(sr * REVERB_DURACAO_S);
         const ir = ctx.createBuffer(2, n, sr);
@@ -689,24 +695,34 @@
     // (paredes, mesa, teto) e cauda de ~1,2 s que escurece; o retorno passa antes
     // por uma "cara de caixa de som" (criarEnvioSala) — a sala ouve a voz pelas
     // caixas do plenário. A voz SECA não muda. Mesmas funções no play e no arquivo.
-    const SALAS = ['estudio', 'plenario'];
+    const SALAS = ['estudio', 'plenario', 'camara'];
     const PLENARIO = {
         DURACAO_S: 1.8, PRE_DELAY_S: 0.018, RT60_S: 1.2, CAUDA_S: 0.03,
         REFLEXOES: [[0.007, 0.6], [0.013, 0.5], [0.021, 0.45], [0.029, 0.38], [0.037, 0.3], [0.046, 0.25]],
         CORTE_INI_HZ: 7000, CORTE_FIM_HZ: 1800,
         CAIXA_HP_HZ: 200, CAIXA_MEIO_HZ: 2500, CAIXA_MEIO_DB: 3, CAIXA_LP_HZ: 5500,
     };
+    // 🎻 "Câmara" (13/11/2026, referência dele: Nectar 4 "Chamber tone"): sala
+    // pequena e elegante — pré-delay curto, reflexões cedo, cauda de ~0,85 s que
+    // escurece pouco (fica brilhante). O retorno só perde o grave (sem lama).
+    const CAMARA = {
+        DURACAO_S: 1.3, PRE_DELAY_S: 0.010, RT60_S: 0.85, CAUDA_S: 0.02,
+        REFLEXOES: [[0.004, 0.55], [0.009, 0.45], [0.014, 0.4], [0.019, 0.32], [0.025, 0.26], [0.032, 0.2]],
+        CORTE_INI_HZ: 9000, CORTE_FIM_HZ: 3500,
+        ENVIO_HP_HZ: 180,
+    };
     function salaDaFaixa(track) {
         const s = track && track.sala;
         return SALAS.includes(s) ? s : 'estudio';
     }
-    function criarImpulsoPlenario(ctx) {
-        const P = PLENARIO, sr = ctx.sampleRate;
+    function criarImpulsoPlenario(ctx) { return criarImpulsoSala(ctx, PLENARIO, 0x91E7A); }
+    function criarImpulsoSala(ctx, P, semente) {
+        const sr = ctx.sampleRate;
         const n = Math.floor(sr * P.DURACAO_S);
         const ir = ctx.createBuffer(2, n, sr);
         const pre = Math.round(P.PRE_DELAY_S * sr);
         for (let c = 0; c < 2; c++) {
-            const sorteio = _aleatorioComSemente(0x91E7A + c * 0x9E3779B9);
+            const sorteio = _aleatorioComSemente(semente + c * 0x9E3779B9);
             const d = ir.getChannelData(c);
             // Primeiras reflexões: o lado direito chega um tico depois e com sinal
             // trocado em metade delas — é isso que abre a sala no estéreo.
@@ -732,6 +748,11 @@
     // O que entra na sala: Estúdio = direto (null, sem filtro nenhum); Plenário =
     // caixa de som (corta grave < 200 Hz e agudo > 5,5 kHz, +3 dB no meio).
     function criarEnvioSala(ctx, sala) {
+        if (sala === 'camara') {
+            const hpC = ctx.createBiquadFilter();
+            hpC.type = 'highpass'; hpC.frequency.value = CAMARA.ENVIO_HP_HZ; hpC.Q.value = 0.7;
+            return { input: hpC, output: hpC, sala };
+        }
         if (sala !== 'plenario') return null;
         const P = PLENARIO;
         const hp = ctx.createBiquadFilter();
@@ -743,6 +764,26 @@
         hp.connect(meio);
         meio.connect(lp);
         return { input: hp, output: lp, sala };
+    }
+
+    // ── ✨ BRILHO (13/11/2026, referência dele: ReaFir em "sorriso") ──────
+    // Médios levemente cavados (tira o "fanho") + ar aberto acima de 10 kHz.
+    // Liga/desliga; desligado = ganho 0 nos dois filtros = som idêntico ao de antes.
+    // MESMO construtor no play (minidaw.js) e no arquivo (renderizarMix).
+    const BRILHO = { MEIO_HZ: 1000, MEIO_Q: 0.7, MEIO_DB: -3, AR_HZ: 10000, AR_DB: 5 };
+    function criarBrilho(ctx) {
+        const meio = ctx.createBiquadFilter();
+        meio.type = 'peaking'; meio.frequency.value = BRILHO.MEIO_HZ; meio.Q.value = BRILHO.MEIO_Q; meio.gain.value = 0;
+        const ar = ctx.createBiquadFilter();
+        ar.type = 'highshelf'; ar.frequency.value = BRILHO.AR_HZ; ar.gain.value = 0;
+        meio.connect(ar);
+        return {
+            input: meio, output: ar,
+            aplicar(ligado) {
+                meio.gain.value = ligado ? BRILHO.MEIO_DB : 0;
+                ar.gain.value = ligado ? BRILHO.AR_DB : 0;
+            }
+        };
     }
 
     // Quantidade escolhida na faixa (0..1), mesmo com o botão desligado — é o
@@ -1226,7 +1267,7 @@
 
     global.MixEngine = {
         REVERB_DURACAO_S, REVERB_QUANTIDADE_PADRAO, criarImpulsoReverb, quantidadeReverbDaFaixa, wetReverbDaFaixa,
-        SALAS, PLENARIO, salaDaFaixa, criarEnvioSala,
+        SALAS, PLENARIO, CAMARA, salaDaFaixa, criarEnvioSala, BRILHO, criarBrilho,
         DELAY_QUANTIDADE_PADRAO, quantidadeDelayDaFaixa, wetDelayDaFaixa,
         GANHO_OBJETO_MAX_DB, RAMPA_VOLUME_S, ganhoDbDoClip, dbParaLinear, volumeDoClip, agendarVolumeDoClip,
         XF_SEGMENTOS, crossfadesDoClip, agendarCrossfadeDoClip,

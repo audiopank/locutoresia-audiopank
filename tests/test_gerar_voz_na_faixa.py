@@ -35,4 +35,4 @@ def test_mesmo_motor_inline_e_mesmo_caminho_do_arquivo():
 
 def test_versoes():
     html = _ler('templates', 'minidaw.html')
-    assert '/static/minidaw.js?v=90' in html and '/static/regerar-trecho.js?v=3' in html
+    assert '/static/minidaw.js?v=91' in html and '/static/regerar-trecho.js?v=3' in html

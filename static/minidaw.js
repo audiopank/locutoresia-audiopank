@@ -597,7 +597,7 @@ class MiniDAW {
                             <div class="ms-2 border-start border-secondary px-2"></div>
                             <button class="effect-btn ${track.effects.reverb ? 'active' : ''}" 
                                     onclick="minidaw.toggleEffect('${track.id}', 'reverb')">
-                                <i class="fas fa-water"></i> Reverb${MixEngine.salaDaFaixa(track) === 'plenario' ? ' 🏛️' : ''}
+                                <i class="fas fa-water"></i> Reverb${({ plenario: ' 🏛️', camara: ' 🎻' })[MixEngine.salaDaFaixa(track)] || ''}
                             </button>
                             <button class="effect-btn ${track.effects.delay ? 'active' : ''}" 
                                     onclick="minidaw.toggleEffect('${track.id}', 'delay')">
@@ -630,6 +630,11 @@ class MiniDAW {
                                         onclick="minidaw.toggleEffect('${track.id}', 'presence')">
                                     <i class="fas fa-volume-up"></i> Presença
                                 </button>
+                                <button class="effect-btn ${track.effects.brilho ? 'active' : ''}"
+                                        onclick="minidaw.toggleEffect('${track.id}', 'brilho')"
+                                        title="✨ Brilho (curva sorriso): médios −3 dB em 1 kHz (tira o fanho) + ar aberto acima de 10 kHz. Liga só se precisar.">
+                                    ✨ Brilho
+                                </button>
                                 <button class="effect-btn ${track.effects.limiter ? 'active' : ''}" 
                                         onclick="minidaw.toggleEffect('${track.id}', 'limiter')">
                                     <i class="fas fa-stop-circle"></i> Limit
@@ -651,11 +656,12 @@ class MiniDAW {
                                 onchange="minidaw.updateSalaReverb('${track.id}', this.value)">
                             <option value="estudio" ${MixEngine.salaDaFaixa(track) === 'estudio' ? 'selected' : ''}>Estúdio (padrão)</option>
                             <option value="plenario" ${MixEngine.salaDaFaixa(track) === 'plenario' ? 'selected' : ''}>🏛️ Plenário</option>
+                            <option value="camara" ${MixEngine.salaDaFaixa(track) === 'camara' ? 'selected' : ''}>🎻 Câmara</option>
                         </select>
                     </div>
                     <small>
                         Voz de spot e podcast: 10 a 20%. Acima de 40% a voz afasta e embola
-                        na caixinha do celular. 🏛️ Plenário: 20 a 35%. O arquivo exportado sai igual ao que você ouve.
+                        na caixinha do celular. 🏛️ Plenário: 20 a 35%. 🎻 Câmara (sala curta e brilhante): 10 a 20%. O arquivo exportado sai igual ao que você ouve.
                     </small>
                 </div>
                 <div class="delay-panel ${track.effects.delay ? 'ativo' : ''}" id="delaypanel_${track.id}">
@@ -925,11 +931,14 @@ class MiniDAW {
         
         // Connect nodes: HPF -> EQ -> Presence -> Compressor -> Limiter -> Analyser -> Gain -> Pan -> Master
         // Reverb em paralelo: Limiter -> Reverb -> ReverbGain -> Gain (volume da faixa) — igual ao export
+        // ✨ Brilho (13/11/2026): MESMO construtor do export (mix-engine).
+        const brilho = MixEngine.criarBrilho(this.audioContext);
         hpfNode.connect(eqLowNode);
         eqLowNode.connect(eqNode);
         eqNode.connect(eqHighNode);
         eqHighNode.connect(eqAirNode);
-        eqAirNode.connect(presenceNode);
+        eqAirNode.connect(brilho.input);
+        brilho.output.connect(presenceNode);
         // De-esser (Suíte v2 D1): MESMO construtor do export (mix-engine).
         const deesser = MixEngine.criarDeesser(this.audioContext, MixEngine.freqDeesserDaFaixa(track));
         presenceNode.connect(deesser.input);
@@ -975,6 +984,7 @@ class MiniDAW {
             eqHighNode,
             eqAirNode,
             presenceNode,
+            brilho,
             deesser,
             largura,
             compressorNode,
@@ -1025,15 +1035,22 @@ class MiniDAW {
             track.sala = 'plenario';
             track.effects.reverb = true;
             if (MixEngine.quantidadeReverbDaFaixa(track) < 0.2) track.reverbAmount = 0.25;
+        } else if (sala === 'camara') {
+            track.sala = 'camara';
+            track.effects.reverb = true;
+            if (MixEngine.quantidadeReverbDaFaixa(track) < 0.1) track.reverbAmount = 0.15;
         } else {
             delete track.sala;
         }
         this.updateTrackUI(track);          // recria o card: botão Reverb, painel e slider
         this.applyEffectStates(track);      // religa a sala no play
         this.saveToLocalStorage();
+        const pct = Math.round(MixEngine.quantidadeReverbDaFaixa(track) * 100);
         this.showNotification(sala === 'plenario'
-            ? `🏛️ Plenário em "${track.name}" — reverb em ${Math.round(MixEngine.quantidadeReverbDaFaixa(track) * 100)}%. Ajuste de ouvido (20 a 35%).`
-            : `Sala Estúdio em "${track.name}" (o reverb de sempre).`, 'info');
+            ? `🏛️ Plenário em "${track.name}" — reverb em ${pct}%. Ajuste de ouvido (20 a 35%).`
+            : sala === 'camara'
+                ? `🎻 Câmara em "${track.name}" — reverb em ${pct}%. Ajuste de ouvido (10 a 20%).`
+                : `Sala Estúdio em "${track.name}" (o reverb de sempre).`, 'info');
     }
 
     // A sala do reverb agora é a do motor (semente fixa), a MESMA do export.
@@ -1097,6 +1114,7 @@ class MiniDAW {
 
         // Presence boost
         nodes.presenceNode.gain.value = track.effects.presence ? 4 : 0; // +4dB de presença
+        if (nodes.brilho) nodes.brilho.aplicar(!!track.effects.brilho);
 
         // De-esser (só banda alta; desligado = caminho seco)
         if (nodes.deesser) {
@@ -2769,7 +2787,7 @@ class MiniDAW {
         destino.compressorSettings = Object.assign({}, origem.compressorSettings || {});
         destino.reverbAmount = MixEngine.quantidadeReverbDaFaixa(origem);   // sempre: faixa no padrão (30%) também iguala
         destino.delayAmount = MixEngine.quantidadeDelayDaFaixa(origem);
-        if (MixEngine.salaDaFaixa(origem) === 'plenario') destino.sala = 'plenario'; else delete destino.sala;
+        if (MixEngine.salaDaFaixa(origem) !== 'estudio') destino.sala = MixEngine.salaDaFaixa(origem); else delete destino.sala;
     }
 
     // ── PRESETS POR FAIXA (02/10/2026) ───────────────────────────────────
@@ -2859,7 +2877,7 @@ class MiniDAW {
         if (typeof e.reverbAmount === 'number') track.reverbAmount = e.reverbAmount;
         if (typeof e.delayAmount === 'number') track.delayAmount = e.delayAmount;
         // Preset = a cadeia inteira: sem o campo (preset antigo) é sala Estúdio, como soava.
-        if (e.sala === 'plenario') track.sala = 'plenario'; else delete track.sala;
+        if (MixEngine.salaDaFaixa(e) !== 'estudio') track.sala = MixEngine.salaDaFaixa(e); else delete track.sala;
         track.presetFaixa = p.nome;
         this.updateTrackUI(track);   // recria o card já reaplicando efeitos e sliders
         this.saveToLocalStorage();
@@ -6044,7 +6062,7 @@ class MiniDAW {
                 deesserSettings: t.deesserSettings,
                 reverbAmount: MixEngine.quantidadeReverbDaFaixa(t),
                 delayAmount: MixEngine.quantidadeDelayDaFaixa(t),
-                sala: MixEngine.salaDaFaixa(t) === 'plenario' ? 'plenario' : undefined,   // Estúdio = sem campo
+                sala: MixEngine.salaDaFaixa(t) !== 'estudio' ? MixEngine.salaDaFaixa(t) : undefined,   // Estúdio = sem campo
                 automacaoVolume: t.automacaoVolume,
                 buffers: [], clips: []
             };
@@ -6640,7 +6658,7 @@ class MiniDAW {
             // Quantidade do reverb (29/09/2026). Projeto antigo (sem o campo) = padrão 30%, como soava.
             track.reverbAmount = (td.reverbAmount != null) ? MixEngine.quantidadeReverbDaFaixa(td) : undefined;
             track.delayAmount = (td.delayAmount != null) ? MixEngine.quantidadeDelayDaFaixa(td) : undefined;   // antigo = 12%, como soava
-            if (td.sala === 'plenario') track.sala = 'plenario'; else delete track.sala;   // 🏛️ sem campo = Estúdio
+            if (MixEngine.salaDaFaixa(td) !== 'estudio') track.sala = MixEngine.salaDaFaixa(td); else delete track.sala;   // 🏛️🎻 sem campo = Estúdio
             // Normaliza o formato -- cobre projetos salvos antes desta
             // feature (campo ausente), e os salvos HOJE mais cedo antes
             // do liga/desliga de verdade existir (formato antigo: array

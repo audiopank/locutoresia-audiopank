@@ -71,4 +71,4 @@ def test_versao():
     c = app.test_client()
     with c.session_transaction() as s:
         s['admin'] = True
-    assert 'minidaw.js?v=90' in c.get('/minidaw').get_data(as_text=True)
+    assert 'minidaw.js?v=91' in c.get('/minidaw').get_data(as_text=True)
