@@ -661,7 +661,7 @@ class MiniDAW {
                     </div>
                     <small>
                         Voz de spot e podcast: 10 a 20%. Acima de 40% a voz afasta e embola
-                        na caixinha do celular. 🏛️ Plenário: 20 a 35%. 🎻 Câmara (sala curta e brilhante): 10 a 20%. O arquivo exportado sai igual ao que você ouve.
+                        na caixinha do celular. 🏛️ Plenário: 20 a 35%. 🎻 Câmara (sala brilhante e presente): 10 a 25%. O arquivo exportado sai igual ao que você ouve.
                     </small>
                 </div>
                 <div class="delay-panel ${track.effects.delay ? 'ativo' : ''}" id="delaypanel_${track.id}">
@@ -1049,7 +1049,7 @@ class MiniDAW {
         this.showNotification(sala === 'plenario'
             ? `🏛️ Plenário em "${track.name}" — reverb em ${pct}%. Ajuste de ouvido (20 a 35%).`
             : sala === 'camara'
-                ? `🎻 Câmara em "${track.name}" — reverb em ${pct}%. Ajuste de ouvido (10 a 20%).`
+                ? `🎻 Câmara em "${track.name}" — reverb em ${pct}%. Ajuste de ouvido (10 a 25%).`
                 : `Sala Estúdio em "${track.name}" (o reverb de sempre).`, 'info');
     }
 

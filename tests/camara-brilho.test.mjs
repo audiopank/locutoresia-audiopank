@@ -35,20 +35,21 @@ test('salaDaFaixa reconhece "camara"; lixo continua Estúdio', () => {
     assert.equal(ME.salaDaFaixa({ sala: 'catedral' }), 'estudio');
 });
 
-test('Câmara: determinística, estéreo, mais curta que o Plenário e diferente das outras', () => {
+test('Câmara: determinística, estéreo, cauda ~1,4 s (13/11: a de 0,85 s "não mudava quase nada")', () => {
     const sr = 16000;
     const a = ME.criarImpulsoReverb(contextoFalso(sr), 'camara');
     const b = ME.criarImpulsoReverb(contextoFalso(sr), 'camara');
     assert.deepEqual(Array.from(a.getChannelData(0)), Array.from(b.getChannelData(0)));
     const L = a.getChannelData(0), R = a.getChannelData(1);
     assert.notDeepEqual(Array.from(L.slice(0, 4000)), Array.from(R.slice(0, 4000)));
-    const pl = ME.criarImpulsoReverb(contextoFalso(sr), 'plenario');
-    assert.ok(a.length < pl.length, 'câmara mais curta que o plenário');
-    // pré-delay mudo, depois a sala; ~0,85 s depois a cauda já caiu muito
+    assert.ok(a.length <= ME.REVERB_DURACAO_S * sr, 'não passa da sala Estúdio');
+    // pré-delay mudo, depois a sala; em 0,8 s cai uns 30-40 dB (RT60 ~1,4 s): cauda que se ouve
     const pre = Math.round(ME.CAMARA.PRE_DELAY_S * sr);
+    assert.ok(ME.CAMARA.PRE_DELAY_S >= 0.02, 'pré-delay separa a sala da voz');
     assert.equal(rms(L, 0, pre - 1), 0);
     const ini = rms(L, pre, pre + 800), fim = rms(L, pre + Math.round(0.8 * sr), pre + Math.round(0.85 * sr));
-    assert.ok(db(ini) - db(fim) > 40, `caiu ${(db(ini) - db(fim)).toFixed(1)} dB`);
+    const queda = db(ini) - db(fim);
+    assert.ok(queda > 25 && queda < 45, `caiu ${queda.toFixed(1)} dB`);
     for (const v of L) assert.ok(Math.abs(v) <= 1.5);
 });
 
@@ -58,12 +59,14 @@ test('Plenário continua o mesmo de antes (não mexi nele)', () => {
     assert.equal(P.PRE_DELAY_S, 0.018);
 });
 
-test('Envio da Câmara: só tira o grave do retorno (sala sem lama); Estúdio continua sem filtro', () => {
+test('Envio da Câmara: tira o grave do retorno (sala sem lama) e entra +8 dB; Estúdio continua sem filtro', () => {
     const ctx = contextoFalso(16000);
+    ctx.createGain = () => ({ gain: { value: 1 }, connect(o) { return o; } });
     const env = ME.criarEnvioSala(ctx, 'camara');
-    assert.equal(env.input, env.output);
     assert.equal(env.input.type, 'highpass');
     assert.equal(env.input.frequency.value, ME.CAMARA.ENVIO_HP_HZ);
+    assert.ok(env.input.ligado.includes(env.output));
+    assert.ok(Math.abs(env.output.gain.value - Math.pow(10, 8 / 20)) < 1e-9);
     assert.equal(ME.criarEnvioSala(ctx, 'estudio'), null);
 });
 

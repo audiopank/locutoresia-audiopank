@@ -703,13 +703,13 @@
         CAIXA_HP_HZ: 200, CAIXA_MEIO_HZ: 2500, CAIXA_MEIO_DB: 3, CAIXA_LP_HZ: 5500,
     };
     // 🎻 "Câmara" (13/11/2026, referência dele: Nectar 4 "Chamber tone"): sala
-    // pequena e elegante — pré-delay curto, reflexões cedo, cauda de ~0,85 s que
-    // escurece pouco (fica brilhante). O retorno só perde o grave (sem lama).
+    // pequena e elegante — pré-delay de 25 ms, reflexões cedo, cauda de ~1,4 s que
+    // escurece pouco (fica brilhante). O retorno perde o grave (sem lama) e entra +8 dB.
     const CAMARA = {
-        DURACAO_S: 1.3, PRE_DELAY_S: 0.010, RT60_S: 0.85, CAUDA_S: 0.02,
+        DURACAO_S: 2.0, PRE_DELAY_S: 0.025, RT60_S: 1.4, CAUDA_S: 0.02,
         REFLEXOES: [[0.004, 0.55], [0.009, 0.45], [0.014, 0.4], [0.019, 0.32], [0.025, 0.26], [0.032, 0.2]],
-        CORTE_INI_HZ: 9000, CORTE_FIM_HZ: 3500,
-        ENVIO_HP_HZ: 180,
+        CORTE_INI_HZ: 9000, CORTE_FIM_HZ: 4000,
+        ENVIO_HP_HZ: 180, ENVIO_GANHO_DB: 8,
     };
     function salaDaFaixa(track) {
         const s = track && track.sala;
@@ -751,7 +751,12 @@
         if (sala === 'camara') {
             const hpC = ctx.createBiquadFilter();
             hpC.type = 'highpass'; hpC.frequency.value = CAMARA.ENVIO_HP_HZ; hpC.Q.value = 0.7;
-            return { input: hpC, output: hpC, sala };
+            // 13/11 ("muda muito pouco"): a câmara entra mais forte que as outras
+            // salas na mesma quantidade — senão some atrás da voz.
+            const ganhoC = ctx.createGain();
+            ganhoC.gain.value = Math.pow(10, CAMARA.ENVIO_GANHO_DB / 20);
+            hpC.connect(ganhoC);
+            return { input: hpC, output: ganhoC, sala };
         }
         if (sala !== 'plenario') return null;
         const P = PLENARIO;

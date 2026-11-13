@@ -56,7 +56,7 @@ def test_paginas_e_css():
     with c.session_transaction() as s:
         s['admin'] = True
     html = c.get('/minidaw').get_data(as_text=True)
-    for t in ('mix-engine.js?v=22', 'minidaw.js?v=91', '.delay-panel.ativo', '.track-card.compacta .delay-panel'):
+    for t in ('mix-engine.js?v=23', 'minidaw.js?v=92', '.delay-panel.ativo', '.track-card.compacta .delay-panel'):
         assert t in html, t
     for pagina in ('/gerador', '/narrativa'):
-        assert 'mix-engine.js?v=22' in c.get(pagina).get_data(as_text=True), pagina
+        assert 'mix-engine.js?v=23' in c.get(pagina).get_data(as_text=True), pagina
