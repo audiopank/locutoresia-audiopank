@@ -823,7 +823,7 @@ def vitrine():
     /vitrine -> /solicitar -> link da prévia (/aprovacao/<id>) -> pagamento.
     Fica FORA da '/' de propósito: a home é a bancada de trabalho.
     """
-    return render_template('landing.html')
+    return render_template('landing.html', pacotes=PACOTES_CREDITOS)
 
 
 @app.route('/demos-voz')
@@ -3546,6 +3546,120 @@ def get_planos_config():
     return base
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# 🎟️ PACOTES DE CRÉDITOS (16/11/2026) — 1 crédito = 1 spot pronto até 45 s;
+# 60–90 s = 2. O cliente compra o pacote na Kiwify (links PÚBLICOS abaixo), pede
+# pelo WhatsApp/formulário e o produtor debita no painel. O saldo mora em
+# app_config (chave 'creditos', lista de movimentos) — sem tabela nova, sem SQL.
+# ══════════════════════════════════════════════════════════════════════════
+PACOTES_CREDITOS = {
+    'pacote_5':  {'label': 'Pacote 5 Spots', 'publico': 'Comércio, campanha do mês',
+                  'creditos': 5, 'valor': 350.0, 'kiwify_url': 'https://pay.kiwify.com.br/s3oyFmB'},
+    'pacote_10': {'label': 'Pacote 10 Spots', 'publico': 'Loja com promoção toda semana', 'destaque': True,
+                  'creditos': 10, 'valor': 550.0, 'kiwify_url': 'https://pay.kiwify.com.br/eXkBPsU'},
+    'pacote_25': {'label': 'Pacote Agência 25 Spots', 'publico': 'Agência pequena, prefeitura',
+                  'creditos': 25, 'valor': 950.0, 'kiwify_url': 'https://pay.kiwify.com.br/oBMaicU'},
+    'pacote_50': {'label': 'Pacote Emissora 50 Spots', 'publico': 'Rádio e agência grande',
+                  'creditos': 50, 'valor': 1650.0, 'kiwify_url': 'https://pay.kiwify.com.br/iVBxyee'},
+}
+for _pc in PACOTES_CREDITOS.values():
+    _pc['por_spot'] = round(_pc['valor'] / _pc['creditos'], 2)
+    _pc['economia'] = round(100 * (1 - _pc['por_spot'] / PEDIDO_PLANOS['spot_30_45']['valor']))
+
+# Quantos créditos cada plano gasta. Fora daqui (jingle, teaser, orçamento) = não usa crédito.
+CREDITOS_POR_PLANO = {'spot_30_45': 1, 'spot_60_90': 2}
+
+
+def creditos_do_produto(nome):
+    """Produto da Kiwify é pacote? Devolve os créditos lidos do nome ("Pacote 10 Spots"
+    → 10) ou None. A palavra "Pacote" no nome é o combinado com o produtor."""
+    n = str(nome or '').lower()
+    if 'pacote' not in n:
+        return None
+    m = re.search(r'(\d+)\s*spots?', n)
+    return int(m.group(1)) if m else None
+
+
+def creditos_do_plano(plano):
+    return CREDITOS_POR_PLANO.get(plano or '')
+
+
+def _digitos(tel):
+    return re.sub(r'\D', '', str(tel or ''))
+
+
+def _movimentos_do_cliente(movs, email, tel):
+    """Índices dos movimentos da mesma pessoa. Mesma regra do webhook pra pedidos
+    (e-mail igual OU últimos 8 dígitos do telefone), mas TRANSITIVA: a compra veio
+    com e-mail + telefone e o débito só com telefone → tudo é do mesmo cliente."""
+    e0 = str(email or '').strip().lower()
+    t0 = _digitos(tel)
+    emails = {e0} if e0 else set()
+    tels = {t0[-8:]} if len(t0) >= 8 else set()
+    achados, mudou = set(), True
+    while mudou:
+        mudou = False
+        for i, m in enumerate(movs or []):
+            if i in achados:
+                continue
+            me = str(m.get('email') or '').strip().lower()
+            mt = _digitos(m.get('whatsapp'))
+            if (me and me in emails) or (len(mt) >= 8 and mt[-8:] in tels):
+                achados.add(i)
+                mudou = True
+                if me:
+                    emails.add(me)
+                if len(mt) >= 8:
+                    tels.add(mt[-8:])
+    return achados
+
+
+def saldo_creditos(movs, email, tel):
+    return sum(int(movs[i].get('delta') or 0) for i in _movimentos_do_cliente(movs, email, tel))
+
+
+def resumo_creditos(movs):
+    """Um grupo por cliente, com saldo e última compra (maior saldo primeiro)."""
+    movs, grupos, vistos = list(movs or []), [], set()
+    for i, m in enumerate(movs):
+        if i in vistos:
+            continue
+        idx = _movimentos_do_cliente(movs, m.get('email'), m.get('whatsapp')) or {i}
+        vistos |= idx
+        dele = [movs[j] for j in sorted(idx)]
+        compras = [x.get('quando') for x in dele if int(x.get('delta') or 0) > 0 and x.get('quando')]
+        grupos.append({
+            'nome': next((str(x['nome']) for x in dele if x.get('nome')), ''),
+            'email': next((str(x['email']).strip().lower() for x in dele if x.get('email')), ''),
+            'whatsapp': next((_digitos(x['whatsapp']) for x in dele if x.get('whatsapp')), ''),
+            'saldo': sum(int(x.get('delta') or 0) for x in dele),
+            'ultima_compra': max(compras) if compras else None,
+        })
+    return sorted(grupos, key=lambda g: -g['saldo'])
+
+
+def _ler_creditos():
+    r = supabase_manager.newpost_manager_client.table('app_config') \
+        .select('valor').eq('chave', 'creditos').limit(1).execute()
+    v = (r.data or [{}])[0].get('valor') if r.data else None
+    return list((v or {}).get('movimentos') or []) if isinstance(v, dict) else []
+
+
+def _gravar_creditos(movs):
+    # shortcut: ler-alterar-gravar sem trava; volume baixo (1 produtor + webhook).
+    # Se um dia houver muitos pagamentos simultâneos, virar tabela com INSERT.
+    supabase_manager.newpost_manager_client.table('app_config').upsert({
+        "chave": "creditos", "valor": {"movimentos": movs},
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }).execute()
+
+
+def _novo_movimento(**campos):
+    m = {'id': str(uuid.uuid4()), 'quando': datetime.now(timezone.utc).isoformat()}
+    m.update(campos)
+    return m
+
+
 def _admin_ok():
     """Gate do Admin: compara a senha do header com ADMIN_PASSWORD (env). Sem a env
     definida, o Admin fica DESLIGADO (nega tudo) — nunca fica aberto por engano."""
@@ -3661,6 +3775,92 @@ def list_pedidos():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/creditos', methods=['GET'])
+def listar_creditos():
+    """Painel: clientes com saldo, pacotes vendidos no mês, saldo de cada pedido e
+    quais pedidos foram pagos com crédito (o Recebimentos do mês não conta esses)."""
+    if not supabase_manager or not supabase_manager.newpost_manager_client:
+        return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+    try:
+        movs = _ler_creditos()
+        mes = datetime.now(timezone.utc).strftime('%Y-%m')
+        vendidos = sum(float(m.get('valor') or 0) for m in movs
+                       if int(m.get('delta') or 0) > 0 and str(m.get('quando') or '').startswith(mes))
+        pedidos = supabase_manager.newpost_manager_client.table('pedidos') \
+            .select('id,email,whatsapp').execute().data or []
+        return jsonify({
+            "success": True,
+            "clientes": resumo_creditos(movs),
+            "vendidos_mes": round(vendidos, 2),
+            "saldo_por_pedido": {p['id']: saldo_creditos(movs, p.get('email'), p.get('whatsapp')) for p in pedidos},
+            "pedidos_com_credito": [m['ref'][7:] for m in movs if str(m.get('ref') or '').startswith('pedido:')],
+            "pacotes": PACOTES_CREDITOS,
+        })
+    except Exception as e:
+        print(f"Erro ao listar créditos: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/creditos/ajuste', methods=['POST'])
+def ajustar_creditos():
+    """Créditos à mão: pacote pago por PIX direto, cortesia, correção (+ ou −)."""
+    if not supabase_manager or not supabase_manager.newpost_manager_client:
+        return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+    d = request.get_json() or {}
+    email = str(d.get('email') or '').strip().lower()[:120]
+    tel = _digitos(d.get('whatsapp'))[:20]
+    try:
+        qtd = int(d.get('quantidade'))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Quantidade inválida"}), 400
+    if not (email or len(tel) >= 8):
+        return jsonify({"success": False, "error": "Informe o e-mail ou o WhatsApp do cliente"}), 400
+    if qtd == 0 or abs(qtd) > 100:
+        return jsonify({"success": False, "error": "Quantidade entre -100 e 100, diferente de zero"}), 400
+    try:
+        valor = float(d['valor']) if d.get('valor') not in (None, '') else None
+    except (TypeError, ValueError):
+        valor = None
+    movs = _ler_creditos()
+    movs.append(_novo_movimento(nome=str(d.get('nome') or '')[:80], email=email, whatsapp=tel, delta=qtd,
+                                valor=valor if (valor and qtd > 0) else None,
+                                motivo=('Ajuste: ' + str(d.get('motivo') or 'à mão'))[:120], ref=''))
+    _gravar_creditos(movs)
+    return jsonify({"success": True, "saldo": saldo_creditos(movs, email, tel)})
+
+
+@app.route('/api/pedidos/<pedido_id>/usar-credito', methods=['POST'])
+def usar_credito_no_pedido(pedido_id):
+    """"Pagar com crédito": debita 1 (spot 30-45 s) ou 2 (60-90 s) e marca o pedido
+    pago — o cliente libera o download. O valor do pedido fica como estava."""
+    if not supabase_manager or not supabase_manager.newpost_manager_client:
+        return jsonify({"success": False, "error": "Supabase não configurado"}), 500
+    r = supabase_manager.newpost_manager_client.table('pedidos') \
+        .select('id,email,whatsapp,plano,pago,cliente_nome').eq('id', pedido_id).limit(1).execute()
+    if not r.data:
+        return jsonify({"success": False, "error": "Pedido não encontrado"}), 404
+    p = r.data[0]
+    if p.get('pago'):
+        return jsonify({"success": False, "error": "Esse pedido já está pago"}), 400
+    qtd = creditos_do_plano(p.get('plano'))
+    if not qtd:
+        return jsonify({"success": False, "error": "Só spot de 30-45 s (1 crédito) ou 60-90 s (2 créditos) usa crédito"}), 400
+    movs = _ler_creditos()
+    if any(m.get('ref') == 'pedido:' + pedido_id for m in movs):
+        return jsonify({"success": False, "error": "Crédito já debitado neste pedido"}), 400
+    saldo = saldo_creditos(movs, p.get('email'), p.get('whatsapp'))
+    if saldo < qtd:
+        return jsonify({"success": False, "error": f"Saldo insuficiente: o cliente tem {saldo} e o pedido gasta {qtd}"}), 400
+    movs.append(_novo_movimento(nome=str(p.get('cliente_nome') or '')[:80], email=str(p.get('email') or '').strip().lower(),
+                                whatsapp=_digitos(p.get('whatsapp')), delta=-qtd, valor=None,
+                                motivo=f'Pedido #{pedido_id[:8]}', ref='pedido:' + pedido_id))
+    _gravar_creditos(movs)
+    agora = datetime.now(timezone.utc).isoformat()
+    supabase_manager.newpost_manager_client.table('pedidos') \
+        .update({"pago": True, "pago_em": agora, "updated_at": agora}).eq('id', pedido_id).execute()
+    return jsonify({"success": True, "debitados": qtd, "saldo": saldo - qtd})
+
 
 @app.route('/api/pedidos/<pedido_id>', methods=['PATCH', 'OPTIONS'])
 def update_pedido(pedido_id):
@@ -3811,6 +4011,24 @@ def kiwify_webhook(token):
 
         if not supabase_manager or not supabase_manager.newpost_manager_client:
             return jsonify({"success": True, "matched": False}), 200
+
+        # 🎟️ PACOTE de créditos (16/11/2026): soma créditos e NUNCA quita pedido —
+        # antes, a compra de um pacote quitaria o último pedido pendente do cliente.
+        produto = str(_pega(payload, 'Product.product_name', 'product.name', 'product_name', 'Product.name'))
+        n_creditos = creditos_do_produto(produto)
+        if n_creditos:
+            ordem = str(_pega(payload, 'order_id', 'order_ref', 'Order.order_id') or '')
+            ref = 'kiwify:' + ordem if ordem else ''
+            movs = _ler_creditos()
+            if ref and any(m.get('ref') == ref for m in movs):
+                return jsonify({"success": True, "duplicado": True}), 200
+            valor = next((p['valor'] for p in PACOTES_CREDITOS.values() if p['creditos'] == n_creditos), None)
+            movs.append(_novo_movimento(
+                nome=str(_pega(payload, 'Customer.full_name', 'customer.name', 'Customer.name'))[:80],
+                email=email, whatsapp=mobile_digits, delta=n_creditos, valor=valor,
+                motivo=('Compra Kiwify — ' + produto)[:120], ref=ref))
+            _gravar_creditos(movs)
+            return jsonify({"success": True, "credited": n_creditos}), 200
 
         # Casa com o pedido: entre os NÃO pagos com valor, o mais recente cujo e-mail
         # (ou telefone) bate. Heurística — volume baixo, dono confere no painel.

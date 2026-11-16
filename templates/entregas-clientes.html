@@ -183,6 +183,32 @@
             <div id="pedidosKanban" style="display:none;"></div>
         </div>
 
+        <!-- 🎟️ CRÉDITOS (16/11/2026): pacotes comprados na Kiwify somam aqui sozinhos
+             (webhook); "Pagar com crédito" no pedido debita. Ajuste à mão abaixo. -->
+        <div class="section-card" id="painelCreditos">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <h5 class="mb-0">🎟️ Créditos de clientes</h5>
+                <span class="text-secondary" style="font-size:.9rem;">Pacotes vendidos no mês:
+                    <strong id="creditosVendidosMes" style="color:#34d399;">—</strong></span>
+            </div>
+            <p class="text-secondary" style="font-size:.85rem;">1 crédito = spot até 45 s · 60–90 s = 2 créditos · jingle não usa crédito.
+                Compra pela Kiwify entra sozinha; PIX direto ou cortesia, adicione à mão.</p>
+            <div id="creditosLista"><p class="text-secondary mb-0">Carregando...</p></div>
+            <details class="mt-3">
+                <summary style="cursor:pointer;">➕ Adicionar créditos à mão</summary>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-4"><input class="form-control form-control-sm" id="credNome" placeholder="Nome do cliente"></div>
+                    <div class="col-md-4"><input class="form-control form-control-sm" id="credEmail" placeholder="E-mail"></div>
+                    <div class="col-md-4"><input class="form-control form-control-sm" id="credWhats" placeholder="WhatsApp"></div>
+                    <div class="col-md-2"><input class="form-control form-control-sm" id="credQtd" type="number" placeholder="Créditos (−/+)"></div>
+                    <div class="col-md-2"><input class="form-control form-control-sm" id="credValor" type="number" step="0.01" placeholder="Valor R$ (opcional)"></div>
+                    <div class="col-md-5"><input class="form-control form-control-sm" id="credMotivo" placeholder="Motivo (ex.: PIX direto, cortesia)"></div>
+                    <div class="col-md-3"><button class="btn btn-sm btn-success w-100" onclick="ajustarCreditos()">Lançar</button></div>
+                </div>
+                <small class="text-secondary">Número negativo tira créditos (ex.: −1 pra corrigir um débito).</small>
+            </details>
+        </div>
+
         <!-- ══ CHECAGEM ANTES DE ENTREGAR ═══════════════════════════════════
              Confere duração x plano vendido e frase legal obrigatória. Roda
              ANTES do cliente ouvir — é aqui que erro custa barato. Card novo:
@@ -342,6 +368,10 @@
         const PEDIDO_STATUS_LABELS = { novo: 'Novo', em_producao: 'Em produção', aguardando_aprovacao: 'Aguardando aprovação', concluido: 'Concluído', cancelado: 'Cancelado' };
         let pedidosCache = {};
         let pedidoVinculado = null;
+        // 🎟️ Créditos: saldo de cada pedido e quais foram pagos com crédito.
+        const CREDITOS_POR_PLANO = { spot_30_45: 1, spot_60_90: 2 };
+        let creditos = { saldo_por_pedido: {}, vendidos_mes: 0 };
+        let pedidosComCredito = new Set();
 
         function formatDateBr(iso) {
             if (!iso) return '';
@@ -358,6 +388,7 @@
             let total = 0;
             pedidos.forEach(p => {
                 if (!p.pago || !p.valor) return;
+                if (pedidosComCredito.has(p.id)) return;     // o dinheiro entrou na venda do pacote
                 const d = p.pago_em ? new Date(p.pago_em) : null;
                 if (d && !isNaN(d) && d.getMonth() === agora.getMonth() && d.getFullYear() === agora.getFullYear()) {
                     total += Number(p.valor) || 0;
@@ -379,6 +410,12 @@
                 if (!result.success) throw new Error(result.error || 'Falha ao carregar pedidos');
 
                 const pedidos = result.pedidos || [];
+                const cred = await fetch('/api/creditos').then(r => r.json()).catch(() => null);
+                if (cred && cred.success) {
+                    creditos = cred;
+                    pedidosComCredito = new Set(cred.pedidos_com_credito || []);
+                }
+                renderCreditos(cred);
                 pedidosCache = {};
                 pedidos.forEach(p => { pedidosCache[p.id] = p; });
 
@@ -387,16 +424,21 @@
                     return;
                 }
 
-                const recebido = recebimentosDoMes(pedidos);
+                const vendasPacotes = Number(creditos.vendidos_mes) || 0;
+                const recebido = recebimentosDoMes(pedidos) + vendasPacotes;
                 const widget = `<div class="pedido-note d-flex justify-content-between align-items-center">
-                        <span><i class="fas fa-hand-holding-dollar me-1"></i>Recebimentos do mês</span>
+                        <span><i class="fas fa-hand-holding-dollar me-1"></i>Recebimentos do mês${vendasPacotes ? ` <small class="text-secondary">(inclui ${formatBRL(vendasPacotes)} em pacotes)</small>` : ''}</span>
                         <strong style="color:#34d399; font-size:1.05rem;">${formatBRL(recebido)}</strong>
                     </div>`;
 
                 container.innerHTML = widget + pedidos.map(p => {
                     const plano = PLANO_LABELS[p.plano] || TIPO_LABELS[p.tipo] || 'Orçamento';
                     const valorBadge = p.valor ? `<span class="badge bg-success ms-1">${formatBRL(p.valor)}</span>` : '';
-                    const pagoBadge = p.pago ? `<span class="badge ms-1" style="background:#059669;"><i class="fas fa-check me-1"></i>Pago</span>` : '';
+                    const comCredito = pedidosComCredito.has(p.id);
+                    const pagoBadge = p.pago ? `<span class="badge ms-1" style="background:#059669;"><i class="fas fa-check me-1"></i>${comCredito ? 'Pago com crédito' : 'Pago'}</span>` : '';
+                    const saldo = Number((creditos.saldo_por_pedido || {})[p.id]) || 0;
+                    const saldoBadge = saldo > 0 ? `<span class="badge ms-1" style="background:#7c3aed;">🎟️ ${saldo} crédito${saldo > 1 ? 's' : ''}</span>` : '';
+                    const gasta = CREDITOS_POR_PLANO[p.plano];
                     const contato = [p.whatsapp, p.email].filter(Boolean).join(' · ');
                     const roteiro = p.roteiro
                         ? `<div class="pedido-roteiro">${escapeHtml(p.roteiro.length > 400 ? p.roteiro.slice(0, 400) + '…' : p.roteiro)}</div>`
@@ -422,11 +464,16 @@
                             <button class="btn btn-sm btn-outline-danger mt-2" onclick="cancelarPedido('${p.id}')">Cancelar</button>`;
                     }
                     // Controle de pagamento (manual por enquanto; o webhook automatiza depois)
+                    if (!p.pago && gasta && saldo >= gasta) {
+                        acoes += ` <button class="btn btn-sm mt-2 me-2" style="background:#7c3aed;color:#fff;" onclick="usarCredito('${p.id}', ${gasta})">
+                                       🎟️ Pagar com crédito (−${gasta})
+                                   </button>`;
+                    }
                     if (p.valor && !p.pago) {
                         acoes += ` <button class="btn btn-sm btn-success mt-2 me-2" onclick="marcarPago('${p.id}', true)">
                                        <i class="fas fa-dollar-sign me-1"></i>Marcar como pago
                                    </button>`;
-                    } else if (p.pago) {
+                    } else if (p.pago && !comCredito) {
                         acoes += ` <button class="btn btn-sm btn-outline-secondary mt-2" onclick="marcarPago('${p.id}', false)">
                                        Desfazer pago
                                    </button>`;
@@ -441,6 +488,7 @@
                                     ${valorBadge}
                                     <span class="badge badge-pedido-${p.status} ms-1">${PEDIDO_STATUS_LABELS[p.status] || p.status}</span>
                                     ${pagoBadge}
+                                    ${saldoBadge}
                                     <p class="text-secondary mb-0 mt-1"><small>${escapeHtml(contato)}</small></p>
                                 </div>
                                 <small class="text-secondary">${formatDateBr(p.created_at)}</small>
@@ -489,6 +537,72 @@
                 loadPedidos();
             } catch (error) {
                 alert(`Erro ao atualizar pagamento: ${error.message}`);
+            }
+        }
+
+        async function usarCredito(id, gasta) {
+            const p = pedidosCache[id];
+            if (!confirm(`Pagar o pedido de ${p ? p.cliente_nome : 'este cliente'} com ${gasta} crédito${gasta > 1 ? 's' : ''}? O pedido fica pago e o cliente já pode baixar.`)) return;
+            try {
+                const r = await fetch(`/api/pedidos/${id}/usar-credito`, { method: 'POST' });
+                const j = await r.json();
+                if (!j.success) throw new Error(j.error);
+                alert(`🎟️ Pago com crédito. Saldo do cliente agora: ${j.saldo}.`);
+                loadPedidos();
+            } catch (e) {
+                alert(`Não deu pra usar crédito: ${e.message}`);
+            }
+        }
+
+        // Lista montada com textContent (nome/e-mail vêm de fora — nada de innerHTML).
+        function renderCreditos(cred) {
+            const lista = document.getElementById('creditosLista');
+            const vendidos = document.getElementById('creditosVendidosMes');
+            if (!lista) return;
+            if (!cred || !cred.success) { lista.textContent = 'Créditos indisponíveis agora.'; return; }
+            vendidos.textContent = formatBRL(cred.vendidos_mes || 0);
+            const clientes = cred.clientes || [];
+            lista.replaceChildren();
+            if (!clientes.length) {
+                const p = document.createElement('p');
+                p.className = 'text-secondary mb-0';
+                p.textContent = 'Nenhum cliente com créditos ainda.';
+                lista.append(p);
+                return;
+            }
+            clientes.forEach(c => {
+                const linha = document.createElement('div');
+                linha.className = 'pedido-card d-flex justify-content-between align-items-center flex-wrap gap-2';
+                const quem = document.createElement('div');
+                const nome = document.createElement('strong');
+                nome.textContent = c.nome || 'Cliente';
+                const contato = document.createElement('small');
+                contato.className = 'text-secondary d-block';
+                contato.textContent = [c.whatsapp, c.email].filter(Boolean).join(' · ') +
+                    (c.ultima_compra ? ` · última compra ${formatDateBr(c.ultima_compra)}` : '');
+                quem.append(nome, contato);
+                const saldo = document.createElement('span');
+                saldo.className = 'badge';
+                saldo.style.cssText = `background:${c.saldo > 0 ? '#7c3aed' : '#475569'};font-size:.9rem;`;
+                saldo.textContent = `🎟️ ${c.saldo} crédito${Math.abs(c.saldo) === 1 ? '' : 's'}`;
+                linha.append(quem, saldo);
+                lista.append(linha);
+            });
+        }
+
+        async function ajustarCreditos() {
+            const v = (id) => document.getElementById(id).value.trim();
+            const corpo = { nome: v('credNome'), email: v('credEmail'), whatsapp: v('credWhats'),
+                            quantidade: v('credQtd'), valor: v('credValor'), motivo: v('credMotivo') };
+            try {
+                const r = await fetch('/api/creditos/ajuste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+                const j = await r.json();
+                if (!j.success) throw new Error(j.error);
+                ['credNome', 'credEmail', 'credWhats', 'credQtd', 'credValor', 'credMotivo'].forEach(id => { document.getElementById(id).value = ''; });
+                alert(`Lançado. Saldo do cliente: ${j.saldo} crédito(s).`);
+                loadPedidos();
+            } catch (e) {
+                alert(`Não deu pra lançar: ${e.message}`);
             }
         }
 

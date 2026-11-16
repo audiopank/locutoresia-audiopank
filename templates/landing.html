@@ -377,6 +377,34 @@
         </p>
     </section>
 
+    <!-- 🎟️ PACOTES DE CRÉDITOS (16/11/2026): valores e links vêm de PACOTES_CREDITOS
+         (backend/app.py) — o mesmo lugar que o webhook usa. Mudou lá, muda aqui. -->
+    {% if pacotes %}
+    <section id="pacotes">
+        <h2 class="titulo">Pacotes de créditos</h2>
+        <p class="sub">Pra quem anuncia sempre: compre créditos e peça seus spots quando precisar. Quanto maior o pacote, mais barato sai cada spot.</p>
+        <div class="grade precos">
+            {% for chave, p in pacotes.items() %}
+            <div class="preco{% if p.destaque %} destaque{% endif %}">
+                <div class="preco-tag">{% if p.destaque %}⭐ Mais escolhido{% else %}{{ p.publico }}{% endif %}</div>
+                <h3>{{ p.creditos }} créditos</h3>
+                <div class="preco-dur">{{ p.label }}</div>
+                <div class="preco-valor"><small>R$</small> {{ '{:,.0f}'.format(p.valor).replace(',', '.') }}</div>
+                <p class="preco-obs">
+                    <strong>R$ {{ '%.0f'|format(p.por_spot) }} por spot</strong> · economia de {{ p.economia }}%{% if p.destaque %} · {{ p.publico }}{% endif %}{% if p.creditos >= 25 %}<br>Inclui entrega sem a nossa marca e fila prioritária.{% endif %}
+                </p>
+                <a href="{{ p.kiwify_url }}" target="_blank" rel="noopener" class="btn-preco">Comprar pacote</a>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="rodape-precos">
+            1 crédito = 1 spot pronto de até 45 s (roteiro, voz, trilha e mixagem) · <strong>60 a 90 s = 2 créditos</strong> ·
+            ajustes até aprovar, no mesmo roteiro · jingle não entra em crédito · créditos válidos por 12 meses.<br>
+            Depois de pagar, <a href="https://wa.me/5585992262297?text=Ol%C3%A1%21%20Comprei%20um%20pacote%20de%20cr%C3%A9ditos%20e%20quero%20pedir%20meu%20spot." target="_blank" rel="noopener" style="color:#c4b5fd">chame no WhatsApp</a> e peça seu primeiro spot.
+        </p>
+    </section>
+    {% endif %}
+
     <!-- FORMULÁRIO: mesmo arquivo que a /solicitar usa. Fecha a jornada sem
          trocar de página — era aqui que o cliente saía e podia sumir. -->
     <section id="pedido">

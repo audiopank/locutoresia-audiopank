@@ -27,8 +27,10 @@ def cliente():
 
 def test_um_link_por_cartao_apontando_pra_secao_que_ja_existe(cliente):
     html = cliente.get('/vitrine').get_data(as_text=True)
-    cartoes = len(re.findall(r'<div class="preco( destaque)?">', html))
-    links = html.count('<a href="#amostras" class="link-vozes">')
+    # Só a seção "Quanto custa" — os cartões de pacote (16/11, #pacotes) vêm depois e não têm o link.
+    precos = html[html.index('<section id="precos">'):html.index('</section>', html.index('<section id="precos">'))]
+    cartoes = len(re.findall(r'<div class="preco( destaque)?">', precos))
+    links = precos.count('<a href="#amostras" class="link-vozes">')
     assert cartoes == 4 and links == cartoes, (cartoes, links)
     assert '<section id="amostras">' in html                       # o destino existe na mesma página
     assert html.index('<section id="amostras">') < html.index('<section id="precos">')   # amostras vem ANTES; o link rola pra cima
