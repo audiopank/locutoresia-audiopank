@@ -87,6 +87,27 @@
         return Math.min(n - 1, Math.floor(antes / (total / n)));
     }
 
+    // Transição (19/11/2026, "DEVE EXISTIR efeito de transição"): crossfade de `fade` s
+    // centrado em cada troca. → {de, para, alfa}; alfa 0 = só `de` (sem troca por perto).
+    const FADE_IMAGEM = 0.6;
+    function transicaoDaImagem(rot, t, n, fade) {
+        const F = fade != null ? fade : FADE_IMAGEM;
+        const i = indiceDaImagem(rot, t, n);
+        if (!(n > 1)) return { de: i, para: i, alfa: 0 };
+        const capas = rot.filter(c => c.tipo === 'capa');
+        const total = capas.reduce((s, c) => s + (c.fim - c.ini), 0);
+        let antes = 0;
+        for (const c of capas) {
+            if (t >= c.fim) antes += c.fim - c.ini;
+            else if (t >= c.ini) antes += t - c.ini;
+        }
+        const seg = total / n;
+        const k = Math.round(antes / seg);              // troca mais próxima
+        const d = antes - k * seg;
+        if (k < 1 || k > n - 1 || Math.abs(d) >= F / 2) return { de: i, para: i, alfa: 0 };
+        return { de: k - 1, para: k, alfa: (d + F / 2) / F };
+    }
+
     // "85 9 9226- 2297" / "(85) 99226-2297" → "85 9 9226-2297". Sem dígitos
     // suficientes, devolve o texto como veio (ele pode escrever o que quiser).
     function formatarWhatsApp(texto) {
@@ -176,7 +197,19 @@
         for (const c of camadasEm(rot, t)) {
             if (c.tipo === 'capa') {
                 const imgs = [capa, ...((dados && dados.imagens) || [])];
-                capaNaCaixa(ctx, imgs[indiceDaImagem(rot, t, imgs.length)], 0, 0, W, H);
+                const tr = transicaoDaImagem(rot, t, imgs.length);
+                if (tr.alfa > 0) {
+                    // 'lighter' sobre o preto = mistura exata das duas (vale com tarja preta também).
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.globalAlpha = 1 - tr.alfa;
+                    capaNaCaixa(ctx, imgs[tr.de], 0, 0, W, H);
+                    ctx.globalAlpha = tr.alfa;
+                    capaNaCaixa(ctx, imgs[tr.para], 0, 0, W, H);
+                    ctx.restore();
+                } else {
+                    capaNaCaixa(ctx, imgs[tr.de], 0, 0, W, H);
+                }
             } else if (c.tipo === 'episodio') {
                 texto(ctx, 'Episódio', H * 0.42, 230, gradienteLaranja(ctx, H * 0.36, H * 0.48));
                 texto(ctx, String(dados.episodio || ''), H * 0.57, 260, gradienteLaranja(ctx, H * 0.5, H * 0.64));
@@ -532,7 +565,7 @@
         });
     }
 
-    const VideoEpisodio = { W, H, FPS, roteiro, camadasEm, indiceDaImagem, cenasDoTexto, formatarWhatsApp, desenharQuadro, gerarMp4 };
+    const VideoEpisodio = { W, H, FPS, roteiro, camadasEm, indiceDaImagem, transicaoDaImagem, cenasDoTexto, formatarWhatsApp, desenharQuadro, gerarMp4 };
     global.VideoEpisodio = VideoEpisodio;
     if (typeof module !== 'undefined' && module.exports) module.exports = VideoEpisodio;
     if (typeof document !== 'undefined') {

@@ -225,6 +225,13 @@
                             title="Guarda o texto e os ajustes (voz, estilo, direção, plano, trilha) sem gerar áudio">
                         <i class="fas fa-floppy-disk me-1"></i>Guardar bancada (sem áudio)
                     </button>
+                    <!-- 19/11/2026: spot que já veio PRONTO de outra produtora → direto pra barra
+                         do resultado (Vídeo, Download, Enviar…), sem gerar voz nem trilha. -->
+                    <button id="btnSubirAudioPronto" class="btn btn-outline-warning btn-sm w-100 mt-2"
+                            title="Spot já finalizado (de outra produtora)? Suba o MP3/WAV e use direto no Vídeo, Download ou Enviar — sem gerar voz nem trilha aqui">
+                        <i class="fas fa-file-audio me-1"></i>Subir áudio pronto
+                    </button>
+                    <input type="file" id="inputAudioPronto" accept=".mp3,.wav,audio/mpeg,audio/wav" hidden>
                 </div>
             </div>
             <div id="progresso" class="mt-3"></div>
@@ -571,9 +578,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
     <script src="/static/mix-engine.js?v=25"></script>
     <script src="/static/enviar-entrega.js?v=3"></script>
-    <script src="/static/gerador.js?v=35"></script>
+    <script src="/static/gerador.js?v=36"></script>
     <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
-    <script src="/static/video-episodio.js?v=6"></script>
+    <script src="/static/video-episodio.js?v=7"></script>
     <script src="/static/campanha-form.js?v=1"></script>
     <script src="/static/agendar-campanha.js?v=1"></script>
     <!-- VoxCraft: acima da barra fixa do resultado (#barraResultado). -->

@@ -1028,6 +1028,38 @@
             (estado.trilha ? `trilha: ${estado.trilha.name}` : 'sem trilha');
     }
 
+    // 📂 Áudio PRONTO de outra produtora (19/11/2026): vira o resultado da tela, igual a
+    // um spot reaberto dos guardados — sem voz/trilha daqui (Remixar e Fatiado avisam).
+    async function subirAudioPronto(arquivo) {
+        let duracao = 0;
+        let bytes;
+        try {
+            bytes = await arquivo.arrayBuffer();
+            duracao = (await ctx.decodeAudioData(bytes.slice(0))).duration;
+        } catch (e) {
+            avisar('⚠️ Não consegui abrir esse áudio. Use MP3 ou WAV.', 'atencao');
+            return;
+        }
+        const ehWav = /\.wav$/i.test(arquivo.name) || /wav/i.test(arquivo.type);
+        estado.mixBlob = new Blob([bytes], { type: ehWav ? 'audio/wav' : 'audio/mpeg' });
+        estado.vozBuffer = null;
+        estado.trilhaBuffer = null;
+        estado.receita = null;
+        estado.rascunhoMeta = null;
+        estado.trilha = null;
+        estado.cenas = [];
+        const cenas = document.getElementById('painelCenas');
+        if (cenas) cenas.style.display = 'none';
+        const nome = arquivo.name.replace(/\.[^.]+$/, '');
+        document.getElementById('inputNome').value = nome;
+        mostrarResultado(duracao);
+        // Não diz "sem trilha": o spot de fora JÁ vem mixado (o Vídeo não deve alertar).
+        const min = Math.floor(duracao / 60), seg = Math.round(duracao % 60);
+        document.getElementById('resultadoInfo').textContent =
+            `${min}:${String(seg).padStart(2, '0')} · ${ehWav ? 'WAV' : 'MP3'} · áudio pronto (de fora): ${nome}`;
+        avisar(`📂 "${arquivo.name}" carregado. Use Vídeo, Download ou Enviar na barra de baixo.`, 'ok');
+    }
+
     // ── O pipeline ───────────────────────────────────────────────────────
 
     // ── Programa (preset de rádio) ───────────────────────────────────────
@@ -1751,6 +1783,14 @@
         const btnBancada = document.getElementById('btnGuardarBancada');
         if (btnBancada) btnBancada.onclick = guardarBancada;
         document.getElementById('btnRegerarVoz').onclick = regerarVoz;
+        const btnPronto = document.getElementById('btnSubirAudioPronto');
+        if (btnPronto) {
+            btnPronto.onclick = () => { const i = document.getElementById('inputAudioPronto'); i.value = ''; i.click(); };
+            document.getElementById('inputAudioPronto').addEventListener('change', (e) => {
+                const f = e.target.files && e.target.files[0];
+                if (f) subirAudioPronto(f);
+            });
+        }
         document.getElementById('btnRemixarTrilha').addEventListener('click', remixarComTrilha);
         // Áudio para vídeo (23/09/2026)
         const selPeca = document.getElementById('selectPeca');

@@ -102,3 +102,16 @@ test('mais imagens: episódio pula a tela "Episódio N" na conta', () => {
     assert.equal(V.indiceDaImagem(rot, 4.9, 2), 0);
     assert.equal(V.indiceDaImagem(rot, 11 + capa / 2 - 5 + 0.1, 2), 1);   // metade do tempo de capa passou
 });
+
+test('transição: crossfade de 0,6 s centrado na troca; longe da troca não mistura; 1 imagem nunca mistura', () => {
+    const rot = V.roteiro(30, { semEpisodio: true, finalCurto: true });   // capa 0–24 → trocas em 8 e 16
+    assert.deepEqual(V.transicaoDaImagem(rot, 4, 3), { de: 0, para: 0, alfa: 0 });
+    assert.deepEqual(V.transicaoDaImagem(rot, 7.69, 3), { de: 0, para: 0, alfa: 0 });   // antes da janela
+    const meio = V.transicaoDaImagem(rot, 8, 3);
+    assert.deepEqual([meio.de, meio.para], [0, 1]);
+    assert.ok(Math.abs(meio.alfa - 0.5) < 1e-9);
+    const quase = V.transicaoDaImagem(rot, 16.25, 3);
+    assert.deepEqual([quase.de, quase.para], [1, 2]);
+    assert.ok(quase.alfa > 0.9 && quase.alfa < 1);
+    assert.deepEqual(V.transicaoDaImagem(rot, 8, 1), { de: 0, para: 0, alfa: 0 });
+});
