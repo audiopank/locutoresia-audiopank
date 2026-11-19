@@ -197,6 +197,29 @@
         return true;
     }
 
+    // 🎚️ Ducking ajustável POR TRILHA (19/11/2026). `track.duckSettings` =
+    // {abaixaDb, attack, release} — cada campo ausente usa o da `base` (o padrão de
+    // sempre), então trilha sem ajuste soa idêntica a antes. Hold segue global.
+    const DUCK_LIMITES = { abaixaDb: [0, 24], attack: [0.01, 2], release: [0.05, 4] };
+    function duckDaFaixa(track, base) {
+        const b = base || DUCK_PADRAO;
+        const s = track && track.duckSettings;
+        if (!s) return b;
+        const num = (campo, pad) => {
+            const v = Number(s[campo]);
+            if (s[campo] == null || !Number.isFinite(v)) return pad;
+            const [min, max] = DUCK_LIMITES[campo];
+            return Math.min(max, Math.max(min, v));
+        };
+        const db = num('abaixaDb', null);
+        return {
+            gain: db == null ? b.gain : Math.pow(10, -db / 20),
+            attack: num('attack', b.attack),
+            release: num('release', b.release),
+            hold: b.hold
+        };
+    }
+
     // ── GATE (silenciador de respiração) ─────────────────────────────────
     // Voz de IA respira alto: entre uma frase e outra fica um chiado de ar que
     // some no fone mas aparece no rádio, ainda mais depois do limiter puxar
@@ -603,7 +626,7 @@
                         // de verdade na timeline, não a partir do zero.
                         const trechosDeVoz = detectarTrechosDeClips(clipsDeVoz, duck.hold);
                         const ducou = aplicarDucking(
-                            trackGain.gain, trechosDeVoz, track.volume / 100, fimDaVoz, 0, duck
+                            trackGain.gain, trechosDeVoz, track.volume / 100, fimDaVoz, 0, duckDaFaixa(track, duck)
                         );
                         if (!ducou) {
                             trackGain.gain.linearRampToValueAtTime(track.volume / 100, fimDaVoz);
@@ -1292,6 +1315,6 @@
         criarLargura, larguraDaFaixa,
         detectarTrechosDeVoz, detectarTrechosDeClips, aplicarDucking, aplicarGate,
         agendarAutomacaoVolume,
-        DUCK_PADRAO, GATE_PADRAO
+        DUCK_PADRAO, DUCK_LIMITES, duckDaFaixa, GATE_PADRAO
     };
 })(window);

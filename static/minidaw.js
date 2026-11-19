@@ -578,6 +578,11 @@ class MiniDAW {
                                     onclick="minidaw.alternarAutoFade('${track.id}')"
                                     title="Auto fade no fim da voz. LIGADO: esta trilha desce ao zero 3,05 s depois da última palavra e o arquivo termina ali. DESLIGADO: ela toca até o fim dela (vinheta de assinatura, jingle com janela) e o arquivo cresce pra caber. Vale igual na prévia e no export.">
                                 <i class="fas fa-wave-square"></i> Auto Fade
+                            </button>
+                            <button class="effect-btn${track.duckSettings ? ' active' : ''}" id="btnduck_${track.id}"
+                                    onclick="minidaw.alternarPainelDuck('${track.id}')"
+                                    title="🎚️ Ducking (sidechain da voz): quanto esta trilha abaixa quando a voz entra, e a velocidade de descer e subir. Aceso = ajustado nesta trilha. Sem ajuste = o padrão de sempre (−6,9 dB, 0,20 s, 0,65 s).">
+                                🎚️ Ducking
                             </button>` : ''}
                             <button class="effect-btn" onclick="minidaw.copiarEfeitosParaIguais('${track.id}')"
                                     title="Aplica os efeitos DESTA faixa em todas as outras do mesmo tipo (voz para vozes, trilha para trilhas). Serve quando a faixa de destino já tinha objeto — faixa vazia herda sozinha ao receber um clip.">
@@ -655,6 +660,7 @@ class MiniDAW {
                         volte um pouco ou ligue o De-esser. O arquivo exportado sai igual ao que você ouve.
                     </small>
                 </div>
+                ${(track.type === 'music' && !track.sfx) ? this._painelDuckHtml(track) : ''}
                 <div class="reverb-panel ${track.effects.reverb ? 'ativo' : ''}" id="reverbpanel_${track.id}">
                     <div class="effect-label">
                         Reverb — quantidade
@@ -3541,7 +3547,7 @@ class MiniDAW {
             const clipsDeVoz = this._clipsDeVoz();
             const fimDaVoz = ClipModel.fimDaFaixa(clipsDeVoz);
             const trechosDeVoz = MixEngine.detectarTrechosDeClips(clipsDeVoz, this.duckHold);
-            const ducou = this.aplicarDucking(g, trechosDeVoz, nivel, fimDaVoz, base);
+            const ducou = this.aplicarDucking(g, trechosDeVoz, nivel, fimDaVoz, base, track);
             if (!ducou) {
                 g.linearRampToValueAtTime(nivel, base + fimDaVoz);
             }
@@ -3867,11 +3873,12 @@ class MiniDAW {
     // o export (OfflineAudioContext) agenda a partir de 0, e o playback agenda a
     // partir de audioContext.currentTime. Sem o offset, o ducking no preview
     // cairia todo no passado e não aconteceria nada.
-    aplicarDucking(gainParam, trechos, nivel, ateQuando, offset = 0) {
-        return MixEngine.aplicarDucking(gainParam, trechos, nivel, ateQuando, offset, {
+    // `track` (opcional): os ajustes 🎚️ Ducking da trilha por cima do padrão — mesma conta do export.
+    aplicarDucking(gainParam, trechos, nivel, ateQuando, offset = 0, track = null) {
+        return MixEngine.aplicarDucking(gainParam, trechos, nivel, ateQuando, offset, MixEngine.duckDaFaixa(track, {
             gain: this.duckGain, attack: this.duckAttack,
             release: this.duckRelease, hold: this.duckHold
-        });
+        }));
     }
 
     // ── ENCURTAR PAUSAS (strip silence) ─────────────────────────────────
@@ -5841,6 +5848,80 @@ class MiniDAW {
             : `Auto fade DESLIGADO em "${track.name}": toca até o fim dela.`, 'info');
     }
 
+    // ── 🎚️ DUCKING AJUSTÁVEL POR TRILHA (19/11/2026) ─────────────────────
+    // Sem `duckSettings` = padrão de sempre (som idêntico). O painel abrir/fechar
+    // não mexe no som; só os sliders gravam o ajuste.
+    _duckGlobal() {
+        return { gain: this.duckGain, attack: this.duckAttack, release: this.duckRelease, hold: this.duckHold };
+    }
+
+    _painelDuckHtml(track) {
+        const dk = MixEngine.duckDaFaixa(track, this._duckGlobal());
+        const db = -20 * Math.log10(dk.gain);
+        const aberto = this._duckAberto && this._duckAberto.has(track.id);
+        return `
+                <div class="duck-panel ${aberto ? 'ativo' : ''}" id="duckpanel_${track.id}">
+                    <div class="effect-label">🎚️ Ducking — abaixa <strong id="duckdb_${track.id}">${db.toFixed(1).replace('.', ',')} dB</strong></div>
+                    <input type="range" class="form-range" min="0" max="20" step="0.5" value="${db.toFixed(1)}"
+                           oninput="minidaw.updateDuck('${track.id}', 'abaixaDb', this.value)"
+                           title="Quanto a trilha abaixa embaixo da voz. 0 dB = não abaixa.">
+                    <div class="effect-label">Ataque (desce) <strong id="duckattack_${track.id}">${Math.round(dk.attack * 1000)} ms</strong></div>
+                    <input type="range" class="form-range" min="20" max="1000" step="10" value="${Math.round(dk.attack * 1000)}"
+                           oninput="minidaw.updateDuck('${track.id}', 'attack', this.value / 1000)"
+                           title="Tempo pra trilha descer quando a voz entra. Menor = mais seco (estilo varejo).">
+                    <div class="effect-label">Release (sobe) <strong id="duckrelease_${track.id}">${Math.round(dk.release * 1000)} ms</strong></div>
+                    <input type="range" class="form-range" min="100" max="3000" step="50" value="${Math.round(dk.release * 1000)}"
+                           oninput="minidaw.updateDuck('${track.id}', 'release', this.value / 1000)"
+                           title="Tempo pra trilha voltar nas pausas. Maior = sobe mais suave.">
+                    <button class="effect-btn mt-2" onclick="minidaw.resetDuck('${track.id}')"
+                            title="Volta ao padrão de sempre: −6,9 dB, 0,20 s, 0,65 s">↺ Padrão</button>
+                    <small class="d-block mt-1">
+                        A trilha abaixa sozinha quando a voz entra e sobe nas pausas. O arquivo exportado sai igual ao que você ouve.
+                        Com pontos de Automação na faixa, a automação manda (o ducking fica de fora).
+                    </small>
+                </div>`;
+    }
+
+    alternarPainelDuck(trackId) {
+        this._duckAberto = this._duckAberto || new Set();
+        if (this._duckAberto.has(trackId)) this._duckAberto.delete(trackId); else this._duckAberto.add(trackId);
+        const painel = document.getElementById(`duckpanel_${trackId}`);
+        if (painel) painel.classList.toggle('ativo', this._duckAberto.has(trackId));
+    }
+
+    updateDuck(trackId, campo, valor) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track || !(campo in MixEngine.DUCK_LIMITES)) return;
+        const v = parseFloat(String(valor).replace(',', '.'));
+        if (!Number.isFinite(v)) return;
+        track.duckSettings = Object.assign({}, track.duckSettings, { [campo]: v });
+        this._atualizarRotulosDuck(track);
+        this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
+        clearTimeout(this._duckSaveTimer);
+        this._duckSaveTimer = setTimeout(() => this.saveToLocalStorage(), 300);
+    }
+
+    resetDuck(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        delete track.duckSettings;
+        this.aplicarVolumeAgora(track, this.trackNodes.get(trackId));
+        this.saveToLocalStorage();
+        const painel = document.getElementById(`duckpanel_${trackId}`);
+        if (painel) painel.outerHTML = this._painelDuckHtml(track);   // sliders voltam pro padrão
+        this._atualizarRotulosDuck(track);
+    }
+
+    _atualizarRotulosDuck(track) {
+        const dk = MixEngine.duckDaFaixa(track, this._duckGlobal());
+        const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+        set(`duckdb_${track.id}`, (-20 * Math.log10(dk.gain)).toFixed(1).replace('.', ',') + ' dB');
+        set(`duckattack_${track.id}`, Math.round(dk.attack * 1000) + ' ms');
+        set(`duckrelease_${track.id}`, Math.round(dk.release * 1000) + ' ms');
+        const btn = document.getElementById(`btnduck_${track.id}`);
+        if (btn) btn.classList.toggle('active', !!track.duckSettings);
+    }
+
     startSilenceDetection() {
         if (this.silenceInterval) {
             clearInterval(this.silenceInterval);
@@ -6099,6 +6180,7 @@ class MiniDAW {
                 brilhoAmount: MixEngine.quantidadeBrilhoDaFaixa(t),
                 sala: MixEngine.salaDaFaixa(t) !== 'estudio' ? MixEngine.salaDaFaixa(t) : undefined,   // Estúdio = sem campo
                 automacaoVolume: t.automacaoVolume,
+                duckSettings: t.duckSettings,             // 🎚️ ausente = padrão de sempre
                 buffers: [], clips: []
             };
             // Um arquivo por BUFFER DISTINTO (clips de um corte compartilham o
@@ -6695,6 +6777,7 @@ class MiniDAW {
             track.delayAmount = (td.delayAmount != null) ? MixEngine.quantidadeDelayDaFaixa(td) : undefined;   // antigo = 12%, como soava
             track.brilhoAmount = (td.brilhoAmount != null) ? MixEngine.quantidadeBrilhoDaFaixa(td) : undefined;   // antigo = 40%, como soava
             if (MixEngine.salaDaFaixa(td) !== 'estudio') track.sala = MixEngine.salaDaFaixa(td); else delete track.sala;   // 🏛️🎻 sem campo = Estúdio
+            if (td.duckSettings) track.duckSettings = td.duckSettings; else delete track.duckSettings;   // 🎚️ sem campo = padrão
             // Normaliza o formato -- cobre projetos salvos antes desta
             // feature (campo ausente), e os salvos HOJE mais cedo antes
             // do liga/desliga de verdade existir (formato antigo: array
