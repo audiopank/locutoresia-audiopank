@@ -3,6 +3,7 @@ import { buildEffectChain, hasActiveEffects, type TrackEffects } from "./audioEf
 import { detectarTrechos, aplicarGate } from "./gate.js";
 import { linhaDoTempo, envelopeGanho } from "./linhaDoTempo.js";
 import { limparRuidoBuffer } from "./limparRuido.js";
+import { paramsDucking, trechosDeVoz, pontosDucking } from "./ducking.js";
 
 export type MixFormat = "mp3" | "wav";
 export type MixQuality = "low" | "medium" | "high" | "ultra";
@@ -17,6 +18,8 @@ export interface MixTrack {
   fade?: "voz" | "fim" | "nenhum";      // só trilha; padrão "voz" (ver lib/linhaDoTempo.js)
   fadeIn?: number;                      // alças do objeto (s) — 17/10/2026
   fadeOut?: number;
+  // 🎚️ 19/11/2026 — só trilha: abaixa quando a voz entra (lib/ducking.js). Ausente/ativo:false = nada muda.
+  ducking?: { ativo: boolean; abaixaDb?: number; attack?: number; release?: number };
 }
 
 export interface MixOptions {
@@ -151,6 +154,13 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
   limiter.release.value = 0.1;
   limiter.connect(offline.destination);
 
+  // 🎚️ Ducking: onde a voz fala (áudio cru, antes de gate/limpeza), só se alguma trilha pediu.
+  const algumDuck = decoded.some((d) => d.type === "music" && paramsDucking(d.ducking));
+  const trechosVoz = algumDuck
+    ? trechosDeVoz(decoded.map((d, i) => ({ d, i })).filter(({ d }) => d.type === "voiceover")
+        .map(({ d, i }) => ({ dados: d.buffer.getChannelData(0), sr: d.buffer.sampleRate, inicio: tempo.faixas[i].inicio })))
+    : [];
+
   for (const [indice, d] of decoded.entries()) {
     const { inicio, fadeEm } = tempo.faixas[indice];
     // 🧹 Limpar ruído (RNNoise) ANTES do gate e dos efeitos: é conserto do som cru.
@@ -181,13 +191,27 @@ export async function mixTracks(tracks: MixTrack[], opts: MixOptions = {}): Prom
     gain.gain.setValueAtTime(pontos[0][1], pontos[0][0]);
     for (const [t, v] of pontos.slice(1)) gain.gain.linearRampToValueAtTime(v, t);
 
+    // Ducking num ganho SEPARADO (não briga com a envoltória acima); desligado = nó nenhum.
+    let saida: AudioNode = gain;
+    const duck = d.type === "music" ? paramsDucking(d.ducking) : null;
+    if (duck && trechosVoz.length) {
+      const g = offline.createGain();
+      g.gain.setValueAtTime(1, 0);
+      for (const [tipo, v, t] of pontosDucking(trechosVoz, duck)) {
+        if (tipo === "set") g.gain.setValueAtTime(v, t); else g.gain.linearRampToValueAtTime(v, t);
+      }
+      gain.connect(g);
+      saida = g;
+    }
+    saida.connect(limiter);
+
     // Cadeia de efeitos por faixa (EQ + Compressor + Reverb + Nivelar) bakeada no mix
     if (hasActiveEffects(d.effects)) {
       const chain = buildEffectChain(offline, d.effects as TrackEffects);
       src.connect(chain.input);
-      chain.output.connect(gain).connect(limiter);
+      chain.output.connect(gain);
     } else {
-      src.connect(gain).connect(limiter);
+      src.connect(gain);
     }
     src.start(inicio);
   }

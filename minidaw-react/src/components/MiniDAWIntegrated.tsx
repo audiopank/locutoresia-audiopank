@@ -23,6 +23,7 @@ import { totalDaLinha } from "@/lib/edicaoOnda.js";
 import { ProjetoNoPC } from "./ProjetoNoPC";
 import { mixToMp3, downloadBlob } from "@/lib/mixer";
 import { fimDaVoz } from "@/lib/linhaDoTempo.js";
+import { DUCK_PADRAO } from "@/lib/ducking.js";
 import { decodificar, paraWav } from "@/lib/audioFile.js";
 import { pedacosDosCortes } from "@/lib/vozFatiada.js";
 import { defaultEffects, type TrackEffects } from "@/lib/audioEffects";
@@ -45,12 +46,14 @@ interface Track {
   fade?: "voz" | "fim" | "nenhum";      // só trilha
   fadeIn?: number;                      // alças de fade do objeto (s)
   fadeOut?: number;
+  ducking?: { ativo: boolean; abaixaDb?: number; attack?: number; release?: number };   // 🎚️ só trilha (lib/ducking.js)
 }
 
 // O que o motor de mix precisa de cada faixa (Play verde, Prévia e Exportar iguais).
 const paraMix = (t: Track) => ({
   audioUrl: t.audioUrl, type: t.type, volume: t.volume, effects: t.effects, inicio: t.inicio || 0, fade: t.fade,
   fadeIn: t.fadeIn || 0, fadeOut: t.fadeOut || 0,
+  ...(t.type === "music" && t.ducking?.ativo ? { ducking: t.ducking } : {}),   // desligado = chave do Play igual à de antes
 });
 
 type TabKey = "roteiro" | "trilha" | "upload" | "multitrack" | "mix" | "master";
@@ -994,6 +997,31 @@ const MiniDAWIntegrated = () => {
                                 <option value="fim">desce no fim do spot (fica por baixo do jingle)</option>
                                 <option value="nenhum">sem fade (toca até o fim — use no jingle)</option>
                               </select>
+                              <label className="flex items-center gap-1 ml-2 font-medium text-white/80"
+                                title="🎚️ Ducking (sidechain da voz): a trilha abaixa sozinha quando a voz entra e sobe nas pausas. Vale na prévia e no arquivo.">
+                                <input type="checkbox" checked={!!track.ducking?.ativo} aria-label="Ducking"
+                                  onChange={(e) => setTracks(prev => prev.map(t => t.id === track.id ? { ...t, ducking: { ...DUCK_PADRAO, ...t.ducking, ativo: e.target.checked } } : t))} />
+                                🎚️ Ducking
+                              </label>
+                              {track.ducking?.ativo && ([
+                                ["abaixaDb", "abaixa", "dB", 1, 0, 24, 0.5],
+                                ["attack", "ataque", "ms", 1000, 10, 2000, 10],
+                                ["release", "release", "ms", 1000, 50, 4000, 50],
+                              ] as const).map(([campo, rotulo, un, k, min, max, passo]) => (
+                                <span key={campo} className="flex items-center gap-1 text-white/70">
+                                  {rotulo}
+                                  <input type="number" min={min} max={max} step={passo} aria-label={`Ducking ${rotulo}`}
+                                    value={Math.round((track.ducking?.[campo] ?? DUCK_PADRAO[campo]) * k * 10) / 10}
+                                    onChange={(e) => {
+                                      const v = parseFloat(e.target.value);
+                                      if (!Number.isFinite(v)) return;
+                                      const valor = Math.max(min, Math.min(max, v)) / k;
+                                      setTracks(prev => prev.map(t => t.id === track.id ? { ...t, ducking: { ...DUCK_PADRAO, ...t.ducking, ativo: true, [campo]: valor } } : t));
+                                    }}
+                                    className="w-16 h-8 rounded-md bg-slate-900 border border-white/20 text-white px-1" />
+                                  <span className="text-white/50">{un}</span>
+                                </span>
+                              ))}
                             </>
                           )}
                         </div>
