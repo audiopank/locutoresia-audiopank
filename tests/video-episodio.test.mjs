@@ -84,3 +84,21 @@ test('WhatsApp no formato do vídeo', () => {
     assert.equal(V.formatarWhatsApp(''), '');
     assert.equal(V.formatarWhatsApp('ligue já'), 'ligue já');
 });
+
+// 🖼️ Mais imagens (19/11/2026): capa + extras se revezam em partes iguais do tempo de capa.
+test('mais imagens: 1 imagem = sempre a capa (Vida Saudável não muda)', () => {
+    const rot = V.roteiro(116, {});
+    for (const t of [0, 3, 30, 80, 110]) assert.equal(V.indiceDaImagem(rot, t, 1), 0);
+});
+
+test('mais imagens: spot de 30 s com capa + 2 extras → 3 partes iguais, em ordem, final fora', () => {
+    const rot = V.roteiro(30, { semEpisodio: true, finalCurto: true });   // capa 0–24, final 24–30
+    assert.deepEqual([0, 7.9, 8.1, 15.9, 16.1, 23.9].map(t => V.indiceDaImagem(rot, t, 3)), [0, 0, 1, 1, 2, 2]);
+});
+
+test('mais imagens: episódio pula a tela "Episódio N" na conta', () => {
+    const rot = V.roteiro(116, {});            // capa 0–5, episódio 5–11, capa 11–103
+    const capa = rot.filter(c => c.tipo === 'capa').reduce((s, c) => s + c.fim - c.ini, 0);
+    assert.equal(V.indiceDaImagem(rot, 4.9, 2), 0);
+    assert.equal(V.indiceDaImagem(rot, 11 + capa / 2 - 5 + 0.1, 2), 1);   // metade do tempo de capa passou
+});

@@ -71,6 +71,22 @@
         return rot.filter(c => t >= c.ini && t < c.fim);
     }
 
+    // 🖼️ Mais imagens (19/11/2026): capa + extras se revezam nas camadas 'capa', em
+    // partes IGUAIS do tempo de capa, na ordem escolhida. Devolve o índice (0 = capa).
+    // Com 1 imagem é sempre 0 — o molde do Vida Saudável não muda.
+    function indiceDaImagem(rot, t, n) {
+        if (!(n > 1)) return 0;
+        const capas = rot.filter(c => c.tipo === 'capa');
+        const total = capas.reduce((s, c) => s + (c.fim - c.ini), 0);
+        if (!(total > 0)) return 0;
+        let antes = 0;
+        for (const c of capas) {
+            if (t >= c.fim) antes += c.fim - c.ini;
+            else if (t >= c.ini) antes += t - c.ini;
+        }
+        return Math.min(n - 1, Math.floor(antes / (total / n)));
+    }
+
     // "85 9 9226- 2297" / "(85) 99226-2297" → "85 9 9226-2297". Sem dígitos
     // suficientes, devolve o texto como veio (ele pode escrever o que quiser).
     function formatarWhatsApp(texto) {
@@ -159,7 +175,8 @@
         ctx.fillRect(0, 0, W, H);
         for (const c of camadasEm(rot, t)) {
             if (c.tipo === 'capa') {
-                capaNaCaixa(ctx, capa, 0, 0, W, H);
+                const imgs = [capa, ...((dados && dados.imagens) || [])];
+                capaNaCaixa(ctx, imgs[indiceDaImagem(rot, t, imgs.length)], 0, 0, W, H);
             } else if (c.tipo === 'episodio') {
                 texto(ctx, 'Episódio', H * 0.42, 230, gradienteLaranja(ctx, H * 0.36, H * 0.48));
                 texto(ctx, String(dados.episodio || ''), H * 0.57, 260, gradienteLaranja(ctx, H * 0.5, H * 0.64));
@@ -325,7 +342,7 @@
         const $ = id => document.getElementById(id);
         const painel = $('painelVideo');
         if (!painel) return;
-        const est = { capa: null, programas: [], mp4: null, url: null };
+        const est = { capa: null, imagens: [], programas: [], mp4: null, url: null };
 
         // Capa lembrada pelo PROGRAMA; spot sem programa (Achadinhos…) lembra pelo
         // perfil escolhido no seletor do Feed — cada perfil com a sua logo.
@@ -350,7 +367,7 @@
 
         function desenharPrevias() {
             const dados = { episodio: $('videoEpisodio').value.trim(), whatsapp: formatarWhatsApp($('videoWhatsapp').value),
-                            chamada: $('videoChamada').value.trim() };
+                            chamada: $('videoChamada').value.trim(), imagens: est.imagens };
             const dur = ($('playerResultado') && isFinite($('playerResultado').duration) && $('playerResultado').duration) || 116;
             const rot = roteiro(dur, opcoesDoRoteiro(dados.episodio));
             const meio = rot.filter(c => c.tipo === 'episodio' || c.tipo === 'dica' || c.tipo === 'cena');
@@ -400,8 +417,33 @@
                 if (blob) await usarCapa(blob, false);
                 else $('videoCapaNome').textContent = `nenhuma capa ainda pra "${chavePrograma()}"`;
             }
+            // Imagens extras são do spot da vez: trocou de programa/perfil, elas saem.
+            if (est.imagens.length && est.imagensChave !== chavePrograma()) mostrarImagens([]);
             desenharPrevias();
         }
+
+        // 🖼️ Mais imagens (19/11/2026): várias de uma vez, na ordem do seletor; só nesta aba.
+        function mostrarImagens(lista) {
+            est.imagens.forEach(b => { if (!lista.includes(b) && b.close) b.close(); });
+            est.imagens = lista;
+            est.imagensChave = chavePrograma();
+            $('videoImagensNome').textContent = lista.length
+                ? `✅ ${lista.length} imagem(ns) — revezam com a capa` : 'só a capa (imagem fixa)';
+            $('btnVideoImagensTirar').style.display = lista.length ? '' : 'none';
+            desenharPrevias();
+        }
+        $('btnVideoImagens').addEventListener('click', () => { $('inputVideoImagens').value = ''; $('inputVideoImagens').click(); });
+        $('inputVideoImagens').addEventListener('change', async () => {
+            const arquivos = Array.from($('inputVideoImagens').files || []);
+            const lista = [];
+            let ruins = 0;
+            for (const f of arquivos) {
+                try { lista.push(await createImageBitmap(f)); } catch (e) { ruins++; }
+            }
+            mostrarImagens(est.imagens.concat(lista));
+            if (ruins) status(`⚠️ ${ruins} arquivo(s) não abriram — prefira PNG ou JPG.`);
+        });
+        $('btnVideoImagensTirar').addEventListener('click', () => mostrarImagens([]));
 
         $('btnVideoEpisodio').addEventListener('click', async () => {
             painel.style.display = painel.style.display === 'none' ? '' : 'none';
@@ -454,7 +496,7 @@
                 const episodio = $('videoEpisodio').value.trim();
                 try { localStorage.setItem('locutores_video_zap_' + chavePrograma(), $('videoWhatsapp').value); } catch (e) { /* sem storage */ }
                 const mp4 = await gerarMp4({
-                    audioBuffer, capa: est.capa, episodio,
+                    audioBuffer, capa: est.capa, imagens: est.imagens, episodio,
                     whatsapp: formatarWhatsApp($('videoWhatsapp').value),
                     chamada: $('videoChamada').value.trim(),
                     roteiroOpcoes: opcoesDoRoteiro(episodio),
@@ -490,7 +532,7 @@
         });
     }
 
-    const VideoEpisodio = { W, H, FPS, roteiro, camadasEm, cenasDoTexto, formatarWhatsApp, desenharQuadro, gerarMp4 };
+    const VideoEpisodio = { W, H, FPS, roteiro, camadasEm, indiceDaImagem, cenasDoTexto, formatarWhatsApp, desenharQuadro, gerarMp4 };
     global.VideoEpisodio = VideoEpisodio;
     if (typeof module !== 'undefined' && module.exports) module.exports = VideoEpisodio;
     if (typeof document !== 'undefined') {
