@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ficha de Produção{% if ficha %} — {{ ficha.cliente }}{% endif %} - Locutores IA</title>
+    <style>
+        body { margin: 0; background: #e5e7eb; color: #111827; font-family: Arial, Helvetica, sans-serif; }
+        .folha { background: #fff; max-width: 820px; margin: 24px auto; padding: 48px 56px; box-sizing: border-box; }
+        .topo { display: flex; align-items: center; gap: 18px; border-bottom: 3px solid #4f46e5; padding-bottom: 18px; }
+        .topo img { width: 84px; height: 84px; border-radius: 14px; object-fit: cover; }
+        .topo h1 { margin: 0; font-size: 30px; letter-spacing: .5px; }
+        .topo h1 span { color: #4f46e5; }
+        .topo .sub { color: #4b5563; font-size: 14px; margin-top: 4px; }
+        .topo .tipo { margin-left: auto; text-align: right; color: #4b5563; font-size: 13px; }
+        .topo .tipo strong { display: block; font-size: 15px; color: #111827; letter-spacing: 1px; }
+        .grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 26px 0; }
+        .grade div { background: #f3f4f6; padding: 12px 16px; }
+        .grade small { display: block; font-size: 11px; font-weight: bold; color: #6b7280; letter-spacing: .8px; text-transform: uppercase; }
+        .grade span { display: block; margin-top: 6px; font-size: 16px; }
+        h2 { color: #4f46e5; font-size: 16px; letter-spacing: 1px; margin: 26px 0 10px; }
+        .texto { font-size: 17px; line-height: 1.5; white-space: pre-wrap; }
+        .rodape { margin-top: 40px; padding-top: 14px; border-top: 1px solid #d1d5db; color: #4b5563; font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .acoes { text-align: center; margin: 20px auto 0; }
+        .acoes button { background: #4f46e5; color: #fff; border: 0; border-radius: 10px; padding: 12px 22px; font-size: 15px; cursor: pointer; }
+        @media (max-width: 640px) {
+            .folha { margin: 0; padding: 24px 16px; }
+            .grade { grid-template-columns: 1fr 1fr; }
+            .topo .tipo { display: none; }
+        }
+        @media print {
+            body { background: #fff; }
+            .folha { margin: 0; max-width: none; padding: 0; }
+            .acoes { display: none; }
+        }
+    </style>
+</head>
+<body>
+{% if not ficha %}
+    <div class="folha"><h1>Ficha não disponível</h1>
+        <p>A ficha de produção é liberada junto com o arquivo final, depois do pagamento.</p></div>
+{% else %}
+    <div class="acoes"><button onclick="window.print()">📄 Salvar em PDF / Imprimir</button></div>
+    <div class="folha">
+        <div class="topo">
+            <img src="/static/og/locutores-ia-logo.jpg" alt="Locutores IA">
+            <div>
+                <h1>LOCUTORES <span>IA</span></h1>
+                <div class="sub">Áudio Pank Produtora — locução com IA revisada por gente</div>
+            </div>
+            <div class="tipo"><strong>FICHA DE PRODUÇÃO</strong>Nº {{ ficha.codigo }}</div>
+        </div>
+
+        <div class="grade">
+            <div><small>Cliente</small><span>{{ ficha.cliente or '—' }}</span></div>
+            <div><small>Data da entrega</small><span class="data" data-iso="{{ ficha.data_entrega }}">{{ ficha.data_entrega or '—' }}</span></div>
+            <div><small>Duração</small><span id="duracao">—</span></div>
+            <div><small>Produto</small><span>{{ ficha.plano or '—' }}</span></div>
+            <div><small>Voz / estilo</small><span>{{ ficha.voz or '—' }}</span></div>
+            <div><small>Pagamento</small><span>{{ ficha.pagamento }}</span></div>
+            <div><small>Data do pedido</small><span class="data" data-iso="{{ ficha.data_pedido }}">{{ ficha.data_pedido or '—' }}</span></div>
+            <div><small>Status</small><span>{{ {'aprovado': 'Aprovado', 'pendente': 'Aguardando aprovação', 'ajuste_solicitado': 'Em ajuste'}.get(ficha.status, ficha.status) }}</span></div>
+            <div><small>Ajustes</small><span>{{ ficha.ajustes }}</span></div>
+        </div>
+
+        <h2>TEXTO DO PEDIDO</h2>
+        <div class="texto">{{ ficha.texto or '—' }}</div>
+
+        <div class="rodape">
+            <span>Locutores IA — Áudio Pank Produtora</span>
+            <span>WhatsApp: 85 9 9226-2297</span>
+        </div>
+    </div>
+    {% if audio_url %}<audio id="medidor" preload="metadata" src="{{ audio_url }}" hidden></audio>{% endif %}
+    <script>
+        // Data em formato brasileiro (o servidor manda AAAA-MM-DD).
+        document.querySelectorAll('.data').forEach(el => {
+            const [a, m, d] = (el.dataset.iso || '').split('-');
+            if (a && m && d) el.textContent = `${d}/${m}/${a}`;
+        });
+        const medidor = document.getElementById('medidor');
+        if (medidor) medidor.addEventListener('loadedmetadata', () => {
+            const s = Math.round(medidor.duration || 0);
+            if (!s) return;
+            document.getElementById('duracao').textContent =
+                `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+                {% if com_carimbo %} + ' (prévia)'{% endif %};
+        });
+    </script>
+{% endif %}
+</body>
+</html>

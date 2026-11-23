@@ -265,6 +265,7 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY') or os.getenv('ADMIN_SENHA') or 'l
 ROTAS_PUBLICAS = {
     'vitrine', 'solicitar_page', 'contato', 'calculadora_tempo_texto',
     'client_delivery_approval_page',      # /aprovacao/<id>
+    'ficha_producao',                     # /ficha/<id> — só abre pro cliente se PAGO
     'login_page', 'fazer_login', 'logout',
     'kiwify_webhook', 'api_cron_publish_news',
     'create_pedido',                      # POST do formulário público
@@ -3122,6 +3123,72 @@ def client_delivery_approval_page(delivery_id):
         import traceback
         traceback.print_exc()
         return render_template('aprovacao.html', found=False), 500
+
+
+def _dados_da_ficha(delivery, pedido, movs):
+    """O que vai impresso na Ficha de Produção. O texto é o que o cliente mandou no
+    pedido (o roteiro final não é guardado); sem pedido, vale a descrição da entrega."""
+    p = pedido or {}
+    plano = get_planos_config().get(p.get('plano') or '', {}).get('label', '')
+    debito = next((m for m in movs if m.get('ref') == 'pedido:' + str(p.get('id'))), None)
+    if debito:
+        pagamento = f"Pago com {abs(int(debito.get('delta') or 0))} crédito(s)"
+    elif p.get('pago'):
+        pagamento = 'Pago' + (f" — R$ {float(p['valor']):.2f}".replace('.', ',') if p.get('valor') else '')
+    elif not pedido:
+        pagamento = 'Sem pedido vinculado'
+    else:
+        pagamento = 'Aguardando pagamento'
+    return {
+        'codigo': str(delivery.get('id', ''))[:8].upper(),
+        'cliente': delivery.get('client_name') or p.get('cliente_nome') or '',
+        'data_entrega': (delivery.get('created_at') or '')[:10],
+        'data_pedido': (p.get('created_at') or '')[:10],
+        'plano': plano,
+        'voz': p.get('estilo_voz') or '',
+        'status': delivery.get('status') or '',
+        'ajustes': int(delivery.get('total_ajustes') or 0),
+        'pagamento': pagamento,
+        'pago': bool(p.get('pago')),
+        'texto': (p.get('roteiro') or delivery.get('request_description') or '').strip(),
+    }
+
+
+@app.route('/ficha/<delivery_id>')
+def ficha_producao(delivery_id):
+    """📄 Ficha de Produção (imprime/salva em PDF pelo navegador). Pública como a
+    aprovação, mas o cliente só vê depois de PAGO; o produtor logado vê sempre."""
+    try:
+        cli = supabase_manager.newpost_manager_client
+        r = cli.table('client_deliveries').select('*').eq('id', delivery_id).limit(1).execute()
+        if not r.data:
+            return render_template('ficha.html', ficha=None), 404
+        delivery = r.data[0]
+        try:
+            ped = cli.table('pedidos').select('*').eq('entrega_id', delivery_id).limit(1).execute()
+            pedido = ped.data[0] if ped.data else None
+        except Exception:
+            pedido = None
+        ficha = _dados_da_ficha(delivery, pedido, _ler_creditos())
+        if not ficha['pago'] and not session.get('admin') and os.getenv('ADMIN_SENHA'):
+            return render_template('ficha.html', ficha=None), 404
+        # Duração medida no navegador: definitivo se houver (a prévia tem o carimbo a mais).
+        audio_url, com_carimbo = None, False
+        for caminho in (delivery.get('final_path'), delivery.get('storage_path')):
+            if not caminho:
+                continue
+            try:
+                s = cli.storage.from_(CLIENT_DELIVERIES_BUCKET).create_signed_url(caminho, 3600)
+                audio_url = s.get('signedURL') or s.get('signedUrl')
+                com_carimbo = caminho != delivery.get('final_path')
+                break
+            except Exception:
+                continue  # arquivo apagado do Storage: a ficha sai sem a duração
+        return render_template('ficha.html', ficha=ficha, audio_url=audio_url, com_carimbo=com_carimbo)
+    except Exception as e:
+        print(f"Erro ao montar a ficha de produção: {e}")
+        return render_template('ficha.html', ficha=None), 500
+
 
 @app.route('/api/clients', methods=['GET'])
 def list_clients():
