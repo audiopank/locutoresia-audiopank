@@ -896,14 +896,34 @@
             const deliveryId = newVersionDeliveryId;
             newVersionDeliveryId = null;
             try {
-                const urlResult = await uploadAudioFile(file);
+                // Mesma regra do cadastro: o arquivo escolhido é o LIMPO. A prévia vai
+                // carimbada e o limpo vira o NOVO definitivo — antes a versão corrigida
+                // subia sem carimbo e o cliente pagava e baixava o definitivo ANTIGO.
+                let carimbado = null;
+                try {
+                    if (typeof window.carimbarPrevia === 'function') carimbado = await window.carimbarPrevia(file);
+                } catch (e) {
+                    console.warn('[carimbo] não consegui carimbar:', e);
+                }
+                let urlResult, finalPath = '';
+                if (carimbado) {
+                    finalPath = (await uploadAudioFile(file, 'final')).path;
+                    urlResult = await uploadAudioFile(new File([carimbado],
+                        file.name.replace(/(\.\w+)?$/, '-previa.wav'), { type: 'audio/wav' }), 'entrega');
+                } else {
+                    if (!confirm('Não consegui carimbar (sem voz de carimbo gravada, ou spot curto demais).\n\n' +
+                                 'A versão corrigida vai SEM carimbo — o cliente recebe o arquivo do jeito que está.\n\n' +
+                                 'Continuar mesmo assim?')) return;
+                    urlResult = await uploadAudioFile(file, 'entrega');
+                }
                 const resp = await fetch(`/api/client-deliveries/${deliveryId}/new-version`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         storage_path: urlResult.path,
-                        file_size: file.size,
-                        mime_type: file.type
+                        final_path: finalPath,
+                        file_size: (carimbado || file).size,
+                        mime_type: carimbado ? 'audio/wav' : file.type
                     })
                 });
                 const result = await resp.json();

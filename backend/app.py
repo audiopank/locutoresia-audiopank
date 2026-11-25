@@ -2646,6 +2646,15 @@ def get_client_delivery_upload_url():
 
         import uuid
         file_extension = os.path.splitext(filename)[1]
+
+        # A rota é pública SÓ por causa do cliente anexar amostra no ajuste (/aprovacao).
+        # Antes, um estranho podia subir kind='carimbo' (as prévias saíam sem marca)
+        # ou 'final'/'entrega' à vontade. Varredura de 25/11/2026.
+        if kind != 'amostra' and not session.get('admin') and os.getenv('ADMIN_SENHA'):
+            return jsonify({"success": False, "error": "Acesso restrito. Faça login."}), 401
+        # shortcut: amostra pública não tem limite de tamanho nem de quantidade; se aparecer abuso, por limite por IP.
+        if kind == 'amostra' and file_extension.lower() not in AUDIO_AMOSTRA_EXT:
+            return jsonify({"success": False, "error": "Envie um arquivo de áudio (MP3, WAV, M4A, OGG...)."}), 400
         if kind == 'rascunho':
             # Nome no caminho + par .txt opcional (ver _caminho_rascunho).
             try:
@@ -2711,6 +2720,9 @@ def get_stems_share_link():
     except Exception as e:
         print(f"Erro ao gerar link do pacote: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+AUDIO_AMOSTRA_EXT = {'.mp3', '.wav', '.m4a', '.ogg', '.oga', '.opus', '.webm', '.aac', '.flac', '.mp4'}
+
 
 @app.route('/api/client-deliveries', methods=['POST', 'OPTIONS'])
 def create_client_delivery():
@@ -3031,6 +3043,9 @@ def new_version_client_delivery(delivery_id):
             "status": "pendente",
             "feedback": None,
             "amostra_path": None,
+            # O definitivo acompanha a versão nova. Sem carimbo, a prévia JÁ é o arquivo
+            # limpo — vira o definitivo. Antes o final antigo (pré-ajuste) ficava valendo.
+            "final_path": (data.get('final_path') or '').strip() or storage_path,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         # total_ajustes/ajustes_historico NÃO são tocados aqui de propósito:
@@ -3041,8 +3056,10 @@ def new_version_client_delivery(delivery_id):
             result = supabase_manager.newpost_manager_client.table('client_deliveries') \
                 .update(update_data) \
                 .eq('id', delivery_id).execute()
-        except Exception:
+        except Exception as err:
             update_data.pop('amostra_path', None)
+            if 'final_path' in str(err):
+                update_data.pop('final_path', None)
             result = supabase_manager.newpost_manager_client.table('client_deliveries') \
                 .update(update_data) \
                 .eq('id', delivery_id).execute()
