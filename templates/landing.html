@@ -148,6 +148,20 @@
 
         footer { padding: 30px 40px; text-align: center; color: var(--txt2); font-size: .85rem; }
         footer a { color: var(--txt2); }
+        /* 🎤 Áudio no WhatsApp flutuando: o botão do fim da página ficava escondido (25/11/2026). */
+        .zap-audio {
+            position: fixed; right: 18px; bottom: 18px; z-index: 50;
+            display: flex; align-items: center; gap: 8px;
+            background: #25d366; color: #0b2e17; font-weight: 700; font-size: .95rem;
+            padding: 12px 18px; border-radius: 999px; text-decoration: none;
+            box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
+        }
+        .zap-audio i { font-size: 1.4rem; }
+        .zap-audio:hover { filter: brightness(1.08); color: #0b2e17; }
+        @media (max-width: 600px) {
+            .zap-audio { right: 12px; bottom: 12px; padding: 10px 14px; font-size: .85rem; }
+            footer { padding-bottom: 90px; }
+        }
         footer a:hover { color: var(--txt); }
 
         /* ── Amostras de voz (SEÇÃO, não modal) ──────────────────────────
@@ -523,5 +537,9 @@
         })();
     </script>
 
+    <a class="zap-audio" href="https://wa.me/5585992262297?text=Ol%C3%A1!%20Vou%20te%20mandar%20minha%20d%C3%BAvida%20por%20%C3%A1udio."
+       target="_blank" rel="noopener" aria-label="Mande sua dúvida por áudio no WhatsApp">
+        <i class="fab fa-whatsapp"></i> 🎤 Mande sua dúvida por áudio
+    </a>
 </body>
 </html>
