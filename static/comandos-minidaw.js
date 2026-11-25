@@ -28,16 +28,20 @@
 
     // Verbos que começam um comando novo: só quebra a frase em " e " antes deles
     // (assim um nome como "Pão e Leite" não é partido no meio).
-    const VERBOS = 'deixa|deixe|deixar|coloca|coloque|colocar|poe|põe|bota|adiciona|adicione|tira|tire|remove|remova|' +
-        'silencia|silencie|muta|desmuta|dessilencia|aumenta|aumente|sobe|diminui|diminua|abaixa|abaixe|baixa|reduz|' +
-        'renomeia|renomeie|muda|mude|troca|troque|pinta|pinte|liga|ligue|desliga|desligue|ativa|ative|desativa|' +
-        'aplica|aplique|faz|faça|fade|mixa|mixar|exporta|normaliza|normalize|toca|solo|acelera|volta';
+    // RADICAIS (+ qualquer terminação): "aumenta/aumente/aumentar/aumentando" — no teste
+    // real (25/11) ele escreveu "AUMENTE ... E ELEMINE ..." e o tradutor só conhecia "aumenta".
+    const VERBOS = 'deix|coloc|colo?qu|p[oõ]e|bot|adicion|tir|remov|silenci|mut|desmut|dessilenci|aument|sob|sub|' +
+        'diminu|abaix|baix|reduz|renome|mud|troc|pint|lig|deslig|ativ|desativ|aplic|faz|fa[cç]|fade|mix|export|' +
+        'normaliz|toc|solo|aceler|volt|el[ei]min|encurt|cort|limp';
+    const SOBE = /\b(aument\w*|sob[ea]|sub[ai]\w*|levant\w*|mais alt[oa]|mais forte|mais presente)\b/;   // "sob[ea]" sem \w*: "sobre" não é subir
+    const DESCE = /\b(diminu\w*|abaix\w*|baix[ae]\w*|reduz\w*|mais baix[oa]|mais frac[oa])\b/;
+    const TIRA = /\b(tir[aeo]\w*|remov\w*|deslig\w*|desativ\w*|el[ei]min\w*|cort[aeo]\w*|sem)\b/;
 
     const NUMEROS = { um: 1, uma: 1, dois: 2, duas: 2, 'três': 3, tres: 3, quatro: 4, cinco: 5, seis: 6,
         sete: 7, oito: 8, nove: 9, dez: 10, meio: 0.5 };
 
-    const EXEMPLOS = 'Tente: "aumenta a voz em 3 dB", "silencia a trilha", "coloca reverb na voz", ' +
-        '"fade out de 2 segundos na trilha", "deixa mais lento" ou "mixar tudo".';
+    const EXEMPLOS = 'Tente: "aumenta a voz em 6 dB", "abaixa a trilha", "coloca reverb na voz", ' +
+        '"tira as pausas da voz", "tira a respiração", "fade out de 2 segundos na trilha", "deixa mais lento" ou "mixar tudo".';
 
     function semAcento(s) {
         return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -60,8 +64,9 @@
         return null;
     }
 
+    // Quebra em " e <verbo>" ou ", <verbo>" (assim "Pão e Leite" não parte no meio).
     function dividir(frase) {
-        const re = new RegExp('\\s*(?:,\\s*|\\s)e\\s+(?=(?:' + VERBOS + ')\\b)', 'i');
+        const re = new RegExp('\\s*(?:,?\\s+e|,)\\s+(?=(?:' + VERBOS + ')\\S*)', 'i');
         return frase.split(re).map(s => s.trim()).filter(Boolean);
     }
 
@@ -128,46 +133,90 @@
             return { acoes: [{ tipo: 'andamento', faixas: ids, estado: andamento }], faixas: ids };
         }
 
+        const vozes = faixas.filter(f => f.type === 'voice').map(f => f.id);
+        const trilhas = faixas.filter(f => f.type === 'music' && !f.sfx).map(f => f.id);
+
+        // Pausas / espaços / silêncios entre os trechos -> botão "Encurtar" (vale pra todas as vozes).
+        const pausas = /\b(espac\w*|pausas?|silencios?|buracos?|vazios?)\b/.test(n) &&   // "espaçoes" (digitado assim) também
+            (TIRA.test(n) || /\b(encurt\w*|diminu\w*|reduz\w*|junt\w*)\b/.test(n));
+        if (pausas) {
+            if (!vozes.length) return { erro: 'Não achei faixa de voz pra encurtar as pausas.' };
+            acoes.push({ tipo: 'pausas', faixas: vozes, max: numero(n, 's\\b|seg|segundo') });
+        }
+
+        // Respiração e chiado: "tira/tirando/sem" = LIGAR o gate/de-esser; "volta/devolve" = desligar.
+        const devolve = /\b(volt\w*|devolv\w*|mant[eé]\w*)\b/.test(n);
+        const alvoVoz = (alvo && alvo.length) ? alvo : vozes;   // sem faixa citada: as vozes
+        for (const [re, efeito, rotulo] of [[/\brespira\w*/, 'gate', 'Gate (respiração)'],
+                                            [/\b(chiado|sibilancia|sss+)\b/, 'deesser', 'De-esser (chiado)']]) {
+            if (!re.test(n)) continue;
+            if (!alvoVoz.length) return semFaixa;
+            alvoVoz.forEach(id => acoes.push({ tipo: 'efeito', faixa: id, efeito, rotulo, valor: !devolve }));
+        }
+
+        // Ducking: "abaixa mais a trilha quando a voz entra", "ducking de 12 dB".
+        if (/\bducking\b/.test(n) || (/\b(quando|enquanto|embaixo|debaixo)\b/.test(n) && /\bvoz\b/.test(n) && /\btrilha\b/.test(n))) {
+            if (!trilhas.length) return { erro: 'Não achei trilha pra ajustar o ducking.' };
+            let db = numero(n, 'db|decibe');
+            if (db == null) db = 12;
+            db = Math.max(0, Math.min(20, db));
+            trilhas.forEach(id => acoes.push({ tipo: 'ducking', faixa: id, db }));
+            return { acoes, faixas: trilhas };
+        }
+
         // Fade in / out.
         const fade = n.match(/\bfade\s*-?\s*(in|out|de entrada|de saida)\b/) ||
             (/\b(entrada|saida)\b/.test(n) && /\bfade\b/.test(n) ? n.match(/\b(entrada|saida)\b/) : null);
         if (fade) {
             const campo = /in|entrada/.test(fade[1]) ? 'fadeIn' : 'fadeOut';
             let s = numero(n.replace(/faixa\s*\d+/, ''), 's\\b|seg|segundo');
-            if (/\b(sem|tira|remove)\b/.test(n)) s = 0;
+            if (TIRA.test(n)) s = 0;
             if (s == null) s = 2;
             s = Math.max(0, Math.min(5, s));
             if (!porFaixa(id => ({ tipo: 'fade', faixa: id, campo, segundos: s }))) return semFaixa;
         }
 
-        // Efeitos (liga por padrão; "tira/sem/desliga" desliga).
+        // Efeitos (liga por padrão; "tira/sem/desliga" desliga). Reverb e eco aceitam
+        // QUANTIDADE: "reverb na voz em 25%", "mais reverb", "menos eco" — e aí o
+        // "aumenta/abaixa" da oração é do efeito, não do volume da faixa.
+        let quantidadeTratada = false;
         for (const [re, chave, rotulo] of EFEITOS) {
             if (!re.test(n)) continue;
-            const liga = !/\b(tira|tire|remove|remova|desliga|desligue|desativa|sem)\b/.test(n);
+            const pctQ = n.match(/(\d+(?:[.,]\d+)?)\s*(%|por ?cento)/);
+            const menos = DESCE.test(n) || /\bmenos\b/.test(n);
+            if ((chave === 'reverb' || chave === 'delay') && !TIRA.test(n) && (pctQ || menos || SOBE.test(n) || /\bmais\b/.test(n))) {
+                const pct = pctQ ? Math.max(0, Math.min(100, Math.round(parseFloat(pctQ[1].replace(',', '.'))))) : null;
+                if (!porFaixa(id => ({ tipo: 'quantidade', faixa: id, efeito: chave, rotulo, pct, passo: pct == null ? (menos ? -10 : 10) : null }))) return semFaixa;
+                quantidadeTratada = true;
+                continue;
+            }
+            const liga = !TIRA.test(n);
             if (!porFaixa(id => ({ tipo: 'efeito', faixa: id, efeito: chave, rotulo, valor: liga }))) return semFaixa;
         }
 
-        // Mudo / solo.
-        if (/\b(dessilencia\w*|desmut\w*|tira\w* o mudo|volta\w* o som|liga\w* o som|desmudo)\b/.test(n)) {
+        // Mudo / solo. ("tira os silêncios" é pausa, não mudo.)
+        if (pausas) {
+            // já tratado acima
+        } else if (/\b(dessilenci\w*|desmut\w*|tir\w* o mudo|volt\w* o som|lig\w* o som|desmudo)\b/.test(n)) {
             if (!porFaixa(id => ({ tipo: 'mudo', faixa: id, valor: false }))) return semFaixa;
-        } else if (/\b(silencia\w*|muta\w*|mudo|cala\w*|sem som|desliga\w* o som)\b/.test(n)) {
+        } else if (/\b(silenci\w*|mut[ae]\w*|mudo|cal[ae]\w*|sem som|deslig\w* o som)\b/.test(n)) {
             if (!porFaixa(id => ({ tipo: 'mudo', faixa: id, valor: true }))) return semFaixa;
         }
         if (/\bsolo\b/.test(n)) {
-            const liga = !/\b(tira|tire|remove|sem|desliga)\b/.test(n);
+            const liga = !TIRA.test(n);
             if (!porFaixa(id => ({ tipo: 'solo', faixa: id, valor: liga }))) return semFaixa;
         }
 
-        // Volume: "+3 dB", "abaixa 2 dB", "em 80%".
-        const sobe = /\b(aumenta\w*|sobe|subir|levanta\w*|mais alt[oa]|mais forte)\b/.test(n);
-        const desce = /\b(diminui\w*|abaixa\w*|baixa\w*|reduz\w*|mais baix[oa]|mais fraca|mais fraco)\b/.test(n);
-        const pct = n.match(/(\d+(?:[.,]\d+)?)\s*(%|por ?cento)/);
-        if (pct && (/\bvolume\b/.test(n) || sobe || desce || /\bdeixa\b/.test(n))) {
+        // Volume: "+6 dB", "abaixa 2 dB", "em 80%". Sem número: 6 dB (3 era pouco, pedido dele 25/11).
+        const sobe = SOBE.test(n) && !pausas && !quantidadeTratada;
+        const desce = DESCE.test(n) && !pausas && !quantidadeTratada;
+        const pct = quantidadeTratada ? null : n.match(/(\d+(?:[.,]\d+)?)\s*(%|por ?cento)/);
+        if (pct && (/\bvolume\b/.test(n) || sobe || desce || /\bdeix\w*\b/.test(n))) {
             const v = Math.max(0, Math.min(150, Math.round(parseFloat(pct[1].replace(',', '.')))));
             if (!porFaixa(id => ({ tipo: 'volume', faixa: id, pct: v }))) return semFaixa;
         } else if (sobe || desce || (/\bvolume\b/.test(n) && /\bdb\b/.test(n))) {
             let db = numero(n.replace(/faixa\s*\d+/, ''), 'db|decibe');
-            if (db == null) db = 3;
+            if (db == null) db = 6;
             db = Math.min(24, Math.abs(db)) * (desce ? -1 : 1);
             if (!porFaixa(id => ({ tipo: 'volume', faixa: id, db }))) return semFaixa;
         }
@@ -191,14 +240,17 @@
         if (!frase) return { erro: 'Digite ou fale um comando. ' + EXEMPLOS };
         faixas = faixas || [];
         const acoes = [];
+        const naoEntendi = [];
         let herdadas = null;
         for (const oracao of dividir(frase)) {
             const r = interpretarOracao(oracao, faixas, herdadas);
-            if (r.erro) return { erro: r.erro };
+            if (r.erro) { naoEntendi.push({ oracao, erro: r.erro }); continue; }
             acoes.push(...r.acoes);
             if (r.faixas && r.faixas.length) herdadas = r.faixas;
         }
-        return { acoes };
+        // Frase longa: faz o que entendeu e conta o que não entendeu (antes recusava tudo).
+        if (!acoes.length) return { erro: naoEntendi.length === 1 ? naoEntendi[0].erro : 'Não entendi "' + frase + '". ' + EXEMPLOS };
+        return { acoes, naoEntendi: naoEntendi.map(x => x.oracao) };
     }
 
     // Andamento exibido na tela a partir do fator do Time Stretch das vozes.

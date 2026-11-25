@@ -64,4 +64,4 @@ def test_camara_no_seletor_e_viaja_como_o_plenario():
 def test_versoes():
     for t in ('minidaw.html', 'gerador.html', 'narrativa.html'):
         assert '/static/mix-engine.js?v=25' in _ler('templates', t), t
-    assert '/static/minidaw.js?v=95' in _ler('templates', 'minidaw.html')
+    assert '/static/minidaw.js?v=96' in _ler('templates', 'minidaw.html')

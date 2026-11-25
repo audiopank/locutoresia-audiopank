@@ -82,6 +82,46 @@ test('dois comandos na mesma frase', () => {
     assert.deepEqual(a.map(x => x.tipo), ['mudo', 'volume', 'volume']);
 });
 
+// ── Teste real dele (25/11), escrito em CAIXA ALTA e com "espaçoes" ──────────
+test('"AUMENTE A VOZ EM 4 DB E ELEMINE OS ESPAÇOES ENTRE OS TRECHOS DA VOZ , TIPO TIRANDO A RESPIRAÇÃO"', () => {
+    const r = i('AUMENTE A VOZ EM 4 DB E ELEMINE OS ESPAÇOES ENTRE OS TRECHOS DA VOZ , TIPO TIRANDO A RESPIRAÇÃO');
+    assert.deepEqual(r.acoes, [
+        { tipo: 'volume', faixa: 'v1', db: 4 }, { tipo: 'volume', faixa: 'v2', db: 4 },
+        { tipo: 'pausas', faixas: ['v1', 'v2'], max: null },
+        { tipo: 'efeito', faixa: 'v1', efeito: 'gate', rotulo: 'Gate (respiração)', valor: true },
+        { tipo: 'efeito', faixa: 'v2', efeito: 'gate', rotulo: 'Gate (respiração)', valor: true },
+    ]);
+    assert.deepEqual(r.naoEntendi, []);
+});
+
+test('todas as formas do verbo e o que ele vai falar no dia a dia', () => {
+    for (const f of ['coloque reverb na voz', 'adicione reverb na voz', 'COLOCA REVERB NA VOZ', 'põe reverber na voz']) {
+        assert.equal(i(f).acoes[0].efeito, 'reverb', f);
+        assert.equal(i(f).acoes[0].valor, true, f);
+    }
+    assert.deepEqual(i('abaixa a trilha').acoes, [{ tipo: 'volume', faixa: 'tr', db: -6 }]);   // sem número: 6 dB
+    assert.deepEqual(i('aumente a voz').acoes.map(a => a.db), [6, 6]);
+    assert.equal(i('coloca reverb sobre a voz').acoes.length, 2);                              // "sobre" não sobe volume
+    assert.ok(i('coloca reverb sobre a voz').acoes.every(a => a.tipo === 'efeito'));
+    assert.equal(i('volta a respiração').acoes[0].valor, false);
+    assert.equal(i('tira o chiado da voz').acoes[0].efeito, 'deesser');
+    assert.deepEqual(i('tira os silêncios da voz').acoes.map(a => a.tipo), ['pausas']);          // pausa, não mudo
+    assert.deepEqual(i('abaixa mais a trilha quando a voz entra').acoes, [{ tipo: 'ducking', faixa: 'tr', db: 12 }]);
+});
+
+test('quantidade de reverb/eco: não confunde com volume da faixa', () => {
+    assert.deepEqual(i('reverb na voz em 25%').acoes.map(a => [a.tipo, a.pct]), [['quantidade', 25], ['quantidade', 25]]);
+    assert.deepEqual(i('aumenta o reverb da voz').acoes.map(a => [a.tipo, a.passo]), [['quantidade', 10], ['quantidade', 10]]);
+    assert.deepEqual(i('menos eco na trilha').acoes, [{ tipo: 'quantidade', faixa: 'tr', efeito: 'delay', rotulo: 'Eco', pct: null, passo: -10 }]);
+    assert.equal(i('tira o reverb da voz').acoes[0].tipo, 'efeito');   // tirar continua desligando
+});
+
+test('frase longa: faz o que entendeu e conta o que não entendeu', () => {
+    const r = i('silencia a trilha e faz um café');
+    assert.deepEqual(r.acoes, [{ tipo: 'mudo', faixa: 'tr', valor: true }]);
+    assert.deepEqual(r.naoEntendi, ['faz um café']);
+});
+
 test('não entendeu ou faltou faixa: avisa, nunca chuta', () => {
     assert.match(i('faz um café').erro, /Não entendi/);
     assert.match(i('coloca reverb').erro, /Em qual faixa/);

@@ -2340,7 +2340,9 @@ class MiniDAW {
             if (!t || !ids.has(t.id)) return e;
             return Object.assign(e, { props: {
                 name: t.name, cor: t.cor, muted: !!t.muted, solo: !!t.solo, volume: t.volume,
-                fadeIn: t.fadeIn, fadeOut: t.fadeOut, effects: Object.assign({}, t.effects)
+                fadeIn: t.fadeIn, fadeOut: t.fadeOut, effects: Object.assign({}, t.effects),
+                duckSettings: t.duckSettings ? Object.assign({}, t.duckSettings) : undefined,
+                reverbAmount: t.reverbAmount, delayAmount: t.delayAmount
             } });
         });
     }
@@ -2364,6 +2366,7 @@ class MiniDAW {
                 const p = entrada.props;
                 Object.assign(track, p, { effects: Object.assign({}, p.effects) });
                 if (!p.cor) delete track.cor;
+                if (!p.duckSettings) delete track.duckSettings;
                 this.applyEffectStates(track);
                 this.updateTrackUI(track);
                 mexeuEmProps = true;
@@ -2410,12 +2413,15 @@ class MiniDAW {
         const faixas = this.tracks.map(t => ({ id: t.id, name: t.name, type: t.type, sfx: !!t.sfx }));
         const r = ComandosMiniDAW.interpretar(frase, faixas);
         if (r.erro) return { ok: false, msg: r.erro };
-        const desfaziveis = r.acoes.filter(a => !['mixar', 'play', 'parar'].includes(a.tipo));
+        // Encurtar pausas refaz a voz do zero: tem o próprio ↩, o Ctrl+Z não alcança.
+        const desfaziveis = r.acoes.filter(a => !['mixar', 'play', 'parar', 'pausas'].includes(a.tipo));
         let ids = [...new Set(desfaziveis.flatMap(a => a.faixas || (a.faixa ? [a.faixa] : [])))];
-        if (desfaziveis.some(a => a.tipo === 'normalizar' || a.tipo === 'solo')) ids = this.tracks.map(t => t.id);
+        // Solo, normalizar e a sobra de volume (vai pra trilha) mexem em outras faixas.
+        if (desfaziveis.some(a => ['normalizar', 'solo', 'volume'].includes(a.tipo))) ids = this.tracks.map(t => t.id);
         const snap = this._snapshotComProps(ids);
         const n0 = this.undoClips.length;
         const feitos = [];
+        this._sobraDb = 0;
         for (const a of r.acoes) {
             try {
                 const msg = await this._aplicarAcaoDeComando(a);
@@ -2424,6 +2430,18 @@ class MiniDAW {
                 feitos.push('⚠️ ' + e.message);
             }
         }
+        // A voz bateu no teto (150% ≈ +3,5 dB): o que faltou sai da TRILHA — é o que dá
+        // presença de verdade (pedido dele 25/11: "aumentar 3 dB é pouco, a trilha atrapalha").
+        if (this._sobraDb > 0.05) {
+            const alvos = new Set(r.acoes.filter(a => a.tipo === 'volume').map(a => a.faixa));
+            const trilhas = this.tracks.filter(t => t.type === 'music' && !t.sfx && !alvos.has(t.id));
+            for (const t of trilhas) {
+                const v = Math.max(0, Math.round((+t.volume || 0) * Math.pow(10, -this._sobraDb / 20)));
+                this.updateTrackVolume(t.id, v);
+                this.updateTrackUI(t);
+            }
+            if (trilhas.length) feitos.push(`voz chegou no máximo (150%), então a trilha desceu ${this._sobraDb.toFixed(1).replace('.', ',')} dB pra completar`);
+        }
         if (desfaziveis.length) {
             // O Time Stretch empilha 1 undo por objeto; o comando vira UM passo só.
             this.undoClips.splice(n0);
@@ -2431,7 +2449,9 @@ class MiniDAW {
         }
         this.saveToLocalStorage();
         this.atualizarAndamentoUI();
-        return { ok: true, msg: [...new Set(feitos)].join(' · ') + (desfaziveis.length ? ' (Ctrl+Z desfaz)' : '') };
+        let msg = [...new Set(feitos)].join(' · ') + (desfaziveis.length ? ' (Ctrl+Z desfaz)' : '');
+        if (r.naoEntendi && r.naoEntendi.length) msg += ` · 🤔 Não entendi: "${r.naoEntendi.join('", "')}"`;
+        return { ok: true, msg };
     }
 
     async _aplicarAcaoDeComando(a) {
@@ -2454,14 +2474,39 @@ class MiniDAW {
                 if (!!track.solo !== a.valor) this.toggleSolo(track.id);
                 return `${nome} ${a.valor ? 'em solo' : 'sem solo'}`;
             case 'volume': {
-                const novo = a.pct != null ? a.pct
-                    : Math.round((track.volume || 0) * Math.pow(10, a.db / 20));
+                const atual = +track.volume || 0;
+                const novo = a.pct != null ? a.pct : Math.round(atual * Math.pow(10, a.db / 20));
                 const v = Math.max(0, Math.min(150, novo));
+                if (a.pct == null && a.db > 0 && novo > 150) {
+                    const subiu = atual > 0 ? 20 * Math.log10(v / atual) : 0;
+                    this._sobraDb = Math.max(this._sobraDb || 0, a.db - subiu);
+                }
                 this.updateTrackVolume(track.id, v);
                 this.updateTrackUI(track);
-                const teto = (a.pct == null && novo > 150) ? ' (chegou no máximo, 150%)' : '';
                 return a.pct != null ? `${nome} em ${v}%`
-                    : `${nome} ${a.db > 0 ? '+' : ''}${String(a.db).replace('.', ',')} dB → ${v}%${teto}`;
+                    : `${nome} ${a.db > 0 ? '+' : ''}${String(a.db).replace('.', ',')} dB → ${v}%`;
+            }
+            case 'quantidade': {
+                if (!track.effects) track.effects = {};
+                if (!track.effects[a.efeito]) this.toggleEffect(track.id, a.efeito);   // pedir quantidade já liga
+                const ler = a.efeito === 'reverb' ? MixEngine.quantidadeReverbDaFaixa : MixEngine.quantidadeDelayDaFaixa;
+                const atual = Math.round(ler(track) * 100);
+                const novo = Math.max(0, Math.min(100, a.pct != null ? a.pct : atual + a.passo));
+                if (a.efeito === 'reverb') this.updateReverbAmount(track.id, novo);
+                else this.updateDelayAmount(track.id, novo);
+                this.updateTrackUI(track);
+                return `${a.rotulo} em ${nome}: ${atual}% → ${novo}%`;
+            }
+            case 'ducking':
+                this.updateDuck(track.id, 'abaixaDb', a.db);
+                return `Ducking: ${nome} abaixa ${a.db} dB quando a voz entra`;
+            case 'pausas': {
+                const el = document.getElementById('pausaMax');
+                const doCampo = el ? parseFloat(String(el.value).replace(',', '.')) || 0.4 : 0.4;   // a tela mostra "0,4"
+                const max = Math.max(0.1, Math.min(1.5, a.max != null ? a.max : doCampo));
+                if (el) el.value = String(max).replace('.', ',');
+                this.encurtarPausasVoz(max);
+                return `Pausas da voz encurtadas pra no máximo ${String(max).replace('.', ',')} s (pra voltar, use o ↩ ao lado de "Encurtar")`;
             }
             case 'efeito':
                 if (!track.effects) track.effects = {};
