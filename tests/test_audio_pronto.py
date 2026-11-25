@@ -16,7 +16,7 @@ def test_botao_e_input_no_gerador():
     html = _ler('templates', 'gerador.html')
     assert 'id="btnSubirAudioPronto"' in html
     assert 'id="inputAudioPronto" accept=".mp3,.wav,audio/mpeg,audio/wav"' in html
-    assert '/static/gerador.js?v=36' in html
+    assert '/static/gerador.js?v=37' in html
 
 
 def test_audio_de_fora_vira_resultado_sem_voz_e_sem_alerta_de_trilha():

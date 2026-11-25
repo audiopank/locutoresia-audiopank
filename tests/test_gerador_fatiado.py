@@ -20,7 +20,7 @@ def test_gerador_tem_o_botao_ao_lado_do_abrir_na_minidaw():
     html = _ler('templates', 'gerador.html')
     assert html.index('id="btnAbrirMiniDAW"') < html.index('id="btnAbrirMiniDAWFatiado"') < html.index('id="btnDownload"')
     assert 'Abrir fatiado na MiniDAW' in html
-    assert '/static/gerador.js?v=36' in html
+    assert '/static/gerador.js?v=37' in html
 
 
 def test_os_dois_botoes_usam_o_mesmo_pacote():

@@ -1011,6 +1011,21 @@ def detectar_personagens_dialogo(texto):
     return vistos
 
 
+def paragrafar_roteiro(texto, alvo=4):
+    """Roteiro de voz única que veio num bloco só vira ~4 parágrafos (1 por linha),
+    juntando frases inteiras. O ✂️ Abrir fatiado da MiniDAW corta a voz por parágrafo
+    e recusava roteiro de um parágrafo (varredura de 25/11/2026). Texto que já tem
+    quebra de linha fica como está."""
+    texto = (texto or '').strip()
+    if '\n' in texto:
+        return texto
+    frases = [f for f in re.split(r'(?<=[.!?…])\s+', texto) if f.strip()]
+    if len(frases) < 2:
+        return texto
+    por = -(-len(frases) // alvo)   # teto da divisão
+    return '\n'.join(' '.join(frases[i:i + por]) for i in range(0, len(frases), por))
+
+
 def texto_falado_do_dialogo(texto):
     """Remove os rótulos 'Nome:' do início das linhas — rótulo não é falado.
 
@@ -1199,7 +1214,8 @@ FORMATO OBRIGATÓRIO — NARRAÇÃO REVEZADA POR 2 VOZES:
             regra_fala = '- Escreva APENAS o texto falado, em parágrafos curtos separados por linha em branco. Nada de rubrica, marcação de trilha, "LOCUTOR:", colchetes ou instrução de produção.'
         else:
             regras_formato = ""
-            regra_fala = '- Escreva APENAS o que o locutor fala. Nada de rubrica, marcação de trilha, "LOCUTOR:", colchetes ou instrução de produção.'
+            regra_fala = ('- Escreva APENAS o que o locutor fala. Nada de rubrica, marcação de trilha, "LOCUTOR:", colchetes ou instrução de produção.\n'
+                          '- Separe o texto em 3 a 5 parágrafos curtos (gancho, oferta, detalhes, chamada pra ação), um parágrafo por linha.')
 
         prompt = f"""Você é redator publicitário de rádio no Brasil. Escreva o TEXTO FALADO de um spot comercial.
 {regras_formato}
@@ -1304,6 +1320,8 @@ Devolva SOMENTE um JSON válido, sem markdown:
         if parsed is None:
             return responder_base(ultimo_erro)
         roteiro = parsed['roteiro'].strip()
+        if peca == 'spot' and formato == 'unico':
+            roteiro = paragrafar_roteiro(roteiro)   # rede de segurança: a IA às vezes ignora o pedido
 
         return jsonify({
             "success": True, "fonte": "ia", "peca": peca,

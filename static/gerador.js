@@ -1692,6 +1692,21 @@
         try {
             estado.roteiro = document.getElementById('textoComercial').value.trim();
             if (!estado.roteiro) throw new Error('O texto está vazio.');
+            // Spot reaberto dos guardados só traz o mix pronto: trilha e receita não estão
+            // na memória. Sem isto saía SÓ a voz, com a barra dizendo "trilha: X" (varredura 25/11).
+            const reaberto = !estado.vozBuffer;
+            // Trilha do guardado fora do catálogo (veio do computador): avisa ANTES de gastar a voz.
+            const trilhaAntiga = reaberto && estado.trilha && estado.trilha.name;
+            const selTrilha = document.getElementById('selectTrilha');
+            if (trilhaAntiga && (!selTrilha || !selTrilha.value || trilhaVaiFaltar())
+                    && !confirm('🎵 A trilha deste spot ("' + trilhaAntiga + '") não está no catálogo — '
+                        + 'provavelmente veio do computador.\n\n'
+                        + 'OK = regravar só com a voz (sem trilha)  ·  Cancelar = escolher a trilha primeiro '
+                        + '(ex.: "💻 Trilha do meu computador...")')) {
+                passo(0, 2, '🎵 Escolha a trilha e clique em "Regerar só a voz" de novo.');
+                if (selTrilha) { selTrilha.scrollIntoView({ behavior: 'smooth', block: 'center' }); selTrilha.focus(); }
+                return;
+            }
 
             passo(1, 2, 'Regravando a locução...');
             if (pecaAtual() === 'video') {
@@ -1701,6 +1716,15 @@
                 desenharCenas();
             } else {
                 estado.vozBuffer = await gerarVoz(estado.roteiro);
+            }
+
+            if (reaberto) {
+                passo(2, 2, 'Carregando a trilha do spot guardado...');
+                if ((document.getElementById('selectTrilha') || {}).value === 'auto') {
+                    avisar('🎵 A trilha estava em "automática": a IA escolhe de novo e pode vir outra. Confira antes de enviar.', 'info');
+                }
+                await prepararTrilha();
+                await prepararReceita();
             }
 
             passo(2, 2, 'Remixando...');
