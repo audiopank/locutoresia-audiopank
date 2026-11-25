@@ -21,8 +21,9 @@ class MiniDAW {
         this.isPlaying = false;
         this.currentTime = 0;
         this.duration = 0;
-        this.exportFormat = 'wav';
-        this.mp3Bitrate = 192;
+        // 25/11/2026 (pedido dele): padrão MP3 320 kbps — "qualidade máxima pra vender pro cliente".
+        this.exportFormat = 'mp3';
+        this.mp3Bitrate = 320;
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.masterGain = this.audioContext.createGain();
         // Barramento master (Suíte Master, 16/09/2026): masterGain → masterIn →
@@ -128,8 +129,8 @@ class MiniDAW {
                 // Mantém apenas configurações, remove tracks
                 const cleanedData = {
                     tracks: [],
-                    exportFormat: data.exportFormat || 'wav',
-                    mp3Bitrate: data.mp3Bitrate || 192
+                    formatoExport: data.formatoExport || 'mp3',
+                    mp3Kbps: data.mp3Kbps || 320
                 };
                 localStorage.setItem('minidaw_project', JSON.stringify(cleanedData));
             }
@@ -772,7 +773,13 @@ class MiniDAW {
                 </div>
             `}
         `;
-        
+        // 🎨 Cor escolhida por comando ("deixa vermelha"). Sem cor = visual de sempre.
+        if (track.cor) {
+            trackCard.style.borderLeft = `6px solid ${track.cor}`;
+            const nomeInput = trackCard.querySelector('.track-header input[type="text"]');
+            if (nomeInput) nomeInput.style.borderColor = track.cor;
+        }
+
         container.appendChild(trackCard);
         this._preencherPresetsFaixa(track);
 
@@ -1498,6 +1505,7 @@ class MiniDAW {
             const el = document.createElement('div');
             el.className = 'clip-bloco';
             el.id = `clip_el_${clip.id}`;
+            if (track.cor) { el.style.background = track.cor + '55'; el.style.borderColor = track.cor; }
             el.style.left = (clip.inicio * this.pxPorSegundo) + 'px';
             el.style.width = Math.max(8, clip.duracao * this.pxPorSegundo) + 'px';
             el.innerHTML = `
@@ -2322,20 +2330,53 @@ class MiniDAW {
         this.redoClips = [];
     }
 
+    // 🗣️ Comando por voz/texto (25/11/2026): além dos clips, o snapshot guarda o
+    // que o comando mexe na FAIXA — assim o Ctrl+Z desfaz "silencia a trilha" etc.
+    // Snapshot sem `props` (todas as edições de clip) continua idêntico ao de sempre.
+    _snapshotComProps(trackIds) {
+        const ids = new Set(trackIds);
+        return this._snapshotClips().map(e => {
+            const t = this.tracks.find(x => x.id === e.trackId);
+            if (!t || !ids.has(t.id)) return e;
+            return Object.assign(e, { props: {
+                name: t.name, cor: t.cor, muted: !!t.muted, solo: !!t.solo, volume: t.volume,
+                fadeIn: t.fadeIn, fadeOut: t.fadeOut, effects: Object.assign({}, t.effects)
+            } });
+        });
+    }
+
+    // O "outro lado" do undo/redo tem que guardar as mesmas faixas com props.
+    _snapshotPar(snap) {
+        const ids = snap.filter(e => e.props).map(e => e.trackId);
+        return ids.length ? this._snapshotComProps(ids) : this._snapshotClips();
+    }
+
     _restaurarSnapshotClips(snap) {
         const afetadas = [];
+        let mexeuEmProps = false;
         for (const entrada of snap) {
             const track = this.tracks.find(t => t.id === entrada.trackId);
             if (!track) continue;   // faixa removida depois do snapshot: ignora
             const tinhaLane = !!document.getElementById(`lane_${track.id}`);
             track.clips = entrada.clips.map(c => Object.assign({}, c));
             this._sincronizarDerivados(track);
-            // Card decide lane vs drop-zone no HTML estático do createTrackUI:
-            // se o restore mudou o estado (vazia↔com clips), reconstrói o card,
-            // senão o undo fica certo nos dados e invisível na tela.
-            if (tinhaLane !== (track.clips.length > 0)) this.updateTrackUI(track);
+            if (entrada.props) {
+                const p = entrada.props;
+                Object.assign(track, p, { effects: Object.assign({}, p.effects) });
+                if (!p.cor) delete track.cor;
+                this.applyEffectStates(track);
+                this.updateTrackUI(track);
+                mexeuEmProps = true;
+            } else if (tinhaLane !== (track.clips.length > 0)) {
+                // Card decide lane vs drop-zone no HTML estático do createTrackUI:
+                // se o restore mudou o estado (vazia↔com clips), reconstrói o card,
+                // senão o undo fica certo nos dados e invisível na tela.
+                this.updateTrackUI(track);
+            }
             afetadas.push(track);
         }
+        // Mudo/solo/volume passam pela agenda central (solo mexe em TODAS as faixas).
+        if (mexeuEmProps) this.tracks.forEach(t => this.aplicarVolumeAgora(t, this.trackNodes.get(t.id)));
         this.aposMudancaDeClips(afetadas);
     }
 
@@ -2344,8 +2385,9 @@ class MiniDAW {
             this.showNotification('Nada para desfazer', 'info');
             return;
         }
-        this.redoClips.push(this._snapshotClips());
-        this._restaurarSnapshotClips(this.undoClips.pop());
+        const snap = this.undoClips.pop();
+        this.redoClips.push(this._snapshotPar(snap));
+        this._restaurarSnapshotClips(snap);
         this.showNotification('Desfeito', 'info');
     }
 
@@ -2354,9 +2396,144 @@ class MiniDAW {
             this.showNotification('Nada para refazer', 'info');
             return;
         }
-        this.undoClips.push(this._snapshotClips());
-        this._restaurarSnapshotClips(this.redoClips.pop());
+        const snap = this.redoClips.pop();
+        this.undoClips.push(this._snapshotPar(snap));
+        this._restaurarSnapshotClips(snap);
         this.showNotification('Refeito', 'info');
+    }
+
+    // ── 🗣️ COMANDO POR TEXTO OU VOZ (25/11/2026) ─────────────────────────
+    // static/comandos-minidaw.js traduz a frase; aqui cada ação chama o MESMO
+    // método do botão correspondente. Um comando = um passo de Ctrl+Z.
+    async executarComando(frase) {
+        if (!window.ComandosMiniDAW) return { ok: false, msg: 'Tradutor de comandos não carregou — recarregue a página.' };
+        const faixas = this.tracks.map(t => ({ id: t.id, name: t.name, type: t.type, sfx: !!t.sfx }));
+        const r = ComandosMiniDAW.interpretar(frase, faixas);
+        if (r.erro) return { ok: false, msg: r.erro };
+        const desfaziveis = r.acoes.filter(a => !['mixar', 'play', 'parar'].includes(a.tipo));
+        let ids = [...new Set(desfaziveis.flatMap(a => a.faixas || (a.faixa ? [a.faixa] : [])))];
+        if (desfaziveis.some(a => a.tipo === 'normalizar' || a.tipo === 'solo')) ids = this.tracks.map(t => t.id);
+        const snap = this._snapshotComProps(ids);
+        const n0 = this.undoClips.length;
+        const feitos = [];
+        for (const a of r.acoes) {
+            try {
+                const msg = await this._aplicarAcaoDeComando(a);
+                if (msg) feitos.push(msg);
+            } catch (e) {
+                feitos.push('⚠️ ' + e.message);
+            }
+        }
+        if (desfaziveis.length) {
+            // O Time Stretch empilha 1 undo por objeto; o comando vira UM passo só.
+            this.undoClips.splice(n0);
+            this._guardarUndo(snap);
+        }
+        this.saveToLocalStorage();
+        this.atualizarAndamentoUI();
+        return { ok: true, msg: [...new Set(feitos)].join(' · ') + (desfaziveis.length ? ' (Ctrl+Z desfaz)' : '') };
+    }
+
+    async _aplicarAcaoDeComando(a) {
+        const track = a.faixa ? this.tracks.find(t => t.id === a.faixa) : null;
+        const nome = track ? `"${track.name}"` : '';
+        switch (a.tipo) {
+            case 'renomear':
+                this.updateTrackName(track.id, a.nome);
+                this.updateTrackUI(track);
+                return `Faixa renomeada para "${a.nome}"`;
+            case 'cor':
+                track.cor = a.cor;
+                this.updateTrackUI(track);
+                this.renderizarTimeline();
+                return `${nome} agora é ${a.nomeCor}`;
+            case 'mudo':
+                if (!!track.muted !== a.valor) this.toggleMute(track.id);
+                return `${nome} ${a.valor ? 'silenciada' : 'com som de novo'}`;
+            case 'solo':
+                if (!!track.solo !== a.valor) this.toggleSolo(track.id);
+                return `${nome} ${a.valor ? 'em solo' : 'sem solo'}`;
+            case 'volume': {
+                const novo = a.pct != null ? a.pct
+                    : Math.round((track.volume || 0) * Math.pow(10, a.db / 20));
+                const v = Math.max(0, Math.min(150, novo));
+                this.updateTrackVolume(track.id, v);
+                this.updateTrackUI(track);
+                const teto = (a.pct == null && novo > 150) ? ' (chegou no máximo, 150%)' : '';
+                return a.pct != null ? `${nome} em ${v}%`
+                    : `${nome} ${a.db > 0 ? '+' : ''}${String(a.db).replace('.', ',')} dB → ${v}%${teto}`;
+            }
+            case 'efeito':
+                if (!track.effects) track.effects = {};
+                if (!!track.effects[a.efeito] !== a.valor) this.toggleEffect(track.id, a.efeito);
+                return `${a.rotulo} ${a.valor ? 'ligado' : 'desligado'} em ${nome}`;
+            case 'fade':
+                if (a.campo === 'fadeIn') this.updateTrackFadeIn(track.id, a.segundos);
+                else this.updateTrackFadeOut(track.id, a.segundos);
+                this.updateTrackUI(track);
+                return `Fade ${a.campo === 'fadeIn' ? 'in' : 'out'} de ${String(a.segundos).replace('.', ',')} s em ${nome}`;
+            case 'normalizar':
+                this.normalizeVolumes();
+                return 'Volumes normalizados';
+            case 'andamento':
+                return await this._andamentoDeComando(a.faixas, a.estado);
+            case 'mixar':
+                this.exportFormat = 'mp3';
+                this._sincronizarFormatoUI();
+                window.exportarOtimizado();
+                return `Mixando todas as faixas em MP3 ${this.mp3Bitrate} kbps (Otimizar e Exportar)...`;
+            case 'play':
+                if (!this.isPlaying) this.togglePlayback();
+                return 'Tocando';
+            case 'parar':
+                if (this.isPlaying) this.togglePlayback();
+                return 'Parado';
+        }
+        return '';
+    }
+
+    // "Mais lento / mais rápido / normal" = Time Stretch de todos os objetos das
+    // faixas, partindo SEMPRE do original. As posições escalam junto a partir do
+    // 1º objeto, senão no fatiado um parágrafo invadiria o seguinte (outra faixa).
+    async _andamentoDeComando(ids, estado) {
+        const fatorAlvo = ComandosMiniDAW.FATOR_ANDAMENTO[estado];
+        const alvo = [];
+        for (const id of ids) {
+            const t = this.tracks.find(x => x.id === id);
+            if (t) this._clipsDaFaixa(t).forEach(c => alvo.push([t, c]));
+        }
+        if (!alvo.length) return 'Nada pra mudar o andamento (faixa vazia)';
+        const t0 = Math.min(...alvo.map(([, c]) => c.inicio));
+        for (const [t, c] of alvo) {
+            const razao = fatorAlvo / (c.stretch || 1);
+            const base = TimeStretch.baseDoStretch(c);
+            await this._aplicarStretch(t, c, base.duracao * fatorAlvo);
+            c.inicio = t0 + (c.inicio - t0) * razao;
+        }
+        alvo.forEach(([t]) => this._sincronizarDerivados(t));
+        this.aposMudancaDeClips([...new Set(alvo.map(([t]) => t))]);
+        return `Andamento: ${ComandosMiniDAW.rotuloAndamento(fatorAlvo)}`;
+    }
+
+    // Andamento mostrado na barra de comando, lido do Time Stretch das vozes.
+    atualizarAndamentoUI() {
+        const el = document.getElementById('andamentoAtual');
+        if (!el || !window.ComandosMiniDAW) return;
+        const fatores = this.tracks.filter(t => t.type === 'voice')
+            .flatMap(t => this._clipsDaFaixa(t).map(c => c.stretch || 1));
+        const iguais = fatores.length && fatores.every(f => Math.abs(f - fatores[0]) < 0.01);
+        el.textContent = fatores.length ? (iguais ? ComandosMiniDAW.rotuloAndamento(fatores[0]) : 'Misto') : 'Normal';
+    }
+
+    // Botões WAV/MP3 + seletor de bitrate refletem o estado (antes dependiam do clique).
+    _sincronizarFormatoUI() {
+        document.querySelectorAll('.format-btn').forEach(btn => {
+            btn.classList.toggle('active', (btn.getAttribute('onclick') || '').includes(`'${this.exportFormat}'`));
+        });
+        const grupo = document.getElementById('mp3BitrateGroup');
+        if (grupo) grupo.style.display = this.exportFormat === 'mp3' ? 'flex' : 'none';
+        const sel = document.getElementById('mp3Bitrate');
+        if (sel) sel.value = String(this.mp3Bitrate);
     }
 
     // ── SELEÇÃO E COPIAR/COLAR DE OBJETO ─────────────────────────────────
@@ -2977,6 +3154,7 @@ class MiniDAW {
         this._desenharMarcadoresNasLanes();
         this._alinharRegua();
         if (this.trackTesoura) this.desenharSelecao(this.trackTesoura);   // marcação da Tesoura acompanha o zoom
+        this.atualizarAndamentoUI();   // ⏱️ Andamento da barra de comando segue o Time Stretch (arrasto, Ctrl+Z)
     }
 
     // Coalescência: várias chamadas no mesmo tick (import, updateTrackUI,
@@ -3836,22 +4014,18 @@ class MiniDAW {
 
     setFormat(format) {
         this.exportFormat = format;
-        
-        // Update UI
-        document.querySelectorAll('.format-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        event.target.classList.add('active');
-
-        // Show/hide bitrate selector
-        const bitrateGroup = document.getElementById('mp3BitrateGroup');
-        if (bitrateGroup) {
-            bitrateGroup.style.display = format === 'mp3' ? 'flex' : 'none';
-        }
-
         if (format === 'mp3') {
-            this.mp3Bitrate = parseInt(document.getElementById('mp3Bitrate').value);
+            this.mp3Bitrate = parseInt(document.getElementById('mp3Bitrate').value) || 320;
         }
+        this._sincronizarFormatoUI();
+        this.saveToLocalStorage();
+    }
+
+    // O seletor de bitrate não avisava ninguém: trocar 192→320 DEPOIS de clicar em
+    // MP3 era ignorado no export (achado em 25/11/2026).
+    setBitrate(kbps) {
+        this.mp3Bitrate = parseInt(kbps) || 320;
+        this.saveToLocalStorage();
     }
 
     // ── DUCKING AUTOMÁTICO ───────────────────────────────────────────────
@@ -4932,8 +5106,10 @@ class MiniDAW {
                 clips: undefined,
                 _clipsBuffer: undefined
             })),
-            exportFormat: this.exportFormat,
-            mp3Bitrate: this.mp3Bitrate,
+            // Chaves novas (25/11/2026): as antigas guardavam o padrão velho (WAV/192)
+            // em todo save, e o MP3 320 novo nunca apareceria pra quem já usava.
+            formatoExport: this.exportFormat,
+            mp3Kbps: this.mp3Bitrate,
             marcadores: this.marcadores,
             master: window.MasterSuite ? MasterSuite.estadoParaSalvar() : undefined
         };
@@ -4948,8 +5124,9 @@ class MiniDAW {
                 const data = JSON.parse(saved);
                 
                 // Restore settings
-                this.exportFormat = data.exportFormat || 'wav';
-                this.mp3Bitrate = data.mp3Bitrate || 192;
+                this.exportFormat = data.formatoExport || 'mp3';
+                this.mp3Bitrate = data.mp3Kbps || 320;
+                this._sincronizarFormatoUI();
                 this.marcadores = this._normalizarMarcadores(data.marcadores);
                 // A suíte só é instalada depois do construtor: guarda pra ela aplicar.
                 this._masterPendente = data.master || null;
@@ -6181,6 +6358,7 @@ class MiniDAW {
                 sala: MixEngine.salaDaFaixa(t) !== 'estudio' ? MixEngine.salaDaFaixa(t) : undefined,   // Estúdio = sem campo
                 automacaoVolume: t.automacaoVolume,
                 duckSettings: t.duckSettings,             // 🎚️ ausente = padrão de sempre
+                cor: t.cor,                               // 🎨 ausente = cor automática de sempre
                 buffers: [], clips: []
             };
             // Um arquivo por BUFFER DISTINTO (clips de um corte compartilham o
@@ -6778,6 +6956,7 @@ class MiniDAW {
             track.brilhoAmount = (td.brilhoAmount != null) ? MixEngine.quantidadeBrilhoDaFaixa(td) : undefined;   // antigo = 40%, como soava
             if (MixEngine.salaDaFaixa(td) !== 'estudio') track.sala = MixEngine.salaDaFaixa(td); else delete track.sala;   // 🏛️🎻 sem campo = Estúdio
             if (td.duckSettings) track.duckSettings = td.duckSettings; else delete track.duckSettings;   // 🎚️ sem campo = padrão
+            if (td.cor) track.cor = td.cor; else delete track.cor;   // 🎨 sem campo = cor automática
             // Normaliza o formato -- cobre projetos salvos antes desta
             // feature (campo ausente), e os salvos HOJE mais cedo antes
             // do liga/desliga de verdade existir (formato antigo: array

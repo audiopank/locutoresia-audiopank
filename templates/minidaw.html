@@ -934,6 +934,16 @@
         .track-card.compacta .reverb-panel,
         .track-card.compacta .delay-panel,
         .track-card.compacta .effects-panel { display: none !important; }
+        /* 🗣️ barra de comando */
+        .comando-bar { background: var(--card-bg, #1e293b); border: 1px solid rgba(236,72,153,.35);
+            border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+        .comando-bar #comandoTexto { flex: 1 1 280px; min-width: 0; }
+        .comando-andamento { font-size: .85rem; color: #cbd5e1; white-space: nowrap; }
+        .comando-resposta { font-size: .85rem; margin-top: 6px; min-height: 1.2em; color: #cbd5e1; }
+        .comando-resposta.ok { color: #86efac; }
+        .comando-resposta.erro { color: #fcd34d; }
+        #comandoMic.ouvindo { background: #dc2626; border-color: #dc2626; animation: pulsoMic 1s infinite; }
+        @keyframes pulsoMic { 50% { opacity: .55; } }
     </style>
 </head>
 <body>
@@ -969,6 +979,27 @@
     </header>
 
     <main class="daw-container">
+        <!-- 🗣️ COMANDO POR TEXTO OU VOZ (25/11/2026): static/comandos-minidaw.js traduz,
+             minidaw.executarComando aplica pelos mesmos botões. Sem IA, sem cota. -->
+        <div class="comando-bar" id="comandoBar">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <i class="fas fa-comment-dots" style="color: var(--accent-color, #ec4899);"></i>
+                <input type="text" id="comandoTexto" class="form-control form-control-sm"
+                       placeholder='Diga o que quer: "aumenta a voz em 3 dB", "silencia a trilha", "mixar tudo"...'
+                       aria-label="Comando para a MiniDAW" autocomplete="off">
+                <button class="btn btn-sm btn-outline-light" id="comandoMic" type="button"
+                        title="Falar o comando (microfone)" aria-label="Falar o comando">🎤</button>
+                <button class="btn btn-sm btn-daw" id="comandoExecutar" type="button"
+                        style="background: linear-gradient(135deg, #8b5cf6, #ec4899); color: #fff; border: none;">
+                    <i class="fas fa-play me-1"></i>Fazer
+                </button>
+                <span class="comando-andamento" title="Time Stretch das vozes. Diga: deixa mais lento / mais rápido / volta ao normal">
+                    ⏱️ Andamento: <strong id="andamentoAtual">Normal</strong>
+                </span>
+            </div>
+            <div id="comandoResposta" class="comando-resposta" role="status" aria-live="polite"></div>
+        </div>
+
         <!-- Quick Actions -->
         <div class="quick-actions">
             <button class="quick-action-btn" onclick="addTrack('voice')">
@@ -1192,15 +1223,15 @@
             </h4>
             <div class="export-options">
                 <div class="format-selector">
-                    <button class="format-btn active" onclick="setFormat('wav')">WAV</button>
-                    <button class="format-btn" onclick="setFormat('mp3')">MP3</button>
+                    <button class="format-btn" onclick="setFormat('wav')">WAV</button>
+                    <button class="format-btn active" onclick="setFormat('mp3')">MP3</button>
                 </div>
-                <div class="control-group" id="mp3BitrateGroup" style="display: none;">
+                <div class="control-group" id="mp3BitrateGroup" style="display: flex;">
                     <span class="control-label">Bitrate:</span>
-                    <select class="form-select form-select-sm" id="mp3Bitrate">
+                    <select class="form-select form-select-sm" id="mp3Bitrate" onchange="minidaw.setBitrate(this.value)">
                         <option value="128">128 kbps</option>
-                        <option value="192" selected>192 kbps</option>
-                        <option value="320">320 kbps</option>
+                        <option value="192">192 kbps</option>
+                        <option value="320" selected>320 kbps</option>
                     </select>
                 </div>
                 <button class="btn btn-daw btn-success" onclick="exportMix()">
@@ -1371,10 +1402,54 @@
     <script src="/static/fatiar-paragrafos.js?v=1"></script>
     <script src="/static/gravacao.js?v=3"></script>
     <script src="/static/alinhar-falas.js?v=1"></script>
-    <script src="/static/minidaw.js?v=94"></script>
+    <script src="/static/minidaw.js?v=95"></script>
     <script src="/static/regerar-trecho.js?v=3"></script>
     <script src="/static/video-cliente.js?v=4"></script>
     <script src="/static/pre-escuta.js?v=3"></script>
+    <script src="/static/comandos-minidaw.js?v=1"></script>
+    <script>
+        // 🗣️ Barra de comando: Enter/"Fazer" aplica; 🎤 usa o reconhecimento de voz
+        // grátis do Chrome/Edge (pt-BR) e já executa o que ouviu.
+        (function () {
+            const campo = document.getElementById('comandoTexto');
+            const resposta = document.getElementById('comandoResposta');
+            const mic = document.getElementById('comandoMic');
+            if (!campo) return;
+            async function fazer() {
+                const frase = campo.value.trim();
+                if (!frase || !window.minidaw) return;
+                const r = await minidaw.executarComando(frase);
+                resposta.textContent = (r.ok ? '✅ ' : '🤔 ') + r.msg;   // textContent: frase do usuário não vira HTML
+                resposta.className = 'comando-resposta ' + (r.ok ? 'ok' : 'erro');
+                if (r.ok) campo.value = '';
+            }
+            document.getElementById('comandoExecutar').onclick = fazer;
+            campo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fazer(); } });
+
+            const Reconhecer = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!Reconhecer) { mic.style.display = 'none'; return; }
+            const rec = new Reconhecer();
+            rec.lang = 'pt-BR';
+            rec.interimResults = false;
+            let ouvindo = false;
+            rec.onresult = e => { campo.value = e.results[0][0].transcript; fazer(); };
+            rec.onerror = e => {
+                resposta.textContent = e.error === 'not-allowed'
+                    ? '🎤 O navegador bloqueou o microfone — libere no cadeado ao lado do endereço.'
+                    : '🎤 Não consegui ouvir (' + e.error + '). Tente de novo ou digite.';
+                resposta.className = 'comando-resposta erro';
+            };
+            rec.onend = () => { ouvindo = false; mic.classList.remove('ouvindo'); };
+            mic.onclick = () => {
+                if (ouvindo) { rec.stop(); return; }
+                ouvindo = true; mic.classList.add('ouvindo');
+                resposta.textContent = '🎤 Ouvindo... fale o comando.';
+                resposta.className = 'comando-resposta';
+                rec.start();
+            };
+        })();
+        if (window.minidaw) minidaw.atualizarAndamentoUI();
+    </script>
     
     <!-- Script para carregar áudio enviado da página principal -->
     <script>
