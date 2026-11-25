@@ -889,7 +889,18 @@
         return eq.bandas.map(b => ({ tipo: b.tipo, freq: b.freq, ganho: b.ganho, q: b.q }));
     }
 
+    // 🗣️ Comando por texto/voz (25/11/2026): liga/desliga um módulo igual ao botão dele.
+    function definirModulo(modulo, ligar) {
+        if (modulo === 'eq') { eq.bypass = !ligar; aplicarEq(); }
+        else if (modulo === 'multimax') { mb.ligado = !!ligar; aplicarMultimax(); }
+        else if (modulo === 'limiter') { lim.ligado = !!ligar; aplicarLimiter(); }
+        else return false;
+        salvar();
+        return true;
+    }
+
     global.MasterSuite = {
+        definirModulo,
         instalar, ligar, desligar, medirArquivo, BANDAS_HZ, DESTINOS,
         estadoParaSalvar, carregar, eqParaRender,
         limiterParaRender, loudnessAtivo, masterizarParaAlvo, garantirTeto, medirMix,

@@ -96,7 +96,8 @@
 
     // Uma oração -> ações. `herdadas` = faixas da oração anterior ("... e deixa vermelha").
     function interpretarOracao(original, faixas, herdadas) {
-        const n = semAcento(original);
+        // "aumenta avoz", "na trilha" grudado ("natrilha"): separa antes de procurar a faixa.
+        const n = semAcento(original).replace(/\b(n?[ad]|pra)(voz|vozes|trilha|trilhas|musica|locucao)\b/g, '$1 $2');
         const citadas = faixasCitadas(n, faixas);
         if (citadas && !citadas.length) return { erro: 'Essa faixa não existe. Você tem ' + faixas.length + ' faixa(s).' };
         const alvo = citadas || herdadas;
@@ -119,6 +120,16 @@
             return { acoes: [{ tipo: 'mixar' }], faixas: alvo };
         }
         if (/\bnormaliz/.test(n)) return { acoes: [{ tipo: 'normalizar' }], faixas: alvo };
+
+        // Saída geral (Suíte Master): "liga o EQ master", "desliga o multimax", "liga o limiter do master".
+        const modulo = /\bmultimax|multi-?banda|compressor de 3 bandas/.test(n) ? 'multimax'
+            : (/\bmaster\b|\bmasteriza|\bsaida geral\b/.test(n)
+                ? (/\b(eq|equaliza\w*|equalizador)\b/.test(n) ? 'eq' : /\b(limiter|limitador)\b/.test(n) ? 'limiter' : null)
+                : null);
+        if (modulo) {
+            const rotulo = { eq: 'EQ master', multimax: 'MultiMax', limiter: 'Limiter do master' }[modulo];
+            return { acoes: [{ tipo: 'master', modulo, rotulo, valor: !TIRA.test(n) }], faixas: alvo };
+        }
         if (/^\s*(toca|tocar|play|ouvir|escutar)\b/.test(n)) return { acoes: [{ tipo: 'play' }], faixas: alvo };
         if (/^\s*(para|parar|pausa|pausar|stop)\s*[.!]?\s*$/.test(n)) return { acoes: [{ tipo: 'parar' }], faixas: alvo };
 

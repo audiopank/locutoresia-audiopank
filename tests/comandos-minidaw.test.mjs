@@ -116,6 +116,22 @@ test('quantidade de reverb/eco: não confunde com volume da faixa', () => {
     assert.equal(i('tira o reverb da voz').acoes[0].tipo, 'efeito');   // tirar continua desligando
 });
 
+// ── 2º teste real dele (25/11) ───────────────────────────────────────────────
+test('"aumenta avoz em 3 db" (a voz grudado) acha a voz', () => {
+    assert.deepEqual(i('aumenta avoz em 3 db').acoes.map(a => [a.faixa, a.db]), [['v1', 3], ['v2', 3]]);
+    assert.deepEqual(i('silencia atrilha').acoes, [{ tipo: 'mudo', faixa: 'tr', valor: true }]);
+});
+
+test('Suíte Master: EQ master, MultiMax e limiter (saída geral, não faixa)', () => {
+    const eq = { tipo: 'master', modulo: 'eq', rotulo: 'EQ master', valor: true };
+    assert.deepEqual(i('ligar o EQ master').acoes, [eq]);
+    assert.deepEqual(i('ligar o EQ Master nas duas faixas').acoes, [eq]);
+    assert.equal(i('desliga o EQ master').acoes[0].valor, false);
+    assert.deepEqual(i('liga o multimax').acoes[0].modulo, 'multimax');
+    assert.deepEqual(i('desliga o limiter do master').acoes[0], { tipo: 'master', modulo: 'limiter', rotulo: 'Limiter do master', valor: false });
+    assert.equal(i('liga o eq na voz').acoes[0].tipo, 'efeito');   // sem "master" continua sendo o EQ da faixa
+});
+
 test('frase longa: faz o que entendeu e conta o que não entendeu', () => {
     const r = i('silencia a trilha e faz um café');
     assert.deepEqual(r.acoes, [{ tipo: 'mudo', faixa: 'tr', valor: true }]);

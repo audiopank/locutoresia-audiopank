@@ -2414,7 +2414,7 @@ class MiniDAW {
         const r = ComandosMiniDAW.interpretar(frase, faixas);
         if (r.erro) return { ok: false, msg: r.erro };
         // Encurtar pausas refaz a voz do zero: tem o próprio ↩, o Ctrl+Z não alcança.
-        const desfaziveis = r.acoes.filter(a => !['mixar', 'play', 'parar', 'pausas'].includes(a.tipo));
+        const desfaziveis = r.acoes.filter(a => !['mixar', 'play', 'parar', 'pausas', 'master'].includes(a.tipo));
         let ids = [...new Set(desfaziveis.flatMap(a => a.faixas || (a.faixa ? [a.faixa] : [])))];
         // Solo, normalizar e a sobra de volume (vai pra trilha) mexem em outras faixas.
         if (desfaziveis.some(a => ['normalizar', 'solo', 'volume'].includes(a.tipo))) ids = this.tracks.map(t => t.id);
@@ -2497,6 +2497,9 @@ class MiniDAW {
                 this.updateTrackUI(track);
                 return `${a.rotulo} em ${nome}: ${atual}% → ${novo}%`;
             }
+            case 'master':
+                if (!window.MasterSuite || !MasterSuite.definirModulo(a.modulo, a.valor)) return '⚠️ Suíte Master não carregou';
+                return `${a.rotulo} ${a.valor ? 'ligado' : 'desligado'} na saída geral (vale pra todas as faixas; pra voltar, diga "${a.valor ? 'desliga' : 'liga'} o ${a.rotulo}")`;
             case 'ducking':
                 this.updateDuck(track.id, 'abaixaDb', a.db);
                 return `Ducking: ${nome} abaixa ${a.db} dB quando a voz entra`;
@@ -2504,7 +2507,7 @@ class MiniDAW {
                 const el = document.getElementById('pausaMax');
                 const doCampo = el ? parseFloat(String(el.value).replace(',', '.')) || 0.4 : 0.4;   // a tela mostra "0,4"
                 const max = Math.max(0.1, Math.min(1.5, a.max != null ? a.max : doCampo));
-                if (el) el.value = String(max).replace('.', ',');
+                if (el) el.value = String(max);   // campo type=number: vírgula deixava ele em branco
                 this.encurtarPausasVoz(max);
                 return `Pausas da voz encurtadas pra no máximo ${String(max).replace('.', ',')} s (pra voltar, use o ↩ ao lado de "Encurtar")`;
             }
