@@ -81,7 +81,7 @@ def test_painel_e_versoes(cliente):
     for t in ('id="msMb"', 'id="msMbPreset"', 'id="msMbBotao"', 'id="msMbReset"', 'id="msMbInfo"',
               'id="msMbGr0"', 'id="msMbGr2"', 'id="msMbGanho1"', 'id="msMbGanhoVal2"', '.ms-mb-bandas {',
               'Master · EQ, MultiMax, medidores e limiter',
-              'mix-engine.js?v=25', 'master-suite.js?v=11', 'minidaw.js?v=98'):
+              'mix-engine.js?v=25', 'master-suite.js?v=11', 'minidaw.js?v=99'):
         assert t in html, t
     for pagina in ('/gerador', '/narrativa'):
         assert 'mix-engine.js?v=25' in cliente.get(pagina).get_data(as_text=True), pagina

@@ -2392,6 +2392,7 @@ class MiniDAW {
         this.redoClips.push(this._snapshotPar(snap));
         this._restaurarSnapshotClips(snap);
         this.showNotification('Desfeito', 'info');
+        this._respostaDoComando('↩ Desfeito (Ctrl+Y refaz)');
     }
 
     refazerClips() {
@@ -2403,6 +2404,13 @@ class MiniDAW {
         this.undoClips.push(this._snapshotPar(snap));
         this._restaurarSnapshotClips(snap);
         this.showNotification('Refeito', 'info');
+        this._respostaDoComando('↪ Refeito');
+    }
+
+    // A barra de comando não pode ficar dizendo "feito" depois de um Ctrl+Z.
+    _respostaDoComando(txt) {
+        const el = document.getElementById('comandoResposta');
+        if (el && el.textContent) { el.textContent = txt; el.className = 'comando-resposta'; }
     }
 
     // ── 🗣️ COMANDO POR TEXTO OU VOZ (25/11/2026) ─────────────────────────

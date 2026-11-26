@@ -1428,7 +1428,7 @@
     <script src="/static/fatiar-paragrafos.js?v=1"></script>
     <script src="/static/gravacao.js?v=3"></script>
     <script src="/static/alinhar-falas.js?v=1"></script>
-    <script src="/static/minidaw.js?v=98"></script>
+    <script src="/static/minidaw.js?v=99"></script>
     <script src="/static/regerar-trecho.js?v=3"></script>
     <script src="/static/video-cliente.js?v=4"></script>
     <script src="/static/pre-escuta.js?v=3"></script>
@@ -1444,7 +1444,12 @@
             async function fazer() {
                 const frase = campo.value.trim();
                 if (!frase || !window.minidaw) return;
-                const r = await minidaw.executarComando(frase);
+                // Nunca deixa a resposta do comando ANTERIOR na tela (26/11: parecia que tinha feito).
+                resposta.textContent = '⏳ Fazendo: "' + frase + '"...';
+                resposta.className = 'comando-resposta';
+                let r;
+                try { r = await minidaw.executarComando(frase); }
+                catch (e) { r = { ok: false, msg: 'Deu erro: ' + e.message + ' — me mande um print desta mensagem.' }; }
                 resposta.textContent = (r.ok ? '✅ ' : '🤔 ') + r.msg;   // textContent: frase do usuário não vira HTML
                 resposta.className = 'comando-resposta ' + (r.ok ? 'ok' : 'erro');
                 if (r.ok) campo.value = '';

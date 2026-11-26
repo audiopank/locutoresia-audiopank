@@ -29,4 +29,4 @@ def test_botao_painel_e_projeto():
     assert 'if (td.duckSettings) track.duckSettings = td.duckSettings; else delete track.duckSettings;' in daw   # reabre
     html = _ler('templates', 'minidaw.html')
     assert '.duck-panel.ativo' in html and '.track-card.compacta .duck-panel' in html
-    assert 'mix-engine.js?v=25' in html and 'minidaw.js?v=98' in html
+    assert 'mix-engine.js?v=25' in html and 'minidaw.js?v=99' in html
