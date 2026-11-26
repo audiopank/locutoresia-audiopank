@@ -394,7 +394,36 @@
         return Math.abs(clip.duracao - dur) <= tol;            // foi aparado pela direita?
     }
 
+    // Onde a música REALMENTE acaba (último som acima de −50 dBFS), sem o silêncio do fim do arquivo.
+    function fimAudivel(buffer, limiarDb) {
+        const lim = Math.pow(10, (limiarDb == null ? -50 : limiarDb) / 20);
+        let ultimo = 0;
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+            const d = buffer.getChannelData(ch);
+            for (let i = d.length - 1; i > ultimo; i--) {
+                if (Math.abs(d[i]) > lim) { ultimo = i; break; }
+            }
+        }
+        return (ultimo + 1) / buffer.sampleRate;
+    }
+
+    // 🎼 Trilha em 3 partes (pedido dele 26/11/2026): o COMEÇO da música toca sob a voz,
+    // o MEIO que sobra sai, e o FINAL de verdade da música entra quando a voz acaba,
+    // com `xf` segundos de crossfade. null = a música é curta demais pra precisar do corte.
+    // shortcut: o corte não procura o tempo (beat) da música; o crossfade esconde — se soar
+    // atravessado em alguma trilha, alinhar o corte ao beat.
+    function trilhaComFinal(buffer, inicio, fimVoz, fimMusica, finalSeg, xf) {
+        const final = Math.min(finalSeg, fimMusica / 3);
+        const durIni = fimVoz + xf - inicio;
+        if (final <= xf || durIni < DURACAO_MIN || durIni > fimMusica - final) return null;
+        return [
+            { id: novoId(), buffer, inicio, offset: 0, duracao: durIni, fadeIn: 0, fadeOut: 0 },
+            { id: novoId(), buffer, inicio: fimVoz, offset: fimMusica - final, duracao: final, fadeIn: 0, fadeOut: 0.05 }
+        ];
+    }
+
     const ClipModel = {
+        fimAudivel, trilhaComFinal,
         DURACAO_MIN, novoId, clipInteiro, fimDoClip, fimDaFaixa,
         duracaoDoProjeto, ordenarClips, clipNoPonto, dividirClip,
         removerTrecho, silenciarTrecho, manterTrecho, aplicarTrim, calcularSnap, moverClip,

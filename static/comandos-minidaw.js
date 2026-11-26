@@ -41,7 +41,8 @@
         sete: 7, oito: 8, nove: 9, dez: 10, meio: 0.5 };
 
     const EXEMPLOS = 'Tente: "aumenta a voz em 6 dB", "abaixa a trilha", "coloca reverb na voz", ' +
-        '"tira as pausas da voz", "tira a respiração", "fade out de 2 segundos na trilha", "deixa mais lento" ou "mixar tudo".';
+        '"tira as pausas da voz", "tira a respiração", "fade out de 2 segundos na trilha", "edita a trilha em três partes", ' +
+        '"deixa mais lento" ou "mixar tudo".';
 
     function semAcento(s) {
         return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -146,6 +147,19 @@
 
         const vozes = faixas.filter(f => f.type === 'voice').map(f => f.id);
         const trilhas = faixas.filter(f => f.type === 'music' && !f.sfx).map(f => f.id);
+
+        // 🎼 "edita a trilha em três partes (início + meio + final) quando terminar a voz" (26/11):
+        // começo da música + o FINAL dela entrando no fim da voz. Antes do ducking ("quando ... voz ... trilha").
+        const ehFade = /\bfade\b/.test(n);
+        if (!ehFade && (/\b(\d|tres)\s+(partes|pedacos)\b/.test(n) ||
+            (/\b(edit\w*|mont\w*|encaix\w*|fech\w*)\b/.test(n) && /\b(final|fim|termin\w*|partes|pedacos)\b/.test(n)))) {
+            const citouTrilha = (alvo || []).filter(id => trilhas.includes(id));   // "quando terminar a voz" cita a voz
+            const ids = citouTrilha.length ? citouTrilha : trilhas;
+            if (!ids.length) return { erro: 'Não achei trilha pra editar.' };
+            const seg = n.match(/(\d+(?:[.,]\d+)?)\s*(?:s\b|seg)/);
+            const finalSeg = seg ? Math.max(2, Math.min(15, parseFloat(seg[1].replace(',', '.')))) : null;
+            return { acoes: [{ tipo: 'trilhaFinal', faixas: ids, finalSeg }], faixas: ids };
+        }
 
         // Pausas / espaços / silêncios entre os trechos -> botão "Encurtar" (vale pra todas as vozes).
         const pausas = /\b(espac\w*|pausas?|silencios?|buracos?|vazios?)\b/.test(n) &&   // "espaçoes" (digitado assim) também

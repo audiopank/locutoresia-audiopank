@@ -2342,7 +2342,7 @@ class MiniDAW {
                 name: t.name, cor: t.cor, muted: !!t.muted, solo: !!t.solo, volume: t.volume,
                 fadeIn: t.fadeIn, fadeOut: t.fadeOut, effects: Object.assign({}, t.effects),
                 duckSettings: t.duckSettings ? Object.assign({}, t.duckSettings) : undefined,
-                reverbAmount: t.reverbAmount, delayAmount: t.delayAmount
+                reverbAmount: t.reverbAmount, delayAmount: t.delayAmount, autoFade: t.autoFade
             } });
         });
     }
@@ -2525,6 +2525,8 @@ class MiniDAW {
                 return 'Volumes normalizados';
             case 'andamento':
                 return await this._andamentoDeComando(a.faixas, a.estado);
+            case 'trilhaFinal':
+                return a.faixas.map(id => this._trilhaComFinal(this.tracks.find(t => t.id === id), a.finalSeg)).join(' · ');
             case 'mixar':
                 this.exportFormat = 'mp3';
                 this._sincronizarFormatoUI();
@@ -2561,6 +2563,30 @@ class MiniDAW {
         alvo.forEach(([t]) => this._sincronizarDerivados(t));
         this.aposMudancaDeClips([...new Set(alvo.map(([t]) => t))]);
         return `Andamento: ${ComandosMiniDAW.rotuloAndamento(fatorAlvo)}`;
+    }
+
+    // 🎼 "Edita a trilha em três partes" (26/11/2026): começo da música sob a voz, o meio
+    // que sobra sai, e o FINAL de verdade entra quando a voz acaba (crossfade de 1 s).
+    // O auto fade da faixa desliga: quem termina agora é a própria música.
+    _trilhaComFinal(track, finalSeg) {
+        if (!track) return '';
+        const clips = ClipModel.ordenarClips(this._clipsDaFaixa(track));
+        if (!clips.length) return `"${track.name}" está vazia`;
+        const fimVoz = ClipModel.fimDaFaixa(this._clipsDeVoz());
+        if (!fimVoz) return 'Coloque a voz antes de editar a trilha';
+        const buffer = TimeStretch.baseDoStretch(clips[0]).buffer;
+        const fimMusica = ClipModel.fimAudivel(buffer);
+        const novos = ClipModel.trilhaComFinal(buffer, clips[0].inicio, fimVoz, fimMusica, finalSeg || 5, 1);
+        if (!novos) return `"${track.name}" tem só ${fimMusica.toFixed(1).replace('.', ',')} s — já cabe inteira, não precisa cortar`;
+        const ganho = clips[0].ganhoDb;
+        if (ganho) novos.forEach(c => { c.ganhoDb = ganho; });   // volume do objeto continua
+        track.clips = novos;
+        track.autoFade = false;
+        this._sincronizarDerivados(track);
+        this.updateTrackUI(track);
+        this.aposMudancaDeClips([track]);
+        const dur = novos[1].duracao.toFixed(1).replace('.', ',');
+        return `"${track.name}" em três partes: começo da música sob a voz → o meio que sobrava saiu → o final da música (${dur} s) entra quando a voz acaba (pra mudar: "edita a trilha com final de 3 segundos")`;
     }
 
     // Andamento mostrado na barra de comando, lido do Time Stretch das vozes.

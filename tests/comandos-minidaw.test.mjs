@@ -132,6 +132,31 @@ test('Suíte Master: EQ master, MultiMax e limiter (saída geral, não faixa)', 
     assert.equal(i('liga o eq na voz').acoes[0].tipo, 'efeito');   // sem "master" continua sendo o EQ da faixa
 });
 
+// ── 26/11: trilha em três partes ────────────────────────────────────────────
+test('"Edite em tres pedaços a trilha" e a frase longa dele viram trilhaFinal na TRILHA', () => {
+    const tf = { tipo: 'trilhaFinal', faixas: ['tr'], finalSeg: null };
+    assert.deepEqual(i('Edite em tres pedaços a trilha').acoes, [tf]);
+    assert.deepEqual(i('Edite trilha que está no track de trilhas ( em três partes - inicio + meio + final ,... quando terminar a voz ( locução)').acoes, [tf]);
+    assert.deepEqual(i('edita a trilha com final de 3 segundos').acoes, [{ ...tf, finalSeg: 3 }]);
+    assert.equal(i('fade out de 2 segundos na trilha').acoes[0].tipo, 'fade');           // fade continua fade
+    assert.equal(i('abaixa a trilha quando a voz entra').acoes[0].tipo, 'ducking');      // ducking continua ducking
+});
+
+test('ClipModel.trilhaComFinal: começo + final da música entrando no fim da voz', () => {
+    const CM = require('../static/clip-model.js');
+    const sr = 100, d = new Float32Array(sr * 60);              // música de 60 s, som até 55 s
+    d.fill(0.5, 0, sr * 55);
+    const buf = { numberOfChannels: 1, sampleRate: sr, length: d.length, duration: 60, getChannelData: () => d };
+    const fim = CM.fimAudivel(buf);
+    assert.ok(Math.abs(fim - 55) < 0.02, String(fim));
+    const [ini, fin] = CM.trilhaComFinal(buf, 0, 28, fim, 5, 1);
+    assert.deepEqual([ini.inicio, ini.offset, ini.duracao], [0, 0, 29]);                  // vai até 1 s depois da voz
+    assert.equal(fin.inicio, 28);                                                         // final entra quando a voz acaba
+    assert.ok(Math.abs(fin.offset - 50) < 0.02 && fin.duracao === 5);                     // os últimos 5 s da música
+    assert.equal(CM.sobreposicaoInvalida([ini, fin], fin), false);                        // vira crossfade válido
+    assert.equal(CM.trilhaComFinal(buf, 0, 52, fim, 5, 1), null);                         // música curta: não corta
+});
+
 test('frase longa: faz o que entendeu e conta o que não entendeu', () => {
     const r = i('silencia a trilha e faz um café');
     assert.deepEqual(r.acoes, [{ tipo: 'mudo', faixa: 'tr', valor: true }]);
