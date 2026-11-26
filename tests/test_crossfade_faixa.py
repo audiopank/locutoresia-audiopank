@@ -22,7 +22,7 @@ def test_versoes_e_css_da_regiao_do_crossfade():
     with c.session_transaction() as s:
         s['admin'] = True
     html = c.get('/minidaw').get_data(as_text=True)
-    for t in ('mix-engine.js?v=25', 'clip-model.js?v=10', 'minidaw.js?v=100', '.xfade-regiao {'):
+    for t in ('mix-engine.js?v=25', 'clip-model.js?v=11', 'minidaw.js?v=101', '.xfade-regiao {'):
         assert t in html, t
     for pagina in ('/gerador', '/narrativa'):
         assert 'mix-engine.js?v=25' in c.get(pagina).get_data(as_text=True), pagina

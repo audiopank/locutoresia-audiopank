@@ -28,7 +28,7 @@ def _cliente():
 
 def test_pagina_carrega_as_versoes_novas():
     html = _cliente().get('/minidaw').get_data(as_text=True)
-    for t in ('mix-engine.js?v=25', 'clip-model.js?v=10', 'minidaw.js?v=100', '.clip-vol {', '.vol-trecho {'):
+    for t in ('mix-engine.js?v=25', 'clip-model.js?v=11', 'minidaw.js?v=101', '.clip-vol {', '.vol-trecho {'):
         assert t in html, t
 
 

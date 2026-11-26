@@ -149,14 +149,17 @@ test('ClipModel.trilhaComFinal: começo + final da música entrando no fim da vo
     const buf = { numberOfChannels: 1, sampleRate: sr, length: d.length, duration: 60, getChannelData: () => d };
     const fim = CM.fimAudivel(buf);
     assert.ok(Math.abs(fim - 55) < 0.02, String(fim));
-    const [ini, meio, fin] = CM.trilhaComFinal(buf, 0, 1.5, 28, fim, 5, 1);               // 3 OBJETOS (pedido dele)
-    assert.deepEqual([ini.inicio, ini.offset, ini.duracao], [0, 0, 1.5]);                 // início: antes da voz
-    assert.deepEqual([meio.inicio, meio.offset, meio.duracao], [1.5, 1.5, 27.5]);         // meio: até 1 s depois da voz
-    assert.equal(fin.inicio, 28);                                                         // final entra quando a voz acaba
+    // Voz de 0 a 20 s numa música de 55 s: 3 partes DIFERENTES da música (exemplo dele 26/11).
+    const [ini, meio, fin] = CM.trilhaComFinal(buf, 0, 20, fim, 5, 1);
+    assert.deepEqual([ini.inicio, ini.offset, ini.duracao], [0, 0, 13]);                  // INÍCIO: 12 s da cama + 1 s de passagem
+    assert.equal(meio.inicio, 12);
+    assert.ok(Math.abs(meio.offset - 23.5) < 0.02 && Math.abs(meio.duracao - 9) < 0.02);  // MEIO: trecho do meio da música (8 s + 1)
+    assert.equal(fin.inicio, 20);                                                         // FINAL entra quando a voz acaba
     assert.ok(Math.abs(fin.offset - 50) < 0.02 && fin.duracao === 5);                     // os últimos 5 s da música
-    assert.equal(CM.sobreposicaoInvalida([ini, meio, fin], fin), false);                  // vira crossfade válido
-    assert.equal(CM.trilhaComFinal(buf, 0, 0, 28, fim, 5, 1).length, 2);                  // voz no 0:00: sem início
-    assert.equal(CM.trilhaComFinal(buf, 0, 1.5, 52, fim, 5, 1), null);                    // música curta: não corta
+    for (const c of [meio, fin]) assert.equal(CM.sobreposicaoInvalida([ini, meio, fin], c), false);   // emendas = crossfades válidos
+    assert.equal(CM.trilhaComFinal(buf, 0, 52, fim, 5, 1), null);                         // música curta: não corta
+    const [, meioCurto] = CM.trilhaComFinal(buf, 0, 45, fim, 5, 1);                       // sem meio sobrando: continua do início
+    assert.equal(meioCurto.offset, 27);
 });
 
 test('frase longa: faz o que entendeu e conta o que não entendeu', () => {

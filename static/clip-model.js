@@ -412,15 +412,22 @@
     // com `xf` segundos de crossfade. null = a música é curta demais pra precisar do corte.
     // shortcut: o corte não procura o tempo (beat) da música; o crossfade esconde — se soar
     // atravessado em alguma trilha, alinhar o corte ao beat.
-    // Três OBJETOS separados (ele quer mexer em cada um): INÍCIO = música antes da voz
-    // entrar, MEIO = debaixo da voz, FINAL = o final da música. Voz colada no 0:00 = sem início.
-    function trilhaComFinal(buffer, inicio, inicioVoz, fimVoz, fimMusica, finalSeg, xf) {
+    // Três OBJETOS = três partes DIFERENTES da música (exemplo dele, 26/11): o INÍCIO da
+    // música (60% da cama), um trecho do MEIO da música (40%) e o FINAL da música no fim
+    // da voz. Cada emenda tem `xf` s de crossfade. Música sem meio sobrando = o meio
+    // continua do início (3 objetos, áudio contínuo).
+    function trilhaComFinal(buffer, inicio, fimVoz, fimMusica, finalSeg, xf) {
         const final = Math.min(finalSeg, fimMusica / 3);
-        const durIni = fimVoz + xf - inicio;
-        if (final <= xf || durIni < DURACAO_MIN || durIni > fimMusica - final) return null;
-        const corpo = { id: novoId(), buffer, inicio, offset: 0, duracao: durIni, fadeIn: 0, fadeOut: 0 };
-        const fim = { id: novoId(), buffer, inicio: fimVoz, offset: fimMusica - final, duracao: final, fadeIn: 0, fadeOut: 0.05 };
-        return (dividirClip(corpo, inicioVoz) || [corpo]).concat([fim]);
+        const cama = fimVoz - inicio;
+        const lIni = Math.round(cama * 0.6 * 100) / 100, lMeio = cama - lIni;
+        if (final <= xf || lMeio <= xf + DURACAO_MIN || cama + xf > fimMusica - final) return null;
+        let offMeio = Math.min(fimMusica - final - lMeio - xf, fimMusica / 2 - lMeio / 2);
+        if (offMeio < lIni + xf) offMeio = lIni;   // encostaria no início: continua dele, sem pulo
+        return [
+            { id: novoId(), buffer, inicio, offset: 0, duracao: lIni + xf, fadeIn: 0, fadeOut: 0 },
+            { id: novoId(), buffer, inicio: inicio + lIni, offset: offMeio, duracao: lMeio + xf, fadeIn: 0, fadeOut: 0 },
+            { id: novoId(), buffer, inicio: fimVoz, offset: fimMusica - final, duracao: final, fadeIn: 0, fadeOut: Math.min(1, final / 3) }
+        ];
     }
 
     const ClipModel = {

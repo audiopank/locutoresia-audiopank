@@ -2583,10 +2583,9 @@ class MiniDAW {
         const vozes = this._clipsDeVoz();
         const fimVoz = ClipModel.fimDaFaixa(vozes);
         if (!fimVoz) return 'Coloque a voz antes de editar a trilha';
-        const inicioVoz = Math.min(...vozes.map(c => c.inicio));
         const buffer = TimeStretch.baseDoStretch(clips[0]).buffer;
         const fimMusica = ClipModel.fimAudivel(buffer);
-        const novos = ClipModel.trilhaComFinal(buffer, clips[0].inicio, inicioVoz, fimVoz, fimMusica, finalSeg || 5, 1);
+        const novos = ClipModel.trilhaComFinal(buffer, clips[0].inicio, fimVoz, fimMusica, finalSeg || 5, 1);
         if (!novos) return `"${track.name}" tem só ${fimMusica.toFixed(1).replace('.', ',')} s — já cabe inteira, não precisa cortar`;
         const ganho = clips[0].ganhoDb;
         if (ganho) novos.forEach(c => { c.ganhoDb = ganho; });   // volume do objeto continua
@@ -2596,11 +2595,8 @@ class MiniDAW {
         this.updateTrackUI(track);
         this.aposMudancaDeClips([track]);
         const s = (x) => x.toFixed(1).replace('.', ',');
-        const fim = novos[novos.length - 1];
-        const partes = novos.length === 3
-            ? `INÍCIO (até ${s(inicioVoz)} s, antes da voz) + MEIO (debaixo da voz) + FINAL da música (${s(fim.duracao)} s, entra quando a voz acaba)`
-            : `MEIO (debaixo da voz) + FINAL da música (${s(fim.duracao)} s, entra quando a voz acaba) — a voz começa no 0:00, não sobra início`;
-        return `"${track.name}" em ${novos.length} objetos: ${partes}. O resto do meio da música saiu (pra mudar o final: "edita a trilha com final de 3 segundos")`;
+        const [a, b, c] = novos;
+        return `"${track.name}" em 3 pedaços: INÍCIO da música (${s(a.inicio)}–${s(b.inicio)} s) + trecho do MEIO da música (${s(b.inicio)}–${s(c.inicio)} s) + FINAL da música (${s(c.duracao)} s, entra quando a voz acaba), com passagem de 1 s em cada emenda (pra mudar o final: "edita a trilha com final de 3 segundos")`;
     }
 
     // Andamento mostrado na barra de comando, lido do Time Stretch das vozes.
