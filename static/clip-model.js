@@ -412,14 +412,15 @@
     // com `xf` segundos de crossfade. null = a música é curta demais pra precisar do corte.
     // shortcut: o corte não procura o tempo (beat) da música; o crossfade esconde — se soar
     // atravessado em alguma trilha, alinhar o corte ao beat.
-    function trilhaComFinal(buffer, inicio, fimVoz, fimMusica, finalSeg, xf) {
+    // Três OBJETOS separados (ele quer mexer em cada um): INÍCIO = música antes da voz
+    // entrar, MEIO = debaixo da voz, FINAL = o final da música. Voz colada no 0:00 = sem início.
+    function trilhaComFinal(buffer, inicio, inicioVoz, fimVoz, fimMusica, finalSeg, xf) {
         const final = Math.min(finalSeg, fimMusica / 3);
         const durIni = fimVoz + xf - inicio;
         if (final <= xf || durIni < DURACAO_MIN || durIni > fimMusica - final) return null;
-        return [
-            { id: novoId(), buffer, inicio, offset: 0, duracao: durIni, fadeIn: 0, fadeOut: 0 },
-            { id: novoId(), buffer, inicio: fimVoz, offset: fimMusica - final, duracao: final, fadeIn: 0, fadeOut: 0.05 }
-        ];
+        const corpo = { id: novoId(), buffer, inicio, offset: 0, duracao: durIni, fadeIn: 0, fadeOut: 0 };
+        const fim = { id: novoId(), buffer, inicio: fimVoz, offset: fimMusica - final, duracao: final, fadeIn: 0, fadeOut: 0.05 };
+        return (dividirClip(corpo, inicioVoz) || [corpo]).concat([fim]);
     }
 
     const ClipModel = {
